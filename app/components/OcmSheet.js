@@ -122,12 +122,7 @@ export default function OcmSheet({ title, storageKey }) {
         </nav>
 
         <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
-              ARK Websites
-            </p>
-            <h1 className="mt-2 text-4xl font-bold">{title}</h1>
-          </div>
+          <h1 className="text-4xl font-bold">{title}</h1>
 
           <button
             onClick={addRow}
