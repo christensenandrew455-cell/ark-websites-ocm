@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const columns = ["Name", "Phone", "Email", "Address", "Job", "Notes"];
 
@@ -18,14 +18,38 @@ const emptyRow = {
 
 const navItems = [
   { label: "Post Clients", href: "/post-clients" },
-  { label: "Clients", href: "/" },
+  { label: "Clients", href: "/clients" },
   { label: "Pre Clients", href: "/pre-clients" },
 ];
 
-export default function OcmSheet({ title }) {
+function hasRowData(row) {
+  return columns.some((column) => String(row[column]).trim() !== "");
+}
+
+export default function OcmSheet({ title, storageKey }) {
   const pathname = usePathname();
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!storageKey) {
+      return;
+    }
+
+    const savedRows = localStorage.getItem(storageKey);
+
+    if (savedRows) {
+      setRows(JSON.parse(savedRows));
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey) {
+      return;
+    }
+
+    localStorage.setItem(storageKey, JSON.stringify(rows));
+  }, [rows, storageKey]);
 
   function addRow() {
     setRows([...rows, { ...emptyRow }]);
@@ -163,7 +187,8 @@ export default function OcmSheet({ title }) {
                       {row.isEditing ? (
                         <button
                           onClick={() => saveRow(originalIndex)}
-                          className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700"
+                          disabled={!hasRowData(row)}
+                          className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                         >
                           Save
                         </button>
