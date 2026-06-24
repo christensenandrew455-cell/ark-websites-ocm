@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const columns = ["Name", "Phone", "Email", "Address", "Job", "Status", "Notes"];
+const columns = ["Name", "Phone", "Email", "Address", "Job", "Notes"];
 
 const emptyRow = {
   Name: "",
@@ -10,7 +10,6 @@ const emptyRow = {
   Email: "",
   Address: "",
   Job: "",
-  Status: "",
   Notes: "",
 };
 
@@ -54,6 +53,9 @@ export default function Page() {
             <table className="w-full min-w-[900px] border-collapse text-left text-sm">
               <thead className="bg-slate-100 text-slate-700">
                 <tr>
+                  <th className="w-20 border border-slate-200 px-4 py-3 text-center">
+                    #
+                  </th>
                   {columns.map((column) => (
                     <th key={column} className="border border-slate-200 px-4 py-3">
                       {column}
@@ -65,6 +67,9 @@ export default function Page() {
               <tbody>
                 {rows.map((row, rowIndex) => (
                   <tr key={rowIndex}>
+                    <td className="border border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold text-slate-500">
+                      {rowIndex + 1}
+                    </td>
                     {columns.map((column) => (
                       <td key={column} className="border border-slate-200 p-0">
                         <input
