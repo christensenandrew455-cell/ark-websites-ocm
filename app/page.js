@@ -2,28 +2,20 @@
 
 import { useState } from "react";
 
+const columns = ["Name", "Phone", "Email", "Address", "Job", "Status", "Notes"];
+
+const emptyRow = {
+  Name: "",
+  Phone: "",
+  Email: "",
+  Address: "",
+  Job: "",
+  Status: "",
+  Notes: "",
+};
+
 export default function Page() {
-  const columns = [
-    "Name",
-    "Phone",
-    "Email",
-    "Address",
-    "Job",
-    "Status",
-    "Notes",
-  ];
-
-  const emptyRow = {
-    Name: "",
-    Phone: "",
-    Email: "",
-    Address: "",
-    Job: "",
-    Status: "",
-    Notes: "",
-  };
-
-  const [rows, setRows] = useState([emptyRow]);
+  const [rows, setRows] = useState([{ ...emptyRow }]);
 
   function addRow() {
     setRows([...rows, { ...emptyRow }]);
@@ -39,98 +31,56 @@ export default function Page() {
   }
 
   return (
-    <main style={styles.main}>
-      <h1 style={styles.title}>ARK Websites OCM</h1>
+    <main className="min-h-screen bg-slate-50 p-8 text-slate-950">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
+              ARK Websites
+            </p>
+            <h1 className="mt-2 text-4xl font-bold">OCM Dashboard</h1>
+          </div>
 
-      <button onClick={addRow} style={styles.button}>
-        + Add Row
-      </button>
+          <button
+            onClick={addRow}
+            className="rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            + Add Row
+          </button>
+        </div>
 
-      <div style={styles.sheetWrapper}>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th key={column} style={styles.th}>
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  {columns.map((column) => (
+                    <th key={column} className="border border-slate-200 px-4 py-3">
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-          <tbody>
-            {rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                {columns.map((column) => (
-                  <td key={column} style={styles.td}>
-                    <input
-                      value={row[column]}
-                      onChange={(e) =>
-                        updateCell(rowIndex, column, e.target.value)
-                      }
-                      style={styles.input}
-                    />
-                  </td>
+              <tbody>
+                {rows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {columns.map((column) => (
+                      <td key={column} className="border border-slate-200 p-0">
+                        <input
+                          value={row[column]}
+                          onChange={(e) => updateCell(rowIndex, column, e.target.value)}
+                          className="h-12 w-full bg-white px-4 outline-none focus:bg-slate-50"
+                        />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </main>
   );
 }
-
-const styles = {
-  main: {
-    minHeight: "100vh",
-    background: "#f4f6f8",
-    padding: "30px",
-    fontFamily: "Arial, sans-serif",
-  },
-  title: {
-    marginBottom: "20px",
-    fontSize: "32px",
-  },
-  button: {
-    padding: "10px 16px",
-    border: "none",
-    background: "#111",
-    color: "white",
-    borderRadius: "6px",
-    cursor: "pointer",
-    marginBottom: "20px",
-    fontSize: "15px",
-  },
-  sheetWrapper: {
-    overflowX: "auto",
-    background: "white",
-    border: "1px solid #ccc",
-  },
-  table: {
-    borderCollapse: "collapse",
-    width: "100%",
-    minWidth: "900px",
-  },
-  th: {
-    border: "1px solid #ccc",
-    background: "#e9ecef",
-    padding: "10px",
-    textAlign: "left",
-    minWidth: "120px",
-  },
-  td: {
-    border: "1px solid #ccc",
-    padding: "0",
-    height: "40px",
-  },
-  input: {
-    width: "100%",
-    height: "100%",
-    border: "none",
-    padding: "10px",
-    fontSize: "14px",
-    outline: "none",
-    background: "white",
-  },
-};
