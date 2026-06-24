@@ -1,14 +1,12 @@
-* {
-  box-sizing: border-box;
-}
+@import "tailwindcss";
 
 html,
 body {
   margin: 0;
-  padding: 0;
+  min-height: 100vh;
 }
 
-button,
-input {
-  font-family: inherit;
+body {
+  background: #f8fafc;
+  color: #020617;
 }
