@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "latest",
+    "firebase": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
