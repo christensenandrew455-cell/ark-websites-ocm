@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
+const DEFAULT_CLIENT_ID = "tabor-painting";
 const columns = ["Name", "Phone", "Email", "Address", "Job", "Notes"];
 const navItems = [
   { label: "Post Clients", href: "/post-clients" },
@@ -15,7 +16,7 @@ const navItems = [
 const blankRow = { Name: "", Phone: "", Email: "", Address: "", Job: "", Notes: "", isEditing: true };
 
 function cleanClientId(value) {
-  return String(value || "demo-business").trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "demo-business";
+  return String(value || DEFAULT_CLIENT_ID).trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID;
 }
 
 function normalizeRow(id, data) {
@@ -45,7 +46,7 @@ function rowTime(row) {
 
 export default function OcmSheet({ title, sectionKey }) {
   const pathname = usePathname();
-  const [clientId, setClientId] = useState("demo-business");
+  const [clientId, setClientId] = useState(DEFAULT_CLIENT_ID);
   const [rows, setRows] = useState([{ ...blankRow, id: "new-row" }]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -160,7 +161,7 @@ export default function OcmSheet({ title, sectionKey }) {
         <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current business/client ID</p>
           <p className="mt-1 font-mono text-sm text-slate-800">{clientId}</p>
-          <p className="mt-2 text-xs text-slate-500">Webhook submissions for this business become rows below.</p>
+          <p className="mt-2 text-xs text-slate-500">Default is Tabor Painting. Webhook submissions for this business become rows below.</p>
         </div>
 
         <div className="mb-6 flex items-center justify-between gap-4">
