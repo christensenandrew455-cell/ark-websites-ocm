@@ -41,7 +41,7 @@ export default function Page() {
 
         for (const section of sections) {
           const snapshot = await getCountFromServer(
-            collection(db, "ocmclients", clientId, section.sectionKey)
+            collection(db, "ocmClients", clientId, section.sectionKey)
           );
 
           sectionCounts[section.sectionKey] = snapshot.data().count;
