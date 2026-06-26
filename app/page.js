@@ -2,43 +2,60 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-const columns = ["Name", "Phone", "Email", "Address", "Job", "Notes"];
+import { collection, getCountFromServer } from "firebase/firestore";
+import { db } from "./lib/firebase";
 
 const sections = [
-  { title: "Post Clients", storageKey: "ark-post-clients" },
-  { title: "Clients", storageKey: "ark-clients" },
-  { title: "Pre Clients", storageKey: "ark-pre-clients" },
+  { title: "Post Clients", sectionKey: "postClients", href: "/post-clients" },
+  { title: "Clients", sectionKey: "clients", href: "/clients" },
+  { title: "Pre Clients", sectionKey: "preClients", href: "/pre-clients" },
 ];
 
-function countRows(storageKey) {
-  const savedRows = localStorage.getItem(storageKey);
-
-  if (!savedRows) {
-    return 0;
-  }
-
-  const rows = JSON.parse(savedRows);
-
-  return rows.filter((row) =>
-    columns.some((column) => String(row[column]).trim() !== "")
-  ).length;
+function cleanClientId(value) {
+  return String(value || "demo-business")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "demo-business";
 }
 
 export default function Page() {
+  const [clientId, setClientId] = useState("demo-business");
   const [counts, setCounts] = useState({
-    "ark-post-clients": 0,
-    "ark-clients": 0,
-    "ark-pre-clients": 0,
+    postClients: 0,
+    clients: 0,
+    preClients: 0,
   });
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    setCounts({
-      "ark-post-clients": countRows("ark-post-clients"),
-      "ark-clients": countRows("ark-clients"),
-      "ark-pre-clients": countRows("ark-pre-clients"),
-    });
+    const params = new URLSearchParams(window.location.search);
+    setClientId(cleanClientId(params.get("clientId")));
   }, []);
+
+  useEffect(() => {
+    async function loadCounts() {
+      try {
+        const sectionCounts = {};
+
+        for (const section of sections) {
+          const snapshot = await getCountFromServer(
+            collection(db, "ocmClients", clientId, section.sectionKey)
+          );
+
+          sectionCounts[section.sectionKey] = snapshot.data().count;
+        }
+
+        setCounts(sectionCounts);
+      } catch (firestoreError) {
+        console.error(firestoreError);
+        setError("Firestore is not connected yet. Check your Firebase env variables and Firestore rules.");
+      }
+    }
+
+    loadCounts();
+  }, [clientId]);
 
   return (
     <main className="min-h-screen bg-slate-50 p-8 text-slate-950">
@@ -53,25 +70,42 @@ export default function Page() {
           </p>
         </div>
 
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            Current business/client ID
+          </p>
+          <p className="mt-1 font-mono text-sm text-slate-800">{clientId}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Example: /?clientId=tabor-painting keeps that business separate.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
+
         <div className="grid gap-4 md:grid-cols-3">
           {sections.map((section) => (
-            <div
-              key={section.storageKey}
-              className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm"
+            <Link
+              key={section.sectionKey}
+              href={`${section.href}?clientId=${clientId}`}
+              className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm hover:border-slate-400"
             >
               <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
                 {section.title}
               </p>
               <p className="mt-4 text-5xl font-bold text-slate-950">
-                {counts[section.storageKey]}
+                {counts[section.sectionKey] || 0}
               </p>
-            </div>
+            </Link>
           ))}
         </div>
 
         <div className="mt-8 flex justify-center">
           <Link
-            href="/pre-clients"
+            href={`/pre-clients?clientId=${clientId}`}
             className="rounded-lg bg-slate-950 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800"
           >
             Go to Clients
