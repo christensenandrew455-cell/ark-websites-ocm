@@ -18,6 +18,21 @@ function cleanClientId(value) {
   return String(value || "demo-business").trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "demo-business";
 }
 
+function normalizeRow(id, data) {
+  return {
+    ...blankRow,
+    ...data,
+    id,
+    Name: data.Name || data.name || data.fullName || "",
+    Phone: data.Phone || data.phone || data.phoneNumber || data.contact || "",
+    Email: data.Email || data.email || "",
+    Address: data.Address || data.address || "",
+    Job: data.Job || data.job || data.service || data.projectType || "",
+    Notes: data.Notes || data.notes || data.message || "",
+    isEditing: false,
+  };
+}
+
 function hasRowData(row) {
   return columns.some((column) => String(row[column] || "").trim() !== "");
 }
@@ -51,7 +66,7 @@ export default function OcmSheet({ title, sectionKey }) {
       rowsCollection,
       (snapshot) => {
         const firestoreRows = snapshot.docs
-          .map((document) => ({ id: document.id, ...blankRow, ...document.data(), isEditing: false }))
+          .map((document) => normalizeRow(document.id, document.data()))
           .sort((a, b) => rowTime(a) - rowTime(b));
 
         setRows(firestoreRows.length ? firestoreRows : [{ ...blankRow, id: "new-row" }]);
