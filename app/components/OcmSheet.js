@@ -1,8 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+import { db } from "../lib/firebase";
 
 const columns = ["Name", "Phone", "Email", "Address", "Job", "Notes"];
 
@@ -23,36 +35,67 @@ const navItems = [
 ];
 
 function hasRowData(row) {
-  return columns.some((column) => String(row[column]).trim() !== "");
+  return columns.some((column) => String(row[column] || "").trim() !== "");
 }
 
-export default function OcmSheet({ title, storageKey }) {
+function cleanClientId(value) {
+  return String(value || "demo-business")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "demo-business";
+}
+
+export default function OcmSheet({ title, sectionKey }) {
   const pathname = usePathname();
-  const [rows, setRows] = useState([{ ...emptyRow }]);
+  const searchParams = useSearchParams();
+  const clientId = cleanClientId(searchParams.get("clientId"));
+
+  const [rows, setRows] = useState([{ ...emptyRow, id: "new-row" }]);
   const [search, setSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const rowsCollection = useMemo(() => {
+    return collection(db, "ocmClients", clientId, sectionKey);
+  }, [clientId, sectionKey]);
 
   useEffect(() => {
-    if (!storageKey) {
-      return;
-    }
+    setIsLoading(true);
+    setError("");
 
-    const savedRows = localStorage.getItem(storageKey);
+    const rowsQuery = query(rowsCollection, orderBy("createdAt", "asc"));
 
-    if (savedRows) {
-      setRows(JSON.parse(savedRows));
-    }
-  }, [storageKey]);
+    const unsubscribe = onSnapshot(
+      rowsQuery,
+      (snapshot) => {
+        const firestoreRows = snapshot.docs.map((document) => ({
+          id: document.id,
+          ...emptyRow,
+          ...document.data(),
+          isEditing: false,
+        }));
 
-  useEffect(() => {
-    if (!storageKey) {
-      return;
-    }
+        setRows(
+          firestoreRows.length > 0
+            ? firestoreRows
+            : [{ ...emptyRow, id: "new-row" }]
+        );
+        setIsLoading(false);
+      },
+      (firestoreError) => {
+        console.error(firestoreError);
+        setError("Firestore is not connected yet. Check your Firebase env variables and Firestore rules.");
+        setIsLoading(false);
+      }
+    );
 
-    localStorage.setItem(storageKey, JSON.stringify(rows));
-  }, [rows, storageKey]);
+    return () => unsubscribe();
+  }, [rowsCollection]);
 
   function addRow() {
-    setRows([...rows, { ...emptyRow }]);
+    setRows([...rows, { ...emptyRow, id: `new-row-${Date.now()}` }]);
   }
 
   function updateCell(rowIndex, column, value) {
@@ -64,13 +107,41 @@ export default function OcmSheet({ title, storageKey }) {
     setRows(updatedRows);
   }
 
-  function saveRow(rowIndex) {
-    const updatedRows = [...rows];
-    updatedRows[rowIndex] = {
-      ...updatedRows[rowIndex],
-      isEditing: false,
+  async function saveRow(rowIndex) {
+    const row = rows[rowIndex];
+
+    if (!hasRowData(row)) {
+      return;
+    }
+
+    const rowData = {
+      Name: row.Name || "",
+      Phone: row.Phone || "",
+      Email: row.Email || "",
+      Address: row.Address || "",
+      Job: row.Job || "",
+      Notes: row.Notes || "",
+      source: row.source || "manual",
+      updatedAt: serverTimestamp(),
     };
-    setRows(updatedRows);
+
+    try {
+      if (String(row.id).startsWith("new-row")) {
+        await addDoc(rowsCollection, {
+          ...rowData,
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        await setDoc(
+          doc(db, "ocmClients", clientId, sectionKey, row.id),
+          rowData,
+          { merge: true }
+        );
+      }
+    } catch (firestoreError) {
+      console.error(firestoreError);
+      setError("Could not save this row to Firestore. Check Firebase rules/env variables.");
+    }
   }
 
   function editRow(rowIndex) {
@@ -80,6 +151,22 @@ export default function OcmSheet({ title, storageKey }) {
       isEditing: true,
     };
     setRows(updatedRows);
+  }
+
+  async function removeRow(rowIndex) {
+    const row = rows[rowIndex];
+
+    if (String(row.id).startsWith("new-row")) {
+      setRows(rows.filter((_, index) => index !== rowIndex));
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "ocmClients", clientId, sectionKey, row.id));
+    } catch (firestoreError) {
+      console.error(firestoreError);
+      setError("Could not delete this row from Firestore. Check Firebase rules/env variables.");
+    }
   }
 
   const filteredRows = rows
@@ -92,7 +179,7 @@ export default function OcmSheet({ title, storageKey }) {
       }
 
       return columns.some((column) =>
-        String(row[column]).toLowerCase().includes(searchText)
+        String(row[column] || "").toLowerCase().includes(searchText)
       );
     });
 
@@ -107,7 +194,7 @@ export default function OcmSheet({ title, storageKey }) {
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={`${item.href}?clientId=${clientId}`}
                   className={
                     isActive
                       ? "rounded-full bg-slate-950 px-5 py-2 text-sm font-semibold text-white"
@@ -121,6 +208,16 @@ export default function OcmSheet({ title, storageKey }) {
           </div>
         </nav>
 
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            Current business/client ID
+          </p>
+          <p className="mt-1 font-mono text-sm text-slate-800">{clientId}</p>
+          <p className="mt-2 text-xs text-slate-500">
+            To view a different business, add ?clientId=business-name to the URL.
+          </p>
+        </div>
+
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-4xl font-bold">{title}</h1>
 
@@ -131,6 +228,12 @@ export default function OcmSheet({ title, storageKey }) {
             + Add New
           </button>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        )}
 
         <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <input
@@ -143,7 +246,7 @@ export default function OcmSheet({ title, storageKey }) {
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
               <thead className="bg-slate-100 text-slate-700">
                 <tr>
                   <th className="w-20 border border-slate-200 px-4 py-3 text-center">
@@ -154,52 +257,72 @@ export default function OcmSheet({ title, storageKey }) {
                       {column}
                     </th>
                   ))}
-                  <th className="w-32 border border-slate-200 px-4 py-3 text-center">
+                  <th className="w-48 border border-slate-200 px-4 py-3 text-center">
                     Action
                   </th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredRows.map(({ row, originalIndex }) => (
-                  <tr key={originalIndex}>
-                    <td className="border border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold text-slate-500">
-                      {originalIndex + 1}
-                    </td>
-                    {columns.map((column) => (
-                      <td key={column} className="border border-slate-200 p-0">
-                        <input
-                          value={row[column]}
-                          disabled={!row.isEditing}
-                          onChange={(e) =>
-                            updateCell(originalIndex, column, e.target.value)
-                          }
-                          className="h-12 w-full bg-white px-4 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-700 focus:bg-slate-50"
-                        />
-                      </td>
-                    ))}
-                    <td className="border border-slate-200 px-3 py-2 text-center">
-                      {row.isEditing ? (
-                        <button
-                          onClick={() => saveRow(originalIndex)}
-                          disabled={!hasRowData(row)}
-                          className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                        >
-                          Save
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => editRow(originalIndex)}
-                          className="rounded-md bg-slate-950 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-                        >
-                          Edit
-                        </button>
-                      )}
+                {isLoading ? (
+                  <tr>
+                    <td
+                      colSpan={columns.length + 2}
+                      className="border border-slate-200 px-4 py-8 text-center text-slate-500"
+                    >
+                      Loading Firestore rows...
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredRows.map(({ row, originalIndex }) => (
+                    <tr key={row.id || originalIndex}>
+                      <td className="border border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold text-slate-500">
+                        {originalIndex + 1}
+                      </td>
+                      {columns.map((column) => (
+                        <td key={column} className="border border-slate-200 p-0">
+                          <input
+                            value={row[column] || ""}
+                            disabled={!row.isEditing}
+                            onChange={(e) =>
+                              updateCell(originalIndex, column, e.target.value)
+                            }
+                            className="h-12 w-full bg-white px-4 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-700 focus:bg-slate-50"
+                          />
+                        </td>
+                      ))}
+                      <td className="border border-slate-200 px-3 py-2 text-center">
+                        <div className="flex justify-center gap-2">
+                          {row.isEditing ? (
+                            <button
+                              onClick={() => saveRow(originalIndex)}
+                              disabled={!hasRowData(row)}
+                              className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                              Save
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => editRow(originalIndex)}
+                              className="rounded-md bg-slate-950 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                            >
+                              Edit
+                            </button>
+                          )}
 
-                {filteredRows.length === 0 && (
+                          <button
+                            onClick={() => removeRow(originalIndex)}
+                            className="rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+
+                {!isLoading && filteredRows.length === 0 && (
                   <tr>
                     <td
                       colSpan={columns.length + 2}
