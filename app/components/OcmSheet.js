@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   addDoc,
@@ -49,13 +49,17 @@ function cleanClientId(value) {
 
 export default function OcmSheet({ title, sectionKey }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const clientId = cleanClientId(searchParams.get("clientId"));
+  const [clientId, setClientId] = useState("demo-business");
 
   const [rows, setRows] = useState([{ ...emptyRow, id: "new-row" }]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setClientId(cleanClientId(params.get("clientId")));
+  }, []);
 
   const rowsCollection = useMemo(() => {
     return collection(db, "ocmClients", clientId, sectionKey);
