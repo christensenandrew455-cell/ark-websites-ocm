@@ -127,6 +127,10 @@ export default function OcmSheet({ title, sectionKey }) {
 
   async function removeRow(index) {
     const row = rows[index];
+    const isConfirmed = window.confirm("Are you sure you want to delete this row?");
+
+    if (!isConfirmed) return;
+
     if (String(row.id).startsWith("new-row")) {
       setRows((currentRows) => currentRows.filter((_, rowIndex) => rowIndex !== index));
       return;
