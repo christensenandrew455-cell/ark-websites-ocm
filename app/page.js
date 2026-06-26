@@ -109,7 +109,7 @@ export default function Page() {
 
         <div className="mt-8 flex justify-center">
           <Link
-            href={`/clients?clientId=${clientId}`}
+            href={`/contacted-me?clientId=${clientId}`}
             className="rounded-lg bg-slate-950 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800"
           >
             Go to Clients
