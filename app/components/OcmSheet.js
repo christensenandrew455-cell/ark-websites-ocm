@@ -47,8 +47,9 @@ function rowTime(row) {
 
 export default function OcmSheet({ title, sectionKey }) {
   const pathname = usePathname();
+  const canAddRows = sectionKey === "contactedMe";
   const [clientId, setClientId] = useState(DEFAULT_CLIENT_ID);
-  const [rows, setRows] = useState([{ ...blankRow, id: "new-row" }]);
+  const [rows, setRows] = useState(canAddRows ? [{ ...blankRow, id: "new-row" }] : []);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -71,7 +72,7 @@ export default function OcmSheet({ title, sectionKey }) {
           .map((document) => normalizeRow(document.id, document.data()))
           .sort((a, b) => rowTime(a) - rowTime(b));
 
-        setRows(firestoreRows.length ? firestoreRows : [{ ...blankRow, id: "new-row" }]);
+        setRows(firestoreRows.length ? firestoreRows : canAddRows ? [{ ...blankRow, id: "new-row" }] : []);
         setIsLoading(false);
       },
       (err) => {
@@ -82,9 +83,10 @@ export default function OcmSheet({ title, sectionKey }) {
     );
 
     return () => unsubscribe();
-  }, [rowsCollection]);
+  }, [rowsCollection, canAddRows]);
 
   function addRow() {
+    if (!canAddRows) return;
     setRows((currentRows) => [...currentRows, { ...blankRow, id: `new-row-${Date.now()}` }]);
   }
 
@@ -167,7 +169,7 @@ export default function OcmSheet({ title, sectionKey }) {
 
         <div className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-4xl font-bold">{title}</h1>
-          <button onClick={addRow} className="rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">+ Add New</button>
+          {canAddRows && <button onClick={addRow} className="rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">+ Add New</button>}
         </div>
 
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
@@ -204,7 +206,7 @@ export default function OcmSheet({ title, sectionKey }) {
                     </td>
                   </tr>
                 ))}
-                {!isLoading && filteredRows.length === 0 && <tr><td colSpan={columns.length + 2} className="border border-slate-200 px-4 py-8 text-center text-slate-500">No matching rows found.</td></tr>}
+                {!isLoading && filteredRows.length === 0 && <tr><td colSpan={columns.length + 2} className="border border-slate-200 px-4 py-8 text-center text-slate-500">No rows found.</td></tr>}
               </tbody>
             </table>
           </div>
