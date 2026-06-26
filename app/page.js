@@ -11,6 +11,7 @@ const sections = [
   { title: "Post Clients", sectionKey: "postClients", href: "/post-clients" },
   { title: "Clients", sectionKey: "clients", href: "/clients" },
   { title: "Pre Clients", sectionKey: "preClients", href: "/pre-clients" },
+  { title: "Contacted Me", sectionKey: "contactedMe", href: "/contacted-me" },
 ];
 
 function cleanClientId(value) {
@@ -28,6 +29,7 @@ export default function Page() {
     postClients: 0,
     clients: 0,
     preClients: 0,
+    contactedMe: 0,
   });
   const [error, setError] = useState("");
 
@@ -61,7 +63,7 @@ export default function Page() {
 
   return (
     <main className="min-h-screen bg-slate-50 p-8 text-slate-950">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-10 text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
             ARK Websites
@@ -88,7 +90,7 @@ export default function Page() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           {sections.map((section) => (
             <Link
               key={section.sectionKey}
@@ -107,7 +109,7 @@ export default function Page() {
 
         <div className="mt-8 flex justify-center">
           <Link
-            href={`/pre-clients?clientId=${clientId}`}
+            href={`/clients?clientId=${clientId}`}
             className="rounded-lg bg-slate-950 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800"
           >
             Go to Clients
