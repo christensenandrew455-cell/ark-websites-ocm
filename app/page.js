@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { collection, getCountFromServer } from "firebase/firestore";
 import { db } from "./lib/firebase";
 
+const DEFAULT_CLIENT_ID = "tabor-painting";
+
 const sections = [
   { title: "Post Clients", sectionKey: "postClients", href: "/post-clients" },
   { title: "Clients", sectionKey: "clients", href: "/clients" },
@@ -12,16 +14,16 @@ const sections = [
 ];
 
 function cleanClientId(value) {
-  return String(value || "demo-business")
+  return String(value || DEFAULT_CLIENT_ID)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-_]/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "demo-business";
+    .replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID;
 }
 
 export default function Page() {
-  const [clientId, setClientId] = useState("demo-business");
+  const [clientId, setClientId] = useState(DEFAULT_CLIENT_ID);
   const [counts, setCounts] = useState({
     postClients: 0,
     clients: 0,
@@ -76,7 +78,7 @@ export default function Page() {
           </p>
           <p className="mt-1 font-mono text-sm text-slate-800">{clientId}</p>
           <p className="mt-2 text-xs text-slate-500">
-            Example: /?clientId=tabor-painting keeps that business separate.
+            Default is Tabor Painting. Add ?clientId=business-name to view another business.
           </p>
         </div>
 
