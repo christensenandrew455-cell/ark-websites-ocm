@@ -12,6 +12,7 @@ const navItems = [
   { label: "Post Clients", href: "/post-clients" },
   { label: "Clients", href: "/clients" },
   { label: "Pre Clients", href: "/pre-clients" },
+  { label: "Contacted Me", href: "/contacted-me" },
 ];
 const blankRow = { Name: "", Phone: "", Email: "", Address: "", Job: "", Notes: "", isEditing: true };
 
@@ -161,7 +162,7 @@ export default function OcmSheet({ title, sectionKey }) {
         <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current business/client ID</p>
           <p className="mt-1 font-mono text-sm text-slate-800">{clientId}</p>
-          <p className="mt-2 text-xs text-slate-500">Default is Tabor Painting. Webhook submissions for this business become rows below.</p>
+          <p className="mt-2 text-xs text-slate-500">Default is Tabor Painting. Website, AI receptionist, and form submissions can become rows below.</p>
         </div>
 
         <div className="mb-6 flex items-center justify-between gap-4">
