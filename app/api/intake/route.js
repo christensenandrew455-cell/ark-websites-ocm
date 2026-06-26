@@ -2,7 +2,7 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
-const allowedSections = ["preClients", "clients", "postClients"];
+const allowedSections = ["postClients", "clients", "preClients", "contactedMe"];
 
 function cleanClientId(value) {
   return (
@@ -16,7 +16,7 @@ function cleanClientId(value) {
 }
 
 function cleanSectionKey(value) {
-  return allowedSections.includes(value) ? value : "preClients";
+  return allowedSections.includes(value) ? value : "contactedMe";
 }
 
 function text(value) {
