@@ -28,6 +28,13 @@ function cleanText(value) {
   return String(value || "").trim();
 }
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    message: "ARK OCM submissions webhook is live. Send POST requests here.",
+  });
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
