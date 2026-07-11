@@ -38,6 +38,8 @@ function buildRow(data) {
     Email: text(data.Email || data.email),
     Address: text(data.Address || data.address || data.customerAddress),
     Job: text(data.Job || data.job || data.service || data.projectType || data.requestedService),
+    PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay),
+    PreferredTime: text(data.PreferredTime || data.preferredTime || data.estimateTime),
     Notes: text(data.Notes || data.notes || data.message || data.summary),
     source: text(data.source || "website"),
     rawSubmission: data,
