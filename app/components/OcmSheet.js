@@ -7,14 +7,33 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc
 import { db } from "../lib/firebase";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
-const columns = ["Name", "Phone", "Email", "Address", "Job", "Notes"];
+const columns = [
+  { key: "Name", label: "Name" },
+  { key: "Phone", label: "Phone" },
+  { key: "Email", label: "Email" },
+  { key: "Address", label: "Address" },
+  { key: "Job", label: "Job" },
+  { key: "PreferredDay", label: "Preferred Day" },
+  { key: "PreferredTime", label: "Preferred Time" },
+  { key: "Notes", label: "Notes" },
+];
 const navItems = [
   { label: "Post Clients", href: "/post-clients" },
   { label: "Clients", href: "/clients" },
   { label: "Pre Clients", href: "/pre-clients" },
   { label: "Contacted Me", href: "/contacted-me" },
 ];
-const blankRow = { Name: "", Phone: "", Email: "", Address: "", Job: "", Notes: "", isEditing: true };
+const blankRow = {
+  Name: "",
+  Phone: "",
+  Email: "",
+  Address: "",
+  Job: "",
+  PreferredDay: "",
+  PreferredTime: "",
+  Notes: "",
+  isEditing: true,
+};
 
 function cleanClientId(value) {
   return String(value || DEFAULT_CLIENT_ID).trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID;
@@ -30,13 +49,15 @@ function normalizeRow(id, data) {
     Email: data.Email || data.email || "",
     Address: data.Address || data.address || "",
     Job: data.Job || data.job || data.service || data.projectType || "",
+    PreferredDay: data.PreferredDay || data.preferredDay || data.estimateDay || "",
+    PreferredTime: data.PreferredTime || data.preferredTime || data.estimateTime || "",
     Notes: data.Notes || data.notes || data.message || "",
     isEditing: false,
   };
 }
 
 function hasRowData(row) {
-  return columns.some((column) => String(row[column] || "").trim() !== "");
+  return columns.some(({ key }) => String(row[key] || "").trim() !== "");
 }
 
 function rowTime(row) {
@@ -108,6 +129,8 @@ export default function OcmSheet({ title, sectionKey }) {
       Email: row.Email || "",
       Address: row.Address || "",
       Job: row.Job || "",
+      PreferredDay: row.PreferredDay || "",
+      PreferredTime: row.PreferredTime || "",
       Notes: row.Notes || "",
       source: row.source || "manual",
       updatedAt: serverTimestamp(),
@@ -149,12 +172,12 @@ export default function OcmSheet({ title, sectionKey }) {
     .filter(({ row }) => {
       const text = search.trim().toLowerCase();
       if (!text) return true;
-      return columns.some((column) => String(row[column] || "").toLowerCase().includes(text));
+      return columns.some(({ key }) => String(row[key] || "").toLowerCase().includes(text));
     });
 
   return (
     <main className="min-h-screen bg-slate-50 p-8 text-slate-950">
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto max-w-[1800px]">
         <nav className="mb-8 flex justify-center">
           <div className="flex rounded-full border border-slate-200 bg-white p-1 shadow-sm">
             {navItems.map((item) => (
@@ -179,30 +202,47 @@ export default function OcmSheet({ title, sectionKey }) {
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
 
         <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, phone, email, job, address, or notes..." className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, phone, email, job, day, time, address, or notes..." className="h-12 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" />
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[1550px] table-fixed border-collapse text-left text-sm">
               <thead className="bg-slate-100 text-slate-700">
                 <tr>
-                  <th className="w-20 border border-slate-200 px-4 py-3 text-center">#</th>
-                  {columns.map((column) => <th key={column} className="border border-slate-200 px-4 py-3">{column}</th>)}
+                  <th className="w-16 border border-slate-200 px-4 py-3 text-center">#</th>
+                  {columns.map(({ key, label }) => (
+                    <th key={key} className={key === "Notes" ? "w-80 border border-slate-200 px-4 py-3" : "w-44 border border-slate-200 px-4 py-3"}>{label}</th>
+                  ))}
                   <th className="w-48 border border-slate-200 px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading && <tr><td colSpan={columns.length + 2} className="border border-slate-200 px-4 py-8 text-center text-slate-500">Loading Firestore rows...</td></tr>}
                 {!isLoading && filteredRows.map(({ row, originalIndex }) => (
-                  <tr key={row.id || originalIndex}>
+                  <tr key={row.id || originalIndex} className="align-top">
                     <td className="border border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold text-slate-500">{originalIndex + 1}</td>
-                    {columns.map((column) => (
-                      <td key={column} className="border border-slate-200 p-0">
-                        <input value={row[column] || ""} disabled={!row.isEditing} onChange={(e) => updateCell(originalIndex, column, e.target.value)} className="h-12 w-full bg-white px-4 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-700 focus:bg-slate-50" />
+                    {columns.map(({ key }) => (
+                      <td key={key} className="border border-slate-200 p-0 align-top">
+                        {row.isEditing ? (
+                          key === "Notes" ? (
+                            <textarea
+                              value={row[key] || ""}
+                              rows={4}
+                              onChange={(e) => updateCell(originalIndex, key, e.target.value)}
+                              className="min-h-28 w-full resize-y whitespace-pre-wrap break-words bg-white px-4 py-3 outline-none focus:bg-slate-50"
+                            />
+                          ) : (
+                            <input value={row[key] || ""} onChange={(e) => updateCell(originalIndex, key, e.target.value)} className="h-12 w-full bg-white px-4 outline-none focus:bg-slate-50" />
+                          )
+                        ) : (
+                          <div className={key === "Notes" ? "min-h-20 whitespace-pre-wrap break-words px-4 py-3 text-slate-700" : "min-h-12 break-words px-4 py-3 text-slate-700"}>
+                            {row[key] || ""}
+                          </div>
+                        )}
                       </td>
                     ))}
-                    <td className="border border-slate-200 px-3 py-2 text-center">
+                    <td className="border border-slate-200 px-3 py-2 text-center align-middle">
                       <div className="flex justify-center gap-2">
                         {row.isEditing ? <button onClick={() => saveRow(originalIndex)} disabled={!hasRowData(row)} className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300">Save</button> : <button onClick={() => editRow(originalIndex)} className="rounded-md bg-slate-950 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800">Edit</button>}
                         <button onClick={() => removeRow(originalIndex)} className="rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700">Delete</button>
