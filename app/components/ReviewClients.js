@@ -341,11 +341,11 @@ export default function ReviewClients() {
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 md:p-8">
       <div className="mx-auto max-w-6xl">
         <nav className="mb-8 overflow-x-auto pb-2">
-          <div className="flex min-w-max items-center justify-between gap-8 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+          <div className="flex min-w-max items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
             <div className="flex gap-1">
               {stageNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} />)}
             </div>
-            <div className="flex gap-1 border-l border-slate-200 pl-2">
+            <div className="flex gap-1">
               {utilityNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} active={item.href === "/review-my-clients"} />)}
             </div>
           </div>
