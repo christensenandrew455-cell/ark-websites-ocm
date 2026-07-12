@@ -31,19 +31,19 @@ const stageConfigs = [
     key: "contactedMe",
     title: "Contacted Me",
     question: "Would you like to take this job?",
-    description: "Accept moves the lead into Pre Clients. Decline permanently deletes the same lead shown on the Contacted Me page.",
+    description: "Accept the lead to move it into Pre Clients. The server converts the preferred weekday and time into a real estimate date in Eastern Time.",
   },
   {
     key: "preClients",
     title: "Pre Clients",
     question: "Has the estimate been completed?",
-    description: "After the estimate, enter the agreed work start date. The client moves to Clients automatically when that date arrives, or you can move them now.",
+    description: "Thirty minutes after the estimate, the OCM prompts you to add the agreed work start date. The client moves automatically when that date arrives.",
   },
   {
     key: "clients",
     title: "Clients",
     question: "Has the work been completed?",
-    description: "Move completed work into Post Clients. Choose Not Yet to leave the client here for the next review.",
+    description: "Completed moves the job into Post Clients. Not Yet keeps the client here for the next daily review.",
   },
   {
     key: "postClients",
@@ -61,6 +61,8 @@ const profileFields = [
   ["Job", "Job"],
   ["PreferredDay", "Preferred Day"],
   ["PreferredTime", "Preferred Time"],
+  ["EstimateDate", "Estimate Date"],
+  ["EstimateTime", "Estimate Time"],
   ["WorkStartDate", "Work Start Date"],
   ["Notes", "Notes"],
   ["source", "Source"],
@@ -86,6 +88,8 @@ function normalizeRow(id, data) {
     Job: data.Job || data.job || data.service || data.projectType || "",
     PreferredDay: data.PreferredDay || data.preferredDay || data.estimateDay || "",
     PreferredTime: data.PreferredTime || data.preferredTime || data.estimateTime || "",
+    EstimateDate: data.EstimateDate || "",
+    EstimateTime: data.EstimateTime || "",
     WorkStartDate: data.WorkStartDate || data.workStartDate || "",
     Notes: data.Notes || data.notes || data.message || "",
   };
@@ -95,14 +99,6 @@ function rowTime(row) {
   if (row.createdAt?.toMillis) return row.createdAt.toMillis();
   if (row.createdAt?.seconds) return row.createdAt.seconds * 1000;
   return 0;
-}
-
-function todayIso() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function clientData(row) {
@@ -125,15 +121,11 @@ function NavLink({ item, clientId, active = false }) {
 
 export default function ReviewClients() {
   const [clientId, setClientId] = useState(DEFAULT_CLIENT_ID);
-  const [rowsByStage, setRowsByStage] = useState({
-    contactedMe: [],
-    preClients: [],
-    clients: [],
-    postClients: [],
-  });
+  const [rowsByStage, setRowsByStage] = useState({ contactedMe: [], preClients: [], clients: [], postClients: [] });
   const [loadedStages, setLoadedStages] = useState(new Set());
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [startDates, setStartDates] = useState({});
+  const [notifications, setNotifications] = useState([]);
   const [busyRows, setBusyRows] = useState(new Set());
   const [error, setError] = useState("");
 
@@ -156,7 +148,6 @@ export default function ReviewClients() {
         const rows = snapshot.docs
           .map((document) => normalizeRow(document.id, document.data()))
           .sort((a, b) => rowTime(a) - rowTime(b));
-
         setRowsByStage((current) => ({ ...current, [stage.key]: rows }));
         setStartDates((current) => {
           const next = { ...current };
@@ -173,13 +164,51 @@ export default function ReviewClients() {
       }
     ));
 
-    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [collections]);
+    const unsubscribeNotifications = onSnapshot(
+      collection(db, "ocmClients", clientId, "notifications"),
+      (snapshot) => {
+        setNotifications(snapshot.docs
+          .map((document) => ({ id: document.id, ...document.data() }))
+          .filter((notification) => !notification.dismissed)
+          .sort((a, b) => String(b.dateKey || "").localeCompare(String(a.dateKey || ""))));
+      }
+    );
+
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribeNotifications();
+    };
+  }, [collections, clientId]);
+
+  async function acceptLead(row) {
+    const busyKey = `contactedMe:${row.id}`;
+    if (busyRows.has(busyKey)) return;
+    setBusyRows((current) => new Set(current).add(busyKey));
+    setError("");
+
+    try {
+      const response = await fetch("/api/workflow/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, id: row.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not accept this lead.");
+    } catch (acceptError) {
+      console.error(acceptError);
+      setError(acceptError.message || `Could not accept ${row.Name || "this lead"}.`);
+    } finally {
+      setBusyRows((current) => {
+        const next = new Set(current);
+        next.delete(busyKey);
+        return next;
+      });
+    }
+  }
 
   async function moveClient(fromStage, toStage, row, extra = {}) {
     const busyKey = `${fromStage}:${row.id}`;
     if (busyRows.has(busyKey)) return;
-
     setBusyRows((current) => new Set(current).add(busyKey));
     setError("");
 
@@ -212,12 +241,9 @@ export default function ReviewClients() {
   async function deleteClient(stageKey, row) {
     const busyKey = `${stageKey}:${row.id}`;
     if (busyRows.has(busyKey)) return;
-    const confirmed = window.confirm(`Delete ${row.Name || "this client"}? This removes the same record from both Review My Clients and ${stageConfigs.find((stage) => stage.key === stageKey)?.title || "the stage page"}.`);
-    if (!confirmed) return;
+    if (!window.confirm(`Delete ${row.Name || "this client"}? This cannot be undone.`)) return;
 
     setBusyRows((current) => new Set(current).add(busyKey));
-    setError("");
-
     try {
       await deleteDoc(doc(db, "ocmClients", clientId, stageKey, row.id));
     } catch (deleteError) {
@@ -242,6 +268,7 @@ export default function ReviewClients() {
     try {
       await setDoc(doc(db, "ocmClients", clientId, "preClients", row.id), {
         WorkStartDate: date,
+        EstimateFollowUpDue: false,
         estimateCompleted: true,
         estimateCompletedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -265,18 +292,13 @@ export default function ReviewClients() {
     }
   }
 
-  useEffect(() => {
-    if (!loadedStages.has("preClients")) return;
-    const today = todayIso();
-    const dueRows = rowsByStage.preClients.filter((row) => row.WorkStartDate && row.WorkStartDate <= today);
-
-    dueRows.forEach((row) => {
-      moveClient("preClients", "clients", row, {
-        workStartedAt: serverTimestamp(),
-        autoMovedOnStartDate: true,
-      });
-    });
-  }, [loadedStages, rowsByStage.preClients]);
+  async function dismissNotification(notification) {
+    await setDoc(doc(db, "ocmClients", clientId, "notifications", notification.id), {
+      dismissed: true,
+      dismissedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
 
   function toggleView(stageKey, id) {
     const key = `${stageKey}:${id}`;
@@ -294,7 +316,7 @@ export default function ReviewClients() {
     if (stageKey === "contactedMe") {
       return (
         <>
-          <button disabled={busy} onClick={() => moveClient("contactedMe", "preClients", row, { acceptedAt: serverTimestamp(), reviewStatus: "accepted" })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">✓ Accept</button>
+          <button disabled={busy} onClick={() => acceptLead(row)} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">✓ Accept Lead</button>
           <button disabled={busy} onClick={() => deleteClient("contactedMe", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">✕ Decline & Delete</button>
         </>
       );
@@ -310,8 +332,7 @@ export default function ReviewClients() {
             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
             aria-label={`Work start date for ${row.Name || "client"}`}
           />
-          <button onClick={() => saveStartDate(row)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">Save Start Date</button>
-          <button disabled={busy} onClick={() => moveClient("preClients", "clients", row, { workStartedAt: serverTimestamp() })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">Move to Client</button>
+          <button onClick={() => saveStartDate(row)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">Save Work Start Date</button>
           <button disabled={busy} onClick={() => moveClient("preClients", "contactedMe", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
           <button disabled={busy} onClick={() => deleteClient("preClients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
         </>
@@ -321,7 +342,7 @@ export default function ReviewClients() {
     if (stageKey === "clients") {
       return (
         <>
-          <button disabled={busy} onClick={() => moveClient("clients", "postClients", row, { workCompleted: true, completedAt: serverTimestamp() })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">✓ Completed</button>
+          <button disabled={busy} onClick={() => moveClient("clients", "postClients", row, { workCompleted: true, completedAt: serverTimestamp() })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">✓ Work Completed</button>
           <button disabled={busy} onClick={() => markNotCompleted(row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Not Yet</button>
           <button disabled={busy} onClick={() => moveClient("clients", "preClients", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
           <button disabled={busy} onClick={() => deleteClient("clients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
@@ -342,20 +363,26 @@ export default function ReviewClients() {
       <div className="mx-auto max-w-6xl">
         <nav className="mb-8 overflow-x-auto pb-2">
           <div className="flex min-w-max items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            <div className="flex gap-1">
-              {stageNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} />)}
-            </div>
-            <div className="flex gap-1">
-              {utilityNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} active={item.href === "/review-my-clients"} />)}
-            </div>
+            <div className="flex gap-1">{stageNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} />)}</div>
+            <div className="flex gap-1">{utilityNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} active={item.href === "/review-my-clients"} />)}</div>
           </div>
         </nav>
 
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{clientId}</p>
           <h1 className="mt-1 text-4xl font-bold">Review My Clients</h1>
-          <p className="mt-2 max-w-3xl text-slate-600">Review each stage in one place. Every move and delete uses the exact same Firestore records as the individual stage pages.</p>
+          <p className="mt-2 max-w-3xl text-slate-600">Eastern-time workflow: accept leads, add work start dates after estimates, and confirm completed jobs.</p>
         </div>
+
+        {notifications.map((notification) => (
+          <div key={notification.id} className="mb-5 flex flex-col gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-bold text-blue-950">{notification.title || "Daily review"}</p>
+              <p className="mt-1 text-sm text-blue-800">{notification.message || "Go review your clients."}</p>
+            </div>
+            <button onClick={() => dismissNotification(notification)} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800">Dismiss</button>
+          </div>
+        ))}
 
         {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
 
@@ -385,10 +412,14 @@ export default function ReviewClients() {
                     const expanded = expandedRows.has(`${stage.key}:${row.id}`);
                     return (
                       <article key={row.id}>
+                        {stage.key === "preClients" && row.EstimateFollowUpDue && !row.WorkStartDate && (
+                          <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-bold text-amber-900">Estimate passed. Add the agreed work start date.</div>
+                        )}
                         <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
                           <div className="min-w-0">
                             <h3 className="truncate text-lg font-bold">{row.Name || "Unnamed client"}</h3>
                             <p className="mt-1 text-sm font-medium text-slate-600">{row.Phone || "No phone number"}</p>
+                            {row.EstimateDate && <p className="mt-1 text-xs font-semibold text-slate-500">Estimate: {row.EstimateDate} at {row.EstimateTime || row.PreferredTime}</p>}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             <button onClick={() => toggleView(stage.key, row.id)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">{expanded ? "Close" : "View Profile"}</button>
