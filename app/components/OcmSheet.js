@@ -18,13 +18,15 @@ const editableFields = [
   { key: "WorkStartDate", label: "Work Start Date" },
   { key: "Notes", label: "Notes", multiline: true },
 ];
-const navItems = [
-  { label: "Dashboard", href: "/" },
-  { label: "Review My Clients", href: "/review-my-clients" },
+const stageNavItems = [
   { label: "Contacted Me", href: "/contacted-me" },
   { label: "Pre Clients", href: "/pre-clients" },
   { label: "Clients", href: "/clients" },
   { label: "Post Clients", href: "/post-clients" },
+];
+const utilityNavItems = [
+  { label: "Review My Clients", href: "/review-my-clients" },
+  { label: "Dashboard", href: "/" },
 ];
 const blankRow = Object.fromEntries(editableFields.map(({ key }) => [key, ""]));
 
@@ -68,6 +70,19 @@ function displayTimestamp(value) {
   if (value?.toDate) return value.toDate().toLocaleString();
   if (value?.seconds) return new Date(value.seconds * 1000).toLocaleString();
   return "";
+}
+
+function NavLink({ item, pathname, clientId }) {
+  return (
+    <Link
+      href={`${item.href}?clientId=${clientId}`}
+      className={pathname === item.href
+        ? "rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+        : "rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950"}
+    >
+      {item.label}
+    </Link>
+  );
 }
 
 export default function OcmSheet({ title, sectionKey }) {
@@ -208,18 +223,13 @@ export default function OcmSheet({ title, sectionKey }) {
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 md:p-8">
       <div className="mx-auto max-w-5xl">
         <nav className="mb-8 overflow-x-auto pb-2">
-          <div className="flex min-w-max justify-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={`${item.href}?clientId=${clientId}`}
-                className={pathname === item.href
-                  ? "rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
-                  : "rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950"}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <div className="flex min-w-max items-center justify-between gap-8 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="flex gap-1">
+              {stageNavItems.map((item) => <NavLink key={item.href} item={item} pathname={pathname} clientId={clientId} />)}
+            </div>
+            <div className="flex gap-1 border-l border-slate-200 pl-2">
+              {utilityNavItems.map((item) => <NavLink key={item.href} item={item} pathname={pathname} clientId={clientId} />)}
+            </div>
           </div>
         </nav>
 
