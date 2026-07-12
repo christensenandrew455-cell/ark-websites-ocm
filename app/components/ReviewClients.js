@@ -23,6 +23,8 @@ const stageNavItems = [
 ];
 const utilityNavItems = [
   { label: "Review My Clients", href: "/review-my-clients" },
+  { label: "Advertising", href: "/advertising" },
+  { label: "Settings", href: "/settings" },
   { label: "Dashboard", href: "/" },
 ];
 
@@ -59,6 +61,7 @@ const profileFields = [
   ["Email", "Email"],
   ["Address", "Address"],
   ["Job", "Job"],
+  ["BestContactMethod", "Best Form of Contact"],
   ["PreferredDay", "Preferred Day"],
   ["PreferredTime", "Preferred Time"],
   ["EstimateDate", "Estimate Date"],
@@ -77,6 +80,14 @@ function cleanClientId(value) {
     .replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID;
 }
 
+function normalizeContactMethod(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["text", "sms", "message", "text message"].includes(normalized)) return "Text";
+  if (["call", "phone", "telephone"].includes(normalized)) return "Call";
+  if (["email", "e-mail"].includes(normalized)) return "Email";
+  return "";
+}
+
 function normalizeRow(id, data) {
   return {
     ...data,
@@ -86,6 +97,9 @@ function normalizeRow(id, data) {
     Email: data.Email || data.email || "",
     Address: data.Address || data.address || "",
     Job: data.Job || data.job || data.service || data.projectType || "",
+    BestContactMethod: normalizeContactMethod(
+      data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod
+    ),
     PreferredDay: data.PreferredDay || data.preferredDay || data.estimateDay || "",
     PreferredTime: data.PreferredTime || data.preferredTime || data.estimateTime || "",
     EstimateDate: data.EstimateDate || "",
@@ -419,6 +433,7 @@ export default function ReviewClients() {
                           <div className="min-w-0">
                             <h3 className="truncate text-lg font-bold">{row.Name || "Unnamed client"}</h3>
                             <p className="mt-1 text-sm font-medium text-slate-600">{row.Phone || "No phone number"}</p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">Best contact: {row.BestContactMethod || "Not set"}</p>
                             {row.EstimateDate && <p className="mt-1 text-xs font-semibold text-slate-500">Estimate: {row.EstimateDate} at {row.EstimateTime || row.PreferredTime}</p>}
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
