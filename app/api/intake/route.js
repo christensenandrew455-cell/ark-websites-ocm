@@ -23,6 +23,14 @@ function text(value) {
   return String(value || "").trim();
 }
 
+function contactMethod(value) {
+  const normalized = text(value).toLowerCase();
+  if (["text", "sms", "message", "text message"].includes(normalized)) return "Text";
+  if (["call", "phone", "telephone"].includes(normalized)) return "Call";
+  if (["email", "e-mail"].includes(normalized)) return "Email";
+  return "";
+}
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -38,6 +46,9 @@ function buildRow(data) {
     Email: text(data.Email || data.email),
     Address: text(data.Address || data.address || data.customerAddress),
     Job: text(data.Job || data.job || data.service || data.projectType || data.requestedService),
+    BestContactMethod: contactMethod(
+      data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod
+    ),
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay),
     PreferredTime: text(data.PreferredTime || data.preferredTime || data.estimateTime),
     Notes: text(data.Notes || data.notes || data.message || data.summary),
