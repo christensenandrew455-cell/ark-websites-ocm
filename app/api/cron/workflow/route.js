@@ -1,4 +1,4 @@
-import { collection, doc, getDocs, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import { businessNow, isDateDue } from "../../../lib/businessTime";
 
@@ -65,6 +65,8 @@ async function createDailyReviewNotification(now) {
     "notifications",
     `daily-review-${clock.dateKey}`
   );
+  const existing = await getDoc(notificationRef);
+  if (existing.exists()) return false;
 
   await setDoc(notificationRef, {
     type: "daily-review",
@@ -76,7 +78,7 @@ async function createDailyReviewNotification(now) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     dismissed: false,
-  }, { merge: true });
+  });
 
   return true;
 }
