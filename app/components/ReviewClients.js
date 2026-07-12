@@ -15,12 +15,23 @@ import { db } from "../lib/firebase";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
 
+const stageNavItems = [
+  { label: "Contacted Me", href: "/contacted-me" },
+  { label: "Pre Clients", href: "/pre-clients" },
+  { label: "Clients", href: "/clients" },
+  { label: "Post Clients", href: "/post-clients" },
+];
+const utilityNavItems = [
+  { label: "Review My Clients", href: "/review-my-clients" },
+  { label: "Dashboard", href: "/" },
+];
+
 const stageConfigs = [
   {
     key: "contactedMe",
     title: "Contacted Me",
     question: "Would you like to take this job?",
-    description: "Approve the lead to move it into Pre Clients, or decline it to remove it from this review queue without deleting its information.",
+    description: "Accept moves the lead into Pre Clients. Decline permanently deletes the same lead shown on the Contacted Me page.",
   },
   {
     key: "preClients",
@@ -97,6 +108,19 @@ function todayIso() {
 function clientData(row) {
   const { id, ...data } = row;
   return data;
+}
+
+function NavLink({ item, clientId, active = false }) {
+  return (
+    <Link
+      href={`${item.href}?clientId=${clientId}`}
+      className={active
+        ? "rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+        : "rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950"}
+    >
+      {item.label}
+    </Link>
+  );
 }
 
 export default function ReviewClients() {
@@ -185,20 +209,20 @@ export default function ReviewClients() {
     }
   }
 
-  async function declineLead(row) {
-    const busyKey = `contactedMe:${row.id}`;
+  async function deleteClient(stageKey, row) {
+    const busyKey = `${stageKey}:${row.id}`;
     if (busyRows.has(busyKey)) return;
+    const confirmed = window.confirm(`Delete ${row.Name || "this client"}? This removes the same record from both Review My Clients and ${stageConfigs.find((stage) => stage.key === stageKey)?.title || "the stage page"}.`);
+    if (!confirmed) return;
+
     setBusyRows((current) => new Set(current).add(busyKey));
+    setError("");
 
     try {
-      await setDoc(doc(db, "ocmClients", clientId, "contactedMe", row.id), {
-        reviewStatus: "declined",
-        declinedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    } catch (declineError) {
-      console.error(declineError);
-      setError(`Could not decline ${row.Name || "this lead"}.`);
+      await deleteDoc(doc(db, "ocmClients", clientId, stageKey, row.id));
+    } catch (deleteError) {
+      console.error(deleteError);
+      setError(`Could not delete ${row.Name || "this client"}.`);
     } finally {
       setBusyRows((current) => {
         const next = new Set(current);
@@ -244,9 +268,7 @@ export default function ReviewClients() {
   useEffect(() => {
     if (!loadedStages.has("preClients")) return;
     const today = todayIso();
-    const dueRows = rowsByStage.preClients.filter((row) => (
-      row.WorkStartDate && row.WorkStartDate <= today && row.reviewStatus !== "declined"
-    ));
+    const dueRows = rowsByStage.preClients.filter((row) => row.WorkStartDate && row.WorkStartDate <= today);
 
     dueRows.forEach((row) => {
       moveClient("preClients", "clients", row, {
@@ -266,12 +288,6 @@ export default function ReviewClients() {
     });
   }
 
-  function activeRows(stageKey) {
-    const rows = rowsByStage[stageKey] || [];
-    if (stageKey === "contactedMe") return rows.filter((row) => row.reviewStatus !== "declined");
-    return rows;
-  }
-
   function renderActions(stageKey, row) {
     const busy = busyRows.has(`${stageKey}:${row.id}`);
 
@@ -279,7 +295,7 @@ export default function ReviewClients() {
       return (
         <>
           <button disabled={busy} onClick={() => moveClient("contactedMe", "preClients", row, { acceptedAt: serverTimestamp(), reviewStatus: "accepted" })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">✓ Accept</button>
-          <button disabled={busy} onClick={() => declineLead(row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">✕ Decline</button>
+          <button disabled={busy} onClick={() => deleteClient("contactedMe", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">✕ Decline & Delete</button>
         </>
       );
     }
@@ -297,6 +313,7 @@ export default function ReviewClients() {
           <button onClick={() => saveStartDate(row)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">Save Start Date</button>
           <button disabled={busy} onClick={() => moveClient("preClients", "clients", row, { workStartedAt: serverTimestamp() })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">Move to Client</button>
           <button disabled={busy} onClick={() => moveClient("preClients", "contactedMe", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
+          <button disabled={busy} onClick={() => deleteClient("preClients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
         </>
       );
     }
@@ -307,32 +324,44 @@ export default function ReviewClients() {
           <button disabled={busy} onClick={() => moveClient("clients", "postClients", row, { workCompleted: true, completedAt: serverTimestamp() })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">✓ Completed</button>
           <button disabled={busy} onClick={() => markNotCompleted(row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Not Yet</button>
           <button disabled={busy} onClick={() => moveClient("clients", "preClients", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
+          <button disabled={busy} onClick={() => deleteClient("clients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
         </>
       );
     }
 
     return (
-      <button disabled={busy} onClick={() => moveClient("postClients", "clients", row, { workCompleted: false })} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back to Clients</button>
+      <>
+        <button disabled={busy} onClick={() => moveClient("postClients", "clients", row, { workCompleted: false })} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back to Clients</button>
+        <button disabled={busy} onClick={() => deleteClient("postClients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
+      </>
     );
   }
 
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 md:p-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{clientId}</p>
-            <h1 className="mt-1 text-4xl font-bold">Review My Clients</h1>
-            <p className="mt-2 max-w-3xl text-slate-600">Review each stage in one place. Every move preserves the complete client record.</p>
+        <nav className="mb-8 overflow-x-auto pb-2">
+          <div className="flex min-w-max items-center justify-between gap-8 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="flex gap-1">
+              {stageNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} />)}
+            </div>
+            <div className="flex gap-1 border-l border-slate-200 pl-2">
+              {utilityNavItems.map((item) => <NavLink key={item.href} item={item} clientId={clientId} active={item.href === "/review-my-clients"} />)}
+            </div>
           </div>
-          <Link href={`/?clientId=${clientId}`} className="rounded-lg bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">Back to Dashboard</Link>
+        </nav>
+
+        <div className="mb-8">
+          <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{clientId}</p>
+          <h1 className="mt-1 text-4xl font-bold">Review My Clients</h1>
+          <p className="mt-2 max-w-3xl text-slate-600">Review each stage in one place. Every move and delete uses the exact same Firestore records as the individual stage pages.</p>
         </div>
 
         {error && <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
 
         <div className="space-y-8">
           {stageConfigs.map((stage) => {
-            const rows = activeRows(stage.key);
+            const rows = rowsByStage[stage.key] || [];
             const loaded = loadedStages.has(stage.key);
 
             return (
