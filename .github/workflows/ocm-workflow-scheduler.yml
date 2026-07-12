@@ -1,0 +1,17 @@
+name: OCM Workflow Scheduler
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-workflow-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run OCM workflow check
+        run: |
+          curl --fail --silent --show-error \
+            --retry 3 \
+            --retry-delay 10 \
+            https://ark-websites-ocm.vercel.app/api/cron/workflow
