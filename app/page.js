@@ -14,6 +14,23 @@ const sections = [
   { title: "Post Clients", sectionKey: "postClients", href: "/post-clients", description: "Completed customers" },
 ];
 
+const utilityCards = [
+  {
+    title: "Advertising",
+    eyebrow: "Client targeting",
+    description: "Search and filter every client by stage, job type, and best form of contact.",
+    href: "/advertising",
+    action: "Open Advertising",
+  },
+  {
+    title: "Settings",
+    eyebrow: "Account controls",
+    description: "Manage account details, billing information, subscription status, and payment-method notes.",
+    href: "/settings",
+    action: "Open Settings",
+  },
+];
+
 function cleanClientId(value) {
   return String(value || DEFAULT_CLIENT_ID)
     .trim()
@@ -64,7 +81,7 @@ export default function Page() {
         <div className="mb-8 text-center">
           <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">ARK Websites</p>
           <h1 className="mt-3 text-4xl font-bold">OCM Dashboard</h1>
-          <p className="mt-3 text-slate-600">Choose a stage, or review the complete client pipeline in one place.</p>
+          <p className="mt-3 text-slate-600">Choose a stage, review the pipeline, target clients, or manage the account.</p>
         </div>
 
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
@@ -91,6 +108,21 @@ export default function Page() {
             <span className="rounded-lg bg-white px-5 py-3 text-sm font-bold text-slate-950">Open Review</span>
           </div>
         </Link>
+
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          {utilityCards.map((card) => (
+            <Link
+              key={card.href}
+              href={`${card.href}?clientId=${clientId}`}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-400 hover:shadow-md"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{card.eyebrow}</p>
+              <h2 className="mt-2 text-2xl font-bold">{card.title}</h2>
+              <p className="mt-2 text-sm text-slate-600">{card.description}</p>
+              <span className="mt-5 inline-block rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">{card.action}</span>
+            </Link>
+          ))}
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {sections.map((section) => (
