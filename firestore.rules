@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /ocmClients/{clientId}/{sectionKey}/{rowId} {
       allow read, create, update, delete: if
-        sectionKey in ['preClients', 'clients', 'postClients'];
+        sectionKey in ['contactedMe', 'preClients', 'clients', 'postClients', 'notifications', 'settings'];
     }
   }
 }
