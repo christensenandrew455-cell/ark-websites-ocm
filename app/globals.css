@@ -10,3 +10,9 @@ body {
   background: #f8fafc;
   color: #020617;
 }
+
+main nav > div {
+  width: max-content;
+  margin-left: auto;
+  margin-right: auto;
+}
