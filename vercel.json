@@ -1,10 +1,4 @@
 {
   "framework": "nextjs",
-  "outputDirectory": ".next",
-  "crons": [
-    {
-      "path": "/api/cron/workflow",
-      "schedule": "*/15 * * * *"
-    }
-  ]
+  "outputDirectory": ".next"
 }
