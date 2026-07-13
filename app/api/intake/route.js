@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDocs,
   serverTimestamp,
@@ -169,6 +170,18 @@ export async function POST(request) {
       createdAt: primary?.data.createdAt || serverTimestamp(),
       movedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      ...(sectionKey === "contactedMe" ? {
+        EstimateDate: deleteField(),
+        EstimateTime: deleteField(),
+        EstimateDateTime: deleteField(),
+        EstimateFollowUpAt: deleteField(),
+        EstimateFollowUpDue: false,
+        WorkStartDate: deleteField(),
+        WorkCompleteDate: deleteField(),
+        completedAt: deleteField(),
+        estimateCompleted: false,
+        workCompleted: false,
+      } : {}),
     }, { merge: true });
 
     matches.forEach((match) => {
