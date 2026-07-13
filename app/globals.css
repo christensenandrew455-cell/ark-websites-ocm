@@ -16,3 +16,10 @@ main nav > div {
   margin-left: auto;
   margin-right: auto;
 }
+
+main nav a[href^="/contacted-me"],
+main nav a[href^="/pre-clients"],
+main nav a[href^="/clients"],
+main nav a[href^="/post-clients"] {
+  display: none;
+}
