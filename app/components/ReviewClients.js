@@ -57,13 +57,22 @@ const editableFields = [
   { key: "Address", label: "Address" },
   { key: "Job", label: "Job" },
   { key: "BestContactMethod", label: "Best Form of Contact", options: ["Text", "Call", "Email"] },
-  { key: "PreferredDay", label: "Preferred Day" },
-  { key: "PreferredTime", label: "Preferred Time", type: "time" },
-  { key: "EstimateDate", label: "Estimate Date", type: "date", estimateOnly: true },
-  { key: "EstimateTime", label: "Estimate Time", type: "time", estimateOnly: true },
+  { key: "PreferredDay", label: "Preferred Day", preClientOnly: true },
+  { key: "PreferredTime", label: "Preferred Time", type: "time", preClientOnly: true },
+  { key: "EstimateDate", label: "Estimate Date", type: "date", preClientOnly: true },
+  { key: "EstimateTime", label: "Estimate Time", type: "time", preClientOnly: true },
   { key: "WorkStartDate", label: "Work Start Date", type: "date" },
+  { key: "WorkCompleteDate", label: "Work Complete Date", type: "date", postOnly: true },
   { key: "Notes", label: "Notes", multiline: true },
   { key: "source", label: "Source" },
+];
+
+const moveBackReasons = [
+  "Moved by mistake",
+  "Client is not ready for this stage",
+  "Job status changed",
+  "Information needs correction",
+  "Other",
 ];
 
 function cleanClientId(value) {
@@ -100,6 +109,7 @@ function normalizeRow(id, data) {
     EstimateDate: data.EstimateDate || "",
     EstimateTime: data.EstimateTime || "",
     WorkStartDate: data.WorkStartDate || data.workStartDate || "",
+    WorkCompleteDate: data.WorkCompleteDate || data.workCompleteDate || "",
     Notes: data.Notes || data.notes || data.message || "",
     source: data.source || data.Source || "",
   };
@@ -123,10 +133,24 @@ function clientMatches(row, search) {
 }
 
 function fieldsForStage(stageKey) {
-  if (stageKey === "clients" || stageKey === "postClients") {
-    return editableFields.filter((field) => !field.estimateOnly);
+  if (stageKey === "contactedMe" || stageKey === "preClients") {
+    return editableFields.filter((field) => !field.postOnly);
   }
-  return editableFields;
+  if (stageKey === "clients") {
+    return editableFields.filter((field) => !field.preClientOnly && !field.postOnly);
+  }
+  return editableFields.filter((field) => !field.preClientOnly);
+}
+
+function easternDateKey() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function NavLink({ item, clientId, active = false }) {
@@ -173,6 +197,9 @@ export default function ReviewClients() {
   const [busyRows, setBusyRows] = useState(new Set());
   const [editTarget, setEditTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [moveBackTarget, setMoveBackTarget] = useState(null);
+  const [moveBackReason, setMoveBackReason] = useState("");
+  const [moveBackError, setMoveBackError] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -282,8 +309,14 @@ export default function ReviewClients() {
       };
 
       if (editTarget.stageKey === "clients" || editTarget.stageKey === "postClients") {
+        payload.PreferredDay = deleteField();
+        payload.PreferredTime = deleteField();
         payload.EstimateDate = deleteField();
         payload.EstimateTime = deleteField();
+      }
+      if (editTarget.stageKey === "clients") {
+        payload.WorkCompleteDate = deleteField();
+        payload.completedAt = deleteField();
       }
 
       await setDoc(doc(db, "ocmClients", clientId, editTarget.stageKey, editTarget.row.id), payload, { merge: true });
@@ -322,15 +355,22 @@ export default function ReviewClients() {
 
   async function moveClient(fromStage, toStage, row, extra = {}) {
     const busyKey = `${fromStage}:${row.id}`;
-    if (busyRows.has(busyKey)) return;
+    if (busyRows.has(busyKey)) return false;
     setBusy(busyKey, true);
     setError("");
 
     try {
       const data = clientData(row);
       if (toStage === "clients" || toStage === "postClients") {
+        delete data.PreferredDay;
+        delete data.PreferredTime;
         delete data.EstimateDate;
         delete data.EstimateTime;
+      }
+      if (toStage === "clients") {
+        delete data.WorkCompleteDate;
+        delete data.completedAt;
+        data.workCompleted = false;
       }
 
       const batch = writeBatch(db);
@@ -347,11 +387,41 @@ export default function ReviewClients() {
       batch.delete(sourceRef);
       await batch.commit();
       setNotice(`${row.Name || "Client"} moved successfully.`);
+      return true;
     } catch (moveError) {
       console.error(moveError);
       setError(`Could not move ${row.Name || "this client"}.`);
+      return false;
     } finally {
       setBusy(busyKey, false);
+    }
+  }
+
+  function requestMoveBack(fromStage, toStage, row) {
+    setError("");
+    setNotice("");
+    setMoveBackReason("");
+    setMoveBackError("");
+    setMoveBackTarget({ fromStage, toStage, row });
+  }
+
+  async function confirmMoveBack() {
+    if (!moveBackTarget) return;
+    if (!moveBackReason) {
+      setMoveBackError("Select a reason before moving the client back.");
+      return;
+    }
+
+    const { fromStage, toStage, row } = moveBackTarget;
+    const moved = await moveClient(fromStage, toStage, row, {
+      lastMoveBackReason: moveBackReason,
+      lastMoveBackAt: serverTimestamp(),
+    });
+
+    if (moved) {
+      setMoveBackTarget(null);
+      setMoveBackReason("");
+      setMoveBackError("");
     }
   }
 
@@ -394,9 +464,13 @@ export default function ReviewClients() {
 
     try {
       const data = clientData(row);
+      delete data.PreferredDay;
+      delete data.PreferredTime;
       delete data.EstimateDate;
       delete data.EstimateTime;
       delete data.EstimateFollowUpDue;
+      delete data.WorkCompleteDate;
+      delete data.completedAt;
 
       const batch = writeBatch(db);
       batch.set(doc(db, "ocmClients", clientId, "clients", row.id), {
@@ -416,26 +490,6 @@ export default function ReviewClients() {
     } catch (saveError) {
       console.error(saveError);
       setError(`Could not set the start date for ${row.Name || "this client"}.`);
-    } finally {
-      setBusy(busyKey, false);
-    }
-  }
-
-  async function markNotCompleted(row) {
-    const busyKey = `clients:${row.id}`;
-    if (busyRows.has(busyKey)) return;
-    setBusy(busyKey, true);
-
-    try {
-      await setDoc(doc(db, "ocmClients", clientId, "clients", row.id), {
-        lastCompletionReview: serverTimestamp(),
-        workCompleted: false,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-      setNotice(`${row.Name || "Client"} remains in Clients.`);
-    } catch (reviewError) {
-      console.error(reviewError);
-      setError(`Could not update ${row.Name || "this client"}.`);
     } finally {
       setBusy(busyKey, false);
     }
@@ -472,7 +526,7 @@ export default function ReviewClients() {
             aria-label={`Work start date for ${row.Name || "client"}`}
           />
           <button disabled={busy} onClick={() => saveStartDate(row)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-slate-300">Save Date & Move to Clients</button>
-          <button disabled={busy} onClick={() => moveClient("preClients", "contactedMe", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
+          <button disabled={busy} onClick={() => requestMoveBack("preClients", "contactedMe", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
           <button disabled={busy} onClick={() => requestDelete("preClients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
         </>
       );
@@ -481,9 +535,18 @@ export default function ReviewClients() {
     if (stageKey === "clients") {
       return (
         <>
-          <button disabled={busy} onClick={() => moveClient("clients", "postClients", row, { workCompleted: true, completedAt: serverTimestamp() })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300">Work Completed</button>
-          <button disabled={busy} onClick={() => markNotCompleted(row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Not Yet</button>
-          <button disabled={busy} onClick={() => moveClient("clients", "preClients", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
+          <button
+            disabled={busy}
+            onClick={() => moveClient("clients", "postClients", row, {
+              workCompleted: true,
+              WorkCompleteDate: easternDateKey(),
+              completedAt: serverTimestamp(),
+            })}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700 disabled:bg-slate-300"
+          >
+            Work Completed
+          </button>
+          <button disabled={busy} onClick={() => requestMoveBack("clients", "preClients", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back</button>
           <button disabled={busy} onClick={() => requestDelete("clients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
         </>
       );
@@ -491,7 +554,7 @@ export default function ReviewClients() {
 
     return (
       <>
-        <button disabled={busy} onClick={() => moveClient("postClients", "clients", row, { workCompleted: false })} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back to Clients</button>
+        <button disabled={busy} onClick={() => requestMoveBack("postClients", "clients", row)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold hover:bg-slate-100 disabled:text-slate-400">Move Back to Clients</button>
         <button disabled={busy} onClick={() => requestDelete("postClients", row)} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:bg-slate-300">Delete</button>
       </>
     );
@@ -651,6 +714,52 @@ export default function ReviewClients() {
               <button type="submit" disabled={busyRows.has(`${editTarget.stageKey}:${editTarget.row.id}`)} className="rounded-lg bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:bg-slate-400">Save Changes</button>
             </div>
           </form>
+        </Dialog>
+      )}
+
+      {moveBackTarget && (
+        <Dialog
+          title={`Move ${moveBackTarget.row.Name || "client"} back`}
+          onClose={() => setMoveBackTarget(null)}
+          closeDisabled={busyRows.has(`${moveBackTarget.fromStage}:${moveBackTarget.row.id}`)}
+          maxWidth="max-w-md"
+        >
+          <div className="p-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-xl font-black text-amber-700">←</div>
+            <h2 className="mt-4 text-2xl font-bold">Move {moveBackTarget.row.Name || "this client"} back?</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              This moves the client from {stageConfigs.find((stage) => stage.key === moveBackTarget.fromStage)?.title} to {stageConfigs.find((stage) => stage.key === moveBackTarget.toStage)?.title}. Select a reason to continue.
+            </p>
+
+            <label className="mt-5 block">
+              <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Reason</span>
+              <select
+                value={moveBackReason}
+                onChange={(event) => {
+                  setMoveBackReason(event.target.value);
+                  setMoveBackError("");
+                }}
+                className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 outline-none focus:border-slate-500"
+              >
+                <option value="">Select a reason...</option>
+                {moveBackReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+              </select>
+            </label>
+
+            {moveBackError && <p className="mt-3 text-sm font-semibold text-red-700">{moveBackError}</p>}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setMoveBackTarget(null)} className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-bold hover:bg-slate-100">Cancel</button>
+              <button
+                type="button"
+                onClick={confirmMoveBack}
+                disabled={busyRows.has(`${moveBackTarget.fromStage}:${moveBackTarget.row.id}`)}
+                className="rounded-lg bg-amber-600 px-5 py-3 text-sm font-bold text-white hover:bg-amber-700 disabled:bg-amber-300"
+              >
+                {busyRows.has(`${moveBackTarget.fromStage}:${moveBackTarget.row.id}`) ? "Moving..." : "Move Client Back"}
+              </button>
+            </div>
+          </div>
         </Dialog>
       )}
 
