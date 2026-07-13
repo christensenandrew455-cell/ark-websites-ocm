@@ -116,6 +116,13 @@ export async function POST(request) {
       );
     }
 
+    if (!row.Address || !row.PropertyKey) {
+      return Response.json(
+        { ok: false, error: "A property address is required." },
+        { status: 400, headers: corsHeaders() }
+      );
+    }
+
     const matches = await findPropertyMatches(clientId, row.PropertyKey);
     const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
     const primary = existingInTarget || matches[0] || null;
