@@ -1,8 +1,8 @@
-import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { FieldValue } from "firebase-admin/firestore";
+import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessNow, isDateDue } from "../../../lib/businessTime";
 
-const CLIENT_ID = "tabor-painting";
+const LEGACY_CLIENT_ID = "tabor-painting";
 
 function authorized(request) {
   const secret = process.env.CRON_SECRET;
@@ -10,14 +10,20 @@ function authorized(request) {
   return request.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-async function markEstimateFollowUps(now) {
-  const snapshot = await getDocs(collection(db, "ocmClients", CLIENT_ID, "preClients"));
+async function listActiveClientIds(db) {
+  const snapshot = await db.collection("businesses").where("status", "==", "active").get();
+  return [...new Set([LEGACY_CLIENT_ID, ...snapshot.docs.map((documentSnapshot) => documentSnapshot.id)])];
+}
+
+async function markEstimateFollowUps(db, clientId, now) {
+  const preClientsRef = db.collection("ocmClients").doc(clientId).collection("preClients");
+  const snapshot = await preClientsRef.get();
   let followUpsMarked = 0;
   let movedToClients = 0;
 
   for (const documentSnapshot of snapshot.docs) {
     const row = documentSnapshot.data();
-    const recordRef = doc(db, "ocmClients", CLIENT_ID, "preClients", documentSnapshot.id);
+    const recordRef = preClientsRef.doc(documentSnapshot.id);
 
     if (
       row.EstimateFollowUpAt
@@ -25,25 +31,25 @@ async function markEstimateFollowUps(now) {
       && !row.EstimateFollowUpDue
       && Date.parse(row.EstimateFollowUpAt) <= now.getTime()
     ) {
-      await setDoc(recordRef, {
+      await recordRef.set({
         EstimateFollowUpDue: true,
-        EstimateFollowUpMarkedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        EstimateFollowUpMarkedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       followUpsMarked += 1;
     }
 
     if (row.WorkStartDate && isDateDue(row.WorkStartDate, now)) {
-      const clientRef = doc(db, "ocmClients", CLIENT_ID, "clients", documentSnapshot.id);
-      const batch = writeBatch(db);
+      const clientRef = db.collection("ocmClients").doc(clientId).collection("clients").doc(documentSnapshot.id);
+      const batch = db.batch();
       batch.set(clientRef, {
         ...row,
         currentStage: "clients",
         previousStage: "preClients",
-        workStartedAt: serverTimestamp(),
+        workStartedAt: FieldValue.serverTimestamp(),
         autoMovedOnStartDate: true,
-        movedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        movedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
       batch.delete(recordRef);
       await batch.commit();
@@ -54,29 +60,27 @@ async function markEstimateFollowUps(now) {
   return { followUpsMarked, movedToClients };
 }
 
-async function createDailyReviewNotification(now) {
+async function createDailyReviewNotification(db, clientId, now) {
   const clock = businessNow(now);
   if (clock.hour < 17) return false;
 
-  const notificationRef = doc(
-    db,
-    "ocmClients",
-    CLIENT_ID,
-    "notifications",
-    `daily-review-${clock.dateKey}`
-  );
-  const existing = await getDoc(notificationRef);
-  if (existing.exists()) return false;
+  const notificationRef = db
+    .collection("ocmClients")
+    .doc(clientId)
+    .collection("notifications")
+    .doc(`daily-review-${clock.dateKey}`);
+  const existing = await notificationRef.get();
+  if (existing.exists) return false;
 
-  await setDoc(notificationRef, {
+  await notificationRef.set({
     type: "daily-review",
     title: "Daily review",
     message: "Go review your clients.",
     dateKey: clock.dateKey,
     timeZone: clock.timeZone,
     scheduledHour: 17,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
     dismissed: false,
   });
 
@@ -90,15 +94,21 @@ async function runWorkflow(request) {
 
   try {
     const now = new Date();
-    const workflow = await markEstimateFollowUps(now);
-    const dailyReviewCreated = await createDailyReviewNotification(now);
+    const db = getAdminDb();
+    const clientIds = await listActiveClientIds(db);
+    const businesses = [];
+
+    for (const clientId of clientIds) {
+      const workflow = await markEstimateFollowUps(db, clientId, now);
+      const dailyReviewCreated = await createDailyReviewNotification(db, clientId, now);
+      businesses.push({ clientId, ...workflow, dailyReviewCreated });
+    }
 
     return Response.json({
       ok: true,
       checkedAt: now.toISOString(),
       businessClock: businessNow(now),
-      ...workflow,
-      dailyReviewCreated,
+      businesses,
     });
   } catch (error) {
     console.error(error);
