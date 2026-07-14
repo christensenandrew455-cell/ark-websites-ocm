@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function cleanClientId(value) {
   return String(value || "")
     .trim()
@@ -11,8 +14,45 @@ function cleanClientId(value) {
     .replace(/^-|-$/g, "");
 }
 
+function missingServerVariables() {
+  return [
+    ["FIREBASE_PROJECT_ID", process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID],
+    ["FIREBASE_CLIENT_EMAIL", process.env.FIREBASE_CLIENT_EMAIL],
+    ["FIREBASE_PRIVATE_KEY", process.env.FIREBASE_PRIVATE_KEY],
+    ["STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY],
+  ].filter(([, value]) => !value).map(([name]) => name);
+}
+
+function safeConfigurationError(error) {
+  const message = String(error?.message || "");
+  if (/private key|pem|credential|firebase admin/i.test(message)) {
+    return "Firebase Admin credentials are invalid. Check FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in Vercel, then redeploy.";
+  }
+  if (/stripe|api key|authentication/i.test(message)) {
+    return "The Stripe secret key is invalid or belongs to the wrong Stripe mode. Check STRIPE_SECRET_KEY in Vercel, then redeploy.";
+  }
+  return "Unable to start secure card setup. Check the Vercel function logs for the signup endpoint.";
+}
+
+export async function GET() {
+  const missing = missingServerVariables();
+  return NextResponse.json({
+    ok: missing.length === 0,
+    service: "signup-checkout",
+    missing,
+  }, { status: missing.length === 0 ? 200 : 503 });
+}
+
 export async function POST(request) {
   try {
+    const missing = missingServerVariables();
+    if (missing.length) {
+      return NextResponse.json(
+        { error: `Server setup is incomplete. Missing Vercel variables: ${missing.join(", ")}.` },
+        { status: 503 }
+      );
+    }
+
     const { businessName, ownerName, accountEmail, accountPhone } = await request.json();
     const email = String(accountEmail || "").trim().toLowerCase();
     const clientId = cleanClientId(businessName);
@@ -23,11 +63,6 @@ export async function POST(request) {
 
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid business email address." }, { status: 400 });
-    }
-
-    const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey) {
-      return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 500 });
     }
 
     const [existingBusiness, existingUser] = await Promise.all([
@@ -42,7 +77,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "That business email is already registered." }, { status: 409 });
     }
 
-    const stripe = new Stripe(stripeKey);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const customer = await stripe.customers.create({
       email,
       name: String(ownerName).trim(),
@@ -69,6 +104,6 @@ export async function POST(request) {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Unable to create Stripe Checkout Session", error);
-    return NextResponse.json({ error: "Unable to start secure card setup." }, { status: 500 });
+    return NextResponse.json({ error: safeConfigurationError(error) }, { status: 500 });
   }
 }
