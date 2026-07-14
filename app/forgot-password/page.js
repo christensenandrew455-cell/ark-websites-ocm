@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { readApiJson } from "../lib/apiResponse";
 
 export default function ForgotPasswordPage() {
   const [businessName, setBusinessName] = useState("");
@@ -21,8 +22,7 @@ export default function ForgotPasswordPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier: businessName }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to send the reset email.");
+      await readApiJson(response, "Unable to send the reset email.");
       setMessage("If that business account exists, a password reset email has been sent to its business email.");
     } catch (resetError) {
       setError(resetError.message);
