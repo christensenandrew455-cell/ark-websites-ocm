@@ -1,12 +1,5 @@
-import {
-  collection,
-  deleteField,
-  doc,
-  getDocs,
-  serverTimestamp,
-  writeBatch,
-} from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { FieldValue } from "firebase-admin/firestore";
+import { getAdminDb } from "../../lib/firebase-admin";
 import {
   createJob,
   mergeJobs,
@@ -77,21 +70,21 @@ function buildRow(data) {
     Notes: text(data.Notes || data.notes || data.message || data.summary),
     source: text(data.source || "website"),
     rawSubmission: data,
-    updatedAt: serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   };
 }
 
-async function findPropertyMatches(clientId, propertyKey) {
+async function findPropertyMatches(db, clientId, propertyKey) {
   if (!propertyKey) return [];
 
   const matches = [];
   for (const stageKey of allowedSections) {
-    const snapshot = await getDocs(collection(db, "ocmClients", clientId, stageKey));
-    snapshot.docs.forEach((document) => {
-      const data = document.data();
+    const snapshot = await db.collection("ocmClients").doc(clientId).collection(stageKey).get();
+    snapshot.docs.forEach((documentSnapshot) => {
+      const data = documentSnapshot.data();
       const existingKey = data.PropertyKey || normalizeAddressKey(data.Address || data.address);
       if (existingKey === propertyKey) {
-        matches.push({ stageKey, id: document.id, ref: document.ref, data });
+        matches.push({ stageKey, id: documentSnapshot.id, ref: documentSnapshot.ref, data });
       }
     });
   }
@@ -109,6 +102,7 @@ export async function POST(request) {
     const clientId = cleanClientId(data.clientId);
     const sectionKey = cleanSectionKey(data.sectionKey);
     const row = buildRow(data);
+    const db = getAdminDb();
 
     if (!row.Name && !row.Phone && !row.Email && !row.Notes) {
       return Response.json(
@@ -124,12 +118,21 @@ export async function POST(request) {
       );
     }
 
-    const matches = await findPropertyMatches(clientId, row.PropertyKey);
+    if (clientId !== DEFAULT_CLIENT_ID) {
+      const businessSnapshot = await db.collection("businesses").doc(clientId).get();
+      if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
+        return Response.json(
+          { ok: false, error: "That business account is not active." },
+          { status: 404, headers: corsHeaders() }
+        );
+      }
+    }
+
+    const matches = await findPropertyMatches(db, clientId, row.PropertyKey);
     const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
     const primary = existingInTarget || matches[0] || null;
-    const targetRef = primary
-      ? doc(db, "ocmClients", clientId, sectionKey, primary.id)
-      : doc(collection(db, "ocmClients", clientId, sectionKey));
+    const targetCollection = db.collection("ocmClients").doc(clientId).collection(sectionKey);
+    const targetRef = primary ? targetCollection.doc(primary.id) : targetCollection.doc();
 
     const previousJobs = mergeJobs(
       ...matches.map((match) => normalizeJobs(match.data, match.stageKey))
@@ -150,7 +153,7 @@ export async function POST(request) {
       row.Emails
     );
 
-    const batch = writeBatch(db);
+    const batch = db.batch();
     batch.set(targetRef, {
       ...(primary?.data || {}),
       ...row,
@@ -167,18 +170,18 @@ export async function POST(request) {
       RepeatJobs: Math.max(0, Jobs.length - 1),
       currentStage: sectionKey,
       previousStage: primary?.stageKey || "",
-      createdAt: primary?.data.createdAt || serverTimestamp(),
-      movedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      createdAt: primary?.data.createdAt || FieldValue.serverTimestamp(),
+      movedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       ...(sectionKey === "contactedMe" ? {
-        EstimateDate: deleteField(),
-        EstimateTime: deleteField(),
-        EstimateDateTime: deleteField(),
-        EstimateFollowUpAt: deleteField(),
+        EstimateDate: FieldValue.delete(),
+        EstimateTime: FieldValue.delete(),
+        EstimateDateTime: FieldValue.delete(),
+        EstimateFollowUpAt: FieldValue.delete(),
         EstimateFollowUpDue: false,
-        WorkStartDate: deleteField(),
-        WorkCompleteDate: deleteField(),
-        completedAt: deleteField(),
+        WorkStartDate: FieldValue.delete(),
+        WorkCompleteDate: FieldValue.delete(),
+        completedAt: FieldValue.delete(),
         estimateCompleted: false,
         workCompleted: false,
       } : {}),
