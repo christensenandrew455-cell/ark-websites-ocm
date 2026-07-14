@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { readApiJson } from "../lib/apiResponse";
 
 const AuthContext = createContext(null);
 
@@ -69,12 +70,7 @@ export function AuthProvider({ children }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier, password }),
     });
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Unable to sign in.");
-    }
-
+    const data = await readApiJson(response, "Unable to sign in.");
     return signInWithCustomToken(auth, data.token);
   }
 
