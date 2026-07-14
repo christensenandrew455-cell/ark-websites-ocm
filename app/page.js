@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { collection, getCountFromServer } from "firebase/firestore";
+import { collection, doc, getCountFromServer, getDoc, getDocs } from "firebase/firestore";
+import { useAuth } from "./components/AuthProvider";
 import { db } from "./lib/firebase";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
@@ -32,48 +34,111 @@ const utilityCards = [
 ];
 
 function cleanClientId(value) {
-  return String(value || DEFAULT_CLIENT_ID)
+  return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-_]/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID;
+    .replace(/^-|-$/g, "");
+}
+
+function displayNameFromId(value) {
+  return String(value || "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 export default function Page() {
-  const [clientId, setClientId] = useState(DEFAULT_CLIENT_ID);
-  const [counts, setCounts] = useState({
-    postClients: 0,
-    clients: 0,
-    preClients: 0,
-    contactedMe: 0,
-  });
+  const router = useRouter();
+  const { profile, isAdmin } = useAuth();
+  const [clientId, setClientId] = useState("");
+  const [adminInput, setAdminInput] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [businesses, setBusinesses] = useState([]);
+  const [counts, setCounts] = useState({ postClients: 0, clients: 0, preClients: 0, contactedMe: 0 });
   const [error, setError] = useState("");
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
+    if (!profile) return;
     const params = new URLSearchParams(window.location.search);
-    setClientId(cleanClientId(params.get("clientId")));
-  }, []);
+    const selected = isAdmin ? cleanClientId(params.get("clientId")) : profile.clientId;
+    const initialClientId = selected || profile.clientId || DEFAULT_CLIENT_ID;
+    setClientId(initialClientId);
+    setAdminInput(initialClientId);
+  }, [isAdmin, profile]);
 
   useEffect(() => {
-    async function loadCounts() {
+    if (!isAdmin) return;
+
+    async function loadBusinesses() {
       try {
-        const sectionCounts = {};
-        for (const section of sections) {
-          const snapshot = await getCountFromServer(
-            collection(db, "ocmClients", clientId, section.sectionKey)
-          );
-          sectionCounts[section.sectionKey] = snapshot.data().count;
+        const snapshot = await getDocs(collection(db, "businesses"));
+        const options = snapshot.docs
+          .map((businessDocument) => ({ id: businessDocument.id, ...businessDocument.data() }))
+          .filter((business) => business.status === "active")
+          .sort((a, b) => String(a.businessName || a.id).localeCompare(String(b.businessName || b.id)));
+
+        if (!options.some((business) => business.id === DEFAULT_CLIENT_ID)) {
+          options.unshift({ id: DEFAULT_CLIENT_ID, businessName: "Tabor Painting", status: "active" });
         }
-        setCounts(sectionCounts);
-      } catch (firestoreError) {
-        console.error(firestoreError);
-        setError("Firestore is not connected yet. Check your Firebase env variables and Firestore rules.");
+        setBusinesses(options);
+      } catch (businessError) {
+        console.error("Unable to load business list", businessError);
       }
     }
 
-    loadCounts();
-  }, [clientId]);
+    loadBusinesses();
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!clientId) return;
+
+    async function loadDashboard() {
+      setError("");
+      try {
+        const businessSnapshot = await getDoc(doc(db, "businesses", clientId));
+        const fallbackName = profile?.clientId === clientId ? profile?.businessName : "";
+        setBusinessName(
+          businessSnapshot.exists()
+            ? businessSnapshot.data().businessName || displayNameFromId(clientId)
+            : fallbackName || displayNameFromId(clientId)
+        );
+
+        const entries = await Promise.all(
+          sections.map(async (section) => {
+            const snapshot = await getCountFromServer(collection(db, "ocmClients", clientId, section.sectionKey));
+            return [section.sectionKey, snapshot.data().count];
+          })
+        );
+        setCounts(Object.fromEntries(entries));
+      } catch (firestoreError) {
+        console.error(firestoreError);
+        setError("Unable to load this business. Check the selected business and Firebase access rules.");
+      }
+    }
+
+    loadDashboard();
+  }, [clientId, profile?.businessName, profile?.clientId]);
+
+  async function switchBusiness(event) {
+    event.preventDefault();
+    if (!isAdmin) return;
+
+    const nextClientId = cleanClientId(adminInput);
+    if (!nextClientId) {
+      setError("Choose a registered business.");
+      return;
+    }
+
+    setSwitching(true);
+    setError("");
+    setClientId(nextClientId);
+    router.replace(`/?clientId=${encodeURIComponent(nextClientId)}`);
+    setSwitching(false);
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 md:p-8">
@@ -85,15 +150,38 @@ export default function Page() {
         </div>
 
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current business/client ID</p>
-          <p className="mt-1 font-mono text-sm text-slate-800">{clientId}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+            {isAdmin ? "Open a business account" : "Current business"}
+          </p>
+          {isAdmin ? (
+            <form onSubmit={switchBusiness} className="mx-auto mt-3 flex max-w-xl gap-2">
+              <input
+                list="ark-ocm-businesses"
+                value={adminInput}
+                onChange={(event) => setAdminInput(event.target.value)}
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm outline-none focus:border-slate-950"
+                aria-label="Business name or client ID"
+                placeholder="Choose or type a business name"
+              />
+              <datalist id="ark-ocm-businesses">
+                {businesses.map((business) => (
+                  <option key={business.id} value={business.id}>{business.businessName || business.id}</option>
+                ))}
+              </datalist>
+              <button disabled={switching} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+                {switching ? "Loading…" : "Open"}
+              </button>
+            </form>
+          ) : (
+            <>
+              <p className="mt-2 text-lg font-bold text-slate-950">{businessName || profile?.businessName || "Business account"}</p>
+              <p className="mt-1 font-mono text-xs text-slate-500">{clientId}</p>
+            </>
+          )}
+          {isAdmin && businessName && <p className="mt-3 text-sm font-semibold text-slate-950">Currently viewing: {businessName}</p>}
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>}
 
         <Link
           href={`/review-my-clients?clientId=${clientId}`}
@@ -126,10 +214,7 @@ export default function Page() {
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {sections.map((section) => (
-            <div
-              key={section.sectionKey}
-              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-            >
+            <div key={section.sectionKey} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{section.title}</p>
               <p className="mt-4 text-5xl font-bold text-slate-950">{counts[section.sectionKey] || 0}</p>
               <p className="mt-3 text-sm text-slate-600">{section.description}</p>
