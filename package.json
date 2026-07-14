@@ -11,9 +11,11 @@
   "dependencies": {
     "@tailwindcss/postcss": "latest",
     "firebase": "latest",
+    "firebase-admin": "latest",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "stripe": "latest",
     "tailwindcss": "latest"
   },
   "devDependencies": {
