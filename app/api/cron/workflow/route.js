@@ -2,12 +2,31 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessNow, isDateDue } from "../../../lib/businessTime";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const LEGACY_CLIENT_ID = "tabor-painting";
 
 function authorized(request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return true;
   return request.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+function missingFirebaseAdminVariables() {
+  return [
+    ["FIREBASE_PROJECT_ID", process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID],
+    ["FIREBASE_CLIENT_EMAIL", process.env.FIREBASE_CLIENT_EMAIL],
+    ["FIREBASE_PRIVATE_KEY", process.env.FIREBASE_PRIVATE_KEY],
+  ].filter(([, value]) => !value).map(([name]) => name);
+}
+
+function safeWorkflowError(error) {
+  const message = String(error?.message || "");
+  if (/private key|pem|credential|firebase admin/i.test(message)) {
+    return "Firebase Admin credentials are invalid. Check FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in Vercel, then redeploy.";
+  }
+  return "Workflow check failed. Review the Vercel function logs for /api/cron/workflow.";
 }
 
 async function listActiveClientIds(db) {
@@ -89,7 +108,15 @@ async function createDailyReviewNotification(db, clientId, now) {
 
 async function runWorkflow(request) {
   if (!authorized(request)) {
-    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return Response.json({ ok: false, error: "Unauthorized. Match the GitHub CRON_SECRET to the Vercel CRON_SECRET." }, { status: 401 });
+  }
+
+  const missing = missingFirebaseAdminVariables();
+  if (missing.length) {
+    return Response.json(
+      { ok: false, error: `Server setup is incomplete. Missing Vercel variables: ${missing.join(", ")}.` },
+      { status: 503 }
+    );
   }
 
   try {
@@ -112,7 +139,7 @@ async function runWorkflow(request) {
     });
   } catch (error) {
     console.error(error);
-    return Response.json({ ok: false, error: "Workflow check failed." }, { status: 500 });
+    return Response.json({ ok: false, error: safeWorkflowError(error) }, { status: 500 });
   }
 }
 
