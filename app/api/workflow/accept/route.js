@@ -1,5 +1,5 @@
-import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
+import { FieldValue } from "firebase-admin/firestore";
+import { getAdminDb } from "../../../lib/firebase-admin";
 import { resolveEstimateSchedule } from "../../../lib/businessTime";
 import { normalizeJobs, updateCurrentJob } from "../../../lib/propertyProfiles";
 
@@ -24,9 +24,10 @@ export async function POST(request) {
       return Response.json({ ok: false, error: "Missing client record ID." }, { status: 400 });
     }
 
-    const sourceRef = doc(db, "ocmClients", clientId, "contactedMe", id);
-    const sourceSnapshot = await getDoc(sourceRef);
-    if (!sourceSnapshot.exists()) {
+    const db = getAdminDb();
+    const sourceRef = db.collection("ocmClients").doc(clientId).collection("contactedMe").doc(id);
+    const sourceSnapshot = await sourceRef.get();
+    if (!sourceSnapshot.exists) {
       return Response.json({ ok: false, error: "Lead no longer exists." }, { status: 404 });
     }
 
@@ -44,8 +45,8 @@ export async function POST(request) {
       estimateTime: schedule.estimateTime,
       status: "preClients",
     });
-    const targetRef = doc(db, "ocmClients", clientId, "preClients", id);
-    const batch = writeBatch(db);
+    const targetRef = db.collection("ocmClients").doc(clientId).collection("preClients").doc(id);
+    const batch = db.batch();
     batch.set(targetRef, {
       ...lead,
       Jobs,
@@ -54,9 +55,9 @@ export async function POST(request) {
       currentStage: "preClients",
       previousStage: "contactedMe",
       reviewStatus: "accepted",
-      acceptedAt: serverTimestamp(),
-      movedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      acceptedAt: FieldValue.serverTimestamp(),
+      movedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       EstimateDate: schedule.estimateDate,
       EstimateTime: schedule.estimateTime,
       EstimateTimeZone: schedule.timeZone,
