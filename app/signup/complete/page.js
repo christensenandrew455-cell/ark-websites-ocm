@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { auth } from "../../lib/firebase";
+import { readApiJson } from "../../lib/apiResponse";
 
 const PENDING_SIGNUP_KEY = "ark-ocm-pending-signup";
 
@@ -40,11 +41,7 @@ export default function SignupCompletePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, password: pending.password }),
         });
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || "Unable to finish account setup.");
-        }
+        const data = await readApiJson(response, "Unable to finish account setup.");
 
         setStatus("Account activated. Signing you in…");
         await signInWithEmailAndPassword(auth, data.email, pending.password);
