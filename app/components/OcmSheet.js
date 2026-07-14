@@ -13,6 +13,7 @@ const editableFields = [
   { key: "Email", label: "Email" },
   { key: "Address", label: "Address" },
   { key: "Job", label: "Job" },
+  { key: "BestContactMethod", label: "Best Form of Contact", options: ["Text", "Call", "Email"] },
   { key: "PreferredDay", label: "Preferred Day" },
   { key: "PreferredTime", label: "Preferred Time" },
   { key: "WorkStartDate", label: "Work Start Date" },
@@ -26,6 +27,8 @@ const stageNavItems = [
 ];
 const utilityNavItems = [
   { label: "Review My Clients", href: "/review-my-clients" },
+  { label: "Advertising", href: "/advertising" },
+  { label: "Settings", href: "/settings" },
   { label: "Dashboard", href: "/" },
 ];
 const blankRow = Object.fromEntries(editableFields.map(({ key }) => [key, ""]));
@@ -39,6 +42,14 @@ function cleanClientId(value) {
     .replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID;
 }
 
+function normalizeContactMethod(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["text", "sms", "message", "text message"].includes(normalized)) return "Text";
+  if (["call", "phone", "telephone"].includes(normalized)) return "Call";
+  if (["email", "e-mail"].includes(normalized)) return "Email";
+  return "";
+}
+
 function normalizeRow(id, data) {
   return {
     ...data,
@@ -48,6 +59,9 @@ function normalizeRow(id, data) {
     Email: data.Email || data.email || "",
     Address: data.Address || data.address || "",
     Job: data.Job || data.job || data.service || data.projectType || "",
+    BestContactMethod: normalizeContactMethod(
+      data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod
+    ),
     PreferredDay: data.PreferredDay || data.preferredDay || data.estimateDay || "",
     PreferredTime: data.PreferredTime || data.preferredTime || data.estimateTime || "",
     WorkStartDate: data.WorkStartDate || data.workStartDate || "",
@@ -268,6 +282,7 @@ export default function OcmSheet({ title, sectionKey }) {
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-bold text-slate-950">{row.Name || "Unnamed client"}</h2>
                     <p className="mt-1 text-sm font-medium text-slate-600">{row.Phone || "No phone number"}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Best contact: {row.BestContactMethod || "Not set"}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button onClick={() => toggleView(row.id)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-100">
@@ -282,7 +297,7 @@ export default function OcmSheet({ title, sectionKey }) {
                   <div className="border-t border-slate-200 bg-slate-50 p-4 md:p-6">
                     {row.isEditing ? (
                       <div className="grid gap-4 md:grid-cols-2">
-                        {editableFields.map(({ key, label, multiline }) => (
+                        {editableFields.map(({ key, label, multiline, options }) => (
                           <label key={key} className={multiline ? "md:col-span-2" : ""}>
                             <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">{label}</span>
                             {multiline ? (
@@ -292,6 +307,15 @@ export default function OcmSheet({ title, sectionKey }) {
                                 onChange={(event) => updateCell(originalIndex, key, event.target.value)}
                                 className="min-h-32 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-3 outline-none focus:border-slate-500"
                               />
+                            ) : options ? (
+                              <select
+                                value={row[key] || ""}
+                                onChange={(event) => updateCell(originalIndex, key, event.target.value)}
+                                className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 outline-none focus:border-slate-500"
+                              >
+                                <option value="">Select...</option>
+                                {options.map((option) => <option key={option} value={option}>{option}</option>)}
+                              </select>
                             ) : (
                               <input
                                 value={row[key] || ""}

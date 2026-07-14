@@ -1,6 +1,7 @@
 import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import { resolveEstimateSchedule } from "../../../lib/businessTime";
+import { normalizeJobs, updateCurrentJob } from "../../../lib/propertyProfiles";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
 
@@ -33,15 +34,23 @@ export async function POST(request) {
     const schedule = resolveEstimateSchedule(lead.PreferredDay, lead.PreferredTime, new Date());
     if (!schedule) {
       return Response.json(
-        { ok: false, error: "This lead needs a valid preferred weekday and time before it can be accepted." },
+        { ok: false, error: "This lead needs a valid estimate day and time before it can be accepted." },
         { status: 400 }
       );
     }
 
+    const Jobs = updateCurrentJob(lead, "preClients", {
+      estimateDate: schedule.estimateDate,
+      estimateTime: schedule.estimateTime,
+      status: "preClients",
+    });
     const targetRef = doc(db, "ocmClients", clientId, "preClients", id);
     const batch = writeBatch(db);
     batch.set(targetRef, {
       ...lead,
+      Jobs,
+      TotalJobs: Jobs.length || normalizeJobs(lead, "preClients").length,
+      RepeatJobs: Math.max(0, Jobs.length - 1),
       currentStage: "preClients",
       previousStage: "contactedMe",
       reviewStatus: "accepted",

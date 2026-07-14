@@ -16,3 +16,58 @@ main nav > div {
   margin-left: auto;
   margin-right: auto;
 }
+
+main nav a[href^="/contacted-me"],
+main nav a[href^="/pre-clients"],
+main nav a[href^="/clients"],
+main nav a[href^="/post-clients"] {
+  display: none;
+}
+
+/*
+ * Review My Clients keeps the pipeline stages in a fixed order.
+ * The fourth section is Post Clients. Its expanded property summary should
+ * contain only the property address, known names, phones, emails, and best
+ * contact method. Current-job fields remain stored and editable, but the
+ * completed profile presents them only inside Job History.
+ */
+main .space-y-4 > section:nth-child(4)
+  article
+  > div.border-t.border-slate-200.bg-slate-50
+  > div.grid
+  > :nth-child(n + 6) {
+  display: none;
+}
+
+/* Move-back reasons are audit data, not profile display data. */
+main article
+  > div.border-t.border-slate-200.bg-slate-50
+  > section.mt-6
+  > div.mt-4.space-y-3
+  > article
+  > div.mt-4.grid
+  > :nth-child(4) {
+  display: none;
+}
+
+/*
+ * A completed job card shows its job type, start date, completion date, and
+ * source. The pipeline-status badge and job notes are hidden in Post Clients.
+ */
+main .space-y-4 > section:nth-child(4)
+  article
+  > div.border-t.border-slate-200.bg-slate-50
+  > section.mt-6
+  > div.mt-4.space-y-3
+  > article
+  > div:first-child
+  > span,
+main .space-y-4 > section:nth-child(4)
+  article
+  > div.border-t.border-slate-200.bg-slate-50
+  > section.mt-6
+  > div.mt-4.space-y-3
+  > article
+  > div.mt-4:not(.grid) {
+  display: none;
+}
