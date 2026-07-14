@@ -5,6 +5,7 @@ import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 
 export async function POST(request) {
   let createdUser = null;
+  let accountCommitted = false;
 
   try {
     const { sessionId, password } = await request.json();
@@ -21,7 +22,8 @@ export async function POST(request) {
     const receiptRef = db.collection("signupSessions").doc(sessionId);
     const existingReceipt = await receiptRef.get();
     if (existingReceipt.exists) {
-      return NextResponse.json(existingReceipt.data());
+      const receipt = existingReceipt.data();
+      return NextResponse.json({ email: receipt.email, clientId: receipt.clientId, completed: true });
     }
 
     const stripe = new Stripe(stripeKey);
@@ -83,17 +85,18 @@ export async function POST(request) {
     });
     batch.set(receiptRef, { email: accountEmail, clientId, completed: true, createdAt: FieldValue.serverTimestamp() });
     await batch.commit();
+    accountCommitted = true;
 
     if (customerId) {
-      await stripe.customers.update(customerId, {
-        metadata: { uid: createdUser.uid, clientId, businessName },
-      });
+      await stripe.customers
+        .update(customerId, { metadata: { uid: createdUser.uid, clientId, businessName } })
+        .catch((stripeError) => console.error("Unable to update Stripe customer metadata", stripeError));
     }
 
     return NextResponse.json({ email: accountEmail, clientId, completed: true });
   } catch (error) {
     console.error("Unable to complete signup", error);
-    if (createdUser?.uid) {
+    if (createdUser?.uid && !accountCommitted) {
       await getAdminAuth().deleteUser(createdUser.uid).catch(() => null);
     }
     return NextResponse.json({ error: "Unable to finish account setup. Please contact support." }, { status: 500 });
