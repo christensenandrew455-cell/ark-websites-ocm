@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { readApiJson } from "../lib/apiResponse";
 
 const PENDING_SIGNUP_KEY = "ark-ocm-pending-signup";
 
@@ -56,11 +57,7 @@ export default function SignupPage() {
           accountPhone: form.accountPhone,
         }),
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to start secure payment setup.");
-      }
+      const data = await readApiJson(response, "Unable to start secure payment setup.");
 
       sessionStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({ ...form, confirmPassword: undefined }));
       window.location.assign(data.url);
