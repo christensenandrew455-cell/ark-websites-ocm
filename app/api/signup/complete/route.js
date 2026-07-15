@@ -3,6 +3,28 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function safeSignupError(error) {
+  const code = String(error?.code || error?.errorInfo?.code || "");
+  const message = String(error?.message || error?.errorInfo?.message || "");
+
+  if (code === "auth/configuration-not-found" || /no configuration corresponding/i.test(message)) {
+    return "Firebase Authentication is not enabled for this Firebase project. In Firebase Console, open Authentication, click Get started if shown, then enable Email/Password under Sign-in method.";
+  }
+
+  if (code === "auth/operation-not-allowed") {
+    return "Email/Password sign-in is disabled in Firebase. Enable Email/Password under Firebase Authentication > Sign-in method.";
+  }
+
+  if (/private key|pem|credential|firebase admin/i.test(message)) {
+    return "Firebase Admin credentials are invalid. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel, then redeploy.";
+  }
+
+  return "Unable to finish account setup. Check the Vercel function logs for the signup completion endpoint.";
+}
+
 export async function POST(request) {
   let createdUser = null;
   let accountCommitted = false;
@@ -140,6 +162,6 @@ export async function POST(request) {
     if (createdUser?.uid && !accountCommitted) {
       await getAdminAuth().deleteUser(createdUser.uid).catch(() => null);
     }
-    return NextResponse.json({ error: "Unable to finish account setup. Please contact support." }, { status: 500 });
+    return NextResponse.json({ error: safeSignupError(error) }, { status: 500 });
   }
 }
