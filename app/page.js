@@ -10,7 +10,7 @@ import { db } from "./lib/firebase";
 const sections = [
   { title: "Contacted Me", sectionKey: "contactedMe", description: "New leads waiting for review" },
   { title: "Pre Clients", sectionKey: "preClients", description: "Estimate and start-date stage" },
-  { title: "Clients", sectionKey: "clients", description: "Active painting work" },
+  { title: "Clients", sectionKey: "clients", description: "Active customers and work" },
   { title: "Post Clients", sectionKey: "postClients", description: "Completed customers" },
 ];
 
@@ -50,7 +50,13 @@ function displayNameFromId(value) {
 
 export default function Page() {
   const router = useRouter();
-  const { profile, isAdmin } = useAuth();
+  const {
+    user,
+    profile,
+    isAdmin,
+    activeClientId,
+    selectClientId,
+  } = useAuth();
   const [clientId, setClientId] = useState("");
   const [adminInput, setAdminInput] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -58,15 +64,47 @@ export default function Page() {
   const [counts, setCounts] = useState({ postClients: 0, clients: 0, preClients: 0, contactedMe: 0 });
   const [error, setError] = useState("");
   const [switching, setSwitching] = useState(false);
+  const [syncVersion, setSyncVersion] = useState(0);
 
   useEffect(() => {
     if (!profile) return;
     const params = new URLSearchParams(window.location.search);
-    const selected = isAdmin ? cleanClientId(params.get("clientId")) : profile.clientId;
-    const initialClientId = selected || profile.clientId || "";
-    setClientId(initialClientId);
-    setAdminInput(initialClientId);
-  }, [isAdmin, profile]);
+    const requested = cleanClientId(params.get("clientId"));
+    const selected = isAdmin
+      ? requested || cleanClientId(activeClientId) || cleanClientId(profile.clientId)
+      : cleanClientId(profile.clientId);
+
+    setClientId(selected);
+    setAdminInput(selected);
+    if (selected) selectClientId(selected);
+  }, [activeClientId, isAdmin, profile, selectClientId]);
+
+  useEffect(() => {
+    if (!isAdmin || !user) return;
+
+    let active = true;
+    async function syncBusinessAccounts() {
+      try {
+        const token = await user.getIdToken(true);
+        const response = await fetch("/api/admin/sync-business-clients", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || "Could not sync business accounts into the admin CRM.");
+        }
+        if (active) setSyncVersion((current) => current + 1);
+      } catch (syncError) {
+        console.error("Unable to sync business accounts", syncError);
+      }
+    }
+
+    syncBusinessAccounts();
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, user]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -80,10 +118,14 @@ export default function Page() {
           .sort((a, b) => String(a.businessName || a.id).localeCompare(String(b.businessName || b.id)));
         setBusinesses(options);
 
-        if (!clientId && options[0]?.id) {
-          setClientId(options[0].id);
-          setAdminInput(options[0].id);
-          router.replace(`/?clientId=${encodeURIComponent(options[0].id)}`);
+        const selectedExists = options.some((business) => business.id === clientId);
+        if (!selectedExists && options[0]?.id) {
+          const fallbackId = cleanClientId(profile?.clientId) || options[0].id;
+          const nextClientId = options.some((business) => business.id === fallbackId) ? fallbackId : options[0].id;
+          setClientId(nextClientId);
+          setAdminInput(nextClientId);
+          selectClientId(nextClientId);
+          router.replace(`/?clientId=${encodeURIComponent(nextClientId)}`);
         }
       } catch (businessError) {
         console.error("Unable to load business list", businessError);
@@ -91,7 +133,7 @@ export default function Page() {
     }
 
     loadBusinesses();
-  }, [clientId, isAdmin, router]);
+  }, [clientId, isAdmin, profile?.clientId, router, selectClientId, syncVersion]);
 
   useEffect(() => {
     if (!clientId) {
@@ -125,7 +167,7 @@ export default function Page() {
     }
 
     loadDashboard();
-  }, [clientId, profile?.businessName, profile?.clientId]);
+  }, [clientId, profile?.businessName, profile?.clientId, syncVersion]);
 
   async function switchBusiness(event) {
     event.preventDefault();
@@ -144,17 +186,26 @@ export default function Page() {
     setError("");
     setClientId(nextClientId);
     setAdminInput(nextClientId);
+    selectClientId(nextClientId);
     router.replace(`/?clientId=${encodeURIComponent(nextClientId)}`);
     setSwitching(false);
   }
 
+  const totalPipeline = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 md:p-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 text-center">
-          <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">ARK Websites</p>
-          <h1 className="mt-3 text-4xl font-bold">OCM Dashboard</h1>
-          <p className="mt-3 text-slate-600">Review the pipeline, target clients, or manage the account.</p>
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{businessName || "ARK Websites"}</p>
+            <h1 className="mt-2 text-4xl font-bold">Business Pipeline</h1>
+            <p className="mt-2 text-slate-600">See the numbers first, then open the work that needs attention.</p>
+          </div>
+          <div className="rounded-2xl bg-slate-950 px-6 py-4 text-white shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-300">Total records</p>
+            <p className="mt-1 text-4xl font-bold">{totalPipeline}</p>
+          </div>
         </div>
 
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-center shadow-sm">
@@ -193,6 +244,20 @@ export default function Page() {
 
         {clientId ? (
           <>
+            <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {sections.map((section) => (
+                <Link
+                  key={section.sectionKey}
+                  href={`/${section.sectionKey === "contactedMe" ? "contacted-me" : section.sectionKey === "preClients" ? "pre-clients" : section.sectionKey === "postClients" ? "post-clients" : "clients"}?clientId=${clientId}`}
+                  className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:border-slate-400 hover:shadow-md"
+                >
+                  <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{section.title}</p>
+                  <p className="mt-4 text-5xl font-bold text-slate-950">{counts[section.sectionKey] || 0}</p>
+                  <p className="mt-3 text-sm text-slate-600">{section.description}</p>
+                </Link>
+              ))}
+            </div>
+
             <Link
               href={`/review-my-clients?clientId=${clientId}`}
               className="mb-6 block rounded-2xl bg-slate-950 p-7 text-white shadow-sm transition hover:bg-slate-800"
@@ -207,7 +272,7 @@ export default function Page() {
               </div>
             </Link>
 
-            <div className="mb-6 grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               {utilityCards.map((card) => (
                 <Link
                   key={card.href}
@@ -219,16 +284,6 @@ export default function Page() {
                   <p className="mt-2 text-sm text-slate-600">{card.description}</p>
                   <span className="mt-5 inline-block rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">{card.action}</span>
                 </Link>
-              ))}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {sections.map((section) => (
-                <div key={section.sectionKey} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">{section.title}</p>
-                  <p className="mt-4 text-5xl font-bold text-slate-950">{counts[section.sectionKey] || 0}</p>
-                  <p className="mt-3 text-sm text-slate-600">{section.description}</p>
-                </div>
               ))}
             </div>
           </>
