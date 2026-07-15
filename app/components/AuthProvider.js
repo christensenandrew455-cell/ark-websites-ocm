@@ -19,19 +19,33 @@ export function AuthProvider({ children }) {
       return null;
     }
 
-    const [tokenResult, accountSnapshot] = await Promise.all([
-      nextUser.getIdTokenResult(true),
-      getDoc(doc(db, "accounts", nextUser.uid)),
-    ]);
-    const account = accountSnapshot.exists() ? accountSnapshot.data() : {};
+    const tokenResult = await nextUser.getIdTokenResult(true);
+    let account = {};
+
+    try {
+      const accountSnapshot = await getDoc(doc(db, "accounts", nextUser.uid));
+      account = accountSnapshot.exists() ? accountSnapshot.data() : {};
+    } catch (accountError) {
+      // Login has already been validated by the server and the custom token contains
+      // the assigned role/clientId. Do not mark a valid account incomplete merely
+      // because browser-side Firestore rules have not been deployed yet.
+      console.warn("Unable to read account profile directly from Firestore; using verified token claims", accountError);
+    }
+
+    const role = tokenResult.claims.role || account.role || "customer";
+    const clientId = tokenResult.claims.clientId || account.clientId || "";
+    const status = account.status || (role === "admin" || clientId ? "active" : "");
     const nextProfile = {
       ...account,
       uid: nextUser.uid,
       email: nextUser.email,
-      role: tokenResult.claims.role || account.role || "customer",
-      clientId: tokenResult.claims.clientId || account.clientId || "",
-      status: account.status || "",
+      accountEmail: account.accountEmail || nextUser.email || "",
+      role,
+      clientId,
+      status,
+      paymentSetupStatus: account.paymentSetupStatus || (clientId ? "complete" : ""),
     };
+
     setProfile(nextProfile);
     return nextProfile;
   }, []);
@@ -54,9 +68,11 @@ export function AuthProvider({ children }) {
         setProfile({
           uid: nextUser.uid,
           email: nextUser.email,
+          accountEmail: nextUser.email || "",
           role: "customer",
           clientId: "",
           status: "",
+          paymentSetupStatus: "",
         });
       } finally {
         setLoading(false);
