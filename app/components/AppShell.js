@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
 const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
@@ -17,10 +17,27 @@ function LoadingScreen({ message = "Loading ARK OCM…" }) {
   );
 }
 
+function cleanClientId(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, loading, logout, isAdmin } = useAuth();
+  const {
+    user,
+    profile,
+    activeClientId,
+    loading,
+    logout,
+    isAdmin,
+    selectClientId,
+  } = useAuth();
   const [clientGuardReady, setClientGuardReady] = useState(false);
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
@@ -39,25 +56,50 @@ export default function AppShell({ children }) {
       return;
     }
 
-    if (isPublic || isAdmin) {
-      setClientGuardReady(true);
-      return;
-    }
-
-    const assignedClientId = profile?.clientId;
-    if (!assignedClientId) {
+    if (isPublic) {
       setClientGuardReady(true);
       return;
     }
 
     const params = new URLSearchParams(window.location.search);
+
+    if (isAdmin) {
+      const requestedClientId = cleanClientId(params.get("clientId"));
+      const selectedClientId = requestedClientId || cleanClientId(activeClientId) || cleanClientId(profile?.clientId);
+
+      if (selectedClientId) {
+        selectClientId(selectedClientId);
+        if (pathname !== "/connections" && params.get("clientId") !== selectedClientId) {
+          params.set("clientId", selectedClientId);
+          const query = params.toString();
+          window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+        }
+      }
+
+      setClientGuardReady(true);
+      return;
+    }
+
+    const assignedClientId = cleanClientId(profile?.clientId);
+    if (!assignedClientId) {
+      setClientGuardReady(true);
+      return;
+    }
+
+    selectClientId(assignedClientId);
     if (params.get("clientId") !== assignedClientId) {
       params.set("clientId", assignedClientId);
       const query = params.toString();
       window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
     }
     setClientGuardReady(true);
-  }, [isAdmin, isPublic, loading, pathname, profile?.clientId, router, user]);
+  }, [activeClientId, isAdmin, isPublic, loading, pathname, profile?.clientId, router, selectClientId, user]);
+
+  const selectedClientId = cleanClientId(activeClientId || profile?.clientId);
+  const dashboardHref = useMemo(
+    () => selectedClientId ? `/?clientId=${encodeURIComponent(selectedClientId)}` : "/",
+    [selectedClientId]
+  );
 
   if (loading || (!isPublic && !clientGuardReady)) return <LoadingScreen />;
   if (isPublic) return children;
@@ -79,14 +121,16 @@ export default function AppShell({ children }) {
     );
   }
 
-  const businessLabel = isAdmin ? "ARK OCM Admin" : profile?.businessName || profile?.clientId || "Business account";
+  const businessLabel = isAdmin
+    ? `Admin${selectedClientId ? ` · ${selectedClientId}` : ""}`
+    : profile?.businessName || profile?.clientId || "Business account";
 
   return (
     <>
       <header className="relative border-b border-slate-200 bg-white px-5 py-4 shadow-sm md:px-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <nav className="flex items-center gap-4">
-            <Link href="/" className="text-sm font-semibold text-slate-700 hover:text-slate-950">
+            <Link href={dashboardHref} className="text-sm font-semibold text-slate-700 hover:text-slate-950">
               Dashboard
             </Link>
             {isAdmin && (
