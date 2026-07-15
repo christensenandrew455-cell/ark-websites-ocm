@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../lib/firebase-admin";
 import {
@@ -8,18 +9,18 @@ import {
   uniqueTexts,
 } from "../../lib/propertyProfiles";
 
-const DEFAULT_CLIENT_ID = "tabor-painting";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const allowedSections = ["postClients", "clients", "preClients", "contactedMe"];
 
 function cleanClientId(value) {
-  return (
-    String(value || DEFAULT_CLIENT_ID)
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-_]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || DEFAULT_CLIENT_ID
-  );
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 function cleanSectionKey(value) {
@@ -28,6 +29,13 @@ function cleanSectionKey(value) {
 
 function text(value) {
   return String(value || "").trim();
+}
+
+function secretMatches(expected, provided) {
+  if (!expected || !provided) return false;
+  const expectedHash = createHash("sha256").update(String(expected)).digest();
+  const providedHash = createHash("sha256").update(String(provided)).digest();
+  return timingSafeEqual(expectedHash, providedHash);
 }
 
 function contactMethod(value) {
@@ -42,11 +50,16 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, X-ARK-Connection-Key",
   };
 }
 
-function buildRow(data) {
+function safeSubmission(data) {
+  const { connectionKey, key, ...safeData } = data || {};
+  return safeData;
+}
+
+function buildRow(data, source) {
   const Name = text(data.Name || data.name || data.fullName || data.customerName);
   const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact);
   const Email = text(data.Email || data.email);
@@ -68,8 +81,8 @@ function buildRow(data) {
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay),
     PreferredTime: text(data.PreferredTime || data.preferredTime || data.estimateTime),
     Notes: text(data.Notes || data.notes || data.message || data.summary),
-    source: text(data.source || "website"),
-    rawSubmission: data,
+    source,
+    rawSubmission: safeSubmission(data),
     updatedAt: FieldValue.serverTimestamp(),
   };
 }
@@ -96,13 +109,70 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: corsHeaders() });
 }
 
+export async function GET() {
+  return Response.json({
+    ok: true,
+    service: "ark-ocm-intake",
+    message: "Use an administrator-generated business connection URL to submit leads.",
+  });
+}
+
 export async function POST(request) {
   try {
+    const url = new URL(request.url);
     const data = await request.json();
-    const clientId = cleanClientId(data.clientId);
-    const sectionKey = cleanSectionKey(data.sectionKey);
-    const row = buildRow(data);
+    const clientId = cleanClientId(data.clientId || url.searchParams.get("clientId"));
+    const providedKey = text(
+      request.headers.get("x-ark-connection-key") ||
+      data.connectionKey ||
+      data.key ||
+      url.searchParams.get("key")
+    );
+
+    if (!clientId || !providedKey) {
+      return Response.json(
+        { ok: false, error: "Use the private webhook URL generated from ARK OCM Connections." },
+        { status: 401, headers: corsHeaders() }
+      );
+    }
+
     const db = getAdminDb();
+    const [businessSnapshot, connectionSnapshot] = await Promise.all([
+      db.collection("businesses").doc(clientId).get(),
+      db.collection("connections").doc(clientId).get(),
+    ]);
+
+    if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
+      return Response.json(
+        { ok: false, error: "That business account is not active." },
+        { status: 404, headers: corsHeaders() }
+      );
+    }
+
+    if (!connectionSnapshot.exists) {
+      return Response.json(
+        { ok: false, error: "This business has not been connected by the administrator." },
+        { status: 403, headers: corsHeaders() }
+      );
+    }
+
+    const connection = connectionSnapshot.data();
+    if (connection.enabled === false || !secretMatches(connection.connectionKey, providedKey)) {
+      return Response.json(
+        { ok: false, error: "This connection is disabled or the connection key is invalid." },
+        { status: 403, headers: corsHeaders() }
+      );
+    }
+
+    const requestedStage = cleanSectionKey(data.sectionKey || data.section || data.status);
+    const sectionKey = connection.allowStageOverride === true
+      ? requestedStage
+      : cleanSectionKey(connection.defaultStage);
+    const channel = text(url.searchParams.get("source") || data.source || "website");
+    const source = text(connection.sourceLabel)
+      ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
+      : channel || "website";
+    const row = buildRow(data, source);
 
     if (!row.Name && !row.Phone && !row.Email && !row.Notes) {
       return Response.json(
@@ -116,16 +186,6 @@ export async function POST(request) {
         { ok: false, error: "A property address is required." },
         { status: 400, headers: corsHeaders() }
       );
-    }
-
-    if (clientId !== DEFAULT_CLIENT_ID) {
-      const businessSnapshot = await db.collection("businesses").doc(clientId).get();
-      if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
-        return Response.json(
-          { ok: false, error: "That business account is not active." },
-          { status: 404, headers: corsHeaders() }
-        );
-      }
     }
 
     const matches = await findPropertyMatches(db, clientId, row.PropertyKey);
@@ -170,6 +230,7 @@ export async function POST(request) {
       RepeatJobs: Math.max(0, Jobs.length - 1),
       currentStage: sectionKey,
       previousStage: primary?.stageKey || "",
+      connectionClientId: clientId,
       createdAt: primary?.data.createdAt || FieldValue.serverTimestamp(),
       movedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -191,6 +252,13 @@ export async function POST(request) {
       if (match.ref.path !== targetRef.path) batch.delete(match.ref);
     });
 
+    batch.set(connectionSnapshot.ref, {
+      lastLeadAt: FieldValue.serverTimestamp(),
+      lastLeadSource: source,
+      lastLeadDocumentId: targetRef.id,
+      lastLeadStage: sectionKey,
+    }, { merge: true });
+
     await batch.commit();
 
     return Response.json(
@@ -206,7 +274,7 @@ export async function POST(request) {
       { status: 201, headers: corsHeaders() }
     );
   } catch (error) {
-    console.error(error);
+    console.error("Unable to process connected intake", error);
     return Response.json(
       { ok: false, error: "Could not save the intake submission." },
       { status: 500, headers: corsHeaders() }
