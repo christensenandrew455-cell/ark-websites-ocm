@@ -7,15 +7,27 @@ import { auth, db } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 
 const AuthContext = createContext(null);
+const ADMIN_CLIENT_STORAGE_KEY = "arkOcmAdminClientId";
+
+function cleanClientId(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [activeClientId, setActiveClientId] = useState("");
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async (nextUser) => {
     if (!nextUser) {
       setProfile(null);
+      setActiveClientId("");
       return null;
     }
 
@@ -33,7 +45,7 @@ export function AuthProvider({ children }) {
     }
 
     const role = tokenResult.claims.role || account.role || "customer";
-    const clientId = tokenResult.claims.clientId || account.clientId || "";
+    const clientId = cleanClientId(tokenResult.claims.clientId || account.clientId || "");
     const status = account.status || (role === "admin" || clientId ? "active" : "");
     const nextProfile = {
       ...account,
@@ -46,7 +58,14 @@ export function AuthProvider({ children }) {
       paymentSetupStatus: account.paymentSetupStatus || (clientId ? "complete" : ""),
     };
 
+    let nextActiveClientId = clientId;
+    if (role === "admin" && typeof window !== "undefined") {
+      nextActiveClientId = cleanClientId(window.localStorage.getItem(ADMIN_CLIENT_STORAGE_KEY)) || clientId;
+      if (nextActiveClientId) window.localStorage.setItem(ADMIN_CLIENT_STORAGE_KEY, nextActiveClientId);
+    }
+
     setProfile(nextProfile);
+    setActiveClientId(nextActiveClientId);
     return nextProfile;
   }, []);
 
@@ -57,6 +76,7 @@ export function AuthProvider({ children }) {
       setProfile(null);
 
       if (!nextUser) {
+        setActiveClientId("");
         setLoading(false);
         return;
       }
@@ -74,6 +94,7 @@ export function AuthProvider({ children }) {
           status: "",
           paymentSetupStatus: "",
         });
+        setActiveClientId("");
       } finally {
         setLoading(false);
       }
@@ -94,6 +115,19 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   }
 
+  function selectClientId(value) {
+    const requestedClientId = cleanClientId(value);
+    const nextClientId = profile?.role === "admin"
+      ? requestedClientId || cleanClientId(profile?.clientId)
+      : cleanClientId(profile?.clientId);
+
+    setActiveClientId(nextClientId);
+    if (profile?.role === "admin" && nextClientId && typeof window !== "undefined") {
+      window.localStorage.setItem(ADMIN_CLIENT_STORAGE_KEY, nextClientId);
+    }
+    return nextClientId;
+  }
+
   async function refreshProfile() {
     if (!auth.currentUser) return null;
     setLoading(true);
@@ -108,13 +142,15 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       profile,
+      activeClientId,
       loading,
       login,
       logout,
       refreshProfile,
+      selectClientId,
       isAdmin: profile?.role === "admin",
     }),
-    [user, profile, loading]
+    [user, profile, activeClientId, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
