@@ -140,6 +140,34 @@ export async function POST(request) {
       StripeCustomerId: customerId,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+
+    const adminClientId = String(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm").trim();
+    if (adminClientId && clientId !== adminClientId) {
+      batch.set(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId), {
+        Name: ownerName,
+        BusinessName: businessName,
+        Phone: accountPhone,
+        Email: accountEmail,
+        Address: businessName,
+        PropertyKey: `business-${clientId}`,
+        Job: "ARK OCM account",
+        BestContactMethod: accountPhone ? "Call" : "Email",
+        Notes: `ARK OCM customer account for ${businessName}.`,
+        source: "business-signup",
+        RelatedBusinessClientId: clientId,
+        AccountStatus: "active",
+        ContactNames: ownerName ? [ownerName] : [],
+        Phones: accountPhone ? [accountPhone] : [],
+        Emails: accountEmail ? [accountEmail] : [],
+        currentStage: "clients",
+        TotalJobs: 1,
+        RepeatJobs: 0,
+        createdAt: FieldValue.serverTimestamp(),
+        movedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
     batch.set(receiptRef, {
       email: accountEmail,
       clientId,
