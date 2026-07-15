@@ -11,7 +11,7 @@
   "dependencies": {
     "@tailwindcss/postcss": "latest",
     "firebase": "latest",
-    "firebase-admin": "latest",
+    "firebase-admin": "13.6.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
