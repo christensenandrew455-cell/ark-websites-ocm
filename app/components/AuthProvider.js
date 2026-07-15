@@ -101,7 +101,7 @@ export function AuthProvider({ children }) {
     });
   }, [loadProfile]);
 
-  async function login(identifier, password) {
+  const login = useCallback(async (identifier, password) => {
     const response = await fetch("/api/auth/business-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -109,26 +109,26 @@ export function AuthProvider({ children }) {
     });
     const data = await readApiJson(response, "Unable to sign in.");
     return signInWithCustomToken(auth, data.token);
-  }
+  }, []);
 
-  async function logout() {
+  const logout = useCallback(async () => {
     await signOut(auth);
-  }
+  }, []);
 
-  function selectClientId(value) {
+  const selectClientId = useCallback((value) => {
     const requestedClientId = cleanClientId(value);
     const nextClientId = profile?.role === "admin"
       ? requestedClientId || cleanClientId(profile?.clientId)
       : cleanClientId(profile?.clientId);
 
-    setActiveClientId(nextClientId);
+    setActiveClientId((current) => current === nextClientId ? current : nextClientId);
     if (profile?.role === "admin" && nextClientId && typeof window !== "undefined") {
       window.localStorage.setItem(ADMIN_CLIENT_STORAGE_KEY, nextClientId);
     }
     return nextClientId;
-  }
+  }, [profile?.clientId, profile?.role]);
 
-  async function refreshProfile() {
+  const refreshProfile = useCallback(async () => {
     if (!auth.currentUser) return null;
     setLoading(true);
     try {
@@ -136,7 +136,7 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [loadProfile]);
 
   const value = useMemo(
     () => ({
@@ -150,7 +150,7 @@ export function AuthProvider({ children }) {
       selectClientId,
       isAdmin: profile?.role === "admin",
     }),
-    [user, profile, activeClientId, loading]
+    [user, profile, activeClientId, loading, login, logout, refreshProfile, selectClientId]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
