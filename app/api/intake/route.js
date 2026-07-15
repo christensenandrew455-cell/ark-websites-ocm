@@ -70,6 +70,33 @@ function safeSubmission(data) {
   );
 }
 
+function nameFields(data) {
+  let FirstName = text(data.FirstName || data.firstName || data.givenName);
+  let LastName = text(data.LastName || data.lastName || data.familyName);
+  let Name = text(data.Name || data.name || data.fullName || data.customerName || data.ProfileName);
+
+  if (!Name) Name = [FirstName, LastName].filter(Boolean).join(" ");
+  if ((!FirstName || !LastName) && Name) {
+    const parts = Name.split(/\s+/).filter(Boolean);
+    if (!FirstName) FirstName = parts.shift() || "";
+    if (!LastName) LastName = parts.join(" ");
+  }
+
+  return { FirstName, LastName, Name };
+}
+
+function addressFields(data) {
+  const StreetAddress = text(
+    data.StreetAddress || data.streetAddress || data.addressLine1 || data.street
+  );
+  const TownOrCity = text(
+    data.TownOrCity || data.townOrCity || data.city || data.town || data.locality
+  );
+  const explicitAddress = text(data.Address || data.address || data.customerAddress);
+  const Address = explicitAddress || [StreetAddress, TownOrCity].filter(Boolean).join(", ");
+  return { StreetAddress, TownOrCity, Address };
+}
+
 function fallbackPropertyKey(address, phone, email) {
   const addressKey = normalizeAddressKey(address);
   if (addressKey) return addressKey;
@@ -81,22 +108,28 @@ function fallbackPropertyKey(address, phone, email) {
 }
 
 function buildRow(data, source, channel) {
-  const Name = text(data.Name || data.name || data.fullName || data.customerName || data.ProfileName);
+  const { FirstName, LastName, Name } = nameFields(data);
   const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact || data.From || data.Caller);
-  const Email = text(data.Email || data.email);
-  const Address = text(data.Address || data.address || data.customerAddress);
+  const Email = text(data.Email || data.email).toLowerCase();
+  const { StreetAddress, TownOrCity, Address } = addressFields(data);
   const isPhoneChannel = channel === "phone" || data.From || data.Caller;
 
   return {
+    FirstName,
+    LastName,
     Name,
     Phone,
     Email,
+    StreetAddress,
+    TownOrCity,
     Address,
     PropertyKey: fallbackPropertyKey(Address, Phone, Email),
     ContactNames: uniqueTexts(Name),
     Phones: uniqueTexts(Phone),
     Emails: uniqueTexts(Email),
-    Job: text(data.Job || data.job || data.service || data.projectType || data.requestedService),
+    Job: text(
+      data.Job || data.job || data.ServiceType || data.serviceType || data.service || data.projectType || data.requestedService
+    ),
     BestContactMethod: contactMethod(
       data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod || (isPhoneChannel ? "Text" : "")
     ),
@@ -117,7 +150,8 @@ async function findPropertyMatches(db, clientId, propertyKey) {
     const snapshot = await db.collection("ocmClients").doc(clientId).collection(stageKey).get();
     snapshot.docs.forEach((documentSnapshot) => {
       const data = documentSnapshot.data();
-      const existingKey = data.PropertyKey || fallbackPropertyKey(data.Address || data.address, data.Phone || data.phone, data.Email || data.email);
+      const existingAddress = data.Address || [data.StreetAddress, data.TownOrCity].filter(Boolean).join(", ");
+      const existingKey = data.PropertyKey || fallbackPropertyKey(existingAddress, data.Phone || data.phone, data.Email || data.email);
       if (existingKey === propertyKey) {
         matches.push({ stageKey, id: documentSnapshot.id, ref: documentSnapshot.ref, data });
       }
@@ -239,9 +273,13 @@ export async function POST(request) {
     batch.set(targetRef, {
       ...(primary?.data || {}),
       ...row,
+      FirstName: row.FirstName || primary?.data.FirstName || "",
+      LastName: row.LastName || primary?.data.LastName || "",
       Name: row.Name || ContactNames.at(-1) || primary?.data.Name || "",
       Phone: row.Phone || Phones.at(-1) || primary?.data.Phone || "",
       Email: row.Email || Emails.at(-1) || primary?.data.Email || "",
+      StreetAddress: row.StreetAddress || primary?.data.StreetAddress || "",
+      TownOrCity: row.TownOrCity || primary?.data.TownOrCity || "",
       Address: row.Address || primary?.data.Address || "",
       PropertyKey: row.PropertyKey || primary?.data.PropertyKey || "",
       ContactNames,
