@@ -55,7 +55,7 @@ export async function POST(request) {
     const userRecord = await auth.getUser(passwordResult.localId);
     const accountSnapshot = await db.collection("accounts").doc(userRecord.uid).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
-    const isAdmin = getAdminEmails().has(email.toLowerCase());
+    const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
 
     if (!isAdmin && (!accountSnapshot.exists || account.status !== "active" || !account.clientId)) {
       return NextResponse.json({ error: "This account is not active." }, { status: 403 });
