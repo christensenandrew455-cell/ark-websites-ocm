@@ -24,6 +24,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /connections/{clientId} {
+      allow read, write: if false;
+    }
+
     match /ocmClients/{clientId} {
       allow read, write: if isAdmin() || ownsClient(clientId);
 
