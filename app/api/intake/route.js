@@ -31,6 +31,15 @@ function text(value) {
   return String(value || "").trim();
 }
 
+async function readRequestData(request) {
+  const contentType = String(request.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    return Object.fromEntries(formData.entries());
+  }
+  return request.json();
+}
+
 function secretMatches(expected, provided) {
   if (!expected || !provided) return false;
   const expectedHash = createHash("sha256").update(String(expected)).digest();
@@ -55,32 +64,45 @@ function corsHeaders() {
 }
 
 function safeSubmission(data) {
-  const { connectionKey, key, ...safeData } = data || {};
-  return safeData;
+  const blocked = new Set(["connectionKey", "key", "authToken", "apiKey", "secret"]);
+  return Object.fromEntries(
+    Object.entries(data || {}).filter(([field]) => !blocked.has(field))
+  );
 }
 
-function buildRow(data, source) {
-  const Name = text(data.Name || data.name || data.fullName || data.customerName);
-  const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact);
+function fallbackPropertyKey(address, phone, email) {
+  const addressKey = normalizeAddressKey(address);
+  if (addressKey) return addressKey;
+  const phoneKey = String(phone || "").replace(/\D/g, "");
+  if (phoneKey) return `phone-${phoneKey}`;
+  const emailKey = text(email).toLowerCase();
+  if (emailKey) return `email-${emailKey}`;
+  return "";
+}
+
+function buildRow(data, source, channel) {
+  const Name = text(data.Name || data.name || data.fullName || data.customerName || data.ProfileName);
+  const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact || data.From || data.Caller);
   const Email = text(data.Email || data.email);
   const Address = text(data.Address || data.address || data.customerAddress);
+  const isPhoneChannel = channel === "phone" || data.From || data.Caller;
 
   return {
     Name,
     Phone,
     Email,
     Address,
-    PropertyKey: normalizeAddressKey(Address),
+    PropertyKey: fallbackPropertyKey(Address, Phone, Email),
     ContactNames: uniqueTexts(Name),
     Phones: uniqueTexts(Phone),
     Emails: uniqueTexts(Email),
     Job: text(data.Job || data.job || data.service || data.projectType || data.requestedService),
     BestContactMethod: contactMethod(
-      data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod
+      data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod || (isPhoneChannel ? "Text" : "")
     ),
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay),
     PreferredTime: text(data.PreferredTime || data.preferredTime || data.estimateTime),
-    Notes: text(data.Notes || data.notes || data.message || data.summary),
+    Notes: text(data.Notes || data.notes || data.message || data.summary || data.Body || data.TranscriptionText || data.CallStatus),
     source,
     rawSubmission: safeSubmission(data),
     updatedAt: FieldValue.serverTimestamp(),
@@ -95,7 +117,7 @@ async function findPropertyMatches(db, clientId, propertyKey) {
     const snapshot = await db.collection("ocmClients").doc(clientId).collection(stageKey).get();
     snapshot.docs.forEach((documentSnapshot) => {
       const data = documentSnapshot.data();
-      const existingKey = data.PropertyKey || normalizeAddressKey(data.Address || data.address);
+      const existingKey = data.PropertyKey || fallbackPropertyKey(data.Address || data.address, data.Phone || data.phone, data.Email || data.email);
       if (existingKey === propertyKey) {
         matches.push({ stageKey, id: documentSnapshot.id, ref: documentSnapshot.ref, data });
       }
@@ -120,7 +142,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const url = new URL(request.url);
-    const data = await request.json();
+    const data = await readRequestData(request);
     const clientId = cleanClientId(data.clientId || url.searchParams.get("clientId"));
     const providedKey = text(
       request.headers.get("x-ark-connection-key") ||
@@ -168,11 +190,11 @@ export async function POST(request) {
     const sectionKey = connection.allowStageOverride === true
       ? requestedStage
       : cleanSectionKey(connection.defaultStage);
-    const channel = text(url.searchParams.get("source") || data.source || "website");
+    const channel = text(url.searchParams.get("source") || data.source || (data.From || data.Caller ? "phone" : "website")).toLowerCase();
     const source = text(connection.sourceLabel)
       ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
       : channel || "website";
-    const row = buildRow(data, source);
+    const row = buildRow(data, source, channel);
 
     if (!row.Name && !row.Phone && !row.Email && !row.Notes) {
       return Response.json(
@@ -181,9 +203,9 @@ export async function POST(request) {
       );
     }
 
-    if (!row.Address || !row.PropertyKey) {
+    if (!row.PropertyKey) {
       return Response.json(
-        { ok: false, error: "A property address is required." },
+        { ok: false, error: "Send at least a property address, phone number, or email address." },
         { status: 400, headers: corsHeaders() }
       );
     }
