@@ -85,9 +85,16 @@ export default function AppShell({ children }) {
     <>
       <header className="relative border-b border-slate-200 bg-white px-5 py-4 shadow-sm md:px-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <Link href="/" className="text-sm font-semibold text-slate-700 hover:text-slate-950">
-            Dashboard
-          </Link>
+          <nav className="flex items-center gap-4">
+            <Link href="/" className="text-sm font-semibold text-slate-700 hover:text-slate-950">
+              Dashboard
+            </Link>
+            {isAdmin && (
+              <Link href="/connections" className={pathname === "/connections" ? "text-sm font-bold text-slate-950" : "text-sm font-semibold text-slate-700 hover:text-slate-950"}>
+                Connections
+              </Link>
+            )}
+          </nav>
           <div className="absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 text-lg font-bold tracking-tight text-slate-950 sm:block">
             ARK Website OCM
           </div>
