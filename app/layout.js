@@ -3,8 +3,8 @@ import AppShell from "./components/AppShell";
 import { AuthProvider } from "./components/AuthProvider";
 
 export const metadata = {
-  title: "ARK Websites OCM",
-  description: "Secure online client management for ARK Websites clients",
+  title: "Tabor Painting Client Center",
+  description: "AI receptionist activity and client collection for Tabor Painting",
 };
 
 export default function RootLayout({ children }) {
