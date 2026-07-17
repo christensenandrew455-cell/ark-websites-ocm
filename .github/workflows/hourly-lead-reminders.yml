@@ -1,0 +1,27 @@
+name: Hourly Lead Reminders
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send unread lead reminders
+        env:
+          REMINDER_SECRET: ${{ secrets.OCM_REMINDER_SECRET }}
+        run: |
+          if [ -z "$REMINDER_SECRET" ]; then
+            echo "::warning::OCM_REMINDER_SECRET is not configured. Hourly reminders are skipped."
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $REMINDER_SECRET" \
+            "https://ark-websites-ocm.vercel.app/api/notifications/reminders"
