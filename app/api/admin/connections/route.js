@@ -47,6 +47,12 @@ function appOrigin(request) {
 
 function businessInfoPayload(clientId, business, data) {
   const serviceNames = list(data.services);
+  const receptionistInstructions = text(data.receptionistInstructions);
+  const extraInformation = [
+    text(data.businessInfo),
+    receptionistInstructions ? `Special receptionist instructions: ${receptionistInstructions}` : "",
+  ].filter(Boolean).join("\n");
+
   return {
     name: text(business.businessName || data.businessName || clientId),
     receptionist: text(data.receptionistName || "Alex"),
@@ -61,8 +67,8 @@ function businessInfoPayload(clientId, business, data) {
     serviceAreas: list(data.serviceAreas),
     services: Object.fromEntries(serviceNames.map((service) => [service.toLowerCase(), `${service}.`])),
     about: list(data.about),
-    extraInformation: text(data.businessInfo),
-    receptionistInstructions: text(data.receptionistInstructions),
+    extraInformation,
+    receptionistInstructions,
   };
 }
 
@@ -100,7 +106,7 @@ function connectionPayload(clientId, business, data, request) {
     serviceAreas: info.serviceAreas.join(", "),
     services: Object.keys(info.services).join("\n"),
     about: info.about.join("\n"),
-    businessInfo: info.extraInformation,
+    businessInfo: text(data.businessInfo),
     receptionistInstructions: info.receptionistInstructions,
     ocmWebhookUrl,
     websiteWebhookUrl: connectionKey ? `${baseUrl}&source=website` : "",
