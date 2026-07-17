@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import { useAuth } from "./AuthProvider";
@@ -28,7 +29,7 @@ function Field({ label, value, onChange, type = "text", placeholder = "" }) {
 }
 
 export default function SettingsPanel() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const clientId = profile?.clientId || "";
   const [form, setForm] = useState({
     ...DEFAULT_SETTINGS,
@@ -121,49 +122,66 @@ export default function SettingsPanel() {
         {isLoading ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 sm:p-10">Loading settings…</div>
         ) : (
-          <form onSubmit={saveSettings} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6 md:p-8">
-            <h2 className="text-lg font-black sm:text-2xl">Business Details</h2>
-            <p className="mt-1 hidden text-sm leading-6 text-slate-600 sm:block">
-              These details identify the business and determine where important client notifications should go.
-            </p>
+          <>
+            <form onSubmit={saveSettings} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6 md:p-8">
+              <h2 className="text-lg font-black sm:text-2xl">Business Details</h2>
+              <p className="mt-1 hidden text-sm leading-6 text-slate-600 sm:block">
+                These details identify the business and determine where important client notifications should go.
+              </p>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-5">
-              <Field
-                label="Business Name"
-                value={form.BusinessName}
-                onChange={(event) => updateField("BusinessName", event.target.value)}
-              />
-              <Field
-                label="Owner Name"
-                value={form.OwnerName}
-                onChange={(event) => updateField("OwnerName", event.target.value)}
-              />
-              <Field
-                label="Notification Email"
-                type="email"
-                value={form.AccountEmail}
-                onChange={(event) => updateField("AccountEmail", event.target.value)}
-                placeholder="owner@example.com"
-              />
-              <Field
-                label="Notification Phone"
-                type="tel"
-                value={form.AccountPhone}
-                onChange={(event) => updateField("AccountPhone", event.target.value)}
-                placeholder="(555) 555-5555"
-              />
-            </div>
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-5">
+                <Field
+                  label="Business Name"
+                  value={form.BusinessName}
+                  onChange={(event) => updateField("BusinessName", event.target.value)}
+                />
+                <Field
+                  label="Owner Name"
+                  value={form.OwnerName}
+                  onChange={(event) => updateField("OwnerName", event.target.value)}
+                />
+                <Field
+                  label="Notification Email"
+                  type="email"
+                  value={form.AccountEmail}
+                  onChange={(event) => updateField("AccountEmail", event.target.value)}
+                  placeholder="owner@example.com"
+                />
+                <Field
+                  label="Notification Phone"
+                  type="tel"
+                  value={form.AccountPhone}
+                  onChange={(event) => updateField("AccountPhone", event.target.value)}
+                  placeholder="(555) 555-5555"
+                />
+              </div>
 
-            <div className="mt-4 sm:mt-7 sm:flex sm:justify-end">
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:bg-slate-400 sm:w-auto"
-              >
-                {isSaving ? "Saving…" : "Save Settings"}
-              </button>
-            </div>
-          </form>
+              <div className="mt-4 sm:mt-7 sm:flex sm:justify-end">
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:bg-slate-400 sm:w-auto"
+                >
+                  {isSaving ? "Saving…" : "Save Settings"}
+                </button>
+              </div>
+            </form>
+
+            {!isAdmin && (
+              <section className="mt-4 grid grid-cols-2 gap-3 sm:mt-6">
+                <Link href="/messages?type=change" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
+                  <p className="text-2xl font-black">Change</p>
+                  <h2 className="mt-1 text-sm font-black">Request a Change</h2>
+                  <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, or another update. Usually 1–2 business days.</p>
+                </Link>
+                <Link href="/messages?type=help" className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
+                  <p className="text-2xl font-black text-red-600">Help</p>
+                  <h2 className="mt-1 text-sm font-black">Priority Support</h2>
+                  <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls or missing lead data.</p>
+                </Link>
+              </section>
+            )}
+          </>
         )}
       </div>
     </main>
