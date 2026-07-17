@@ -8,9 +8,9 @@ import { useAuth } from "./AuthProvider";
 const DEFAULT_CLIENT_ID = "tabor-painting";
 const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
 const CUSTOMER_NAV_ITEMS = [
-  { label: "Home", href: "/" },
-  { label: "Review My Clients", href: "/review-my-clients" },
-  { label: "Settings", href: "/settings" },
+  { label: "Home", mobileLabel: "Home", href: "/" },
+  { label: "Review My Clients", mobileLabel: "Clients", href: "/review-my-clients" },
+  { label: "Settings", mobileLabel: "Settings", href: "/settings" },
 ];
 
 function LoadingScreen({ message = "Loading client center…" }) {
@@ -30,7 +30,7 @@ export default function AppShell({ children }) {
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const selectedClientId = profile?.clientId || DEFAULT_CLIENT_ID;
   const navItems = isAdmin
-    ? [{ label: "Customer Setup", href: "/connections" }, ...CUSTOMER_NAV_ITEMS]
+    ? [{ label: "Customer Setup", mobileLabel: "Customers", href: "/connections" }, ...CUSTOMER_NAV_ITEMS]
     : CUSTOMER_NAV_ITEMS;
 
   useEffect(() => {
@@ -57,21 +57,31 @@ export default function AppShell({ children }) {
   const title = isAdmin
     ? "ARK OCM Admin"
     : `${profile?.businessName || "Tabor Painting"} Client Center`;
-  const subtitle = isAdmin
-    ? "Create customers and configure AI receptionists"
-    : "Powered by the AI receptionist";
+
+  const signOutButton = (
+    <button
+      type="button"
+      onClick={logout}
+      className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-950 sm:text-sm"
+    >
+      Sign out
+    </button>
+  );
 
   return (
     <>
-      <header className="border-b border-slate-200 bg-white px-5 py-4 shadow-sm md:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-lg font-black tracking-tight text-slate-950">{title}</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{subtitle}</p>
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur md:px-8 md:py-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <p className="truncate text-base font-black tracking-tight text-slate-950 sm:text-lg">{title}</p>
+            <div className="sm:hidden">{signOutButton}</div>
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto">
-            <nav className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <nav
+              className="grid min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:flex sm:flex-none"
+              style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+            >
               {navItems.map((item) => {
                 const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
                 return (
@@ -79,21 +89,16 @@ export default function AppShell({ children }) {
                     key={item.href}
                     href={item.href}
                     className={active
-                      ? "whitespace-nowrap rounded-lg bg-white px-3 py-2 text-sm font-black text-slate-950 shadow-sm"
-                      : "whitespace-nowrap rounded-lg px-3 py-2 text-sm font-bold text-slate-600 hover:text-slate-950"}
+                      ? "min-w-0 rounded-lg bg-white px-2 py-2 text-center text-[11px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm"
+                      : "min-w-0 rounded-lg px-2 py-2 text-center text-[11px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}
                   >
-                    {item.label}
+                    <span className="sm:hidden">{item.mobileLabel}</span>
+                    <span className="hidden sm:inline">{item.label}</span>
                   </Link>
                 );
               })}
             </nav>
-            <button
-              type="button"
-              onClick={logout}
-              className="whitespace-nowrap px-2 py-2 text-sm font-semibold text-slate-500 hover:text-slate-950"
-            >
-              Sign out
-            </button>
+            <div className="hidden sm:block">{signOutButton}</div>
           </div>
         </div>
       </header>
