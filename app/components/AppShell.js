@@ -17,7 +17,6 @@ const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },
   { label: "Messages", mobileLabel: "Messages", href: "/messages" },
   { label: "Connections", mobileLabel: "Accounts", href: "/connections" },
-  { label: "Notifications", mobileLabel: "Alerts", href: "/notifications" },
   { label: "Settings", mobileLabel: "Settings", href: "/settings" },
 ];
 
