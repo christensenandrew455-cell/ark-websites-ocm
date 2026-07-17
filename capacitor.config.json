@@ -2,7 +2,7 @@
   "appId": "com.arkwebsites.clientcenter",
   "appName": "ARK Client Center",
   "webDir": "mobile-shell",
-  "appendUserAgent": " ARKClientCenter/1.0",
+  "appendUserAgent": " ARKClientCenter/1.1",
   "backgroundColor": "#f8fafc",
   "loggingBehavior": "debug",
   "server": {
@@ -10,6 +10,11 @@
     "androidScheme": "https",
     "cleartext": false,
     "errorPath": "offline.html"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["sound", "alert", "banner", "list"]
+    }
   },
   "android": {
     "backgroundColor": "#f8fafc",
