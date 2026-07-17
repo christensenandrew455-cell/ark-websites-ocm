@@ -38,7 +38,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -53,6 +52,11 @@ jobs:
         run: |
           npx cap add android
           npx cap sync android
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: wrapper
 
       - name: Build debug APK
         working-directory: android
