@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
-const CLIENT_ID = "tabor-painting";
 const DEFAULT_SETTINGS = {
-  BusinessName: "Tabor Painting",
+  BusinessName: "",
   OwnerName: "",
   AccountEmail: "",
   AccountPhone: "",
@@ -28,29 +28,50 @@ function Field({ label, value, onChange, type = "text", placeholder = "" }) {
 }
 
 export default function SettingsPanel() {
-  const [form, setForm] = useState(DEFAULT_SETTINGS);
+  const { profile } = useAuth();
+  const clientId = profile?.clientId || "";
+  const [form, setForm] = useState({
+    ...DEFAULT_SETTINGS,
+    BusinessName: profile?.businessName || "",
+    OwnerName: profile?.ownerName || "",
+    AccountEmail: profile?.accountEmail || "",
+    AccountPhone: profile?.accountPhone || "",
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const settingsRef = doc(db, "ocmClients", CLIENT_ID, "settings", "account");
+    if (!clientId) {
+      setError("This account does not have a business assigned yet.");
+      setIsLoading(false);
+      return undefined;
+    }
+
+    const settingsRef = doc(db, "ocmClients", clientId, "settings", "account");
     const unsubscribe = onSnapshot(
       settingsRef,
       (snapshot) => {
-        setForm({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) });
+        setForm({
+          ...DEFAULT_SETTINGS,
+          BusinessName: profile?.businessName || "",
+          OwnerName: profile?.ownerName || "",
+          AccountEmail: profile?.accountEmail || "",
+          AccountPhone: profile?.accountPhone || "",
+          ...(snapshot.exists() ? snapshot.data() : {}),
+        });
         setIsLoading(false);
       },
       (snapshotError) => {
         console.error(snapshotError);
-        setError("Could not load the Tabor Painting settings.");
+        setError("Could not load this business's settings.");
         setIsLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [clientId, profile?.accountEmail, profile?.accountPhone, profile?.businessName, profile?.ownerName]);
 
   function updateField(field, value) {
     setSaved(false);
@@ -59,12 +80,13 @@ export default function SettingsPanel() {
 
   async function saveSettings(event) {
     event.preventDefault();
+    if (!clientId) return;
     setIsSaving(true);
     setSaved(false);
     setError("");
 
     try {
-      await setDoc(doc(db, "ocmClients", CLIENT_ID, "settings", "account"), {
+      await setDoc(doc(db, "ocmClients", clientId, "settings", "account"), {
         BusinessName: form.BusinessName,
         OwnerName: form.OwnerName,
         AccountEmail: form.AccountEmail,
@@ -74,17 +96,19 @@ export default function SettingsPanel() {
       setSaved(true);
     } catch (saveError) {
       console.error(saveError);
-      setError("Could not save the Tabor Painting settings.");
+      setError("Could not save this business's settings.");
     } finally {
       setIsSaving(false);
     }
   }
 
+  const businessLabel = form.BusinessName || profile?.businessName || "Your Business";
+
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950 md:p-8">
       <div className="mx-auto max-w-3xl">
         <header className="mb-7">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Tabor Painting</p>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">{businessLabel}</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight">Settings</h1>
           <p className="mt-2 max-w-2xl leading-7 text-slate-600">
             Manage the basic business and notification details used by the client collection center.
