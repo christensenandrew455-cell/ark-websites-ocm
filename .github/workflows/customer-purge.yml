@@ -1,0 +1,28 @@
+name: Scheduled Customer Deletions
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 8 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  purge-customers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Permanently delete customer accounts whose seven-day wait has ended
+        env:
+          OCM_REMINDER_SECRET: ${{ secrets.OCM_REMINDER_SECRET }}
+        run: |
+          if [ -z "$OCM_REMINDER_SECRET" ]; then
+            echo "::warning::OCM_REMINDER_SECRET is not configured. Scheduled customer deletion is skipped."
+            exit 0
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $OCM_REMINDER_SECRET" \
+            "https://ark-websites-ocm.vercel.app/api/admin/customers/purge"
