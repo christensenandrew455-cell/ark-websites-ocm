@@ -1,0 +1,18 @@
+{
+  "appId": "com.arkwebsites.clientcenter",
+  "appName": "ARK Client Center",
+  "webDir": "mobile-shell",
+  "appendUserAgent": " ARKClientCenter/1.0",
+  "backgroundColor": "#f8fafc",
+  "loggingBehavior": "debug",
+  "server": {
+    "url": "https://ark-websites-ocm.vercel.app",
+    "androidScheme": "https",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "backgroundColor": "#f8fafc",
+    "webContentsDebuggingEnabled": true
+  }
+}
