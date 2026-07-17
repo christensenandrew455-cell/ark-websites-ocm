@@ -13,6 +13,13 @@ const CUSTOMER_NAV_ITEMS = [
   { label: "Review My Clients", mobileLabel: "Clients", href: "/review-my-clients" },
   { label: "Settings", mobileLabel: "Settings", href: "/settings" },
 ];
+const ADMIN_NAV_ITEMS = [
+  { label: "Dashboard", mobileLabel: "Dash", href: "/" },
+  { label: "Messages", mobileLabel: "Messages", href: "/messages" },
+  { label: "Connections", mobileLabel: "Accounts", href: "/connections" },
+  { label: "Notifications", mobileLabel: "Alerts", href: "/notifications" },
+  { label: "Settings", mobileLabel: "Settings", href: "/settings" },
+];
 
 function LoadingScreen({ message = "Loading client center…" }) {
   return (
@@ -30,9 +37,7 @@ export default function AppShell({ children }) {
   const { user, profile, isAdmin, loading, logout, selectClientId } = useAuth();
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const selectedClientId = profile?.clientId || DEFAULT_CLIENT_ID;
-  const navItems = isAdmin
-    ? [{ label: "Customer Setup", mobileLabel: "Customers", href: "/connections" }, ...CUSTOMER_NAV_ITEMS]
-    : CUSTOMER_NAV_ITEMS;
+  const navItems = isAdmin ? ADMIN_NAV_ITEMS : CUSTOMER_NAV_ITEMS;
 
   useEffect(() => {
     if (loading) return;
@@ -44,7 +49,7 @@ export default function AppShell({ children }) {
     }
 
     if (user && (pathname === "/login" || pathname === "/signup")) {
-      router.replace(isAdmin ? "/connections" : "/");
+      router.replace("/");
       return;
     }
 
@@ -90,8 +95,8 @@ export default function AppShell({ children }) {
                     key={item.href}
                     href={item.href}
                     className={active
-                      ? "min-w-0 rounded-lg bg-white px-1.5 py-2 text-center text-[10px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm"
-                      : "min-w-0 rounded-lg px-1.5 py-2 text-center text-[10px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}
+                      ? "min-w-0 rounded-lg bg-white px-1 py-2 text-center text-[9px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm"
+                      : "min-w-0 rounded-lg px-1 py-2 text-center text-[9px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}
                   >
                     <span className="sm:hidden">{item.mobileLabel}</span>
                     <span className="hidden sm:inline">{item.label}</span>
