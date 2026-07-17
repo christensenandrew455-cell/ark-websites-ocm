@@ -30,6 +30,11 @@ function list(value) {
 function businessInfoObject(body) {
   const services = list(body.services);
   const serviceDescriptions = Object.fromEntries(services.map((service) => [service.toLowerCase(), `${service}.`]));
+  const receptionistInstructions = text(body.receptionistInstructions);
+  const extraInformation = [
+    text(body.businessInfo),
+    receptionistInstructions ? `Special receptionist instructions: ${receptionistInstructions}` : "",
+  ].filter(Boolean).join("\n");
 
   return {
     name: text(body.businessName),
@@ -45,8 +50,8 @@ function businessInfoObject(body) {
     serviceAreas: list(body.serviceAreas),
     services: serviceDescriptions,
     about: list(body.about),
-    extraInformation: text(body.businessInfo),
-    receptionistInstructions: text(body.receptionistInstructions),
+    extraInformation,
+    receptionistInstructions,
   };
 }
 
@@ -74,6 +79,9 @@ export async function POST(request) {
     }
     if (temporaryPassword.length < 8) {
       return NextResponse.json({ error: "The temporary password must be at least 8 characters." }, { status: 400 });
+    }
+    if (!list(body.services).length) {
+      return NextResponse.json({ error: "Enter at least one service the receptionist may offer." }, { status: 400 });
     }
 
     const db = getAdminDb();
@@ -143,7 +151,7 @@ export async function POST(request) {
       serviceAreas: info.serviceAreas.join(", "),
       services: Object.keys(info.services).join("\n"),
       about: info.about.join("\n"),
-      businessInfo: info.extraInformation,
+      businessInfo: text(body.businessInfo),
       receptionistInstructions: info.receptionistInstructions,
       updatedBy: admin.decodedToken.uid,
       createdAt: FieldValue.serverTimestamp(),
