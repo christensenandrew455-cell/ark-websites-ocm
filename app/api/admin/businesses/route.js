@@ -19,42 +19,6 @@ function cleanClientId(value) {
     .replace(/^-|-$/g, "");
 }
 
-function list(value) {
-  if (Array.isArray(value)) return value.map(text).filter(Boolean);
-  return text(value)
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function businessInfoObject(body) {
-  const services = list(body.services);
-  const serviceDescriptions = Object.fromEntries(services.map((service) => [service.toLowerCase(), `${service}.`]));
-  const receptionistInstructions = text(body.receptionistInstructions);
-  const extraInformation = [
-    text(body.businessInfo),
-    receptionistInstructions ? `Special receptionist instructions: ${receptionistInstructions}` : "",
-  ].filter(Boolean).join("\n");
-
-  return {
-    name: text(body.businessName),
-    receptionist: text(body.receptionistName || "Alex"),
-    owner: text(body.ownerName),
-    phone: text(body.businessPhone || body.accountPhone),
-    email: text(body.notificationEmail || body.accountEmail).toLowerCase(),
-    hours: text(body.businessHours || "Monday through Friday, 8 AM to 5 PM"),
-    estimateDays: text(body.estimateDays || "Monday through Friday"),
-    earliestEstimateStart: text(body.earliestEstimateStart || "9:00 AM"),
-    latestEstimateStart: text(body.latestEstimateStart || "4:30 PM"),
-    base: text(body.businessBase),
-    serviceAreas: list(body.serviceAreas),
-    services: serviceDescriptions,
-    about: list(body.about),
-    extraInformation,
-    receptionistInstructions,
-  };
-}
-
 export async function POST(request) {
   const admin = await requireAdmin(request);
   if (admin.response) return admin.response;
@@ -67,9 +31,12 @@ export async function POST(request) {
     const businessName = text(body.businessName);
     const ownerName = text(body.ownerName);
     const accountEmail = text(body.accountEmail).toLowerCase();
-    const accountPhone = text(body.accountPhone);
     const temporaryPassword = String(body.temporaryPassword || "");
     const clientId = cleanClientId(body.clientId || businessName);
+    const businessPhone = text(body.businessPhone);
+    const notificationEmail = text(body.notificationEmail || accountEmail).toLowerCase();
+    const notificationPhone = text(body.notificationPhone || businessPhone);
+    const sourceLabel = text(body.sourceLabel || `${businessName} receptionist`);
 
     if (!businessName || !ownerName || !clientId) {
       return NextResponse.json({ error: "Business name, owner name, and client ID are required." }, { status: 400 });
@@ -77,11 +44,11 @@ export async function POST(request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
       return NextResponse.json({ error: "Enter a valid customer login email." }, { status: 400 });
     }
+    if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
+      return NextResponse.json({ error: "Enter a valid lead notification email." }, { status: 400 });
+    }
     if (temporaryPassword.length < 8) {
       return NextResponse.json({ error: "The temporary password must be at least 8 characters." }, { status: 400 });
-    }
-    if (!list(body.services).length) {
-      return NextResponse.json({ error: "Enter at least one service the receptionist may offer." }, { status: 400 });
     }
 
     const db = getAdminDb();
@@ -108,11 +75,6 @@ export async function POST(request) {
     await auth.setCustomUserClaims(createdUser.uid, { role: "customer", clientId });
 
     const connectionKey = randomBytes(24).toString("hex");
-    const info = businessInfoObject(body);
-    const sourceLabel = text(body.sourceLabel || `${businessName} receptionist`);
-    const notificationEmail = text(body.notificationEmail || accountEmail).toLowerCase();
-    const businessPhone = text(body.businessPhone || accountPhone);
-
     const accountData = {
       uid: createdUser.uid,
       clientId,
@@ -120,7 +82,7 @@ export async function POST(request) {
       businessName,
       ownerName,
       accountEmail,
-      accountPhone,
+      accountPhone: businessPhone,
       status: "active",
       paymentSetupStatus: "admin-created",
       createdBy: admin.decodedToken.uid,
@@ -132,27 +94,14 @@ export async function POST(request) {
       clientId,
       businessName,
       ownerName,
-      receptionistName: info.receptionist,
       enabled: true,
-      websiteUrl: "",
       businessPhone,
-      notificationPhone: accountPhone,
+      notificationPhone,
       notificationEmail,
       sourceLabel,
       defaultStage: "contactedMe",
       allowStageOverride: false,
-      notes: "",
       connectionKey,
-      businessHours: info.hours,
-      estimateDays: info.estimateDays,
-      earliestEstimateStart: info.earliestEstimateStart,
-      latestEstimateStart: info.latestEstimateStart,
-      businessBase: info.base,
-      serviceAreas: info.serviceAreas.join(", "),
-      services: Object.keys(info.services).join("\n"),
-      about: info.about.join("\n"),
-      businessInfo: text(body.businessInfo),
-      receptionistInstructions: info.receptionistInstructions,
       updatedBy: admin.decodedToken.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -173,13 +122,9 @@ export async function POST(request) {
       BusinessName: businessName,
       OwnerName: ownerName,
       AccountEmail: accountEmail,
-      AccountPhone: accountPhone,
+      AccountPhone: businessPhone,
       NotificationEmail: notificationEmail,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist"), {
-      ...info,
-      sourceLabel,
+      NotificationPhone: notificationPhone,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
@@ -188,12 +133,12 @@ export async function POST(request) {
       batch.set(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId), {
         Name: ownerName,
         BusinessName: businessName,
-        Phone: accountPhone,
+        Phone: businessPhone,
         Email: accountEmail,
         Address: businessName,
         PropertyKey: `business-${clientId}`,
         Job: "OCM customer account",
-        BestContactMethod: accountPhone ? "Call" : "Email",
+        BestContactMethod: businessPhone ? "Call" : "Email",
         Notes: `OCM customer account for ${businessName}.`,
         source: "admin-onboarding",
         RelatedBusinessClientId: clientId,
@@ -216,7 +161,6 @@ export async function POST(request) {
       businessName,
       accountEmail,
       connectionKey,
-      businessInfo: JSON.stringify(info),
     }, { status: 201 });
   } catch (error) {
     console.error("Unable to create customer account", error);
