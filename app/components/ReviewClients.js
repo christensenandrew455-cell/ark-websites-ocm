@@ -1,5 +1,6 @@
 "use client";
 
+import { Capacitor } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import {
   collection,
@@ -96,21 +97,20 @@ function calendarDate(row) {
   return date;
 }
 
-function addCalendarFile(row, clientId, businessName) {
-  const start = calendarDate(row);
-  if (!start) return false;
-
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
-  const title = `Estimate - ${row.Name || row.Address || "New client"}`;
-  const description = [
+function calendarDescription(row) {
+  return [
     row.Job && `Job: ${row.Job}`,
     row.Phone && `Phone: ${row.Phone}`,
     row.Email && `Email: ${row.Email}`,
     row.Notes && `Notes: ${row.Notes}`,
   ].filter(Boolean).join("\n");
+}
+
+function addCalendarFile(row, clientId, businessName, start) {
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const title = `Estimate - ${row.Name || row.Address || "New client"}`;
   const uid = `${row.id}-${Date.now()}@${safeFileName(clientId)}-ocm`;
   const now = new Date();
-
   const contents = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -122,19 +122,17 @@ function addCalendarFile(row, clientId, businessName) {
     `DTSTART:${calendarStamp(start)}`,
     `DTEND:${calendarStamp(end)}`,
     `SUMMARY:${escapeCalendarText(title)}`,
-    `DESCRIPTION:${escapeCalendarText(description)}`,
+    `DESCRIPTION:${escapeCalendarText(calendarDescription(row))}`,
     `LOCATION:${escapeCalendarText(row.Address)}`,
     "END:VEVENT",
     "END:VCALENDAR",
   ].join("\r\n");
 
   downloadFile(`${safeFileName(row.Name || row.Address)}-estimate.ics`, contents, "text/calendar;charset=utf-8");
-  return true;
 }
 
 function addContactFile(row, businessName) {
   if (!row.Name && !row.Phone && !row.Email) return false;
-
   const name = row.Name || row.Address || `${businessName} Client`;
   const contents = [
     "BEGIN:VCARD",
@@ -151,9 +149,100 @@ function addContactFile(row, businessName) {
   return true;
 }
 
+async function addCalendar(row, clientId, businessName) {
+  const start = calendarDate(row);
+  if (!start) return { ok: false, reason: "missing-date" };
+
+  if (!Capacitor.isNativePlatform()) {
+    addCalendarFile(row, clientId, businessName, start);
+    return { ok: true, native: false };
+  }
+
+  try {
+    const { CapacitorCalendar } = await import("@ebarooni/capacitor-calendar");
+    const permission = await CapacitorCalendar.requestWriteOnlyCalendarAccess();
+    if (permission.result !== "granted") return { ok: false, reason: "calendar-permission" };
+
+    await CapacitorCalendar.createEvent({
+      title: `Estimate - ${row.Name || row.Address || "New client"}`,
+      location: row.Address || "",
+      startDate: start.getTime(),
+      endDate: start.getTime() + 60 * 60 * 1000,
+      description: calendarDescription(row),
+    });
+    return { ok: true, native: true };
+  } catch (error) {
+    console.error("Unable to add native calendar event", error);
+    return { ok: false, reason: "calendar-error" };
+  }
+}
+
+function splitName(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { given: parts[0] || "Client", family: "" };
+  return { given: parts.shift(), family: parts.join(" ") };
+}
+
+async function addContact(row, businessName) {
+  if (!row.Name && !row.Phone && !row.Email) return { ok: false, reason: "missing-contact" };
+
+  if (!Capacitor.isNativePlatform()) {
+    return { ok: addContactFile(row, businessName), native: false };
+  }
+
+  try {
+    const { Contacts } = await import("@capacitor-community/contacts");
+    let permission = await Contacts.checkPermissions();
+    if (permission.contacts === "prompt" || permission.contacts === "prompt-with-rationale") {
+      permission = await Contacts.requestPermissions();
+    }
+    if (permission.contacts !== "granted") return { ok: false, reason: "contacts-permission" };
+
+    const name = splitName(row.Name || row.Address || `${businessName} Client`);
+    await Contacts.createContact({
+      contact: {
+        name,
+        organization: {
+          company: businessName,
+          jobTitle: "Client",
+        },
+        note: [row.Job && `Requested service: ${row.Job}`, row.Notes].filter(Boolean).join("\n") || null,
+        phones: row.Phone ? [{ type: "mobile", number: row.Phone, isPrimary: true }] : [],
+        emails: row.Email ? [{ type: "work", address: row.Email, isPrimary: true }] : [],
+        postalAddresses: row.Address ? [{ type: "work", street: row.Address, isPrimary: true }] : [],
+      },
+    });
+    return { ok: true, native: true };
+  } catch (error) {
+    console.error("Unable to add native contact", error);
+    return { ok: false, reason: "contacts-error" };
+  }
+}
+
+async function markLeadsViewed(user) {
+  if (!user) return;
+  try {
+    const token = await user.getIdToken(true);
+    await fetch("/api/notifications/device", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: "mark-viewed" }),
+    });
+    if (Capacitor.isNativePlatform()) {
+      const { PushNotifications } = await import("@capacitor/push-notifications");
+      await PushNotifications.removeAllDeliveredNotifications();
+    }
+  } catch (error) {
+    console.warn("Unable to mark lead notifications viewed", error);
+  }
+}
+
 function Detail({ label, value, wide = false }) {
   return (
-    <div className={wide ? "sm:col-span-2" : ""}>
+    <div className={wide ? "col-span-2" : ""}>
       <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{label}</p>
       <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium text-slate-900">{value || "—"}</p>
     </div>
@@ -172,9 +261,7 @@ function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="fixed inset-0 cursor-default" onClick={onClose} aria-label="Close" />
-      <div className="relative mx-auto my-3 max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl sm:my-8">
-        {children}
-      </div>
+      <div className="relative mx-auto my-3 max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl sm:my-8">{children}</div>
     </div>
   );
 }
@@ -286,13 +373,9 @@ function EmptyState({ children }) {
 
 function SummaryCard({ title, subtitle, count, active, loading, onClick }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={active
-        ? "rounded-2xl border border-slate-950 bg-slate-950 p-4 text-left text-white shadow-sm"
-        : "rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.98]"}
-    >
+    <button type="button" onClick={onClick} className={active
+      ? "rounded-2xl border border-slate-950 bg-slate-950 p-4 text-left text-white shadow-sm"
+      : "rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.98]"}>
       <p className={active ? "text-4xl font-black" : "text-4xl font-black text-slate-950"}>{loading ? "…" : count}</p>
       <h2 className="mt-1 text-sm font-black">{title}</h2>
       <p className={active ? "mt-1 text-[10px] font-bold text-slate-300" : "mt-1 text-[10px] font-bold text-slate-400"}>{subtitle}</p>
@@ -301,7 +384,7 @@ function SummaryCard({ title, subtitle, count, active, loading, onClick }) {
 }
 
 export default function ReviewClients() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const clientId = profile?.clientId || "";
   const businessName = profile?.businessName || "Your Business";
   const [contacted, setContacted] = useState([]);
@@ -357,6 +440,14 @@ export default function ReviewClients() {
     };
   }, [clientId]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("section") === "contacted") {
+      setActiveSection("contacted");
+      markLeadsViewed(user);
+    }
+  }, [user]);
+
   const clients = useMemo(() => (
     ACCEPTED_COLLECTIONS
       .flatMap((collectionKey) => acceptedByCollection[collectionKey] || [])
@@ -394,17 +485,19 @@ export default function ReviewClients() {
       batch.delete(doc(db, "ocmClients", clientId, "contactedMe", row.id));
       await batch.commit();
 
-      const calendarAdded = addCalendarFile(row, clientId, businessName);
-      const contactAdded = includeContacts ? addContactFile(row, businessName) : true;
+      const calendarResult = await addCalendar(row, clientId, businessName);
+      const contactResult = includeContacts ? await addContact(row, businessName) : { ok: true };
 
-      if (!calendarAdded) {
-        setNotice(`${row.Name || "Client"} was accepted. No usable estimate date was found, so the calendar file was not created.`);
-      } else if (!contactAdded) {
-        setNotice(`${row.Name || "Client"} was accepted and added to the calendar. There was not enough contact information to create a contact file.`);
+      if (!calendarResult.ok && calendarResult.reason === "missing-date") {
+        setNotice(`${row.Name || "Client"} was accepted. Add an estimate date before creating a calendar event.`);
+      } else if (!calendarResult.ok) {
+        setNotice(`${row.Name || "Client"} was accepted, but calendar access was not available.`);
+      } else if (!contactResult.ok) {
+        setNotice(`${row.Name || "Client"} was accepted and added to the calendar, but contact access was not available.`);
       } else {
         setNotice(includeContacts
-          ? `${row.Name || "Client"} was accepted. Calendar and contact files are ready.`
-          : `${row.Name || "Client"} was accepted and the calendar file is ready.`);
+          ? `${row.Name || "Client"} was accepted and added to the phone calendar and contacts.`
+          : `${row.Name || "Client"} was accepted and added to the phone calendar.`);
       }
     } catch (acceptError) {
       console.error(acceptError);
@@ -438,7 +531,11 @@ export default function ReviewClients() {
   }
 
   function toggleSection(section) {
-    setActiveSection((current) => current === section ? null : section);
+    setActiveSection((current) => {
+      const next = current === section ? null : section;
+      if (next === "contacted") markLeadsViewed(user);
+      return next;
+    });
   }
 
   return (
@@ -453,22 +550,8 @@ export default function ReviewClients() {
         {notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
 
         <section className="grid grid-cols-2 gap-3">
-          <SummaryCard
-            title="Contacted Me"
-            subtitle="Tap to review new callers"
-            count={contacted.length}
-            loading={!contactedLoaded}
-            active={activeSection === "contacted"}
-            onClick={() => toggleSection("contacted")}
-          />
-          <SummaryCard
-            title="Clients"
-            subtitle="Tap to review accepted clients"
-            count={clients.length}
-            loading={!clientsLoaded}
-            active={activeSection === "clients"}
-            onClick={() => toggleSection("clients")}
-          />
+          <SummaryCard title="Contacted Me" subtitle="Tap to review new callers" count={contacted.length} loading={!contactedLoaded} active={activeSection === "contacted"} onClick={() => toggleSection("contacted")} />
+          <SummaryCard title="Clients" subtitle="Tap to review accepted clients" count={clients.length} loading={!clientsLoaded} active={activeSection === "clients"} onClick={() => toggleSection("clients")} />
         </section>
 
         {activeSection === "contacted" && (
