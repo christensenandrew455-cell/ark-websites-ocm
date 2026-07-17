@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../lib/firebase-admin";
+import { sendNewLeadNotification } from "../../lib/notificationService";
 import {
   createJob,
   mergeJobs,
@@ -134,7 +135,7 @@ function buildRow(data, source, channel) {
       data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod || (isPhoneChannel ? "Text" : "")
     ),
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay),
-    PreferredTime: text(data.PreferredTime || data.preferredTime || data.estimateTime),
+    PreferredTime: text(data.PreferredTime || data.estimateTime || data.preferredTime),
     Notes: text(data.Notes || data.notes || data.message || data.summary || data.Body || data.TranscriptionText || data.CallStatus),
     source,
     rawSubmission: safeSubmission(data),
@@ -320,6 +321,14 @@ export async function POST(request) {
     }, { merge: true });
 
     await batch.commit();
+
+    if (sectionKey === "contactedMe") {
+      try {
+        await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
+      } catch (notificationError) {
+        console.error("Lead saved but push notification delivery failed", notificationError);
+      }
+    }
 
     return Response.json(
       {
