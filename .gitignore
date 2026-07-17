@@ -1,6 +1,7 @@
 node_modules
 .next
 out
+android
 .env
 .env.local
 .env.production
