@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { useAuth } from "./components/AuthProvider";
@@ -51,28 +50,41 @@ function eventsFromProfile(profile) {
   }];
 }
 
-function MetricCard({ value, title, description }) {
+function profileDate(profile) {
+  return profile.data.acceptedAt || profile.data.movedAt || profile.data.updatedAt || profile.data.createdAt;
+}
+
+function MetricCard({ value, title, onClick }) {
   return (
-    <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:rounded-3xl sm:p-6 md:p-8">
+    <button
+      type="button"
+      onClick={onClick}
+      className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition active:scale-[0.98] sm:rounded-3xl sm:p-6 md:p-8"
+    >
       <p className="text-3xl font-black tracking-tight text-slate-950 sm:text-5xl">{value}</p>
-      <h2 className="mt-1.5 text-sm font-black leading-tight sm:mt-3 sm:text-xl">{title}</h2>
-      <p className="mt-2 hidden text-sm leading-6 text-slate-600 sm:block">{description}</p>
-    </article>
+      <h2 className="mt-1.5 text-[11px] font-black leading-tight text-slate-700 sm:mt-3 sm:text-xl">{title}</h2>
+      <p className="mt-2 text-[10px] font-bold text-slate-400 sm:text-sm">Tap for details</p>
+    </button>
   );
 }
 
-function ActionCard({ href, title, description, action }) {
+function MetricModal({ metric, onClose }) {
+  if (!metric) return null;
+
   return (
-    <Link
-      href={href}
-      className="group min-w-0 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md sm:rounded-3xl sm:p-6 md:p-8"
-    >
-      <h2 className="text-base font-black leading-tight tracking-tight sm:text-2xl">{title}</h2>
-      <p className="mt-2 hidden text-sm leading-6 text-slate-600 sm:block">{description}</p>
-      <p className="mt-3 text-xs font-black text-slate-950 sm:mt-6 sm:text-sm">
-        {action} <span aria-hidden="true" className="transition group-hover:translate-x-1">→</span>
-      </p>
-    </Link>
+    <div className="fixed inset-0 z-50 flex items-end bg-slate-950/60 p-3 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-label={metric.title}>
+      <button type="button" className="fixed inset-0" onClick={onClose} aria-label="Close details" />
+      <section className="relative w-full rounded-3xl bg-white p-6 shadow-2xl sm:max-w-lg sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-5xl font-black tracking-tight text-slate-950">{metric.value}</p>
+            <h2 className="mt-2 text-2xl font-black">{metric.title}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold">Close</button>
+        </div>
+        <p className="mt-5 text-base leading-7 text-slate-600">{metric.description}</p>
+      </section>
+    </div>
   );
 }
 
@@ -82,6 +94,7 @@ export default function HomePage() {
   const [businessName, setBusinessName] = useState(profile?.businessName || "Your Business");
   const [profiles, setProfiles] = useState([]);
   const [range, setRange] = useState("today");
+  const [activeMetric, setActiveMetric] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -94,7 +107,7 @@ export default function HomePage() {
 
     let active = true;
 
-    async function loadHomeScreen() {
+    async function loadDashboard() {
       setIsLoading(true);
       setError("");
 
@@ -106,11 +119,11 @@ export default function HomePage() {
 
         if (!active) return;
 
-        if (businessSnapshot.exists()) {
-          setBusinessName(businessSnapshot.data().businessName || profile?.businessName || "Your Business");
-        } else {
-          setBusinessName(profile?.businessName || "Your Business");
-        }
+        setBusinessName(
+          businessSnapshot.exists()
+            ? businessSnapshot.data().businessName || profile?.businessName || "Your Business"
+            : profile?.businessName || "Your Business"
+        );
 
         const nextProfiles = [];
         stageSnapshots.forEach((snapshot, index) => {
@@ -131,7 +144,7 @@ export default function HomePage() {
       }
     }
 
-    loadHomeScreen();
+    loadDashboard();
     return () => {
       active = false;
     };
@@ -139,11 +152,33 @@ export default function HomePage() {
 
   const metrics = useMemo(() => {
     const events = profiles.flatMap(eventsFromProfile).filter((event) => insideRange(event.date, range));
+    const acceptedProfiles = profiles.filter((item) => item.stage !== "contactedMe" && insideRange(profileDate(item), range));
+
     return {
       contactedYou: new Set(events.map((event) => event.profileId)).size,
       usage: events.length,
+      clients: new Set(acceptedProfiles.map((item) => item.id)).size,
     };
   }, [profiles, range]);
+
+  const rangeLabel = TIME_RANGES.find((option) => option.key === range)?.label || "Selected period";
+  const metricDetails = {
+    contacted: {
+      value: metrics.contactedYou.toLocaleString(),
+      title: "Contacted You",
+      description: `This is the number of unique people recorded as contacting ${businessName} for ${rangeLabel.toLowerCase()}.`,
+    },
+    usage: {
+      value: metrics.usage.toLocaleString(),
+      title: "System Usage",
+      description: `This currently counts lead and job intake activity recorded by the client center for ${rangeLabel.toLowerCase()}. It does not yet represent billable call minutes or remaining plan usage. Telnyx and AI usage data will be connected separately.`,
+    },
+    clients: {
+      value: metrics.clients.toLocaleString(),
+      title: "Clients",
+      description: `This is the number of accepted client records added during ${rangeLabel.toLowerCase()}. Open the Clients tab to review the actual people.`,
+    },
+  };
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:px-5 sm:py-8 md:px-8 md:py-10">
@@ -151,10 +186,7 @@ export default function HomePage() {
         <header className="mb-4 sm:mb-8 sm:flex sm:items-end sm:justify-between sm:gap-6">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500 sm:text-xs sm:tracking-[0.28em]">{businessName}</p>
-            <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:mt-3 sm:text-4xl md:text-5xl">Home</h1>
-            <p className="mt-2 hidden max-w-2xl text-base leading-7 text-slate-600 sm:block">
-              See who contacted the business, review system activity, and open the tools you use most.
-            </p>
+            <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:mt-3 sm:text-4xl md:text-5xl">Dashboard</h1>
           </div>
 
           <div className="mt-3 grid w-full grid-cols-3 rounded-xl border border-slate-200 bg-white p-1 shadow-sm sm:mt-0 sm:inline-flex sm:w-fit sm:rounded-2xl sm:p-1.5">
@@ -173,48 +205,20 @@ export default function HomePage() {
           </div>
         </header>
 
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700 sm:mb-6 sm:rounded-2xl sm:p-4">
-            {error}
-          </div>
-        )}
+        {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
 
         {isLoading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm sm:rounded-3xl sm:p-12">
-            Loading business activity…
-          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">Loading dashboard…</div>
         ) : (
-          <>
-            <section className="grid grid-cols-2 gap-3 sm:gap-5">
-              <MetricCard
-                value={metrics.contactedYou.toLocaleString()}
-                title="Contacted You"
-                description={`Unique people who contacted ${businessName} during the selected time period.`}
-              />
-              <MetricCard
-                value={metrics.usage.toLocaleString()}
-                title="System Usage"
-                description="Lead and job intake events processed by the AI receptionist and client center."
-              />
-            </section>
-
-            <section className="mt-3 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-5">
-              <ActionCard
-                href="/review-my-clients"
-                title="Review My Clients"
-                description="Open incoming leads and existing client records, then accept, update, or review them."
-                action="Open clients"
-              />
-              <ActionCard
-                href="/settings"
-                title="Settings"
-                description={`Update the business and notification details used by the ${businessName} client center.`}
-                action="Open settings"
-              />
-            </section>
-          </>
+          <section className="grid grid-cols-3 gap-2.5 sm:gap-5">
+            <MetricCard value={metricDetails.contacted.value} title={metricDetails.contacted.title} onClick={() => setActiveMetric(metricDetails.contacted)} />
+            <MetricCard value={metricDetails.usage.value} title={metricDetails.usage.title} onClick={() => setActiveMetric(metricDetails.usage)} />
+            <MetricCard value={metricDetails.clients.value} title={metricDetails.clients.title} onClick={() => setActiveMetric(metricDetails.clients)} />
+          </section>
         )}
       </div>
+
+      <MetricModal metric={activeMetric} onClose={() => setActiveMetric(null)} />
     </main>
   );
 }
