@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "./AuthProvider";
+import NativeAppSetup from "./NativeAppSetup";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
 const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
@@ -102,6 +103,7 @@ export default function AppShell({ children }) {
           </div>
         </div>
       </header>
+      <NativeAppSetup />
       {children}
     </>
   );
