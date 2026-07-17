@@ -72,13 +72,14 @@ jobs:
 
       - name: Add Firebase Android configuration
         env:
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.FIREBASE_ANDROID_GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
-            echo "Firebase Cloud Messaging configuration added."
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+            node -e "JSON.parse(require('fs').readFileSync('android/app/google-services.json', 'utf8')); console.log('Firebase Cloud Messaging configuration added and validated.')"
           else
-            echo "::warning::FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_BASE64 is not configured. APK will build, but push registration will not work."
+            echo "::error::FIREBASE_ANDROID_GOOGLE_SERVICES_JSON is not configured."
+            exit 1
           fi
 
       - name: Set up Gradle cache
