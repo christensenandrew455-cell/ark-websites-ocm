@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../lib/firebase-admin";
+import { sendRequestStatusNotification } from "../../lib/notificationService";
 import { requireUser } from "../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -8,6 +9,12 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_TYPES = new Set(["help", "change"]);
 const ALLOWED_STATUSES = new Set(["new", "in-progress", "completed", "denied"]);
+const STATUS_TRANSITIONS = {
+  new: new Set(["in-progress", "denied"]),
+  "in-progress": new Set(["completed"]),
+  completed: new Set(),
+  denied: new Set(),
+};
 
 function text(value) {
   return String(value || "").trim();
@@ -128,18 +135,46 @@ export async function PATCH(request) {
   const adminNote = text(body.adminNote);
 
   if (!id || !status) return NextResponse.json({ error: "Choose a request and status." }, { status: 400 });
+  if (status === "denied" && !adminNote) {
+    return NextResponse.json({ error: "Add a short reason before denying the request." }, { status: 400 });
+  }
 
-  const ref = getAdminDb().collection("supportRequests").doc(id);
+  const db = getAdminDb();
+  const ref = db.collection("supportRequests").doc(id);
   const snapshot = await ref.get();
   if (!snapshot.exists) return NextResponse.json({ error: "That request no longer exists." }, { status: 404 });
+
+  const current = snapshot.data();
+  const currentStatus = ALLOWED_STATUSES.has(current.status) ? current.status : "new";
+  if (!STATUS_TRANSITIONS[currentStatus]?.has(status)) {
+    return NextResponse.json(
+      { error: currentStatus === "new" ? "Start or deny this request first." : currentStatus === "in-progress" ? "Complete this request when the work is finished." : "This request is already closed." },
+      { status: 409 }
+    );
+  }
 
   await ref.set({
     status,
     adminNote,
     updatedBy: user.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
-    ...(status === "completed" || status === "denied" ? { closedAt: FieldValue.serverTimestamp() } : {}),
+    ...(status === "in-progress" ? { startedAt: FieldValue.serverTimestamp() } : {}),
+    ...(status === "completed" ? { completedAt: FieldValue.serverTimestamp(), closedAt: FieldValue.serverTimestamp() } : {}),
+    ...(status === "denied" ? { deniedAt: FieldValue.serverTimestamp(), closedAt: FieldValue.serverTimestamp() } : {}),
   }, { merge: true });
+
+  try {
+    await sendRequestStatusNotification({
+      db,
+      clientId: cleanClientId(current.clientId),
+      requestId: id,
+      subject: text(current.subject),
+      status,
+      adminNote,
+    });
+  } catch (notificationError) {
+    console.error("Request status saved but customer notification failed", notificationError);
+  }
 
   return NextResponse.json({ ok: true });
 }
