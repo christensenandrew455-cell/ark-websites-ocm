@@ -10,9 +10,9 @@ import {
   setDoc,
   writeBatch,
 } from "firebase/firestore";
+import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
-const CLIENT_ID = "tabor-painting";
 const ACCEPTED_COLLECTIONS = ["preClients", "clients", "postClients"];
 
 function firstValue(...values) {
@@ -91,15 +91,12 @@ function calendarDate(row) {
   if (Number.isNaN(date.getTime())) return null;
 
   const timeMatch = String(row.EstimateTime || "").match(/^(\d{1,2}):(\d{2})/);
-  if (timeMatch) {
-    date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
-  } else {
-    date.setHours(9, 0, 0, 0);
-  }
+  if (timeMatch) date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+  else date.setHours(9, 0, 0, 0);
   return date;
 }
 
-function addCalendarFile(row) {
+function addCalendarFile(row, clientId, businessName) {
   const start = calendarDate(row);
   if (!start) return false;
 
@@ -111,13 +108,13 @@ function addCalendarFile(row) {
     row.Email && `Email: ${row.Email}`,
     row.Notes && `Notes: ${row.Notes}`,
   ].filter(Boolean).join("\n");
-  const uid = `${row.id}-${Date.now()}@tabor-painting-ocm`;
+  const uid = `${row.id}-${Date.now()}@${safeFileName(clientId)}-ocm`;
   const now = new Date();
 
   const contents = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Tabor Painting//Client Collection Center//EN",
+    `PRODID:-//${escapeCalendarText(businessName)}//Client Collection Center//EN`,
     "CALSCALE:GREGORIAN",
     "BEGIN:VEVENT",
     `UID:${uid}`,
@@ -135,10 +132,10 @@ function addCalendarFile(row) {
   return true;
 }
 
-function addContactFile(row) {
+function addContactFile(row, businessName) {
   if (!row.Name && !row.Phone && !row.Email) return false;
 
-  const name = row.Name || row.Address || "Tabor Painting Client";
+  const name = row.Name || row.Address || `${businessName} Client`;
   const contents = [
     "BEGIN:VCARD",
     "VERSION:3.0",
@@ -205,7 +202,7 @@ function ViewModal({ row, onClose }) {
   );
 }
 
-function EditModal({ row, onClose, onSaved }) {
+function EditModal({ row, clientId, onClose, onSaved }) {
   const [form, setForm] = useState({
     Name: row.Name || "",
     Phone: row.Phone || "",
@@ -228,7 +225,7 @@ function EditModal({ row, onClose, onSaved }) {
     setSaving(true);
     setError("");
     try {
-      await setDoc(doc(db, "ocmClients", CLIENT_ID, row.collectionKey || "clients", row.id), {
+      await setDoc(doc(db, "ocmClients", clientId, row.collectionKey || "clients", row.id), {
         ...form,
         updatedAt: serverTimestamp(),
       }, { merge: true });
@@ -265,22 +262,12 @@ function EditModal({ row, onClose, onSaved }) {
           {fields.map(([field, label, type]) => (
             <label key={field} className={field === "Address" ? "sm:col-span-2" : ""}>
               <span className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
-              <input
-                type={type}
-                value={form[field]}
-                onChange={(event) => update(field, event.target.value)}
-                className="h-11 w-full rounded-xl border border-slate-300 px-3 outline-none focus:border-slate-950"
-              />
+              <input type={type} value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-11 w-full rounded-xl border border-slate-300 px-3 outline-none focus:border-slate-950" />
             </label>
           ))}
           <label className="sm:col-span-2">
             <span className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">Notes</span>
-            <textarea
-              rows={4}
-              value={form.Notes}
-              onChange={(event) => update("Notes", event.target.value)}
-              className="w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-slate-950"
-            />
+            <textarea rows={4} value={form.Notes} onChange={(event) => update("Notes", event.target.value)} className="w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-slate-950" />
           </label>
           {error && <div className="sm:col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         </div>
@@ -298,6 +285,9 @@ function EmptyState({ children }) {
 }
 
 export default function ReviewClients() {
+  const { profile } = useAuth();
+  const clientId = profile?.clientId || "";
+  const businessName = profile?.businessName || "Your Business";
   const [contacted, setContacted] = useState([]);
   const [acceptedByCollection, setAcceptedByCollection] = useState({});
   const [loaded, setLoaded] = useState(new Set());
@@ -308,8 +298,17 @@ export default function ReviewClients() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!clientId) {
+      setError("This account does not have a business assigned yet.");
+      return undefined;
+    }
+
+    setLoaded(new Set());
+    setContacted([]);
+    setAcceptedByCollection({});
+
     const unsubscribeContacted = onSnapshot(
-      collection(db, "ocmClients", CLIENT_ID, "contactedMe"),
+      collection(db, "ocmClients", clientId, "contactedMe"),
       (snapshot) => {
         setContacted(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "contactedMe")).sort((a, b) => rowTime(b) - rowTime(a)));
         setLoaded((current) => new Set(current).add("contactedMe"));
@@ -321,7 +320,7 @@ export default function ReviewClients() {
     );
 
     const acceptedUnsubscribers = ACCEPTED_COLLECTIONS.map((collectionKey) => onSnapshot(
-      collection(db, "ocmClients", CLIENT_ID, collectionKey),
+      collection(db, "ocmClients", clientId, collectionKey),
       (snapshot) => {
         setAcceptedByCollection((current) => ({
           ...current,
@@ -339,7 +338,7 @@ export default function ReviewClients() {
       unsubscribeContacted();
       acceptedUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, []);
+  }, [clientId]);
 
   const clients = useMemo(() => (
     ACCEPTED_COLLECTIONS
@@ -361,7 +360,7 @@ export default function ReviewClients() {
 
   async function acceptLead(row, includeContacts) {
     const key = `accept:${row.id}`;
-    if (busy.has(key)) return;
+    if (!clientId || busy.has(key)) return;
     markBusy(key, true);
     setNotice("");
     setError("");
@@ -369,17 +368,17 @@ export default function ReviewClients() {
     try {
       const { id, collectionKey, ...data } = row;
       const batch = writeBatch(db);
-      batch.set(doc(db, "ocmClients", CLIENT_ID, "clients", row.id), {
+      batch.set(doc(db, "ocmClients", clientId, "clients", row.id), {
         ...data,
         currentStage: "clients",
         acceptedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
-      batch.delete(doc(db, "ocmClients", CLIENT_ID, "contactedMe", row.id));
+      batch.delete(doc(db, "ocmClients", clientId, "contactedMe", row.id));
       await batch.commit();
 
-      const calendarAdded = addCalendarFile(row);
-      const contactAdded = includeContacts ? addContactFile(row) : true;
+      const calendarAdded = addCalendarFile(row, clientId, businessName);
+      const contactAdded = includeContacts ? addContactFile(row, businessName) : true;
 
       if (!calendarAdded) {
         setNotice(`${row.Name || "Client"} was accepted. No usable estimate date was found, so the calendar file was not created.`);
@@ -403,13 +402,13 @@ export default function ReviewClients() {
     if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
 
     const key = `delete:${row.collectionKey}:${row.id}`;
-    if (busy.has(key)) return;
+    if (!clientId || busy.has(key)) return;
     markBusy(key, true);
     setNotice("");
     setError("");
 
     try {
-      await deleteDoc(doc(db, "ocmClients", CLIENT_ID, row.collectionKey, row.id));
+      await deleteDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id));
       if (viewing?.id === row.id) setViewing(null);
       if (editing?.id === row.id) setEditing(null);
       setNotice(`${label} was deleted.`);
@@ -425,7 +424,7 @@ export default function ReviewClients() {
     <main className="min-h-screen bg-slate-50 px-5 py-8 text-slate-950 md:px-8 md:py-10">
       <div className="mx-auto max-w-6xl">
         <header className="mb-8">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Tabor Painting</p>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">{businessName}</p>
           <h1 className="mt-3 text-4xl font-black tracking-tight md:text-5xl">Review My Clients</h1>
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">Accept new callers, save their estimate, and keep one simple list of clients.</p>
         </header>
@@ -503,7 +502,7 @@ export default function ReviewClients() {
       </div>
 
       {viewing && <ViewModal row={viewing} onClose={() => setViewing(null)} />}
-      {editing && <EditModal row={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setNotice("Client changes were saved."); }} />}
+      {editing && <EditModal row={editing} clientId={clientId} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setNotice("Client changes were saved."); }} />}
     </main>
   );
 }
