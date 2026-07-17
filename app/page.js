@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { useAuth } from "./components/AuthProvider";
 import { db } from "./lib/firebase";
 
-const CLIENT_ID = "tabor-painting";
 const STAGES = ["contactedMe", "preClients", "clients", "postClients"];
 const TIME_RANGES = [
   { key: "today", label: "Today" },
@@ -77,13 +77,21 @@ function ActionCard({ href, title, description, action }) {
 }
 
 export default function HomePage() {
-  const [businessName, setBusinessName] = useState("Tabor Painting");
+  const { profile } = useAuth();
+  const clientId = profile?.clientId || "";
+  const [businessName, setBusinessName] = useState(profile?.businessName || "Your Business");
   const [profiles, setProfiles] = useState([]);
   const [range, setRange] = useState("today");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!clientId) {
+      setIsLoading(false);
+      setError("This account does not have a business assigned yet.");
+      return undefined;
+    }
+
     let active = true;
 
     async function loadHomeScreen() {
@@ -92,14 +100,16 @@ export default function HomePage() {
 
       try {
         const [businessSnapshot, ...stageSnapshots] = await Promise.all([
-          getDoc(doc(db, "businesses", CLIENT_ID)),
-          ...STAGES.map((stage) => getDocs(collection(db, "ocmClients", CLIENT_ID, stage))),
+          getDoc(doc(db, "businesses", clientId)),
+          ...STAGES.map((stage) => getDocs(collection(db, "ocmClients", clientId, stage))),
         ]);
 
         if (!active) return;
 
         if (businessSnapshot.exists()) {
-          setBusinessName(businessSnapshot.data().businessName || "Tabor Painting");
+          setBusinessName(businessSnapshot.data().businessName || profile?.businessName || "Your Business");
+        } else {
+          setBusinessName(profile?.businessName || "Your Business");
         }
 
         const nextProfiles = [];
@@ -115,7 +125,7 @@ export default function HomePage() {
         setProfiles(nextProfiles);
       } catch (loadError) {
         console.error(loadError);
-        if (active) setError("Unable to load Tabor Painting data. Check the Firebase connection and try again.");
+        if (active) setError("Unable to load this business account. Check the Firebase connection and try again.");
       } finally {
         if (active) setIsLoading(false);
       }
@@ -125,7 +135,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [clientId, profile?.businessName]);
 
   const metrics = useMemo(() => {
     const events = profiles.flatMap(eventsFromProfile).filter((event) => insideRange(event.date, range));
@@ -171,7 +181,7 @@ export default function HomePage() {
 
         {isLoading ? (
           <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-slate-500 shadow-sm">
-            Loading Tabor Painting activity…
+            Loading business activity…
           </div>
         ) : (
           <>
@@ -179,7 +189,7 @@ export default function HomePage() {
               <MetricCard
                 value={metrics.contactedYou.toLocaleString()}
                 title="Contacted You"
-                description="Unique people who contacted Tabor Painting during the selected time period."
+                description={`Unique people who contacted ${businessName} during the selected time period.`}
               />
               <MetricCard
                 value={metrics.usage.toLocaleString()}
@@ -198,7 +208,7 @@ export default function HomePage() {
               <ActionCard
                 href="/settings"
                 title="Settings"
-                description="Update the business and notification details used by the Tabor Painting client center."
+                description={`Update the business and notification details used by the ${businessName} client center.`}
                 action="Open settings"
               />
             </section>
