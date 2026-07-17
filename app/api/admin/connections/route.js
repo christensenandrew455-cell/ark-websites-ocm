@@ -19,12 +19,23 @@ function cleanClientId(value) {
     .replace(/^-|-$/g, "");
 }
 
+function iso(value) {
+  if (!value) return "";
+  if (typeof value.toDate === "function") return value.toDate().toISOString();
+  if (typeof value.seconds === "number") return new Date(value.seconds * 1000).toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
 function connectionPayload(clientId, business, data) {
   return {
     clientId,
     businessName: text(business.businessName || data.businessName || clientId),
     ownerName: text(data.ownerName || business.ownerName),
     accountEmail: text(business.accountEmail).toLowerCase(),
+    status: text(business.status || "active"),
+    disabledAt: iso(business.disabledAt || data.disabledAt),
+    deletionScheduledFor: iso(business.deletionScheduledFor || data.deletionScheduledFor),
     enabled: data.enabled !== false,
     businessPhone: text(data.businessPhone || business.accountPhone),
     notificationPhone: text(data.notificationPhone || data.businessPhone || business.accountPhone),
@@ -97,7 +108,7 @@ export async function POST(request) {
     clientId,
     businessName: text(business.businessName || clientId),
     ownerName: text(body.ownerName || business.ownerName),
-    enabled: body.enabled !== false,
+    enabled: body.enabled !== false && business.status !== "disabled",
     businessPhone: text(body.businessPhone || business.accountPhone),
     notificationPhone: text(body.notificationPhone || body.businessPhone || business.accountPhone),
     notificationEmail,
