@@ -8,7 +8,7 @@ import { useAuth } from "./AuthProvider";
 const DEFAULT_CLIENT_ID = "tabor-painting";
 const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
 const CUSTOMER_NAV_ITEMS = [
-  { label: "Home", mobileLabel: "Home", href: "/" },
+  { label: "Dashboard", mobileLabel: "Dashboard", href: "/" },
   { label: "Review My Clients", mobileLabel: "Clients", href: "/review-my-clients" },
   { label: "Settings", mobileLabel: "Settings", href: "/settings" },
 ];
@@ -89,8 +89,8 @@ export default function AppShell({ children }) {
                     key={item.href}
                     href={item.href}
                     className={active
-                      ? "min-w-0 rounded-lg bg-white px-2 py-2 text-center text-[11px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm"
-                      : "min-w-0 rounded-lg px-2 py-2 text-center text-[11px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}
+                      ? "min-w-0 rounded-lg bg-white px-1.5 py-2 text-center text-[10px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm"
+                      : "min-w-0 rounded-lg px-1.5 py-2 text-center text-[10px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}
                   >
                     <span className="sm:hidden">{item.mobileLabel}</span>
                     <span className="hidden sm:inline">{item.label}</span>
