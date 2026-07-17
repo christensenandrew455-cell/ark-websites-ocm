@@ -85,7 +85,7 @@ async function adminApi(user, url) {
 }
 
 function AdminDashboard({ user }) {
-  const [metrics, setMetrics] = useState({ openMessages: 0, customers: 0, phones: 0, unread: 0 });
+  const [metrics, setMetrics] = useState({ openMessages: 0, customers: 0, disabled: 0, scheduled: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -94,18 +94,16 @@ function AdminDashboard({ user }) {
     Promise.all([
       adminApi(user, "/api/requests"),
       adminApi(user, "/api/admin/connections"),
-      adminApi(user, "/api/admin/notifications"),
     ])
-      .then(([requestData, connectionData, notificationData]) => {
+      .then(([requestData, connectionData]) => {
         if (!active) return;
         const requests = requestData.requests || [];
         const businesses = connectionData.businesses || [];
-        const notifications = notificationData.businesses || [];
         setMetrics({
           openMessages: requests.filter((item) => item.status === "new" || item.status === "in-progress").length,
           customers: businesses.length,
-          phones: notifications.reduce((total, item) => total + Number(item.enabledDeviceCount || 0), 0),
-          unread: notifications.reduce((total, item) => total + Number(item.unreadLeadCount || 0), 0),
+          disabled: businesses.filter((item) => item.status === "disabled").length,
+          scheduled: businesses.filter((item) => item.deletionScheduledFor).length,
         });
       })
       .catch((loadError) => active && setError(loadError.message))
@@ -116,8 +114,8 @@ function AdminDashboard({ user }) {
   const cards = [
     { href: "/messages", value: metrics.openMessages, title: "Open Messages", detail: "Help and change requests waiting for your attention." },
     { href: "/connections", value: metrics.customers, title: "Connections", detail: "Customer accounts and receptionist connections." },
-    { href: "/notifications", value: metrics.phones, title: "Phones Enabled", detail: "Customer phones currently registered for push notifications." },
-    { href: "/notifications", value: metrics.unread, title: "Unread Alerts", detail: "Lead notifications customers have not marked as viewed." },
+    { href: "/connections", value: metrics.disabled, title: "Disabled", detail: "Accounts currently blocked from login and receptionist intake." },
+    { href: "/connections", value: metrics.scheduled, title: "Deletion Scheduled", detail: "Disabled accounts waiting for permanent removal." },
   ];
 
   return (
