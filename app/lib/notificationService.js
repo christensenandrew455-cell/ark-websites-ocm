@@ -51,17 +51,20 @@ async function sendToDevices(devices, message) {
   return results;
 }
 
-export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
-  const devicesSnapshot = await db
+async function notificationDevices(db, clientId) {
+  const snapshot = await db
     .collection("ocmClients")
     .doc(clientId)
     .collection("notificationDevices")
     .get();
 
-  const devices = devicesSnapshot.docs
+  return snapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token));
+}
 
+export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
+  const devices = await notificationDevices(db, clientId);
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
   const caller = text(row.Name || row.Phone || row.Email || "A new caller");
@@ -195,4 +198,71 @@ export async function sendUnreadLeadReminders(db) {
   }
 
   return { attempted, sent, failed };
+}
+
+export async function sendRequestStatusNotification({ db, clientId, requestId, subject, status, adminNote }) {
+  const devices = await notificationDevices(db, clientId);
+  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
+
+  const safeSubject = text(subject || "Your request");
+  const safeNote = text(adminNote).slice(0, 220);
+  const copy = status === "in-progress"
+    ? {
+        title: "Your request has started",
+        body: safeNote || `${safeSubject} is now being worked on.`,
+      }
+    : status === "completed"
+      ? {
+          title: "Your request is complete",
+          body: safeNote || `${safeSubject} has been completed.`,
+        }
+      : {
+          title: "Your request was denied",
+          body: safeNote || `${safeSubject} could not be approved. Open the app for details.`,
+        };
+
+  const results = await sendToDevices(devices, {
+    notification: copy,
+    data: {
+      type: "request-status",
+      route: "/messages",
+      clientId,
+      requestId: text(requestId),
+      status,
+    },
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "request-updates",
+        sound: "default",
+        tag: `request-${text(requestId)}`,
+      },
+    },
+  });
+
+  const batch = db.batch();
+  let sent = 0;
+  let failed = 0;
+
+  results.forEach(({ device, response }) => {
+    if (response.success) {
+      sent += 1;
+      batch.set(device.ref, {
+        lastRequestPushAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } else {
+      failed += 1;
+      if (isInvalidTarget(response.error)) batch.delete(device.ref);
+      else {
+        batch.set(device.ref, {
+          lastRequestPushError: text(response.error?.message || response.error?.code),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    }
+  });
+
+  await batch.commit();
+  return { attempted: devices.length, sent, failed };
 }
