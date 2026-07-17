@@ -154,7 +154,7 @@ function addContactFile(row, businessName) {
 function Detail({ label, value, wide = false }) {
   return (
     <div className={wide ? "sm:col-span-2" : ""}>
-      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{label}</p>
       <p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium text-slate-900">{value || "—"}</p>
     </div>
   );
@@ -170,9 +170,9 @@ function Modal({ title, children, onClose }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="fixed inset-0 cursor-default" onClick={onClose} aria-label="Close" />
-      <div className="relative mx-auto my-8 max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+      <div className="relative mx-auto my-3 max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl sm:my-8">
         {children}
       </div>
     </div>
@@ -182,14 +182,14 @@ function Modal({ title, children, onClose }) {
 function ViewModal({ row, onClose }) {
   return (
     <Modal title="Client details" onClose={onClose}>
-      <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Client details</p>
-          <h2 className="mt-2 text-2xl font-black">{row.Name || "Unnamed caller"}</h2>
+      <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 sm:p-6">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 sm:text-xs">Client details</p>
+          <h2 className="mt-1 truncate text-xl font-black sm:mt-2 sm:text-2xl">{row.Name || "Unnamed caller"}</h2>
         </div>
-        <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold hover:bg-slate-100">Close</button>
+        <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold sm:text-sm">Close</button>
       </div>
-      <div className="grid gap-5 p-6 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-4 p-4 sm:gap-5 sm:p-6">
         <Detail label="Phone" value={row.Phone} />
         <Detail label="Email" value={row.Email} />
         <Detail label="Address" value={row.Address} wide />
@@ -251,29 +251,29 @@ function EditModal({ row, clientId, onClose, onSaved }) {
   return (
     <Modal title="Edit client" onClose={onClose}>
       <form onSubmit={save}>
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-4 sm:p-6">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Client record</p>
-            <h2 className="mt-2 text-2xl font-black">Edit client</h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 sm:text-xs">Client record</p>
+            <h2 className="mt-1 text-xl font-black sm:mt-2 sm:text-2xl">Edit client</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold hover:bg-slate-100">Close</button>
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold sm:text-sm">Close</button>
         </div>
-        <div className="grid gap-4 p-6 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3 p-4 sm:gap-4 sm:p-6">
           {fields.map(([field, label, type]) => (
-            <label key={field} className={field === "Address" ? "sm:col-span-2" : ""}>
-              <span className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
-              <input type={type} value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-11 w-full rounded-xl border border-slate-300 px-3 outline-none focus:border-slate-950" />
+            <label key={field} className={field === "Address" ? "col-span-2" : ""}>
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{label}</span>
+              <input type={type} value={form[field]} onChange={(event) => update(field, event.target.value)} className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950 sm:h-11" />
             </label>
           ))}
-          <label className="sm:col-span-2">
-            <span className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">Notes</span>
-            <textarea rows={4} value={form.Notes} onChange={(event) => update("Notes", event.target.value)} className="w-full rounded-xl border border-slate-300 p-3 outline-none focus:border-slate-950" />
+          <label className="col-span-2">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Notes</span>
+            <textarea rows={3} value={form.Notes} onChange={(event) => update("Notes", event.target.value)} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" />
           </label>
-          {error && <div className="sm:col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
+          {error && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         </div>
-        <div className="flex justify-end gap-3 border-t border-slate-200 p-6">
-          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-bold hover:bg-slate-100">Cancel</button>
-          <button disabled={saving} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save client"}</button>
+        <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:p-6">
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold">Cancel</button>
+          <button disabled={saving} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
         </div>
       </form>
     </Modal>
@@ -281,7 +281,23 @@ function EditModal({ row, clientId, onClose, onSaved }) {
 }
 
 function EmptyState({ children }) {
-  return <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">{children}</div>;
+  return <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">{children}</div>;
+}
+
+function SummaryCard({ title, subtitle, count, active, loading, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={active
+        ? "rounded-2xl border border-slate-950 bg-slate-950 p-4 text-left text-white shadow-sm"
+        : "rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.98]"}
+    >
+      <p className={active ? "text-4xl font-black" : "text-4xl font-black text-slate-950"}>{loading ? "…" : count}</p>
+      <h2 className="mt-1 text-sm font-black">{title}</h2>
+      <p className={active ? "mt-1 text-[10px] font-bold text-slate-300" : "mt-1 text-[10px] font-bold text-slate-400"}>{subtitle}</p>
+    </button>
+  );
 }
 
 export default function ReviewClients() {
@@ -292,6 +308,7 @@ export default function ReviewClients() {
   const [acceptedByCollection, setAcceptedByCollection] = useState({});
   const [loaded, setLoaded] = useState(new Set());
   const [busy, setBusy] = useState(new Set());
+  const [activeSection, setActiveSection] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [notice, setNotice] = useState("");
@@ -420,85 +437,107 @@ export default function ReviewClients() {
     }
   }
 
+  function toggleSection(section) {
+    setActiveSection((current) => current === section ? null : section);
+  }
+
   return (
-    <main className="min-h-screen bg-slate-50 px-5 py-8 text-slate-950 md:px-8 md:py-10">
+    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">{businessName}</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight md:text-5xl">Review My Clients</h1>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">Accept new callers, save their estimate, and keep one simple list of clients.</p>
+        <header className="mb-4 sm:mb-8">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500 sm:text-xs">{businessName}</p>
+          <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:mt-3 sm:text-4xl md:text-5xl">Clients</h1>
         </header>
 
-        {error && <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
-        {notice && <div className="mb-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">{notice}</div>}
+        {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
+        {notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
-          <div className="flex items-end justify-between gap-4 border-b border-slate-200 pb-5">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">New callers</p>
-              <h2 className="mt-2 text-3xl font-black">Contacted Me</h2>
-            </div>
-            <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">{contacted.length}</span>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {!contactedLoaded && <EmptyState>Loading callers…</EmptyState>}
-            {contactedLoaded && contacted.length === 0 && <EmptyState>No new callers are waiting.</EmptyState>}
-            {contacted.map((row) => {
-              const accepting = busy.has(`accept:${row.id}`);
-              const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
-              return (
-                <article key={row.id} className="rounded-2xl border border-slate-200 p-4 md:p-5">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-lg font-black">{row.Name || "Unnamed caller"}</h3>
-                      <p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setViewing(row)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold hover:bg-slate-100">View</button>
-                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, false)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">Accept + Calendar</button>
-                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, true)} className="rounded-xl bg-green-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">Accept + Calendar + Contacts</button>
-                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">Delete</button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+        <section className="grid grid-cols-2 gap-3">
+          <SummaryCard
+            title="Contacted Me"
+            subtitle="Tap to review new callers"
+            count={contacted.length}
+            loading={!contactedLoaded}
+            active={activeSection === "contacted"}
+            onClick={() => toggleSection("contacted")}
+          />
+          <SummaryCard
+            title="Clients"
+            subtitle="Tap to review accepted clients"
+            count={clients.length}
+            loading={!clientsLoaded}
+            active={activeSection === "clients"}
+            onClick={() => toggleSection("clients")}
+          />
         </section>
 
-        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
-          <div className="flex items-end justify-between gap-4 border-b border-slate-200 pb-5">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Accepted people</p>
-              <h2 className="mt-2 text-3xl font-black">Clients</h2>
+        {activeSection === "contacted" && (
+          <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">New callers</p>
+                <h2 className="mt-1 text-xl font-black">Contacted Me</h2>
+              </div>
+              <button type="button" onClick={() => setActiveSection(null)} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Close</button>
             </div>
-            <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">{clients.length}</span>
-          </div>
 
-          <div className="mt-5 space-y-3">
-            {!clientsLoaded && <EmptyState>Loading clients…</EmptyState>}
-            {clientsLoaded && clients.length === 0 && <EmptyState>No accepted clients yet.</EmptyState>}
-            {clients.map((row) => {
-              const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
-              return (
-                <article key={`${row.collectionKey}:${row.id}`} className="rounded-2xl border border-slate-200 p-4 md:p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-lg font-black">{row.Name || "Unnamed client"}</h3>
-                      <p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
+            <div className="mt-3 max-h-[60vh] space-y-2 overflow-y-auto pr-0.5">
+              {!contactedLoaded && <EmptyState>Loading callers…</EmptyState>}
+              {contactedLoaded && contacted.length === 0 && <EmptyState>No new callers are waiting.</EmptyState>}
+              {contacted.map((row) => {
+                const accepting = busy.has(`accept:${row.id}`);
+                const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
+                return (
+                  <article key={row.id} className="rounded-xl border border-slate-200 p-3">
+                    <button type="button" onClick={() => setViewing(row)} className="w-full text-left">
+                      <h3 className="truncate text-sm font-black">{row.Name || "Unnamed caller"}</h3>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
+                    </button>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, false)} className="rounded-lg bg-slate-950 px-2 py-2 text-[11px] font-black text-white disabled:opacity-50">Accept</button>
+                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, true)} className="rounded-lg bg-green-700 px-2 py-2 text-[11px] font-black text-white disabled:opacity-50">Accept + Contact</button>
+                      <button type="button" onClick={() => setViewing(row)} className="rounded-lg border border-slate-300 px-2 py-2 text-[11px] font-black">View</button>
+                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">Delete</button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => setViewing(row)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold hover:bg-slate-100">View</button>
-                      <button type="button" onClick={() => setEditing(row)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white">Edit</button>
-                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">Delete</button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {activeSection === "clients" && (
+          <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Accepted people</p>
+                <h2 className="mt-1 text-xl font-black">Clients</h2>
+              </div>
+              <button type="button" onClick={() => setActiveSection(null)} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Close</button>
+            </div>
+
+            <div className="mt-3 max-h-[60vh] space-y-2 overflow-y-auto pr-0.5">
+              {!clientsLoaded && <EmptyState>Loading clients…</EmptyState>}
+              {clientsLoaded && clients.length === 0 && <EmptyState>No accepted clients yet.</EmptyState>}
+              {clients.map((row) => {
+                const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
+                return (
+                  <article key={`${row.collectionKey}:${row.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                    <button type="button" onClick={() => setViewing(row)} className="min-w-0 flex-1 text-left">
+                      <h3 className="truncate text-sm font-black">{row.Name || "Unnamed client"}</h3>
+                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
+                    </button>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button type="button" onClick={() => setViewing(row)} className="rounded-lg border border-slate-300 px-2.5 py-2 text-[11px] font-black">View</button>
+                      <button type="button" onClick={() => setEditing(row)} className="rounded-lg bg-slate-950 px-2.5 py-2 text-[11px] font-black text-white">Edit</button>
+                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2.5 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">Delete</button>
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
 
       {viewing && <ViewModal row={viewing} onClose={() => setViewing(null)} />}
