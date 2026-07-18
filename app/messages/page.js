@@ -48,7 +48,7 @@ function StatusBadge({ status }) {
   return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${classes}`}>{STATUS_LABELS[status] || "Submitted"}</span>;
 }
 
-function CustomerMessages({ user, profile, requests, onRefresh }) {
+function CustomerMessages({ user, requests, onRefresh }) {
   const [type, setType] = useState("change");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -88,8 +88,7 @@ function CustomerMessages({ user, profile, requests, onRefresh }) {
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-3xl">
         <header className="mb-4 sm:mb-7">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{profile?.businessName || "Your Business"}</p>
-          <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Requests</h1>
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Requests</h1>
         </header>
 
         {notice && <div className="mb-3 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
@@ -241,7 +240,7 @@ function AdminMessages({ user, requests, onRefresh }) {
 }
 
 export default function MessagesPage() {
-  const { user, profile, isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -268,5 +267,5 @@ export default function MessagesPage() {
 
   return isAdmin
     ? <AdminMessages user={user} requests={requests} onRefresh={load} />
-    : <CustomerMessages user={user} profile={profile} requests={requests} onRefresh={load} />;
+    : <CustomerMessages user={user} requests={requests} onRefresh={load} />;
 }
