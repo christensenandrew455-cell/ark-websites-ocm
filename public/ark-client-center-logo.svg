@@ -1,27 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-labelledby="title desc">
   <title id="title">ARK Client Center</title>
-  <desc id="desc">ARK Client Center wordmark with a phone and circuit logo without an outer circle.</desc>
-  <defs>
-    <linearGradient id="circuit" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#155EEF"/>
-      <stop offset="1" stop-color="#22B8F0"/>
-    </linearGradient>
-  </defs>
-  <g transform="translate(8 8) scale(.78)">
-    <g transform="translate(8 20) scale(7.2)">
-      <path fill="#08245B" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2Z"/>
-    </g>
-    <g fill="none" stroke="url(#circuit)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M125 72h34l17-17h30"/>
-      <path d="M140 112h38l14-14h28"/>
-      <path d="M125 152h34l17 17h30"/>
-    </g>
-    <g fill="#fff" stroke="url(#circuit)" stroke-width="7">
-      <circle cx="214" cy="55" r="11"/>
-      <circle cx="228" cy="98" r="11"/>
-      <circle cx="214" cy="169" r="11"/>
-    </g>
+  <desc id="desc">ARK above a bold CCC monogram with the Client Center name.</desc>
+  <g transform="translate(28 12)">
+    <text x="118" y="68" text-anchor="middle" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="800" letter-spacing="11">ARK</text>
+    <text x="118" y="202" text-anchor="middle" font-family="Arial Black, Inter, Arial, sans-serif" font-size="120" font-weight="900" letter-spacing="-17">
+      <tspan fill="#08245B">C</tspan><tspan fill="#1677FF">C</tspan><tspan fill="#08245B">C</tspan>
+    </text>
   </g>
-  <text x="235" y="108" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="88" font-weight="800" letter-spacing="5">ARK</text>
-  <text x="240" y="164" fill="#5F6B85" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="500">Client Center</text>
+  <text x="290" y="123" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="78" font-weight="850" letter-spacing="4">ARK</text>
+  <text x="294" y="183" fill="#5F6B85" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="500">Client Center</text>
 </svg>
