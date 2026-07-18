@@ -11,7 +11,18 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+// This module is imported by Client Components, but Next.js can still evaluate
+// those modules while prerendering on the server. Firebase Auth rejects missing
+// browser configuration during that server evaluation, so initialize the web
+// SDK only in an actual browser. The module is evaluated again in the browser,
+// where the NEXT_PUBLIC Firebase configuration is available.
+let auth = null;
+let db = null;
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+if (typeof window !== "undefined") {
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+}
+
+export { auth, db };
