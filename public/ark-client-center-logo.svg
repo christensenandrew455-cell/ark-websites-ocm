@@ -1,12 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
   <title id="title">ARK Client Center</title>
-  <desc id="desc">ARK above a bold CCC monogram with the Client Center name.</desc>
-  <g transform="translate(28 12)">
-    <text x="118" y="68" text-anchor="middle" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="800" letter-spacing="11">ARK</text>
-    <text x="118" y="202" text-anchor="middle" font-family="Arial Black, Inter, Arial, sans-serif" font-size="120" font-weight="900" letter-spacing="-17">
-      <tspan fill="#08245B">C</tspan><tspan fill="#1677FF">C</tspan><tspan fill="#08245B">C</tspan>
-    </text>
-  </g>
-  <text x="290" y="123" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="78" font-weight="850" letter-spacing="4">ARK</text>
-  <text x="294" y="183" fill="#5F6B85" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="500">Client Center</text>
+  <desc id="desc">A clean text-only ARK Client Center wordmark.</desc>
+  <text x="360" y="108" text-anchor="middle" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="92" font-weight="850" letter-spacing="7">ARK</text>
+  <text x="360" y="170" text-anchor="middle" fill="#5F6B85" font-family="Inter, Arial, sans-serif" font-size="46" font-weight="600">Client Center</text>
 </svg>
