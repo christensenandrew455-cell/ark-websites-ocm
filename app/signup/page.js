@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { readApiJson } from "../lib/apiResponse";
+import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
 
 const PENDING_SIGNUP_KEY = "ark-ocm-pending-signup";
 
@@ -15,6 +16,7 @@ export default function SignupPage() {
     password: "",
     confirmPassword: "",
   });
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +45,10 @@ export default function SignupPage() {
       setError("The two passwords do not match.");
       return;
     }
+    if (!acceptedLegal) {
+      setError("You must agree to the Terms of Use and Privacy Policy before continuing.");
+      return;
+    }
 
     setSubmitting(true);
 
@@ -55,6 +61,10 @@ export default function SignupPage() {
           ownerName: form.ownerName,
           accountEmail: form.accountEmail,
           accountPhone: form.accountPhone,
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+          termsVersion: TERMS_VERSION,
+          privacyVersion: PRIVACY_VERSION,
         }),
       });
       const data = await readApiJson(response, "Unable to start secure payment setup.");
@@ -104,15 +114,28 @@ export default function SignupPage() {
             <input required minLength={8} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
           </label>
 
+          <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+            <input
+              required
+              type="checkbox"
+              checked={acceptedLegal}
+              onChange={(event) => setAcceptedLegal(event.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0 accent-slate-950"
+            />
+            <span className="text-sm leading-6 text-slate-700">
+              I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>, including ongoing recurring billing until I cancel.
+            </span>
+          </label>
+
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 md:col-span-2">{error}</p>}
 
-          <button disabled={submitting} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60 md:col-span-2">
+          <button disabled={submitting || !acceptedLegal} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60 md:col-span-2">
             {submitting ? "Opening Stripe…" : "Continue to secure payment setup"}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-slate-500">
-          The account becomes active only after Stripe confirms the payment method. Card details stay inside Stripe.
+        <p className="mt-4 text-center text-xs leading-5 text-slate-500">
+          The account becomes active only after Stripe confirms the payment method. Card details stay inside Stripe. Your selected plan continues until canceled.
         </p>
         <Link href="/login" className="mt-5 block text-center text-sm font-semibold text-slate-600 hover:text-slate-950">
           Already have an account? Log in
