@@ -152,7 +152,7 @@ export default function ClientStats() {
       if (!slot) {
         slot = document.createElement("div");
         slot.className = "client-stats-slot col-span-2";
-        cards.appendChild(slot);
+        cards.prepend(slot);
       }
       setMountNode(slot);
       return true;
