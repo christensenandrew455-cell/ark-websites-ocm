@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "./components/AuthProvider";
+import ClientStats from "./components/ClientStats";
 import ReviewClientsNative from "./components/ReviewClientsNative";
 
 async function adminApi(user, url) {
@@ -68,8 +69,22 @@ function AdminDashboard({ user }) {
   );
 }
 
+function CustomerHome() {
+  return (
+    <div className="client-home">
+      <style>{`
+        .client-home main > div > section.mt-4 > div.mt-4.grid.grid-cols-3.rounded-xl {
+          display: none;
+        }
+      `}</style>
+      <ReviewClientsNative />
+      <ClientStats />
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { user, isAdmin, loading } = useAuth();
   if (loading || !user) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Loading dashboard…</main>;
-  return isAdmin ? <AdminDashboard user={user} /> : <ReviewClientsNative />;
+  return isAdmin ? <AdminDashboard user={user} /> : <CustomerHome />;
 }
