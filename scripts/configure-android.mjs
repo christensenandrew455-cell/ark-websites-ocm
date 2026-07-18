@@ -98,27 +98,33 @@ await writeFile(`${drawableDirectory}/ark_logo_foreground.xml`, `<?xml version="
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:pathData="M12,76 L28,32 L44,76 M19,59 L37,59"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#08245B"
-        android:strokeWidth="5.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M50,76 L50,32 L66,32 C84,32 84,51 66,51 L50,51 M66,51 L82,76"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#08245B"
-        android:strokeWidth="5.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M88,32 L88,76 M88,55 L103,38 M88,55 L103,72"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#08245B"
-        android:strokeWidth="5.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+    <group
+        android:translateX="12.6"
+        android:translateY="15.1"
+        android:scaleX="0.72"
+        android:scaleY="0.72">
+        <path
+            android:pathData="M12,76 L28,32 L44,76 M19,59 L37,59"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#08245B"
+            android:strokeWidth="5.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M50,76 L50,32 L66,32 C84,32 84,51 66,51 L50,51 M66,51 L82,76"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#08245B"
+            android:strokeWidth="5.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M88,32 L88,76 M88,55 L103,38 M88,55 L103,72"
+            android:fillColor="@android:color/transparent"
+            android:strokeColor="#08245B"
+            android:strokeWidth="5.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
 </vector>
 `, "utf8");
 
@@ -135,4 +141,4 @@ await Promise.all([
 ]);
 
 console.log("[Android configuration] Native contact editor registered.");
-console.log("[Android configuration] Simple ARK launcher icon applied.");
+console.log("[Android configuration] Padded ARK launcher icon applied.");
