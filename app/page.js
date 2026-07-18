@@ -77,8 +77,8 @@ function CustomerHome() {
           display: none;
         }
       `}</style>
-      <ReviewClientsNative />
       <ClientStats />
+      <ReviewClientsNative />
     </div>
   );
 }
