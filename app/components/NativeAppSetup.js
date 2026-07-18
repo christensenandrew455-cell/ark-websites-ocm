@@ -91,6 +91,7 @@ export default function NativeAppSetup() {
     calendar: "prompt",
     contacts: "prompt",
   });
+  const [foregroundNotification, setForegroundNotification] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -98,6 +99,7 @@ export default function NativeAppSetup() {
 
     let active = true;
     const handles = [];
+    const dismissalTimers = [];
 
     async function initialize() {
       const [{ PushNotifications }, { CapacitorCalendar }, { Contacts }] = await Promise.all([
@@ -116,7 +118,7 @@ export default function NativeAppSetup() {
             action: "register",
             token: registration.value,
             platform: Capacitor.getPlatform(),
-            appVersion: "1.2",
+            appVersion: "1.3",
           });
           if (active) {
             setPermissions((current) => ({ ...current, notifications: "granted" }));
@@ -136,6 +138,24 @@ export default function NativeAppSetup() {
       handles.push(await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
         const route = String(action.notification?.data?.route || "/review-my-clients?section=contacted");
         router.push(route.startsWith("/") ? route : "/review-my-clients?section=contacted");
+      }));
+
+      handles.push(await PushNotifications.addListener("pushNotificationReceived", (notification) => {
+        if (!active) return;
+        const id = String(notification.id || `${Date.now()}`);
+        const route = String(notification.data?.route || "/review-my-clients?section=contacted");
+        setForegroundNotification({
+          id,
+          title: String(notification.title || "ARK Client Center"),
+          body: String(notification.body || "You have a new update."),
+          route: route.startsWith("/") ? route : "/review-my-clients?section=contacted",
+        });
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate([180, 90, 180]);
+        }
+        dismissalTimers.push(window.setTimeout(() => {
+          if (active) setForegroundNotification((current) => current?.id === id ? null : current);
+        }, 10000));
       }));
 
       const [notificationPermission, calendarPermission, contactPermission] = await Promise.all([
@@ -170,6 +190,7 @@ export default function NativeAppSetup() {
 
     return () => {
       active = false;
+      dismissalTimers.forEach((timer) => window.clearTimeout(timer));
       handles.forEach((handle) => handle.remove().catch(() => null));
     };
   }, [isAdmin, profile?.clientId, router, user]);
@@ -236,50 +257,75 @@ export default function NativeAppSetup() {
     setShowPrompt(false);
   }
 
-  if (!Capacitor.isNativePlatform() || !showPrompt || !user || isAdmin) return null;
+  if (!Capacitor.isNativePlatform() || !user || isAdmin) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm">
-      <section className="mx-auto my-4 w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:my-10 sm:p-7">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
-        <h2 className="mt-2 text-2xl font-black tracking-tight">Set up phone access</h2>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          Enable these features so the app can alert you about leads, add estimates to your calendar, and save clients to your contacts.
-        </p>
+    <>
+      {foregroundNotification && (
+        <button
+          type="button"
+          onClick={() => {
+            const route = foregroundNotification.route;
+            setForegroundNotification(null);
+            router.push(route);
+          }}
+          className="fixed left-3 right-3 top-[5.25rem] z-[120] mx-auto max-w-md rounded-2xl border border-blue-200 bg-white p-4 text-left shadow-2xl active:scale-[0.99]"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">New notification</p>
+              <h2 className="mt-1 text-sm font-black text-slate-950">{foregroundNotification.title}</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-600">{foregroundNotification.body}</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[9px] font-black uppercase text-blue-800">Open</span>
+          </div>
+        </button>
+      )}
 
-        {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{error}</div>}
+      {showPrompt && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm">
+          <section className="mx-auto my-4 w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:my-10 sm:p-7">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight">Set up phone access</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Enable these features so the app can alert you about leads, add estimates to your calendar, and save clients to your contacts.
+            </p>
 
-        <div className="mt-5 space-y-3">
-          <PermissionRow
-            title="Notifications"
-            description="Get immediate new-lead alerts and updates about help or change requests."
-            status={permissions.notifications}
-            busy={busyPermission === "notifications"}
-            onEnable={enableNotifications}
-          />
-          <PermissionRow
-            title="Calendar"
-            description="Add accepted estimate dates directly to the phone calendar."
-            status={permissions.calendar}
-            busy={busyPermission === "calendar"}
-            onEnable={enableCalendar}
-          />
-          <PermissionRow
-            title="Contacts"
-            description="Save a client's name, phone number, email, and address to the phone."
-            status={permissions.contacts}
-            busy={busyPermission === "contacts"}
-            onEnable={enableContacts}
-          />
+            {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{error}</div>}
+
+            <div className="mt-5 space-y-3">
+              <PermissionRow
+                title="Notifications"
+                description="Get immediate new-lead alerts and updates about help or change requests."
+                status={permissions.notifications}
+                busy={busyPermission === "notifications"}
+                onEnable={enableNotifications}
+              />
+              <PermissionRow
+                title="Calendar"
+                description="Add accepted estimate dates directly to the phone calendar."
+                status={permissions.calendar}
+                busy={busyPermission === "calendar"}
+                onEnable={enableCalendar}
+              />
+              <PermissionRow
+                title="Contacts"
+                description="Save a client's name, phone number, email, and address to the phone."
+                status={permissions.contacts}
+                busy={busyPermission === "contacts"}
+                onEnable={enableContacts}
+              />
+            </div>
+
+            <button type="button" onClick={finishSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">
+              Finish Setup
+            </button>
+            <button type="button" onClick={finishSetup} className="mt-2 w-full rounded-xl px-4 py-2 text-xs font-bold text-slate-500">
+              Do this later
+            </button>
+          </section>
         </div>
-
-        <button type="button" onClick={finishSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">
-          Finish Setup
-        </button>
-        <button type="button" onClick={finishSetup} className="mt-2 w-full rounded-xl px-4 py-2 text-xs font-bold text-slate-500">
-          Do this later
-        </button>
-      </section>
-    </div>
+      )}
+    </>
   );
 }
