@@ -1,7 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
   <rect width="320" height="320" rx="68" fill="#FFFFFF"/>
-  <text x="160" y="92" text-anchor="middle" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="800" letter-spacing="13">ARK</text>
-  <text x="160" y="246" text-anchor="middle" font-family="Arial Black, Inter, Arial, sans-serif" font-size="142" font-weight="900" letter-spacing="-19">
-    <tspan fill="#08245B">C</tspan><tspan fill="#1677FF">C</tspan><tspan fill="#08245B">C</tspan>
-  </text>
+  <text x="160" y="145" text-anchor="middle" fill="#08245B" font-family="Inter, Arial, sans-serif" font-size="94" font-weight="850" letter-spacing="7">ARK</text>
+  <text x="160" y="205" text-anchor="middle" fill="#5F6B85" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="650">Client Center</text>
 </svg>
