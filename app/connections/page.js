@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 
@@ -17,6 +18,13 @@ const EMPTY_CONNECTION = {
   notificationEmail: "",
   sourceLabel: "",
   connectionKey: "",
+  termsAccepted: false,
+  privacyAccepted: false,
+  termsVersion: "",
+  privacyVersion: "",
+  legalAcceptedAt: "",
+  legalAcceptedBy: "",
+  legalAcceptanceSource: "",
 };
 
 const EMPTY_CUSTOMER = {
@@ -45,6 +53,19 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function Field({ label, description, children }) {
@@ -92,6 +113,53 @@ function StatusPill({ status, scheduled }) {
   if (scheduled) return <span className="rounded-full bg-red-100 px-2.5 py-1 text-[9px] font-black uppercase text-red-700">Deletion Scheduled</span>;
   if (status === "disabled") return <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[9px] font-black uppercase text-amber-800">Disabled</span>;
   return <span className="rounded-full bg-green-100 px-2.5 py-1 text-[9px] font-black uppercase text-green-800">Active</span>;
+}
+
+function LegalAgreementPanel({ account }) {
+  const accepted = account.termsAccepted && account.privacyAccepted && account.legalAcceptedAt;
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Account evidence</p>
+          <h2 className="mt-1 text-lg font-black sm:text-2xl">Legal Agreement</h2>
+        </div>
+        <span className={accepted
+          ? "rounded-full bg-green-100 px-2.5 py-1 text-[9px] font-black uppercase text-green-800"
+          : "rounded-full bg-amber-100 px-2.5 py-1 text-[9px] font-black uppercase text-amber-800"}
+        >
+          {accepted ? "Accepted" : "Not Recorded"}
+        </span>
+      </div>
+
+      {accepted ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Terms of Use</p>
+            <p className="mt-1 text-sm font-black text-slate-950">Accepted</p>
+            <Link href="/terms" target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-bold text-blue-700 underline">Version {account.termsVersion || "not labeled"}</Link>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Privacy Policy</p>
+            <p className="mt-1 text-sm font-black text-slate-950">Accepted</p>
+            <Link href="/privacy" target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs font-bold text-blue-700 underline">Version {account.privacyVersion || "not labeled"}</Link>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Accepted by</p>
+            <p className="mt-1 break-all text-sm font-bold text-slate-800">{account.legalAcceptedBy || account.accountEmail}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Accepted on</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{formatDateTime(account.legalAcceptedAt)}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900 sm:text-sm">
+          No signup agreement record is stored for this account. This can happen for older accounts or accounts created manually by an administrator.
+        </p>
+      )}
+    </section>
+  );
 }
 
 export default function ConnectionsPage() {
@@ -367,6 +435,8 @@ export default function ConnectionsPage() {
                 <Field label="Source label"><Input value={form.sourceLabel} onChange={(event) => updateField("sourceLabel", event.target.value)} /></Field>
               </div>
             </section>
+
+            <LegalAgreementPanel account={form} />
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
               <h2 className="text-lg font-black sm:text-2xl">Private Connection Key</h2>
