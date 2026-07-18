@@ -3,8 +3,9 @@ import AppShell from "./components/AppShell";
 import { AuthProvider } from "./components/AuthProvider";
 
 export const metadata = {
-  title: "Tabor Painting Client Center",
-  description: "AI receptionist activity and client collection for Tabor Painting",
+  title: "ARK Client Center",
+  description: "AI receptionist activity, lead notifications, and client management for ARK customers.",
+  applicationName: "ARK Client Center",
 };
 
 export default function RootLayout({ children }) {
