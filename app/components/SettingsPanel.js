@@ -11,6 +11,9 @@ const DEFAULT_SETTINGS = {
   OwnerName: "",
   AccountEmail: "",
   AccountPhone: "",
+  BillingStatus: "",
+  PaymentMethodLabel: "",
+  StripeCustomerId: "",
 };
 
 function Field({ label, value, onChange, type = "text", placeholder = "" }) {
@@ -29,7 +32,7 @@ function Field({ label, value, onChange, type = "text", placeholder = "" }) {
 }
 
 export default function SettingsPanel() {
-  const { profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const clientId = profile?.clientId || "";
   const [form, setForm] = useState({
     ...DEFAULT_SETTINGS,
@@ -40,6 +43,7 @@ export default function SettingsPanel() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isOpeningBilling, setIsOpeningBilling] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
@@ -103,7 +107,34 @@ export default function SettingsPanel() {
     }
   }
 
+  async function openBillingPortal() {
+    if (!user || isOpeningBilling) return;
+    setIsOpeningBilling(true);
+    setError("");
+
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/billing/create-portal-session", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || "Could not open secure billing settings.");
+      }
+      window.location.assign(data.url);
+    } catch (billingError) {
+      console.error(billingError);
+      setError(billingError.message || "Could not open secure billing settings.");
+      setIsOpeningBilling(false);
+    }
+  }
+
   const businessLabel = form.BusinessName || profile?.businessName || "Your Business";
+  const paymentLabel = form.PaymentMethodLabel || "No payment method label is available yet.";
+  const billingStatus = form.BillingStatus || "Not configured";
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
@@ -112,7 +143,7 @@ export default function SettingsPanel() {
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500 sm:text-xs sm:tracking-[0.24em]">{businessLabel}</p>
           <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:mt-2 sm:text-4xl">Settings</h1>
           <p className="mt-2 hidden max-w-2xl leading-7 text-slate-600 sm:block">
-            Manage the basic business and notification details used by the client collection center.
+            Manage the basic business, billing, and notification details used by the client collection center.
           </p>
         </header>
 
@@ -168,18 +199,40 @@ export default function SettingsPanel() {
             </form>
 
             {!isAdmin && (
-              <section className="mt-4 grid grid-cols-2 gap-3 sm:mt-6">
-                <Link href="/messages?type=change" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
-                  <p className="text-2xl font-black">Change</p>
-                  <h2 className="mt-1 text-sm font-black">Request a Change</h2>
-                  <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, or another update. Usually 1–2 business days.</p>
-                </Link>
-                <Link href="/messages?type=help" className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
-                  <p className="text-2xl font-black text-red-600">Help</p>
-                  <h2 className="mt-1 text-sm font-black">Priority Support</h2>
-                  <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls or missing lead data.</p>
-                </Link>
-              </section>
+              <>
+                <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Secure billing</p>
+                      <h2 className="mt-1 text-lg font-black sm:text-2xl">Payment Method</h2>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span>
+                  </div>
+                  <p className="mt-3 text-sm font-bold text-slate-800">{paymentLabel}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Stripe opens a secure hosted page where you can replace or update the card attached to this account.</p>
+                  <button
+                    type="button"
+                    onClick={openBillingPortal}
+                    disabled={isOpeningBilling}
+                    className="mt-4 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto"
+                  >
+                    {isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}
+                  </button>
+                </section>
+
+                <section className="mt-4 grid grid-cols-2 gap-3 sm:mt-6">
+                  <Link href="/messages?type=change" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
+                    <p className="text-2xl font-black">Change</p>
+                    <h2 className="mt-1 text-sm font-black">Request a Change</h2>
+                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, or another update. Usually 1–2 business days.</p>
+                  </Link>
+                  <Link href="/messages?type=help" className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
+                    <p className="text-2xl font-black text-red-600">Help</p>
+                    <h2 className="mt-1 text-sm font-black">Priority Support</h2>
+                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls or missing lead data.</p>
+                  </Link>
+                </section>
+              </>
             )}
           </>
         )}
