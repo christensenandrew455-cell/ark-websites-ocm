@@ -140,6 +140,12 @@ export default function SettingsPanel() {
     <main className="min-h-screen bg-slate-50 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-3xl">
         <header className="mb-4 sm:mb-7">
+          {!isAdmin && (
+            <Link href="/" className="mb-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-950 sm:text-sm">
+              <span aria-hidden="true">←</span>
+              Back to Clients
+            </Link>
+          )}
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500 sm:text-xs sm:tracking-[0.24em]">{businessLabel}</p>
           <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:mt-2 sm:text-4xl">Settings</h1>
           <p className="mt-2 hidden max-w-2xl leading-7 text-slate-600 sm:block">

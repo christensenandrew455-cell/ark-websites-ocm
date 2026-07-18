@@ -15,6 +15,11 @@ import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
 const ACCEPTED_COLLECTIONS = ["preClients", "clients", "postClients"];
+const TIME_RANGES = [
+  { key: "today", label: "Today" },
+  { key: "month", label: "This Month" },
+  { key: "all", label: "All Time" },
+];
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const ContactEditor = registerPlugin("ContactEditor");
 
@@ -56,12 +61,34 @@ function normalizeRow(id, data, collectionKey) {
   };
 }
 
-function rowTime(row) {
-  const value = row.createdAt || row.acceptedAt || row.updatedAt;
+function toMillis(value) {
+  if (!value) return 0;
   if (value?.toMillis) return value.toMillis();
   if (value?.seconds) return value.seconds * 1000;
-  const parsed = new Date(value || 0).getTime();
+  const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function rowTime(row) {
+  return toMillis(row.createdAt || row.acceptedAt || row.movedAt || row.updatedAt);
+}
+
+function rangeTime(row, section) {
+  if (section === "clients") {
+    return toMillis(row.acceptedAt || row.movedAt || row.updatedAt || row.createdAt);
+  }
+  return toMillis(row.createdAt || row.updatedAt || row.acceptedAt);
+}
+
+function insideRange(row, range, section) {
+  if (range === "all") return true;
+  const value = rangeTime(row, section);
+  if (!value) return false;
+  const now = new Date();
+  const start = range === "today"
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return value >= start;
 }
 
 function safeFileName(value) {
@@ -128,8 +155,7 @@ function nextRequestedWeekday(rawDay, rawTime = "") {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   if (daysAhead === 0 && requestedClock && requestedClock.total <= nowMinutes) daysAhead = 7;
 
-  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysAhead);
-  return date;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysAhead);
 }
 
 function calendarDate(row) {
@@ -462,12 +488,31 @@ function EmptyState({ children }) {
 function SummaryCard({ title, subtitle, count, active, loading, onClick }) {
   return (
     <button type="button" onClick={onClick} className={active
-      ? "rounded-2xl border border-slate-950 bg-slate-950 p-4 text-left text-white shadow-sm"
-      : "rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm active:scale-[0.98]"}>
-      <p className={active ? "text-4xl font-black" : "text-4xl font-black text-slate-950"}>{loading ? "…" : count}</p>
-      <h2 className="mt-1 text-sm font-black">{title}</h2>
-      <p className={active ? "mt-1 text-[10px] font-bold text-slate-300" : "mt-1 text-[10px] font-bold text-slate-400"}>{subtitle}</p>
+      ? "min-h-40 rounded-3xl border border-slate-950 bg-slate-950 p-5 text-left text-white shadow-sm sm:min-h-52 sm:p-7"
+      : "min-h-40 rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition active:scale-[0.98] sm:min-h-52 sm:p-7"}>
+      <p className={active ? "text-5xl font-black tracking-tight sm:text-6xl" : "text-5xl font-black tracking-tight text-slate-950 sm:text-6xl"}>{loading ? "…" : count}</p>
+      <h2 className="mt-3 text-base font-black sm:text-xl">{title}</h2>
+      <p className={active ? "mt-2 text-xs font-bold text-slate-300 sm:text-sm" : "mt-2 text-xs font-bold text-slate-400 sm:text-sm"}>{subtitle}</p>
     </button>
+  );
+}
+
+function RangeTabs({ value, onChange }) {
+  return (
+    <div className="mt-4 grid grid-cols-3 rounded-xl border border-slate-200 bg-slate-100 p-1 sm:inline-grid sm:min-w-96">
+      {TIME_RANGES.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          onClick={() => onChange(option.key)}
+          className={value === option.key
+            ? "rounded-lg bg-white px-2 py-2.5 text-xs font-black text-slate-950 shadow-sm sm:text-sm"
+            : "rounded-lg px-2 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-950 sm:text-sm"}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -480,6 +525,7 @@ export default function ReviewClientsNative() {
   const [loaded, setLoaded] = useState(new Set());
   const [busy, setBusy] = useState(new Set());
   const [activeSection, setActiveSection] = useState(null);
+  const [activeRange, setActiveRange] = useState("all");
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [notice, setNotice] = useState("");
@@ -542,8 +588,18 @@ export default function ReviewClientsNative() {
       .sort((a, b) => rowTime(b) - rowTime(a))
   ), [acceptedByCollection]);
 
+  const filteredContacted = useMemo(
+    () => contacted.filter((row) => insideRange(row, activeRange, "contacted")),
+    [activeRange, contacted]
+  );
+  const filteredClients = useMemo(
+    () => clients.filter((row) => insideRange(row, activeRange, "clients")),
+    [activeRange, clients]
+  );
+
   const contactedLoaded = loaded.has("contactedMe");
   const clientsLoaded = ACCEPTED_COLLECTIONS.every((collectionKey) => loaded.has(collectionKey));
+  const rangeLabel = TIME_RANGES.find((item) => item.key === activeRange)?.label || "All Time";
 
   function markBusy(key, value) {
     setBusy((current) => {
@@ -658,15 +714,14 @@ export default function ReviewClientsNative() {
   }
 
   function toggleSection(section) {
-    setActiveSection((current) => {
-      const next = current === section ? null : section;
-      if (next === "contacted") markLeadsViewed(user);
-      return next;
-    });
+    const next = activeSection === section ? null : section;
+    setActiveSection(next);
+    if (next) setActiveRange("all");
+    if (next === "contacted") markLeadsViewed(user);
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:px-5 sm:py-8 md:px-8 md:py-10">
+    <main className="min-h-screen bg-slate-50 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <div className="mx-auto max-w-6xl">
         <header className="mb-4 sm:mb-8">
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500 sm:text-xs">{businessName}</p>
@@ -676,36 +731,41 @@ export default function ReviewClientsNative() {
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
 
-        <section className="grid grid-cols-2 gap-3">
+        <section className="grid grid-cols-2 gap-3 sm:gap-5">
           <SummaryCard title="Contacted Me" subtitle="Tap to review new callers" count={contacted.length} loading={!contactedLoaded} active={activeSection === "contacted"} onClick={() => toggleSection("contacted")} />
           <SummaryCard title="Clients" subtitle="Tap to review accepted clients" count={clients.length} loading={!clientsLoaded} active={activeSection === "clients"} onClick={() => toggleSection("clients")} />
         </section>
 
         {activeSection === "contacted" && (
-          <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">New callers</p><h2 className="mt-1 text-xl font-black">Contacted Me</h2></div>
+          <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:p-6">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">New callers</p>
+                <h2 className="mt-1 text-xl font-black sm:text-2xl">Contacted Me <span className="text-slate-400">({filteredContacted.length})</span></h2>
+              </div>
               <button type="button" onClick={() => setActiveSection(null)} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Close</button>
             </div>
 
-            <div className="mt-3 max-h-[60vh] space-y-2 overflow-y-auto pr-0.5">
+            <RangeTabs value={activeRange} onChange={setActiveRange} />
+
+            <div className="mt-4 max-h-[60vh] space-y-2 overflow-y-auto pr-0.5">
               {!contactedLoaded && <EmptyState>Loading callers…</EmptyState>}
-              {contactedLoaded && contacted.length === 0 && <EmptyState>No new callers are waiting.</EmptyState>}
-              {contacted.map((row) => {
+              {contactedLoaded && filteredContacted.length === 0 && <EmptyState>No callers found for {rangeLabel.toLowerCase()}.</EmptyState>}
+              {filteredContacted.map((row) => {
                 const accepting = busy.has(`accept:${row.id}`);
                 const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
                 return (
-                  <article key={row.id} className="rounded-xl border border-slate-200 p-3">
+                  <article key={row.id} className="rounded-2xl border border-slate-200 p-4">
                     <button type="button" onClick={() => setViewing(row)} className="w-full text-left">
-                      <h3 className="truncate text-sm font-black">{row.Name || "Unnamed caller"}</h3>
-                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
-                      <p className="mt-1 truncate text-[10px] font-bold text-slate-400">Requested: {displayRequestedDate(row)}</p>
+                      <h3 className="truncate text-base font-black">{row.Name || "Unnamed caller"}</h3>
+                      <p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
+                      <p className="mt-1 truncate text-xs font-bold text-slate-400">Requested: {displayRequestedDate(row)}</p>
                     </button>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, false)} className="rounded-lg bg-slate-950 px-2 py-2 text-[11px] font-black text-white disabled:opacity-50">Accept</button>
-                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, true)} className="rounded-lg bg-green-700 px-2 py-2 text-[11px] font-black text-white disabled:opacity-50">Accept + Contact</button>
-                      <button type="button" onClick={() => setViewing(row)} className="rounded-lg border border-slate-300 px-2 py-2 text-[11px] font-black">View</button>
-                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">Delete</button>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, false)} className="rounded-xl bg-slate-950 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button>
+                      <button type="button" disabled={accepting} onClick={() => acceptLead(row, true)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept + Contact</button>
+                      <button type="button" onClick={() => setViewing(row)} className="rounded-xl border border-slate-300 px-3 py-3 text-xs font-black">View</button>
+                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-xl border border-red-300 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Delete</button>
                     </div>
                   </article>
                 );
@@ -715,32 +775,37 @@ export default function ReviewClientsNative() {
         )}
 
         {activeSection === "clients" && (
-          <section className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Accepted people</p><h2 className="mt-1 text-xl font-black">Clients</h2></div>
+          <section className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:p-6">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Accepted people</p>
+                <h2 className="mt-1 text-xl font-black sm:text-2xl">Clients <span className="text-slate-400">({filteredClients.length})</span></h2>
+              </div>
               <button type="button" onClick={() => setActiveSection(null)} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold">Close</button>
             </div>
 
-            <div className="mt-3 max-h-[65vh] space-y-2 overflow-y-auto pr-0.5">
+            <RangeTabs value={activeRange} onChange={setActiveRange} />
+
+            <div className="mt-4 max-h-[65vh] space-y-2 overflow-y-auto pr-0.5">
               {!clientsLoaded && <EmptyState>Loading clients…</EmptyState>}
-              {clientsLoaded && clients.length === 0 && <EmptyState>No accepted clients yet.</EmptyState>}
-              {clients.map((row) => {
+              {clientsLoaded && filteredClients.length === 0 && <EmptyState>No clients found for {rangeLabel.toLowerCase()}.</EmptyState>}
+              {filteredClients.map((row) => {
                 const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
                 const contactBusy = busy.has(`contact:${row.collectionKey}:${row.id}`);
                 const dateBusy = busy.has(`date:${row.collectionKey}:${row.id}`);
                 return (
-                  <article key={`${row.collectionKey}:${row.id}`} className="rounded-xl border border-slate-200 p-3">
+                  <article key={`${row.collectionKey}:${row.id}`} className="rounded-2xl border border-slate-200 p-4">
                     <button type="button" onClick={() => setViewing(row)} className="w-full text-left">
-                      <h3 className="truncate text-sm font-black">{row.Name || "Unnamed client"}</h3>
-                      <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
-                      <p className="mt-1 truncate text-[10px] font-bold text-slate-400">Requested: {displayRequestedDate(row)}</p>
+                      <h3 className="truncate text-base font-black">{row.Name || "Unnamed client"}</h3>
+                      <p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
+                      <p className="mt-1 truncate text-xs font-bold text-slate-400">Requested: {displayRequestedDate(row)}</p>
                     </button>
-                    <div className="mt-3 grid grid-cols-3 gap-1.5">
-                      <button type="button" onClick={() => setViewing(row)} className="rounded-lg border border-slate-300 px-2 py-2 text-[10px] font-black">View</button>
-                      <button type="button" disabled={contactBusy} onClick={() => addPhoneContact(row)} className="rounded-lg border border-green-300 px-2 py-2 text-[10px] font-black text-green-800 disabled:opacity-50">Contact</button>
-                      <button type="button" disabled={dateBusy} onClick={() => confirmDate(row)} className="rounded-lg bg-blue-700 px-2 py-2 text-[10px] font-black text-white disabled:opacity-50">Confirm Date</button>
-                      <button type="button" onClick={() => setEditing(row)} className="rounded-lg bg-slate-950 px-2 py-2 text-[10px] font-black text-white">Edit</button>
-                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="col-span-2 rounded-lg border border-red-300 px-2 py-2 text-[10px] font-black text-red-700 disabled:opacity-50">Delete</button>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                      <button type="button" onClick={() => setViewing(row)} className="rounded-xl border border-slate-300 px-2 py-3 text-[11px] font-black">View</button>
+                      <button type="button" disabled={contactBusy} onClick={() => addPhoneContact(row)} className="rounded-xl border border-green-300 px-2 py-3 text-[11px] font-black text-green-800 disabled:opacity-50">Contact</button>
+                      <button type="button" disabled={dateBusy} onClick={() => confirmDate(row)} className="rounded-xl bg-blue-700 px-2 py-3 text-[11px] font-black text-white disabled:opacity-50">Confirm Date</button>
+                      <button type="button" onClick={() => setEditing(row)} className="rounded-xl bg-slate-950 px-2 py-3 text-[11px] font-black text-white">Edit</button>
+                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="col-span-2 rounded-xl border border-red-300 px-2 py-3 text-[11px] font-black text-red-700 disabled:opacity-50">Delete</button>
                     </div>
                   </article>
                 );
