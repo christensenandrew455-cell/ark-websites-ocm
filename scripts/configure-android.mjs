@@ -100,10 +100,10 @@ await writeFile(`${drawableDirectory}/ark_logo_foreground.xml`, `<?xml version="
     android:viewportHeight="108">
 
     <group
-        android:translateX="28.54"
-        android:translateY="27.4"
-        android:scaleX="0.47"
-        android:scaleY="0.46">
+        android:translateX="21.60"
+        android:translateY="32.10"
+        android:scaleX="0.60"
+        android:scaleY="0.59">
         <path
             android:fillColor="#08245B"
             android:fillType="evenOdd"
@@ -111,10 +111,10 @@ await writeFile(`${drawableDirectory}/ark_logo_foreground.xml`, `<?xml version="
     </group>
 
     <group
-        android:translateX="29.16"
-        android:translateY="19.78"
-        android:scaleX="0.46"
-        android:scaleY="0.46">
+        android:translateX="22.14"
+        android:translateY="21.82"
+        android:scaleX="0.59"
+        android:scaleY="0.59">
         <path
             android:fillColor="#64748B"
             android:fillType="evenOdd"
@@ -136,4 +136,4 @@ await Promise.all([
 ]);
 
 console.log("[Android configuration] Native contact editor registered.");
-console.log("[Android configuration] Tight centered ARK Client Center launcher icon applied.");
+console.log("[Android configuration] Enlarged lower ARK Client Center launcher icon applied.");
