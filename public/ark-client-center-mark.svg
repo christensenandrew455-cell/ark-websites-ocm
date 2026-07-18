@@ -1,21 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
   <title id="title">ARK Client Center logo mark</title>
-  <desc id="desc">A navy phone handset connected to three blue circuit lines.</desc>
+  <desc id="desc">A navy phone handset connected to three blue circuit lines, without an outer circle.</desc>
   <defs>
     <linearGradient id="circuit" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#155EEF"/>
       <stop offset="1" stop-color="#22B8F0"/>
     </linearGradient>
   </defs>
-  <path fill="#08245B" d="M50 37c-8 1-14 7-16 15-7 31 6 70 38 102 31 31 70 45 101 38 8-2 14-8 15-16 1-5-1-10-6-13l-31-20c-7-4-16-3-21 4l-12 15c-16-7-31-18-44-31-13-13-24-28-31-44l15-12c7-5 8-14 4-21L42 23c-3-5-8-7-13-6l21 20Z"/>
-  <g fill="none" stroke="url(#circuit)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M132 72h31l15-16h30"/>
-    <path d="M143 111h38l13-13h28"/>
-    <path d="M132 150h31l15 16h30"/>
+  <g transform="translate(8 20) scale(7.2)">
+    <path fill="#08245B" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2Z"/>
   </g>
-  <g fill="#fff" stroke="url(#circuit)" stroke-width="8">
-    <circle cx="216" cy="56" r="12"/>
-    <circle cx="230" cy="98" r="12"/>
-    <circle cx="216" cy="166" r="12"/>
+  <g fill="none" stroke="url(#circuit)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M125 72h34l17-17h30"/>
+    <path d="M140 112h38l14-14h28"/>
+    <path d="M125 152h34l17 17h30"/>
+  </g>
+  <g fill="#fff" stroke="url(#circuit)" stroke-width="7">
+    <circle cx="214" cy="55" r="11"/>
+    <circle cx="228" cy="98" r="11"/>
+    <circle cx="214" cy="169" r="11"/>
   </g>
 </svg>
