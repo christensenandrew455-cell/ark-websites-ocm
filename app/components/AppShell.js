@@ -7,7 +7,7 @@ import { useAuth } from "./AuthProvider";
 import NativeAppSetup from "./NativeAppSetup";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
-const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
+const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password", "/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },
   { label: "Messages", mobileLabel: "Messages", href: "/messages" },
