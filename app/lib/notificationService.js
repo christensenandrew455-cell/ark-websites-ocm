@@ -3,6 +3,7 @@ import { getAdminMessaging } from "./firebase-admin";
 
 const MAX_MULTICAST_TARGETS = 500;
 const REMINDER_COOLDOWN_MS = 50 * 60 * 1000;
+const PUSH_RETRY_DELAY_MS = 600;
 
 function text(value) {
   return String(value || "").trim();
@@ -33,18 +34,58 @@ function isInvalidTarget(error) {
   ].includes(code);
 }
 
+function isRetryableTarget(error) {
+  const code = String(error?.code || "");
+  return [
+    "messaging/internal-error",
+    "messaging/server-unavailable",
+    "messaging/unknown-error",
+    "messaging/quota-exceeded",
+  ].includes(code) || /temporar|timeout|unavailable|internal/i.test(String(error?.message || ""));
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function sendDeviceChunk(messaging, deviceChunk, message) {
+  try {
+    const response = await messaging.sendEachForMulticast({
+      ...message,
+      tokens: deviceChunk.map((device) => device.token),
+    });
+    return response.responses.map((item, index) => ({ device: deviceChunk[index], response: item }));
+  } catch (error) {
+    return deviceChunk.map((device) => ({
+      device,
+      response: { success: false, error },
+    }));
+  }
+}
+
 async function sendToDevices(devices, message) {
   const messaging = getAdminMessaging();
   const results = [];
 
   for (const deviceChunk of chunks(devices)) {
-    const response = await messaging.sendEachForMulticast({
-      ...message,
-      tokens: deviceChunk.map((device) => device.token),
-    });
+    results.push(...await sendDeviceChunk(messaging, deviceChunk, message));
+  }
 
-    response.responses.forEach((item, index) => {
-      results.push({ device: deviceChunk[index], response: item });
+  const retryTargets = results
+    .filter(({ response }) => !response.success && isRetryableTarget(response.error))
+    .map(({ device }) => device);
+
+  if (retryTargets.length) {
+    await wait(PUSH_RETRY_DELAY_MS);
+    const retried = [];
+    for (const deviceChunk of chunks(retryTargets)) {
+      retried.push(...await sendDeviceChunk(messaging, deviceChunk, message));
+    }
+
+    const retryByPath = new Map(retried.map((entry) => [entry.device.ref.path, entry]));
+    results.forEach((entry, index) => {
+      const replacement = retryByPath.get(entry.device.ref.path);
+      if (replacement) results[index] = replacement;
     });
   }
 
@@ -63,9 +104,52 @@ async function notificationDevices(db, clientId) {
     .filter((device) => device.notificationsEnabled !== false && text(device.token));
 }
 
+async function recordLeadDelivery(db, clientId, leadId, summary) {
+  const safeLeadId = text(leadId) || `lead-${Date.now()}`;
+  const status = summary.sent > 0
+    ? "sent"
+    : summary.attempted === 0
+      ? "no-registered-devices"
+      : "failed";
+  const errorMessage = text(summary.errorMessage).slice(0, 500);
+  const batch = db.batch();
+
+  batch.set(
+    db.collection("ocmClients").doc(clientId).collection("notificationDeliveries").doc(safeLeadId),
+    {
+      type: "new-lead",
+      leadId: safeLeadId,
+      status,
+      attempted: summary.attempted,
+      sent: summary.sent,
+      failed: summary.failed,
+      lastError: errorMessage,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  batch.set(db.collection("connections").doc(clientId), {
+    lastNotificationStatus: status,
+    lastNotificationLeadId: safeLeadId,
+    lastNotificationAttempted: summary.attempted,
+    lastNotificationSent: summary.sent,
+    lastNotificationFailed: summary.failed,
+    lastNotificationError: errorMessage,
+    lastNotificationAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await batch.commit();
+}
+
 export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
   const devices = await notificationDevices(db, clientId);
-  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
+  if (!devices.length) {
+    const summary = { attempted: 0, sent: 0, failed: 0, errorMessage: "No registered notification devices." };
+    await recordLeadDelivery(db, clientId, leadId, summary);
+    return summary;
+  }
 
   const caller = text(row.Name || row.Phone || row.Email || "A new caller");
   const job = text(row.Job);
@@ -83,13 +167,16 @@ export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
       route: "/review-my-clients?section=contacted",
       clientId,
       leadId: text(leadId),
+      eventId: `lead-${text(leadId)}-${Date.now()}`,
     },
     android: {
       priority: "high",
+      ttl: 60 * 60 * 1000,
       notification: {
         channelId: "new-leads",
         sound: "default",
         tag: `lead-${text(leadId)}`,
+        defaultVibrateTimings: true,
       },
     },
   });
@@ -97,6 +184,7 @@ export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
   const batch = db.batch();
   let sent = 0;
   let failed = 0;
+  const errors = [];
 
   results.forEach(({ device, response }) => {
     if (response.success) {
@@ -105,10 +193,12 @@ export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
         unreadLeadCount: FieldValue.increment(1),
         lastLeadAt: FieldValue.serverTimestamp(),
         lastPushAt: FieldValue.serverTimestamp(),
+        lastPushError: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
     } else {
       failed += 1;
+      errors.push(text(response.error?.message || response.error?.code));
       if (isInvalidTarget(response.error)) batch.delete(device.ref);
       else {
         batch.set(device.ref, {
@@ -122,7 +212,14 @@ export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
   });
 
   await batch.commit();
-  return { attempted: devices.length, sent, failed };
+  const summary = {
+    attempted: devices.length,
+    sent,
+    failed,
+    errorMessage: errors.filter(Boolean).join(" | "),
+  };
+  await recordLeadDelivery(db, clientId, leadId, summary);
+  return summary;
 }
 
 export async function sendUnreadLeadReminders(db) {
