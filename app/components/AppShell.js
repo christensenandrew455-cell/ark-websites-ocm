@@ -59,9 +59,7 @@ export default function AppShell({ children }) {
   if (isPublic) return children;
   if (!user) return <LoadingScreen />;
 
-  const title = isAdmin
-    ? "ARK OCM Admin"
-    : `${profile?.businessName || "Tabor Painting"} Client Center`;
+  const accountLabel = isAdmin ? "Admin" : profile?.businessName || "Tabor Painting";
 
   const signOutButton = (
     <button
@@ -78,7 +76,13 @@ export default function AppShell({ children }) {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur md:px-8 md:py-4">
         <div className="mx-auto flex max-w-7xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <p className="truncate text-base font-black tracking-tight text-slate-950 sm:text-lg">{title}</p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img src="/ark-client-center-mark.svg" alt="" className="h-9 w-9 shrink-0 sm:h-11 sm:w-11" />
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-sm font-black tracking-tight text-slate-950 sm:text-lg">ARK Client Center</p>
+                <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{accountLabel}</p>
+              </div>
+            </div>
             <div className="sm:hidden">{signOutButton}</div>
           </div>
 
