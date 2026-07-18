@@ -132,7 +132,6 @@ export default function SettingsPanel() {
     }
   }
 
-  const businessLabel = form.BusinessName || profile?.businessName || "Your Business";
   const paymentLabel = form.PaymentMethodLabel || "No payment method label is available yet.";
   const billingStatus = form.BillingStatus || "Not configured";
 
@@ -146,8 +145,7 @@ export default function SettingsPanel() {
               Back to Clients
             </Link>
           )}
-          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500 sm:text-xs sm:tracking-[0.24em]">{businessLabel}</p>
-          <h1 className="mt-1.5 text-3xl font-black tracking-tight sm:mt-2 sm:text-4xl">Settings</h1>
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Settings</h1>
           <p className="mt-2 hidden max-w-2xl leading-7 text-slate-600 sm:block">
             Manage the basic business, billing, and notification details used by the client collection center.
           </p>
