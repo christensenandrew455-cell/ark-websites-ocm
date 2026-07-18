@@ -42,6 +42,13 @@ function connectionPayload(clientId, business, data) {
     notificationEmail: text(data.notificationEmail || business.accountEmail).toLowerCase(),
     sourceLabel: text(data.sourceLabel || business.businessName || clientId),
     connectionKey: text(data.connectionKey),
+    termsAccepted: business.termsAccepted === true,
+    privacyAccepted: business.privacyAccepted === true,
+    termsVersion: text(business.termsVersion),
+    privacyVersion: text(business.privacyVersion),
+    legalAcceptedAt: iso(business.legalAcceptedAt),
+    legalAcceptedBy: text(business.legalAcceptedBy || business.accountEmail).toLowerCase(),
+    legalAcceptanceSource: text(business.legalAcceptanceSource),
   };
 }
 
