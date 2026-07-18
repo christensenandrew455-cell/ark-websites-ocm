@@ -98,51 +98,45 @@ await writeFile(`${drawableDirectory}/ark_logo_foreground.xml`, `<?xml version="
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <group
-        android:translateX="1"
-        android:translateY="8"
-        android:scaleX="3.6"
-        android:scaleY="3.6">
-        <path
-            android:fillColor="#08245B"
-            android:pathData="M6.62,10.79C8.06,13.62 10.38,15.93 13.21,17.38L15.41,15.18C15.68,14.91 16.08,14.82 16.43,14.94C17.55,15.31 18.76,15.51 20,15.51C20.55,15.51 21,15.96 21,16.51L21,20C21,20.55 20.55,21 20,21C10.61,21 3,13.39 3,4C3,3.45 3.45,3 4,3L7.5,3C8.05,3 8.5,3.45 8.5,4C8.5,5.25 8.7,6.45 9.07,7.57C9.18,7.92 9.1,8.31 8.82,8.59L6.62,10.79Z" />
-    </group>
     <path
-        android:pathData="M54,31 L68,31 L75,24 L89,24"
+        android:pathData="M18,34 L25,18 L32,34 M21,28 L29,28"
         android:fillColor="@android:color/transparent"
-        android:strokeColor="#1677FF"
-        android:strokeWidth="4"
+        android:strokeColor="#08245B"
+        android:strokeWidth="3.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
     <path
-        android:pathData="M60,49 L76,49 L82,43 L94,43"
+        android:pathData="M40,34 L40,18 L48,18 C55,18 55,26 48,26 L40,26 M48,26 L55,34"
         android:fillColor="@android:color/transparent"
-        android:strokeColor="#1677FF"
-        android:strokeWidth="4"
+        android:strokeColor="#08245B"
+        android:strokeWidth="3.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
     <path
-        android:pathData="M54,67 L68,67 L75,74 L89,74"
+        android:pathData="M64,18 L64,34 M64,26 L76,18 M64,26 L76,34"
         android:fillColor="@android:color/transparent"
-        android:strokeColor="#1677FF"
-        android:strokeWidth="4"
+        android:strokeColor="#08245B"
+        android:strokeWidth="3.5"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
     <path
-        android:pathData="M94,19 C96.761,19 99,21.239 99,24 C99,26.761 96.761,29 94,29 C91.239,29 89,26.761 89,24 C89,21.239 91.239,19 94,19 Z"
-        android:fillColor="#FFFFFF"
-        android:strokeColor="#1677FF"
-        android:strokeWidth="3" />
+        android:pathData="M34,51 C19,51 12,59 12,70 C12,81 19,89 34,89"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#08245B"
+        android:strokeWidth="7"
+        android:strokeLineCap="round" />
     <path
-        android:pathData="M99,38 C101.761,38 104,40.239 104,43 C104,45.761 101.761,48 99,48 C96.239,48 94,45.761 94,43 C94,40.239 96.239,38 99,38 Z"
-        android:fillColor="#FFFFFF"
+        android:pathData="M61,51 C46,51 39,59 39,70 C39,81 46,89 61,89"
+        android:fillColor="@android:color/transparent"
         android:strokeColor="#1677FF"
-        android:strokeWidth="3" />
+        android:strokeWidth="7"
+        android:strokeLineCap="round" />
     <path
-        android:pathData="M94,69 C96.761,69 99,71.239 99,74 C99,76.761 96.761,79 94,79 C91.239,79 89,76.761 89,74 C89,71.239 91.239,69 94,69 Z"
-        android:fillColor="#FFFFFF"
-        android:strokeColor="#1677FF"
-        android:strokeWidth="3" />
+        android:pathData="M88,51 C73,51 66,59 66,70 C66,81 73,89 88,89"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#08245B"
+        android:strokeWidth="7"
+        android:strokeLineCap="round" />
 </vector>
 `, "utf8");
 
@@ -159,4 +153,4 @@ await Promise.all([
 ]);
 
 console.log("[Android configuration] Native contact editor registered.");
-console.log("[Android configuration] ARK Client Center launcher icon applied.");
+console.log("[Android configuration] ARK CCC launcher icon applied.");
