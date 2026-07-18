@@ -635,7 +635,8 @@ export default function ReviewClientsNative() {
 
   async function removeRow(row) {
     const label = row.Name || row.Address || "this record";
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${label}? This permanently removes the client record and cannot be undone.`)) return;
+    if (!window.confirm(`Final warning: permanently delete ${label}?`)) return;
 
     const key = `delete:${row.collectionKey}:${row.id}`;
     if (!clientId || busy.has(key)) return;
