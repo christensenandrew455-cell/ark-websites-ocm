@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,16 @@ export async function POST(request) {
       );
     }
 
-    const { businessName, ownerName, accountEmail, accountPhone } = await request.json();
+    const {
+      businessName,
+      ownerName,
+      accountEmail,
+      accountPhone,
+      acceptedTerms,
+      acceptedPrivacy,
+      termsVersion,
+      privacyVersion,
+    } = await request.json();
     const email = String(accountEmail || "").trim().toLowerCase();
     const clientId = cleanClientId(businessName);
 
@@ -63,6 +73,14 @@ export async function POST(request) {
 
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid business email address." }, { status: 400 });
+    }
+
+    if (acceptedTerms !== true || acceptedPrivacy !== true) {
+      return NextResponse.json({ error: "You must agree to the Terms of Use and Privacy Policy before continuing." }, { status: 400 });
+    }
+
+    if (termsVersion !== TERMS_VERSION || privacyVersion !== PRIVACY_VERSION) {
+      return NextResponse.json({ error: "The legal policies were updated. Refresh the signup page and review the current versions." }, { status: 409 });
     }
 
     const [existingBusiness, existingUser] = await Promise.all([
@@ -85,6 +103,7 @@ export async function POST(request) {
       metadata: { clientId, businessName: String(businessName).trim() },
     });
 
+    const legalAcceptedAt = new Date().toISOString();
     const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
     const session = await stripe.checkout.sessions.create({
       mode: "setup",
@@ -98,6 +117,10 @@ export async function POST(request) {
         ownerName: String(ownerName).trim(),
         accountEmail: email,
         accountPhone: String(accountPhone).trim(),
+        legalAccepted: "true",
+        legalAcceptedAt,
+        termsVersion: TERMS_VERSION,
+        privacyVersion: PRIVACY_VERSION,
       },
     });
 
