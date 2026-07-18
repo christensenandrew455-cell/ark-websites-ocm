@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
+import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,9 +59,29 @@ export async function POST(request) {
     }
 
     const metadata = session.metadata || {};
-    const { clientId, businessName, ownerName, accountEmail, accountPhone } = metadata;
+    const {
+      clientId,
+      businessName,
+      ownerName,
+      accountEmail,
+      accountPhone,
+      legalAccepted,
+      legalAcceptedAt,
+      termsVersion,
+      privacyVersion,
+    } = metadata;
     if (!clientId || !businessName || !ownerName || !accountEmail || !accountPhone) {
       return NextResponse.json({ error: "The Stripe signup details are incomplete." }, { status: 400 });
+    }
+
+    const acceptedAtDate = new Date(legalAcceptedAt || "");
+    if (
+      legalAccepted !== "true"
+      || termsVersion !== TERMS_VERSION
+      || privacyVersion !== PRIVACY_VERSION
+      || Number.isNaN(acceptedAtDate.getTime())
+    ) {
+      return NextResponse.json({ error: "The legal agreement record is missing or outdated. Restart signup and accept the current policies." }, { status: 409 });
     }
 
     const [businessSnapshot, existingUser] = await Promise.all([
@@ -115,6 +136,14 @@ export async function POST(request) {
       stripePaymentMethodId: paymentMethodId,
       paymentMethodLabel,
       paymentSetupStatus: "complete",
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion,
+      privacyVersion,
+      legalAcceptedAt: acceptedAtDate,
+      legalAcceptedBy: accountEmail,
+      legalAcceptanceSource: "signup-checkout",
+      legalRecordedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -126,6 +155,12 @@ export async function POST(request) {
       businessName,
       ownerUid: createdUser.uid,
       status: "active",
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion,
+      privacyVersion,
+      legalAcceptedAt: acceptedAtDate,
+      legalAcceptedBy: accountEmail,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -138,6 +173,12 @@ export async function POST(request) {
       BillingStatus: "Active",
       PaymentMethodLabel: paymentMethodLabel,
       StripeCustomerId: customerId,
+      TermsAccepted: true,
+      PrivacyAccepted: true,
+      TermsVersion: termsVersion,
+      PrivacyVersion: privacyVersion,
+      LegalAcceptedAt: acceptedAtDate,
+      LegalAcceptedBy: accountEmail,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
@@ -156,6 +197,11 @@ export async function POST(request) {
         source: "business-signup",
         RelatedBusinessClientId: clientId,
         AccountStatus: "active",
+        TermsAccepted: true,
+        PrivacyAccepted: true,
+        TermsVersion: termsVersion,
+        PrivacyVersion: privacyVersion,
+        LegalAcceptedAt: acceptedAtDate,
         ContactNames: ownerName ? [ownerName] : [],
         Phones: accountPhone ? [accountPhone] : [],
         Emails: accountEmail ? [accountEmail] : [],
@@ -173,6 +219,9 @@ export async function POST(request) {
       clientId,
       uid: createdUser.uid,
       completed: true,
+      termsVersion,
+      privacyVersion,
+      legalAcceptedAt: acceptedAtDate,
       createdAt: FieldValue.serverTimestamp(),
     });
     await batch.commit();
