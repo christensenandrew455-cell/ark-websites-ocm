@@ -236,6 +236,16 @@ export default function SettingsPanel() {
                     <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls or missing lead data.</p>
                   </Link>
                 </section>
+
+                <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Account policies</p>
+                  <h2 className="mt-1 text-lg font-black sm:text-2xl">Terms and Privacy</h2>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Review recurring billing, account enforcement, cancellation, data access, retention, and privacy practices.</p>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Link href="/terms" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Terms of Use</Link>
+                    <Link href="/privacy" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Privacy Policy</Link>
+                  </div>
+                </section>
               </>
             )}
           </>
