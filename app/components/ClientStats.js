@@ -103,7 +103,7 @@ function StatsPanel({ events, loading }) {
   }, [events, range]);
 
   return (
-    <section className="mt-5 rounded-3xl border border-slate-200 bg-slate-100/70 p-4 sm:mt-6 sm:p-6">
+    <section className="bg-transparent py-1 sm:py-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">Your Stats</h2>
         <div className="grid grid-cols-3 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
@@ -122,7 +122,7 @@ function StatsPanel({ events, loading }) {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2.5 sm:gap-4">
+      <div className="mt-3 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-4">
         <StatCard value={loading ? 0 : counts.contacted} label="Contacted You" />
         <StatCard value={loading ? 0 : counts.usage} label="Usage" />
         <StatCard value={loading ? 0 : counts.clients} label="Clients" />
@@ -144,16 +144,28 @@ export default function ClientStats() {
   useEffect(() => {
     let slot;
     let observer;
+    let pageHeader;
+    let businessLabel;
 
     function attach() {
-      const cards = document.querySelector(".client-home main > div > section.grid.grid-cols-2");
-      if (!cards) return false;
+      const container = document.querySelector(".client-home main > div");
+      const cards = container?.querySelector(":scope > section.grid.grid-cols-2");
+      const header = container?.querySelector(":scope > header");
+      if (!container || !cards || !header) return false;
+
+      pageHeader = header;
+      businessLabel = header.querySelector("p");
+      if (businessLabel) businessLabel.style.display = "none";
+
+      header.classList.remove("mb-4", "sm:mb-8");
+      header.classList.add("mb-3", "mt-3", "sm:mb-5", "sm:mt-5");
+
       slot = document.querySelector(".client-stats-slot");
       if (!slot) {
         slot = document.createElement("div");
-        slot.className = "client-stats-slot col-span-2";
-        cards.prepend(slot);
+        slot.className = "client-stats-slot";
       }
+      container.insertBefore(slot, header);
       setMountNode(slot);
       return true;
     }
@@ -167,6 +179,11 @@ export default function ClientStats() {
 
     return () => {
       observer?.disconnect();
+      if (businessLabel) businessLabel.style.removeProperty("display");
+      if (pageHeader) {
+        pageHeader.classList.remove("mb-3", "mt-3", "sm:mb-5", "sm:mt-5");
+        pageHeader.classList.add("mb-4", "sm:mb-8");
+      }
       if (slot?.parentNode) slot.parentNode.removeChild(slot);
       setMountNode(null);
     };
