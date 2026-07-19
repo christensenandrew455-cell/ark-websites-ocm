@@ -102,7 +102,14 @@ export async function POST(request) {
 
     const isAdmin = getAdminEmails().has(accountEmail.toLowerCase());
     const role = isAdmin ? "admin" : "customer";
-    const claims = isAdmin ? { role: "admin", clientId } : { role: "customer", clientId };
+    const claims = {
+      role,
+      clientId,
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion,
+      privacyVersion,
+    };
     await getAdminAuth().setCustomUserClaims(createdUser.uid, claims);
 
     const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id || "";
