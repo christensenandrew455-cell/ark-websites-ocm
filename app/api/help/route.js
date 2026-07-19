@@ -8,6 +8,11 @@ export const dynamic = "force-dynamic";
 const ALLOWED_LINKS = new Map(HELP_LINKS.map((link) => [link.href, link.label]));
 const MAX_MESSAGES = 12;
 const MAX_MESSAGE_LENGTH = 1500;
+const FALLBACK_ANSWER = "Sorry, I can’t find any information on that. Open Requests and submit a Request a Change explaining what you are having difficulty with. You can also open Docs and look through the full guide yourself.";
+const FALLBACK_LINKS = [
+  { href: "/messages", label: "Requests" },
+  { href: "/docs", label: "Docs" },
+];
 
 async function requireUser(request) {
   const authorization = String(request.headers.get("authorization") || "");
@@ -46,6 +51,10 @@ function cleanLinks(value) {
   });
 }
 
+function fallbackResponse() {
+  return NextResponse.json({ answer: FALLBACK_ANSWER, links: FALLBACK_LINKS });
+}
+
 export async function POST(request) {
   const user = await requireUser(request);
   if (user.response) return user.response;
@@ -64,10 +73,12 @@ export async function POST(request) {
     }
 
     const model = String(process.env.OPENAI_HELP_MODEL || "gpt-4o-mini").trim();
-    const systemPrompt = `You are the built-in help assistant for ARK Client Center. Your only job is to explain how this app works and direct signed-in customers to the correct page. Be friendly, direct, and brief. Use only the documentation below. Never invent features, prices, policy promises, account status, request status, or customer data. Never claim that you performed an action. You cannot edit accounts, billing, clients, requests, or policies. When an action is needed, explain the steps and provide the correct link. If the documentation does not answer the question, say so and direct the user to Request a Change or Priority Help depending on urgency.
+    const systemPrompt = `You are the built-in help assistant for ARK Client Center. Your only job is to explain how this app works and direct signed-in customers to the correct page. Be friendly, direct, and brief. Use only the documentation below. Never invent features, prices, policy promises, account status, request status, or customer data. Never claim that you performed an action. You cannot edit accounts, billing, clients, requests, or policies. When an action is needed, explain the steps and provide the correct page link. Refer to links by their actual page names, such as Clients, Settings, Requests, Docs, Terms of Use, or Privacy Policy.
+
+If the documentation does not clearly answer the question, do not guess. Set "found" to false. The application will then tell the user to submit a Request a Change and review Docs.
 
 Return valid JSON only in this exact shape:
-{"answer":"A plain-language answer under 160 words.","links":[{"label":"Exact allowed label","href":"Exact allowed href"}]}
+{"found":true,"answer":"A plain-language answer under 160 words.","links":[{"label":"Exact allowed label","href":"Exact allowed href"}]}
 
 Use no more than three links. Only use these exact links:
 ${HELP_LINKS.map((link) => `- ${link.label}: ${link.href}`).join("\n")}
@@ -106,11 +117,16 @@ ${HELP_KNOWLEDGE}`;
     try {
       parsed = JSON.parse(rawContent);
     } catch {
-      parsed = { answer: rawContent, links: [] };
+      parsed = { found: false, answer: "", links: [] };
     }
 
-    const answer = String(parsed?.answer || "I could not find a clear answer in the app documentation.").trim().slice(0, 2500);
-    return NextResponse.json({ answer, links: cleanLinks(parsed?.links) });
+    const answer = String(parsed?.answer || "").trim();
+    const answerSoundsUnknown = /(?:can(?:not|'t)|could(?: not|n't)) find|do not know|don't know|not in (?:the )?(?:docs|documentation)|no information/i.test(answer);
+    if (parsed?.found === false || !answer || answerSoundsUnknown) {
+      return fallbackResponse();
+    }
+
+    return NextResponse.json({ answer: answer.slice(0, 2500), links: cleanLinks(parsed?.links) });
   } catch (error) {
     console.error("Unable to answer help question", error);
     return NextResponse.json({ error: "AI help could not answer right now. Open Docs or try again." }, { status: 500 });
