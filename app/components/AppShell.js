@@ -8,13 +8,18 @@ import HelpCenter from "./HelpCenter";
 import NativeAppSetup from "./NativeAppSetup";
 
 const DEFAULT_CLIENT_ID = "tabor-painting";
-const PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password", "/terms", "/privacy"];
+const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
+const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },
   { label: "Messages", mobileLabel: "Messages", href: "/messages" },
   { label: "Connections", mobileLabel: "Accounts", href: "/connections" },
   { label: "Settings", mobileLabel: "Settings", href: "/settings" },
 ];
+
+function matchesPath(pathname, paths) {
+  return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
 
 function LoadingScreen({ message = "Loading client center…" }) {
   return (
@@ -30,7 +35,9 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, profile, isAdmin, loading, logout, selectClientId } = useAuth();
-  const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  const isAuthPublic = matchesPath(pathname, AUTH_PUBLIC_PATHS);
+  const isPolicyPublic = matchesPath(pathname, POLICY_PUBLIC_PATHS);
+  const isPublic = isAuthPublic || isPolicyPublic;
   const selectedClientId = profile?.clientId || DEFAULT_CLIENT_ID;
 
   useEffect(() => {
@@ -47,12 +54,13 @@ export default function AppShell({ children }) {
       return;
     }
 
-    if (user && !isPublic) selectClientId(selectedClientId);
-  }, [isAdmin, isPublic, loading, pathname, router, selectClientId, selectedClientId, user]);
+    if (user && !isAuthPublic) selectClientId(selectedClientId);
+  }, [isAuthPublic, isPublic, loading, pathname, router, selectClientId, selectedClientId, user]);
 
   if (loading) return <LoadingScreen />;
-  if (isPublic) return children;
+  if (!user && isPublic) return children;
   if (!user) return <LoadingScreen />;
+  if (isAuthPublic) return <LoadingScreen />;
 
   const signOutButton = (
     <button
