@@ -1,9 +1,7 @@
 export const HELP_LINKS = [
-  { label: "Clients and Stats", href: "/" },
+  { label: "Clients", href: "/" },
   { label: "Settings", href: "/settings" },
-  { label: "Billing", href: "/settings#billing" },
-  { label: "Request a Change", href: "/messages?type=change" },
-  { label: "Priority Help", href: "/messages?type=help" },
+  { label: "Requests", href: "/messages" },
   { label: "Docs", href: "/docs" },
   { label: "Terms of Use", href: "/terms" },
   { label: "Privacy Policy", href: "/privacy" },
@@ -20,7 +18,7 @@ export const HELP_SECTIONS = [
       "The Help button is available throughout the signed-in app. It can open these docs or start a quick AI help chat.",
       "The AI help chat can explain the app and send you to the correct page. It cannot change your account, billing, clients, or requests for you.",
     ],
-    links: ["Clients and Stats", "Settings"],
+    links: ["Clients", "Settings"],
   },
   {
     id: "stats",
@@ -32,7 +30,7 @@ export const HELP_SECTIONS = [
       "Clients is a permanent total of people accepted as clients. Deleting a client later does not reduce the historical total.",
       "The numbers in Your Stats are historical records. The live Contacted Me and Clients lists below them show only the records currently in those lists.",
     ],
-    links: ["Clients and Stats"],
+    links: ["Clients"],
   },
   {
     id: "contacted-me",
@@ -45,7 +43,7 @@ export const HELP_SECTIONS = [
       "Accept + Contact moves the person into Clients and also adds the available contact information to your device contacts when supported.",
       "The number shown for Contacted Me is the current number of records in that list. It is different from the permanent Contacted You statistic.",
     ],
-    links: ["Clients and Stats"],
+    links: ["Clients"],
   },
   {
     id: "clients",
@@ -58,7 +56,7 @@ export const HELP_SECTIONS = [
       "Delete removes the client from the current list. It does not erase the historical Clients statistic.",
       "The number shown on the Clients list is the current number of saved clients, not the lifetime total.",
     ],
-    links: ["Clients and Stats"],
+    links: ["Clients"],
   },
   {
     id: "business-settings",
@@ -74,19 +72,19 @@ export const HELP_SECTIONS = [
   {
     id: "billing",
     title: "Billing and payment methods",
-    summary: "The Payment Method section in Settings opens Stripe's secure billing portal.",
+    summary: "The Payment Method section is inside Settings and opens Stripe's secure billing portal.",
     points: [
       "Use the billing portal to add, replace, remove, or update payment methods when Stripe allows the action.",
       "Full card details are handled by Stripe. ARK does not receive or store your full card number.",
       "You are trusting Stripe to process and secure card information. Card identity, card-security, or Stripe processing disputes may need to be handled directly with Stripe or the card provider.",
       "ARK can help you find the billing controls, but ARK cannot view or edit the full card information stored by Stripe.",
     ],
-    links: ["Billing"],
+    links: ["Settings"],
   },
   {
     id: "request-change",
     title: "Request a Change",
-    summary: "Use Request a Change for routine updates, improvements, questions, and data-export requests that are not urgent business outages.",
+    summary: "Use Request a Change on the Requests page for routine updates, improvements, questions, and data-export requests that are not urgent business outages.",
     points: [
       "Examples include changing wording, voice, speed, business information, hours, appearance, or another normal service setting.",
       "You can also request an export or downloadable copy of account or client data.",
@@ -94,19 +92,19 @@ export const HELP_SECTIONS = [
       "A new request begins as Submitted. ARK may mark it In Progress, Completed, or Denied and may include a message explaining the decision or result.",
       "You will be able to review the request and any ARK message in Your Requests.",
     ],
-    links: ["Request a Change"],
+    links: ["Requests"],
   },
   {
     id: "priority-help",
     title: "Priority Help",
-    summary: "Priority Help is for serious problems that are currently affecting the business.",
+    summary: "Priority Help is available on the Requests page for serious problems that are currently affecting the business.",
     points: [
       "Examples include the business number not answering, the receptionist not working, missing lead data, or another major service failure.",
       "Enter what is broken as the subject, explain what is happening, and press Send Priority Help.",
       "ARK treats genuine priority problems as urgent.",
       "Routine changes sent as Priority Help may be denied, handled as a normal request, or returned with instructions to resubmit through Request a Change.",
     ],
-    links: ["Priority Help", "Request a Change"],
+    links: ["Requests"],
   },
   {
     id: "terms-privacy",
@@ -123,7 +121,7 @@ export const HELP_SECTIONS = [
   {
     id: "data-account",
     title: "Data exports, cancellation, and account deletion",
-    summary: "You can ask ARK for a data export, cancellation, or account deletion.",
+    summary: "You can ask ARK for a data export, cancellation, or account deletion through the Requests page.",
     points: [
       "Use Request a Change for a normal data-export or cancellation request.",
       "Use Priority Help when you need immediate account deletion or there is a serious account-access or security problem.",
@@ -131,7 +129,7 @@ export const HELP_SECTIONS = [
       "A normal cancellation generally keeps service available through the current paid billing period and stops it before the next renewal, unless a different written agreement applies.",
       "Immediate deletion can remove access sooner. Deleted active account data may not be recoverable, although limited billing, security, backup, agreement, or legal records may be retained where required or permitted.",
     ],
-    links: ["Request a Change", "Priority Help", "Terms of Use", "Privacy Policy"],
+    links: ["Requests", "Terms of Use", "Privacy Policy"],
   },
   {
     id: "where-things-are",
@@ -142,17 +140,17 @@ export const HELP_SECTIONS = [
       "Contacted Me and Clients: main Clients page below Your Stats.",
       "Business details and Save Settings: Settings.",
       "Payment methods: Settings, then Payment Method.",
-      "Routine changes and data exports: Settings, then Request a Change.",
-      "Serious service problems: Settings, then Priority Support, or open Priority Help directly.",
+      "Routine changes and data exports: Requests, then Request a Change.",
+      "Serious service problems: Requests, then Priority Help.",
       "Terms, Privacy, and Docs: Settings, or use the global Help button.",
       "AI assistance: press Help on any signed-in page, then Ask AI for Help.",
     ],
-    links: ["Clients and Stats", "Settings", "Billing", "Request a Change", "Priority Help", "Terms of Use", "Privacy Policy"],
+    links: ["Clients", "Settings", "Requests", "Terms of Use", "Privacy Policy"],
   },
 ];
 
 export const HELP_KNOWLEDGE = HELP_SECTIONS.map((section) => {
   const points = section.points.map((point) => `- ${point}`).join("\n");
   const links = section.links.join(", ");
-  return `## ${section.title}\n${section.summary}\n${points}\nRelevant links: ${links}`;
+  return `## ${section.title}\n${section.summary}\n${points}\nRelevant page links: ${links}`;
 }).join("\n\n");
