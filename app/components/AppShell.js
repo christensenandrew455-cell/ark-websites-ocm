@@ -111,7 +111,6 @@ export default function AppShell({ children }) {
           </div>
         </header>
         <NativeAppSetup />
-        <HelpCenter isAdmin />
         {children}
       </>
     );
