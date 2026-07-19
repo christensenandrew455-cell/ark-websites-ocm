@@ -91,13 +91,66 @@ function StatCard({ value, label }) {
   );
 }
 
-function StatsPanel({ events, loading }) {
+function currentMonthKey(timeZone = "UTC") {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return `${values.year}-${values.month}`;
+  } catch {
+    return new Date().toISOString().slice(0, 7);
+  }
+}
+
+function ReceptionistUsageCard({ usage, loading }) {
+  const includedMinutes = Math.max(1, Number(usage?.includedMinutes || 1500));
+  const activeMonth = usage?.monthKey === currentMonthKey(usage?.timeZone || "UTC");
+  const usedMinutes = loading || !activeMonth
+    ? 0
+    : Math.ceil(Math.max(0, Number(usage?.totalSeconds || 0)) / 60);
+  const percentage = Math.max(0, (usedMinutes / includedMinutes) * 100);
+  const displayedPercentage = Math.min(100, percentage);
+  const barClass = percentage >= 75
+    ? "bg-red-500"
+    : percentage >= 50
+      ? "bg-amber-400"
+      : "bg-emerald-500";
+
+  return (
+    <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-4 sm:p-6">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 sm:text-xs">AI Receptionist Usage This Month</p>
+          <p className="mt-1 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+            {usedMinutes.toLocaleString()}
+            <span className="ml-1 text-sm font-black text-slate-500 sm:text-base">of {includedMinutes.toLocaleString()} minutes</span>
+          </p>
+        </div>
+        <p className="shrink-0 text-sm font-black text-slate-500">{Math.round(percentage)}%</p>
+      </div>
+      <div
+        className="mt-3 h-3 overflow-hidden rounded-full bg-slate-200"
+        role="progressbar"
+        aria-label="AI receptionist monthly minutes"
+        aria-valuemin={0}
+        aria-valuemax={includedMinutes}
+        aria-valuenow={Math.min(usedMinutes, includedMinutes)}
+      >
+        <div className={`h-full rounded-full transition-all ${barClass}`} style={{ width: `${displayedPercentage}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function StatsPanel({ events, loading, usage, usageLoading }) {
   const [range, setRange] = useState("all");
   const counts = useMemo(() => {
     const visible = events.filter((event) => eventInsideRange(event, range));
     return {
       contacted: visible.filter((event) => event.eventType === "contacted").length,
-      usage: visible.filter((event) => event.eventType === "usage").length,
       clients: visible.filter((event) => event.eventType === "client").length,
     };
   }, [events, range]);
@@ -122,11 +175,11 @@ function StatsPanel({ events, loading }) {
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-4">
+      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:mt-4 sm:gap-4">
         <StatCard value={loading ? 0 : counts.contacted} label="Contacted You" />
-        <StatCard value={loading ? 0 : counts.usage} label="Usage" />
         <StatCard value={loading ? 0 : counts.clients} label="Clients" />
       </div>
+      <ReceptionistUsageCard usage={usage} loading={usageLoading} />
     </section>
   );
 }
@@ -140,6 +193,8 @@ export default function ClientStats() {
   const [loadedCollections, setLoadedCollections] = useState(new Set());
   const [events, setEvents] = useState([]);
   const [eventsLoaded, setEventsLoaded] = useState(false);
+  const [receptionistUsage, setReceptionistUsage] = useState(null);
+  const [usageLoaded, setUsageLoaded] = useState(false);
 
   useEffect(() => {
     let slot;
@@ -197,6 +252,20 @@ export default function ClientStats() {
     setLoadedCollections(new Set());
     setEvents([]);
     setEventsLoaded(false);
+    setReceptionistUsage(null);
+    setUsageLoaded(false);
+
+    const unsubscribeUsage = onSnapshot(
+      doc(db, "ocmClients", clientId, "usage", "receptionist-current"),
+      (snapshot) => {
+        setReceptionistUsage(snapshot.exists() ? snapshot.data() : null);
+        setUsageLoaded(true);
+      },
+      (error) => {
+        console.error("Could not load receptionist usage", error);
+        setUsageLoaded(true);
+      }
+    );
 
     const unsubscribeEvents = onSnapshot(
       collection(db, "ocmClients", clientId, "statsEvents"),
@@ -230,6 +299,7 @@ export default function ClientStats() {
     ));
 
     return () => {
+      unsubscribeUsage();
       unsubscribeEvents();
       unsubscribeContacted();
       acceptedUnsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -257,5 +327,13 @@ export default function ClientStats() {
   }, [acceptedByCollection, clientId, contacted, events, eventsLoaded, loadedCollections]);
 
   if (!mountNode) return null;
-  return createPortal(<StatsPanel events={events} loading={!eventsLoaded} />, mountNode);
+  return createPortal(
+    <StatsPanel
+      events={events}
+      loading={!eventsLoaded}
+      usage={receptionistUsage}
+      usageLoading={!usageLoaded}
+    />,
+    mountNode
+  );
 }
