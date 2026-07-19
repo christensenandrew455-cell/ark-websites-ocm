@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
-const SETUP_STORAGE_KEY = "arkPhoneAccessSetupV2";
+const PERMISSION_PROMPT_SESSION_KEY = "arkPhoneAccessPromptDismissedV3";
 
 async function updateDevice(user, payload) {
   const token = await user.getIdToken(true);
@@ -52,12 +52,16 @@ async function createChannels(PushNotifications) {
   });
 }
 
+function permissionEnabled(value) {
+  return value === "granted" || value === "limited";
+}
+
 function permissionLabel(value) {
-  return value === "granted" || value === "limited" ? "Enabled" : "Not enabled";
+  return permissionEnabled(value) ? "Enabled" : "Not enabled";
 }
 
 function PermissionRow({ title, description, status, busy, onEnable }) {
-  const enabled = status === "granted" || status === "limited";
+  const enabled = permissionEnabled(status);
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -165,17 +169,20 @@ export default function NativeAppSetup() {
       ]);
 
       if (!active) return;
-      setPermissions({
+      const nextPermissions = {
         notifications: notificationPermission.receive,
         calendar: calendarPermission.result,
         contacts: contactPermission.contacts,
-      });
+      };
+      setPermissions(nextPermissions);
 
       if (notificationPermission.receive === "granted") {
         await PushNotifications.register();
       }
 
-      if (window.localStorage.getItem(SETUP_STORAGE_KEY) !== "complete") {
+      const missingPermission = Object.values(nextPermissions).some((value) => !permissionEnabled(value));
+      const dismissedThisSession = window.sessionStorage.getItem(PERMISSION_PROMPT_SESSION_KEY) === "dismissed";
+      if (missingPermission && !dismissedThisSession) {
         setShowPrompt(true);
       }
     }
@@ -184,7 +191,9 @@ export default function NativeAppSetup() {
       console.error("Unable to initialize native phone access", setupError);
       if (active) {
         setError("Phone access is not ready in this app build yet.");
-        setShowPrompt(true);
+        if (window.sessionStorage.getItem(PERMISSION_PROMPT_SESSION_KEY) !== "dismissed") {
+          setShowPrompt(true);
+        }
       }
     });
 
@@ -194,6 +203,12 @@ export default function NativeAppSetup() {
       handles.forEach((handle) => handle.remove().catch(() => null));
     };
   }, [isAdmin, profile?.clientId, router, user]);
+
+  useEffect(() => {
+    if (Object.values(permissions).every(permissionEnabled)) {
+      setShowPrompt(false);
+    }
+  }, [permissions]);
 
   async function enableNotifications() {
     setBusyPermission("notifications");
@@ -241,7 +256,7 @@ export default function NativeAppSetup() {
       const { Contacts } = await import("@capacitor-community/contacts");
       const permission = await Contacts.requestPermissions();
       setPermissions((current) => ({ ...current, contacts: permission.contacts }));
-      if (permission.contacts !== "granted" && permission.contacts !== "limited") {
+      if (!permissionEnabled(permission.contacts)) {
         setError("Contacts access was not enabled. You can allow it later in the phone's app settings.");
       }
     } catch (contactsError) {
@@ -252,8 +267,8 @@ export default function NativeAppSetup() {
     }
   }
 
-  function finishSetup() {
-    window.localStorage.setItem(SETUP_STORAGE_KEY, "complete");
+  function dismissSetup() {
+    window.sessionStorage.setItem(PERMISSION_PROMPT_SESSION_KEY, "dismissed");
     setShowPrompt(false);
   }
 
@@ -284,9 +299,17 @@ export default function NativeAppSetup() {
 
       {showPrompt && (
         <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm">
-          <section className="mx-auto my-4 w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:my-10 sm:p-7">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight">Set up phone access</h2>
+          <section className="relative mx-auto my-4 w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:my-10 sm:p-7">
+            <button
+              type="button"
+              onClick={dismissSetup}
+              aria-label="Close phone access setup"
+              className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-lg font-black text-slate-600 hover:bg-slate-200"
+            >
+              ×
+            </button>
+            <p className="pr-12 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
+            <h2 className="mt-2 pr-12 text-2xl font-black tracking-tight">Set up phone access</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               Enable these features so the app can alert you about leads, add estimates to your calendar, and save clients to your contacts.
             </p>
@@ -317,12 +340,12 @@ export default function NativeAppSetup() {
               />
             </div>
 
-            <button type="button" onClick={finishSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">
-              Finish Setup
+            <button type="button" onClick={dismissSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">
+              Done for Now
             </button>
-            <button type="button" onClick={finishSetup} className="mt-2 w-full rounded-xl px-4 py-2 text-xs font-bold text-slate-500">
-              Do this later
-            </button>
+            <p className="mt-2 text-center text-[10px] font-semibold leading-4 text-slate-500">
+              If a permission is still disabled, this setup will appear again the next time the app is opened.
+            </p>
           </section>
         </div>
       )}
