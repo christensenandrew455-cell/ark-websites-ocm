@@ -56,6 +56,10 @@ export function AuthProvider({ children }) {
       clientId,
       status,
       paymentSetupStatus: account.paymentSetupStatus || (clientId ? "complete" : ""),
+      termsAccepted: account.termsAccepted === true || tokenResult.claims.termsAccepted === true,
+      privacyAccepted: account.privacyAccepted === true || tokenResult.claims.privacyAccepted === true,
+      termsVersion: account.termsVersion || String(tokenResult.claims.termsVersion || ""),
+      privacyVersion: account.privacyVersion || String(tokenResult.claims.privacyVersion || ""),
     };
 
     let nextActiveClientId = clientId;
@@ -93,6 +97,10 @@ export function AuthProvider({ children }) {
           clientId: "",
           status: "",
           paymentSetupStatus: "",
+          termsAccepted: false,
+          privacyAccepted: false,
+          termsVersion: "",
+          privacyVersion: "",
         });
         setActiveClientId("");
       } finally {
