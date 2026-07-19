@@ -1,14 +1,14 @@
 {
   "name": "ark-websites-ocm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "mobile:android:add": "npx cap add android && node scripts/configure-android.mjs",
-    "mobile:android:sync": "npx cap sync android && node scripts/configure-android.mjs",
+    "mobile:android:add": "npx cap add android && node scripts/configure-android.mjs && node scripts/configure-phone-permissions.mjs",
+    "mobile:android:sync": "npx cap sync android && node scripts/configure-android.mjs && node scripts/configure-phone-permissions.mjs",
     "mobile:android:open": "npx cap open android"
   },
   "dependencies": {
