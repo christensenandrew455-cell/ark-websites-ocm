@@ -2,10 +2,8 @@
 
 import { Capacitor } from "@capacitor/core";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-
-const PERMISSION_PROMPT_SESSION_KEY = "arkPhoneAccessPromptDismissedV4";
 
 async function updateDevice(user, payload) {
   const token = await user.getIdToken(true);
@@ -59,8 +57,7 @@ function permissionEnabled(value) {
 }
 
 function PermissionRow({ title, description, status, busy, onEnable }) {
-  const enabled = permissionEnabled(status);
-  if (enabled) return null;
+  if (permissionEnabled(status)) return null;
 
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
@@ -88,6 +85,8 @@ function PermissionRow({ title, description, status, busy, onEnable }) {
 export default function NativeAppSetup() {
   const router = useRouter();
   const { user, profile, isAdmin } = useAuth();
+  const dismissedForCurrentOpen = useRef(false);
+  const permissionReaderRef = useRef(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [busyPermission, setBusyPermission] = useState("");
   const [permissions, setPermissions] = useState({
@@ -99,11 +98,61 @@ export default function NativeAppSetup() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || !user || !profile?.clientId || isAdmin) return undefined;
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || !user || !profile?.clientId || isAdmin) {
+      return undefined;
+    }
 
     let active = true;
     const handles = [];
     const dismissalTimers = [];
+    let PushNotifications = null;
+    let CapacitorCalendar = null;
+    let Contacts = null;
+
+    async function readPermissions() {
+      const [notificationPermission, calendarPermission, contactPermission] = await Promise.all([
+        PushNotifications
+          ? PushNotifications.checkPermissions().catch((permissionError) => {
+              console.warn("Unable to read Android notification permission", permissionError);
+              return { receive: "denied" };
+            })
+          : Promise.resolve({ receive: "denied" }),
+        CapacitorCalendar
+          ? CapacitorCalendar.checkPermission({ scope: "writeCalendar" }).catch((permissionError) => {
+              console.warn("Unable to read Android calendar permission", permissionError);
+              return { result: "denied" };
+            })
+          : Promise.resolve({ result: "denied" }),
+        Contacts
+          ? Contacts.checkPermissions().catch((permissionError) => {
+              console.warn("Unable to read Android contacts permission", permissionError);
+              return { contacts: "denied" };
+            })
+          : Promise.resolve({ contacts: "denied" }),
+      ]);
+
+      if (!active) return null;
+
+      const nextPermissions = {
+        notifications: notificationPermission.receive || "denied",
+        calendar: calendarPermission.result || "denied",
+        contacts: contactPermission.contacts || "denied",
+      };
+
+      setPermissions(nextPermissions);
+      const missingPermission = Object.values(nextPermissions).some((value) => !permissionEnabled(value));
+      setShowPrompt(missingPermission && !dismissedForCurrentOpen.current);
+
+      if (!missingPermission) setError("");
+
+      if (PushNotifications && permissionEnabled(nextPermissions.notifications)) {
+        PushNotifications.register().catch((registrationError) => {
+          console.error("Notification registration failed", registrationError);
+        });
+      }
+
+      return nextPermissions;
+    }
 
     async function initialize() {
       const [pushResult, calendarResult, contactsResult] = await Promise.allSettled([
@@ -112,9 +161,9 @@ export default function NativeAppSetup() {
         import("@capacitor-community/contacts"),
       ]);
 
-      const PushNotifications = pushResult.status === "fulfilled" ? pushResult.value.PushNotifications : null;
-      const CapacitorCalendar = calendarResult.status === "fulfilled" ? calendarResult.value.CapacitorCalendar : null;
-      const Contacts = contactsResult.status === "fulfilled" ? contactsResult.value.Contacts : null;
+      PushNotifications = pushResult.status === "fulfilled" ? pushResult.value.PushNotifications : null;
+      CapacitorCalendar = calendarResult.status === "fulfilled" ? calendarResult.value.CapacitorCalendar : null;
+      Contacts = contactsResult.status === "fulfilled" ? contactsResult.value.Contacts : null;
 
       if (PushNotifications) {
         await createChannels(PushNotifications).catch((channelError) => {
@@ -126,8 +175,8 @@ export default function NativeAppSetup() {
             await updateDevice(user, {
               action: "register",
               token: registration.value,
-              platform: Capacitor.getPlatform(),
-              appVersion: "1.4",
+              platform: "android",
+              appVersion: "1.5",
             });
           } catch (registrationError) {
             console.error("Unable to save notification token", registrationError);
@@ -162,58 +211,39 @@ export default function NativeAppSetup() {
         }));
       }
 
-      const [notificationPermission, calendarPermission, contactPermission] = await Promise.all([
-        PushNotifications
-          ? PushNotifications.checkPermissions().catch((permissionError) => {
-              console.warn("Unable to read Android notification permission", permissionError);
-              return { receive: "prompt" };
-            })
-          : Promise.resolve({ receive: "prompt" }),
-        CapacitorCalendar
-          ? CapacitorCalendar.checkPermission({ scope: "writeCalendar" }).catch(() => ({ result: "prompt" }))
-          : Promise.resolve({ result: "prompt" }),
-        Contacts
-          ? Contacts.checkPermissions().catch(() => ({ contacts: "prompt" }))
-          : Promise.resolve({ contacts: "prompt" }),
-      ]);
+      permissionReaderRef.current = readPermissions;
+      dismissedForCurrentOpen.current = false;
+      await readPermissions();
+    }
 
-      if (!active) return;
-
-      const nextPermissions = {
-        notifications: notificationPermission.receive,
-        calendar: calendarPermission.result,
-        contacts: contactPermission.contacts,
-      };
-      setPermissions(nextPermissions);
-
-      if (PushNotifications && permissionEnabled(notificationPermission.receive)) {
-        PushNotifications.register().catch((registrationError) => {
-          console.error("Notification registration failed", registrationError);
-        });
-      }
-
-      const missingPermission = Object.values(nextPermissions).some((value) => !permissionEnabled(value));
-      const dismissedThisSession = window.sessionStorage.getItem(PERMISSION_PROMPT_SESSION_KEY) === "dismissed";
-      setShowPrompt(missingPermission && !dismissedThisSession);
+    function checkAgainAfterAppReturns() {
+      if (document.visibilityState !== "visible") return;
+      dismissedForCurrentOpen.current = false;
+      permissionReaderRef.current?.();
     }
 
     initialize().catch((setupError) => {
-      console.error("Unable to initialize native phone access", setupError);
+      console.error("Unable to initialize Android phone access", setupError);
+      if (active) {
+        setPermissions({ notifications: "denied", calendar: "denied", contacts: "denied" });
+        setShowPrompt(true);
+      }
     });
+
+    document.addEventListener("visibilitychange", checkAgainAfterAppReturns);
+    window.addEventListener("focus", checkAgainAfterAppReturns);
+    window.addEventListener("pageshow", checkAgainAfterAppReturns);
 
     return () => {
       active = false;
+      permissionReaderRef.current = null;
       dismissalTimers.forEach((timer) => window.clearTimeout(timer));
-      handles.forEach((handle) => handle.remove().catch(() => null));
+      handles.forEach((handle) => handle?.remove?.().catch(() => null));
+      document.removeEventListener("visibilitychange", checkAgainAfterAppReturns);
+      window.removeEventListener("focus", checkAgainAfterAppReturns);
+      window.removeEventListener("pageshow", checkAgainAfterAppReturns);
     };
   }, [isAdmin, profile?.clientId, router, user]);
-
-  useEffect(() => {
-    if (Object.values(permissions).every(permissionEnabled)) {
-      setShowPrompt(false);
-      setError("");
-    }
-  }, [permissions]);
 
   async function enableNotifications() {
     setBusyPermission("notifications");
@@ -225,34 +255,24 @@ export default function NativeAppSetup() {
         console.warn("Unable to create notification channels", channelError);
       });
 
-      let permission = await PushNotifications.checkPermissions().catch(() => ({ receive: "prompt" }));
+      let permission = await PushNotifications.checkPermissions();
       if (!permissionEnabled(permission.receive)) {
         permission = await PushNotifications.requestPermissions();
       }
 
       setPermissions((current) => ({ ...current, notifications: permission.receive }));
-
       if (!permissionEnabled(permission.receive)) {
-        setError("Notifications are turned off. Open Android Settings, choose Apps, ARK Client Center, Notifications, and allow them.");
+        setError("Notifications are blocked. Open Android Settings, choose Apps, ARK Client Center, Notifications, and allow them.");
         return;
       }
 
       PushNotifications.register().catch((registrationError) => {
         console.error("Notification registration failed", registrationError);
       });
+      await permissionReaderRef.current?.();
     } catch (enableError) {
-      console.error("Could not read Android notification permission", enableError);
-
-      try {
-        const { PushNotifications } = await import("@capacitor/push-notifications");
-        const currentPermission = await PushNotifications.checkPermissions();
-        setPermissions((current) => ({ ...current, notifications: currentPermission.receive }));
-        if (permissionEnabled(currentPermission.receive)) return;
-      } catch (checkError) {
-        console.error("Unable to recheck Android notification permission", checkError);
-      }
-
-      setError("Open Android Settings, choose Apps, ARK Client Center, Notifications, and allow notifications.");
+      console.error("Could not request Android notification permission", enableError);
+      setError("Notifications are blocked. Open Android Settings, choose Apps, ARK Client Center, Notifications, and allow them.");
     } finally {
       setBusyPermission("");
     }
@@ -261,16 +281,19 @@ export default function NativeAppSetup() {
   async function enableCalendar() {
     setBusyPermission("calendar");
     setError("");
+
     try {
       const { CapacitorCalendar } = await import("@ebarooni/capacitor-calendar");
       const permission = await CapacitorCalendar.requestWriteOnlyCalendarAccess();
       setPermissions((current) => ({ ...current, calendar: permission.result }));
       if (!permissionEnabled(permission.result)) {
-        setError("Calendar access was not enabled. You can allow it later in Android settings.");
+        setError("Calendar access is blocked. Allow it in Android Settings for ARK Client Center.");
+        return;
       }
+      await permissionReaderRef.current?.();
     } catch (calendarError) {
-      console.error(calendarError);
-      setError("Could not request calendar access.");
+      console.error("Could not request Android calendar permission", calendarError);
+      setError("Calendar access is blocked. Allow it in Android Settings for ARK Client Center.");
     } finally {
       setBusyPermission("");
     }
@@ -279,27 +302,30 @@ export default function NativeAppSetup() {
   async function enableContacts() {
     setBusyPermission("contacts");
     setError("");
+
     try {
       const { Contacts } = await import("@capacitor-community/contacts");
       const permission = await Contacts.requestPermissions();
       setPermissions((current) => ({ ...current, contacts: permission.contacts }));
       if (!permissionEnabled(permission.contacts)) {
-        setError("Contacts access was not enabled. You can allow it later in Android settings.");
+        setError("Contacts access is blocked. Allow it in Android Settings for ARK Client Center.");
+        return;
       }
+      await permissionReaderRef.current?.();
     } catch (contactsError) {
-      console.error(contactsError);
-      setError("Could not request contacts access.");
+      console.error("Could not request Android contacts permission", contactsError);
+      setError("Contacts access is blocked. Allow it in Android Settings for ARK Client Center.");
     } finally {
       setBusyPermission("");
     }
   }
 
   function dismissSetup() {
-    window.sessionStorage.setItem(PERMISSION_PROMPT_SESSION_KEY, "dismissed");
+    dismissedForCurrentOpen.current = true;
     setShowPrompt(false);
   }
 
-  if (!Capacitor.isNativePlatform() || !user || isAdmin) return null;
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || !user || isAdmin) return null;
 
   return (
     <>
@@ -338,7 +364,7 @@ export default function NativeAppSetup() {
             <p className="pr-12 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
             <h2 className="mt-2 pr-12 text-2xl font-black tracking-tight">Finish phone setup</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Only permissions that are currently turned off are shown below.
+              Only Android permissions that are currently blocked are shown below.
             </p>
 
             {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{error}</div>}
@@ -371,7 +397,7 @@ export default function NativeAppSetup() {
               Done for Now
             </button>
             <p className="mt-2 text-center text-[10px] font-semibold leading-4 text-slate-500">
-              Disabled permissions will be offered again the next time the app is opened.
+              Blocked permissions will be offered again when the Android app is opened or resumed.
             </p>
           </section>
         </div>
