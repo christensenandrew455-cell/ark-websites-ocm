@@ -158,7 +158,7 @@ export default function SettingsPanel() {
           <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 sm:p-10">Loading settings…</div>
         ) : (
           <>
-            <form onSubmit={saveSettings} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6 md:p-8">
+            <form id="business-details" onSubmit={saveSettings} className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6 md:p-8">
               <h2 className="text-lg font-black sm:text-2xl">Business Details</h2>
               <p className="mt-1 hidden text-sm leading-6 text-slate-600 sm:block">
                 These details identify the business and determine where important client notifications should go.
@@ -204,7 +204,7 @@ export default function SettingsPanel() {
 
             {!isAdmin && (
               <>
-                <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+                <section id="billing" className="scroll-mt-28 mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Secure billing</p>
@@ -224,24 +224,25 @@ export default function SettingsPanel() {
                   </button>
                 </section>
 
-                <section className="mt-4 grid grid-cols-2 gap-3 sm:mt-6">
+                <section id="requests" className="scroll-mt-28 mt-4 grid grid-cols-2 gap-3 sm:mt-6">
                   <Link href="/messages?type=change" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
                     <p className="text-2xl font-black">Change</p>
                     <h2 className="mt-1 text-sm font-black">Request a Change</h2>
-                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, or another update. Usually 1–2 business days.</p>
+                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, data exports, or another routine update.</p>
                   </Link>
                   <Link href="/messages?type=help" className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
                     <p className="text-2xl font-black text-red-600">Help</p>
                     <h2 className="mt-1 text-sm font-black">Priority Support</h2>
-                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls or missing lead data.</p>
+                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls, missing lead data, or urgent account issues.</p>
                   </Link>
                 </section>
 
-                <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Account policies</p>
-                  <h2 className="mt-1 text-lg font-black sm:text-2xl">Terms and Privacy</h2>
-                  <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Review recurring billing, account enforcement, cancellation, data access, retention, and privacy practices.</p>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                <section id="policies" className="scroll-mt-28 mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Learn and review</p>
+                  <h2 className="mt-1 text-lg font-black sm:text-2xl">Docs, Terms, and Privacy</h2>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Learn how the app works and review recurring billing, cancellation, data access, retention, and privacy practices.</p>
+                  <Link href="/docs" className="mt-4 block rounded-xl bg-slate-950 px-3 py-3 text-center text-xs font-black text-white hover:bg-slate-800 sm:text-sm">Open Docs and Learn More</Link>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
                     <Link href="/terms" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Terms of Use</Link>
                     <Link href="/privacy" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Privacy Policy</Link>
                   </div>
