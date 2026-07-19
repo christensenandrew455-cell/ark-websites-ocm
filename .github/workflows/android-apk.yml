@@ -69,6 +69,7 @@ jobs:
           npx cap add android
           npx cap sync android
           node scripts/configure-android.mjs
+          node scripts/configure-phone-permissions.mjs
 
       - name: Add Firebase Android configuration
         env:
