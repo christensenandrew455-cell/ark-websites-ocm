@@ -37,6 +37,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Accept the current Terms of Use and Privacy Policy." }, { status: 400 });
     }
 
+    const auth = getAdminAuth();
     const db = getAdminDb();
     const uid = user.decodedToken.uid;
     const accountRef = db.collection("accounts").doc(uid);
@@ -78,6 +79,16 @@ export async function POST(request) {
     }
 
     await batch.commit();
+
+    const userRecord = await auth.getUser(uid);
+    await auth.setCustomUserClaims(uid, {
+      ...(userRecord.customClaims || {}),
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion: TERMS_VERSION,
+      privacyVersion: PRIVACY_VERSION,
+    });
+
     return NextResponse.json({
       accepted: true,
       termsVersion: TERMS_VERSION,
