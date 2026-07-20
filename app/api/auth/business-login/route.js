@@ -10,6 +10,14 @@ function cleanClientId(value) {
     .replace(/^-|-$/g, "");
 }
 
+const CUSTOMER_STATUSES = new Set([
+  "pending_verification",
+  "approved_pending_payment",
+  "declined",
+  "active",
+  "disabled",
+]);
+
 export async function POST(request) {
   try {
     const { identifier, password } = await request.json();
@@ -25,7 +33,7 @@ export async function POST(request) {
     if (!email.includes("@")) {
       const clientId = cleanClientId(normalizedIdentifier);
       const businessSnapshot = await db.collection("businesses").doc(clientId).get();
-      if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
+      if (!businessSnapshot.exists || !CUSTOMER_STATUSES.has(String(businessSnapshot.data().status || ""))) {
         return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
       }
       email = String(businessSnapshot.data().accountEmail || "").toLowerCase();
@@ -57,13 +65,24 @@ export async function POST(request) {
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
     const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
 
-    if (!isAdmin && (!accountSnapshot.exists || account.status !== "active" || !account.clientId)) {
-      return NextResponse.json({ error: "This account is not active." }, { status: 403 });
+    if (!isAdmin && (!accountSnapshot.exists || !CUSTOMER_STATUSES.has(String(account.status || "")) || !account.clientId)) {
+      return NextResponse.json({ error: "This account is not available." }, { status: 403 });
+    }
+    if (!isAdmin && account.status === "disabled") {
+      return NextResponse.json({ error: "This account is disabled." }, { status: 403 });
     }
 
     const claims = isAdmin
-      ? { role: "admin", ...(account.clientId ? { clientId: account.clientId } : {}) }
-      : { role: "customer", clientId: account.clientId };
+      ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }
+      : {
+          role: "customer",
+          clientId: account.clientId,
+          accountStatus: account.status,
+          termsAccepted: account.termsAccepted === true,
+          privacyAccepted: account.privacyAccepted === true,
+          termsVersion: String(account.termsVersion || ""),
+          privacyVersion: String(account.privacyVersion || ""),
+        };
 
     await auth.setCustomUserClaims(userRecord.uid, claims);
 
@@ -84,7 +103,7 @@ export async function POST(request) {
     }
 
     const token = await auth.createCustomToken(userRecord.uid, claims);
-    return NextResponse.json({ token });
+    return NextResponse.json({ token, status: isAdmin ? "active" : account.status });
   } catch (error) {
     console.error("Unable to sign in", error);
     return NextResponse.json({ error: "Unable to sign in right now." }, { status: 500 });
