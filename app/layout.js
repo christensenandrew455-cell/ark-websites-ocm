@@ -1,5 +1,5 @@
 import "./globals.css";
-import AppShell from "./components/AppShell";
+import SignupFlowShell from "./components/SignupFlowShell";
 import { AuthProvider } from "./components/AuthProvider";
 
 export const metadata = {
@@ -13,7 +13,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <SignupFlowShell>{children}</SignupFlowShell>
         </AuthProvider>
       </body>
     </html>
