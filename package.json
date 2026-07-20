@@ -9,14 +9,18 @@
     "lint": "next lint",
     "mobile:android:add": "npx cap add android && node scripts/configure-android.mjs && node scripts/configure-phone-permissions.mjs",
     "mobile:android:sync": "npx cap sync android && node scripts/configure-android.mjs && node scripts/configure-phone-permissions.mjs",
-    "mobile:android:open": "npx cap open android"
+    "mobile:android:open": "npx cap open android",
+    "mobile:ios:add": "npx cap add ios && node scripts/configure-ios.mjs",
+    "mobile:ios:sync": "npx cap sync ios && node scripts/configure-ios.mjs",
+    "mobile:ios:open": "npx cap open ios"
   },
   "dependencies": {
     "@capacitor-community/contacts": "7.2.0",
     "@capacitor/android": "8.4.2",
     "@capacitor/core": "8.4.2",
+    "@capacitor/ios": "8.4.2",
     "@capacitor/push-notifications": "8.1.2",
-    "@ebarooni/capacitor-calendar": "8.0.2",
+    "@ebarooni/capacitor-calendar": "8.2.0",
     "@tailwindcss/postcss": "latest",
     "firebase": "latest",
     "firebase-admin": "13.6.0",
