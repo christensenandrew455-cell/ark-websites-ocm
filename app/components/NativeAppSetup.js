@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
 const PhonePermissions = registerPlugin("PhonePermissions");
+const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
 const PERMISSION_KEYS = ["notifications", "calendar", "contacts"];
 const EMPTY_PERMISSIONS = Object.freeze({
   notifications: "unknown",
@@ -118,10 +119,11 @@ function PermissionRow({ permissionKey, title, description, status, busy, onEnab
 export default function NativeAppSetup() {
   const router = useRouter();
   const { user, profile, isAdmin } = useAuth();
-  const dismissedUntilResume = useRef(false);
-  const refreshPermissionsRef = useRef(null);
   const pushPluginRef = useRef(null);
   const registrationRequestedRef = useRef(false);
+  const promptSessionActiveRef = useRef(false);
+  const promptDismissedRef = useRef(false);
+  const refreshPermissionsRef = useRef(null);
   const resumeTimerRef = useRef(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [busyPermission, setBusyPermission] = useState("");
@@ -152,16 +154,8 @@ export default function NativeAppSetup() {
       }
     }
 
-    async function refreshPermissions({ afterResume = false } = {}) {
-      if (afterResume) dismissedUntilResume.current = false;
-
-      if (!Capacitor.isPluginAvailable("PhonePermissions")) {
-        if (active) {
-          setPermissions(EMPTY_PERMISSIONS);
-          setShowPrompt(false);
-        }
-        return null;
-      }
+    async function readNativePermissions({ updatePrompt = false } = {}) {
+      if (!Capacitor.isPluginAvailable("PhonePermissions")) return null;
 
       try {
         const result = await PhonePermissions.check();
@@ -170,13 +164,16 @@ export default function NativeAppSetup() {
         const nextPermissions = normalizePermissions(result);
         const missing = missingPermissions(nextPermissions);
         setPermissions(nextPermissions);
-        setShowPrompt(missing.length > 0 && !dismissedUntilResume.current);
-        if (!missing.length) setError("");
         registerForPush(nextPermissions).catch(() => null);
+
+        if (updatePrompt && promptSessionActiveRef.current && !promptDismissedRef.current) {
+          setShowPrompt(missing.length > 0);
+          if (!missing.length) promptSessionActiveRef.current = false;
+        }
+        if (!missing.length) setError("");
         return nextPermissions;
       } catch (permissionError) {
         console.error("Unable to read native Android permissions", permissionError);
-        if (active) setShowPrompt(false);
         return null;
       }
     }
@@ -195,7 +192,7 @@ export default function NativeAppSetup() {
               action: "register",
               token: registration.value,
               platform: "android",
-              appVersion: "2.0",
+              appVersion: "2.1",
             });
           } catch (registrationError) {
             console.error("Unable to save notification token", registrationError);
@@ -229,39 +226,57 @@ export default function NativeAppSetup() {
             if (active) setForegroundNotification((current) => current?.id === id ? null : current);
           }, 10000));
         }));
+
+        const currentPermissions = await readNativePermissions();
+        if (currentPermissions) registerForPush(currentPermissions).catch(() => null);
       } catch (pushError) {
         console.error("Unable to initialize Android push notifications", pushError);
       }
     }
 
-    function refreshAfterResume() {
-      if (document.visibilityState !== "visible") return;
-      if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current);
-      resumeTimerRef.current = window.setTimeout(() => {
-        refreshPermissionsRef.current?.({ afterResume: true });
-      }, 250);
+    async function offerOneTimePhoneSetup() {
+      const shouldOffer = window.localStorage.getItem(PHONE_SETUP_PENDING_KEY) === "true";
+      if (!shouldOffer) return;
+
+      window.localStorage.removeItem(PHONE_SETUP_PENDING_KEY);
+      promptSessionActiveRef.current = true;
+      promptDismissedRef.current = false;
+
+      const currentPermissions = await readNativePermissions({ updatePrompt: true });
+      if (!currentPermissions) {
+        promptSessionActiveRef.current = false;
+        setShowPrompt(false);
+      }
     }
 
-    refreshPermissionsRef.current = refreshPermissions;
-    Promise.all([initializePush(), refreshPermissions()]).catch((setupError) => {
+    function refreshWhileOneTimePromptIsOpen() {
+      if (document.visibilityState !== "visible") return;
+      if (!promptSessionActiveRef.current || promptDismissedRef.current) return;
+      if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current);
+      resumeTimerRef.current = window.setTimeout(() => {
+        readNativePermissions({ updatePrompt: true }).catch(() => null);
+      }, 300);
+    }
+
+    refreshPermissionsRef.current = readNativePermissions;
+    Promise.all([initializePush(), offerOneTimePhoneSetup()]).catch((setupError) => {
       console.error("Unable to initialize Android phone setup", setupError);
     });
 
-    document.addEventListener("visibilitychange", refreshAfterResume);
-    window.addEventListener("focus", refreshAfterResume);
-    window.addEventListener("pageshow", refreshAfterResume);
+    document.addEventListener("visibilitychange", refreshWhileOneTimePromptIsOpen);
+    window.addEventListener("focus", refreshWhileOneTimePromptIsOpen);
 
     return () => {
       active = false;
       refreshPermissionsRef.current = null;
       pushPluginRef.current = null;
       registrationRequestedRef.current = false;
+      promptSessionActiveRef.current = false;
       if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current);
       notificationTimers.forEach((timer) => window.clearTimeout(timer));
       handles.forEach((handle) => handle?.remove?.().catch(() => null));
-      document.removeEventListener("visibilitychange", refreshAfterResume);
-      window.removeEventListener("focus", refreshAfterResume);
-      window.removeEventListener("pageshow", refreshAfterResume);
+      document.removeEventListener("visibilitychange", refreshWhileOneTimePromptIsOpen);
+      window.removeEventListener("focus", refreshWhileOneTimePromptIsOpen);
     };
   }, [isAdmin, profile?.clientId, router, user]);
 
@@ -281,12 +296,12 @@ export default function NativeAppSetup() {
       setPermissions(nextPermissions);
       setShowPrompt(missing.length > 0);
 
+      if (!missing.length) promptSessionActiveRef.current = false;
+
       if (result.openedSettings) {
-        setError(`Android opened the ${permissionName(permissionKey).toLowerCase()} settings. Allow access there, then return to ARK Client Center.`);
+        setError(`Android opened the ${permissionName(permissionKey).toLowerCase()} settings. Allow it there, then return to ARK Client Center.`);
       } else if (!permissionEnabled(nextPermissions[permissionKey])) {
         setError(`${permissionName(permissionKey)} was not enabled.`);
-      } else {
-        setError("");
       }
 
       if (permissionKey === "notifications" && permissionEnabled(nextPermissions.notifications)) {
@@ -300,7 +315,7 @@ export default function NativeAppSetup() {
         }
       }
 
-      window.setTimeout(() => refreshPermissionsRef.current?.(), 300);
+      window.setTimeout(() => refreshPermissionsRef.current?.({ updatePrompt: true }), 300);
     } catch (permissionError) {
       console.error(`Could not request Android ${permissionKey} permission`, permissionError);
       setError(`Could not open the Android ${permissionName(permissionKey).toLowerCase()} permission.`);
@@ -310,7 +325,8 @@ export default function NativeAppSetup() {
   }
 
   function dismissSetup() {
-    dismissedUntilResume.current = true;
+    promptDismissedRef.current = true;
+    promptSessionActiveRef.current = false;
     setShowPrompt(false);
   }
 
@@ -354,7 +370,7 @@ export default function NativeAppSetup() {
             <p className="pr-12 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
             <h2 className="mt-2 pr-12 text-2xl font-black tracking-tight">Finish phone setup</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Android is checked directly. Only permissions that are currently off are shown below.
+              This setup is offered once after account creation. Enable any phone access you want to use.
             </p>
 
             {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{error}</div>}
@@ -387,10 +403,10 @@ export default function NativeAppSetup() {
             </div>
 
             <button type="button" onClick={dismissSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">
-              Done for Now
+              Done
             </button>
             <p className="mt-2 text-center text-[10px] font-semibold leading-4 text-slate-500">
-              ARK Client Center checks Android again whenever the app returns to the foreground.
+              This permission setup will not be shown again after it is closed.
             </p>
           </section>
         </div>
