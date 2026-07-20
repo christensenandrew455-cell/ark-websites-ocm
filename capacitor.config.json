@@ -8,6 +8,7 @@
   "server": {
     "url": "https://ark-websites-ocm.vercel.app",
     "androidScheme": "https",
+    "iosScheme": "https",
     "cleartext": false,
     "errorPath": "offline.html"
   },
@@ -15,6 +16,10 @@
     "PushNotifications": {
       "presentationOptions": ["sound", "alert", "banner", "list"]
     }
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#f8fafc"
   },
   "android": {
     "backgroundColor": "#f8fafc",
