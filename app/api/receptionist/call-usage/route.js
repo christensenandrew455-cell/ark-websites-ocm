@@ -6,13 +6,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const INCLUDED_MINUTES = 1500;
-const FAILURE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const BLOCK_DURATION_MS = 24 * 60 * 60 * 1000;
 const ALLOWED_OUTCOMES = new Set([
   "lead-saved",
   "max-duration-no-lead",
-  "silence-no-lead",
-  "no-progress-no-lead",
   "ended-no-lead",
 ]);
 
@@ -33,13 +29,6 @@ function secretMatches(expected, provided) {
   const expectedHash = createHash("sha256").update(String(expected)).digest();
   const providedHash = createHash("sha256").update(String(provided)).digest();
   return timingSafeEqual(expectedHash, providedHash);
-}
-
-function normalizeCallerPhone(value) {
-  const raw = text(value).replace(/^tel:/i, "");
-  const digits = raw.replace(/\D/g, "");
-  if (digits.length < 7) return "";
-  return `+${digits}`;
 }
 
 function stableHash(value) {
@@ -115,26 +104,7 @@ export async function POST(request) {
     if (authorization.response) return authorization.response;
 
     const { db, clientId } = authorization;
-    const action = text(data.action).toLowerCase();
-    const callerPhone = normalizeCallerPhone(data.callerPhone);
-    const callerHash = callerPhone ? stableHash(`${clientId}:${callerPhone}`) : "";
-    const callerRef = callerHash
-      ? db.collection("ocmClients").doc(clientId).collection("receptionistCallers").doc(callerHash)
-      : null;
-    const now = Date.now();
-
-    if (action === "check") {
-      if (!callerRef) return Response.json({ ok: true, blocked: false });
-      const callerSnapshot = await callerRef.get();
-      const blockedUntilMs = Number(callerSnapshot.data()?.blockedUntilMs || 0);
-      return Response.json({
-        ok: true,
-        blocked: blockedUntilMs > now,
-        blockedUntil: blockedUntilMs > now ? new Date(blockedUntilMs).toISOString() : "",
-      });
-    }
-
-    if (action !== "record") {
+    if (text(data.action).toLowerCase() !== "record") {
       return Response.json({ ok: false, error: "Unsupported call usage action." }, { status: 400 });
     }
 
@@ -143,6 +113,7 @@ export async function POST(request) {
       return Response.json({ ok: false, error: "A call ID is required." }, { status: 400 });
     }
 
+    const now = Date.now();
     const durationSeconds = Math.ceil(numberWithin(data.durationSeconds, 1, 60 * 60, 1));
     const leadSaved = data.leadSaved === true || String(data.leadSaved).toLowerCase() === "true";
     const requestedOutcome = text(data.outcome).toLowerCase();
@@ -156,41 +127,20 @@ export async function POST(request) {
       ? Math.min(Date.parse(data.startedAt), endedAtMs)
       : Math.max(0, endedAtMs - durationSeconds * 1000);
     const usageMonth = monthKey(new Date(startedAtMs), timeZone);
+
     const callDocumentId = stableHash(`${clientId}:${callId}`);
     const callRef = db.collection("ocmClients").doc(clientId).collection("receptionistCalls").doc(callDocumentId);
     const currentUsageRef = db.collection("ocmClients").doc(clientId).collection("usage").doc("receptionist-current");
     const monthUsageRef = db.collection("ocmClients").doc(clientId).collection("usage").doc(`receptionist-${usageMonth}`);
 
-    const result = await db.runTransaction(async (transaction) => {
-      const callSnapshot = await transaction.get(callRef);
-      if (callSnapshot.exists) {
-        const existingBlockedUntil = callerRef
-          ? Number((await transaction.get(callerRef)).data()?.blockedUntilMs || 0)
-          : 0;
-        return { duplicate: true, blockedUntilMs: existingBlockedUntil };
-      }
+    const duplicate = await db.runTransaction(async (transaction) => {
+      const [callSnapshot, currentUsageSnapshot, monthUsageSnapshot] = await Promise.all([
+        transaction.get(callRef),
+        transaction.get(currentUsageRef),
+        transaction.get(monthUsageRef),
+      ]);
 
-      const callerSnapshot = callerRef ? await transaction.get(callerRef) : null;
-      const currentUsageSnapshot = await transaction.get(currentUsageRef);
-      const monthUsageSnapshot = await transaction.get(monthUsageRef);
-
-      const callerData = callerSnapshot?.data() || {};
-      let failedMaxCallTimes = Array.isArray(callerData.failedMaxCallTimes)
-        ? callerData.failedMaxCallTimes
-          .map(Number)
-          .filter((value) => Number.isFinite(value) && value >= endedAtMs - FAILURE_WINDOW_MS)
-        : [];
-      let blockedUntilMs = Number(callerData.blockedUntilMs || 0);
-
-      if (leadSaved) {
-        failedMaxCallTimes = [];
-        blockedUntilMs = 0;
-      } else if (outcome === "max-duration-no-lead" && callerRef) {
-        failedMaxCallTimes.push(endedAtMs);
-        if (failedMaxCallTimes.length >= 2) {
-          blockedUntilMs = Math.max(blockedUntilMs, endedAtMs + BLOCK_DURATION_MS);
-        }
-      }
+      if (callSnapshot.exists) return true;
 
       const currentUsage = currentUsageSnapshot.data() || {};
       const sameCurrentMonth = currentUsage.monthKey === usageMonth;
@@ -203,8 +153,6 @@ export async function POST(request) {
 
       transaction.create(callRef, {
         callIdHash: stableHash(callId),
-        callerHash: callerHash || null,
-        callerLast4: callerPhone ? callerPhone.slice(-4) : "",
         durationSeconds,
         durationMinutes: durationSeconds / 60,
         leadSaved,
@@ -235,25 +183,12 @@ export async function POST(request) {
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      if (callerRef) {
-        transaction.set(callerRef, {
-          callerLast4: callerPhone.slice(-4),
-          failedMaxCallTimes,
-          blockedUntilMs,
-          lastOutcome: outcome,
-          lastCallAt: Timestamp.fromMillis(endedAtMs),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-
-      return { duplicate: false, blockedUntilMs };
+      return false;
     });
 
     return Response.json({
       ok: true,
-      duplicate: result.duplicate,
-      blocked: result.blockedUntilMs > now,
-      blockedUntil: result.blockedUntilMs > now ? new Date(result.blockedUntilMs).toISOString() : "",
+      duplicate,
       monthKey: usageMonth,
       includedMinutes: INCLUDED_MINUTES,
     });
