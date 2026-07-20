@@ -1,0 +1,127 @@
+name: Generate iOS Xcode Project
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "capacitor.config.json"
+      - "scripts/configure-ios.mjs"
+      - ".github/workflows/generate-ios-project.yml"
+
+concurrency:
+  group: generate-ios-project
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  generate-ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Mark iOS generation pending
+        uses: actions/github-script@v7
+        with:
+          retries: 3
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'pending',
+              context: 'iOS Xcode Project',
+              description: 'Generating and validating the iPhone project',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install JavaScript dependencies
+        run: npm install
+
+      - name: Generate and sync Capacitor iOS
+        run: |
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+          node scripts/configure-ios.mjs
+
+      - name: Validate iPhone simulator build
+        run: |
+          if [ -f ios/App/App.xcworkspace/contents.xcworkspacedata ]; then
+            xcodebuild \
+              -workspace ios/App/App.xcworkspace \
+              -scheme App \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -destination 'generic/platform=iOS Simulator' \
+              CODE_SIGNING_ALLOWED=NO \
+              build
+          else
+            xcodebuild \
+              -project ios/App/App.xcodeproj \
+              -scheme App \
+              -configuration Debug \
+              -sdk iphonesimulator \
+              -destination 'generic/platform=iOS Simulator' \
+              CODE_SIGNING_ALLOWED=NO \
+              build
+          fi
+
+      - name: Commit generated Xcode project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ios package-lock.json package.json capacitor.config.json scripts/configure-ios.mjs
+          if git diff --cached --quiet; then
+            echo "The iOS project is already current."
+          else
+            git commit -m "Generate working Capacitor iOS project"
+            git push
+          fi
+
+      - name: Mark iOS generation successful
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          retries: 3
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'iOS Xcode Project',
+              description: 'The iPhone project compiled successfully',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Mark iOS generation failed
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          retries: 3
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'failure',
+              context: 'iOS Xcode Project',
+              description: 'The iPhone project needs another correction',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
