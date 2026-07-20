@@ -6,8 +6,10 @@ on:
     branches: [main]
     paths:
       - "package.json"
+      - "package-lock.json"
       - "capacitor.config.json"
       - "scripts/configure-ios.mjs"
+      - "ios/.gitignore"
       - ".github/workflows/generate-ios-project.yml"
 
 concurrency:
@@ -35,7 +37,7 @@ jobs:
               sha: context.sha,
               state: 'pending',
               context: 'iOS Xcode Project',
-              description: 'Generating and validating the iPhone project',
+              description: 'Generating a self-contained iPhone project',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
@@ -52,7 +54,7 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm install
 
-      - name: Generate and sync Capacitor iOS
+      - name: Generate, sync, and vendor Capacitor iOS
         run: |
           if [ ! -d ios ]; then
             npx cap add ios
@@ -60,38 +62,38 @@ jobs:
           npx cap sync ios
           node scripts/configure-ios.mjs
 
-      - name: Validate iPhone simulator build
+      - name: Validate a clean Xcode clone without node_modules
         run: |
-          if [ -f ios/App/App.xcworkspace/contents.xcworkspacedata ]; then
-            xcodebuild \
-              -workspace ios/App/App.xcworkspace \
-              -scheme App \
-              -configuration Debug \
-              -sdk iphonesimulator \
-              -destination 'generic/platform=iOS Simulator' \
-              CODE_SIGNING_ALLOWED=NO \
-              build
-          else
-            xcodebuild \
-              -project ios/App/App.xcodeproj \
-              -scheme App \
-              -configuration Debug \
-              -sdk iphonesimulator \
-              -destination 'generic/platform=iOS Simulator' \
-              CODE_SIGNING_ALLOWED=NO \
-              build
-          fi
+          rm -rf node_modules
+          rm -rf "$HOME/Library/Developer/Xcode/DerivedData"
+          rm -rf "$RUNNER_TEMP/ark-ios-source-packages"
 
-      - name: Commit generated Xcode project
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/ark-ios-source-packages"
+
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/ark-ios-source-packages" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Commit the complete Xcode project
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ios package-lock.json package.json capacitor.config.json scripts/configure-ios.mjs
+          git add -f ios package-lock.json package.json capacitor.config.json scripts/configure-ios.mjs .github/workflows/generate-ios-project.yml
           if git diff --cached --quiet; then
-            echo "The iOS project is already current."
+            echo "The self-contained iOS project is already current."
           else
-            git commit -m "Generate working Capacitor iOS project"
-            git push
+            git commit -m "Make the iPhone project work from a fresh clone"
+            git push origin main
           fi
 
       - name: Mark iOS generation successful
@@ -106,7 +108,7 @@ jobs:
               sha: context.sha,
               state: 'success',
               context: 'iOS Xcode Project',
-              description: 'The iPhone project compiled successfully',
+              description: 'Fresh-clone iPhone build passed without node_modules',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
@@ -122,6 +124,6 @@ jobs:
               sha: context.sha,
               state: 'failure',
               context: 'iOS Xcode Project',
-              description: 'The iPhone project needs another correction',
+              description: 'The fresh-clone iPhone build still needs correction',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
