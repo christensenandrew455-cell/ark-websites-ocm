@@ -8,6 +8,7 @@ import { auth } from "../../lib/firebase";
 import { readApiJson } from "../../lib/apiResponse";
 
 const PENDING_SIGNUP_KEY = "ark-ocm-pending-signup";
+const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
 
 export default function SignupCompletePage() {
   const router = useRouter();
@@ -46,6 +47,7 @@ export default function SignupCompletePage() {
         setStatus("Account activated. Signing you in…");
         await signInWithEmailAndPassword(auth, data.email, pending.password);
         sessionStorage.removeItem(PENDING_SIGNUP_KEY);
+        window.localStorage.setItem(PHONE_SETUP_PENDING_KEY, "true");
         router.replace(`/?clientId=${encodeURIComponent(data.clientId)}`);
       } catch (completeError) {
         setError(completeError.message);
