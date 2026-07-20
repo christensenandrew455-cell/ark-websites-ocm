@@ -38,15 +38,13 @@ export function AuthProvider({ children }) {
       const accountSnapshot = await getDoc(doc(db, "accounts", nextUser.uid));
       account = accountSnapshot.exists() ? accountSnapshot.data() : {};
     } catch (accountError) {
-      // Login has already been validated by the server and the custom token contains
-      // the assigned role/clientId. Do not mark a valid account incomplete merely
-      // because browser-side Firestore rules have not been deployed yet.
       console.warn("Unable to read account profile directly from Firestore; using verified token claims", accountError);
     }
 
     const role = tokenResult.claims.role || account.role || "customer";
     const clientId = cleanClientId(tokenResult.claims.clientId || account.clientId || "");
-    const status = account.status || (role === "admin" || clientId ? "active" : "");
+    const claimedStatus = String(tokenResult.claims.accountStatus || "");
+    const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
     const nextProfile = {
       ...account,
       uid: nextUser.uid,
@@ -55,7 +53,7 @@ export function AuthProvider({ children }) {
       role,
       clientId,
       status,
-      paymentSetupStatus: account.paymentSetupStatus || (clientId ? "complete" : ""),
+      paymentSetupStatus: account.paymentSetupStatus || (status === "active" ? "complete" : ""),
       termsAccepted: account.termsAccepted === true || tokenResult.claims.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true || tokenResult.claims.privacyAccepted === true,
       termsVersion: account.termsVersion || String(tokenResult.claims.termsVersion || ""),
