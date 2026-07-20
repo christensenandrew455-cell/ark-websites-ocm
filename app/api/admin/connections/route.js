@@ -72,7 +72,7 @@ export async function GET(request) {
       const connection = connections.get(document.id) || {};
       return connectionPayload(document.id, business, connection);
     })
-    .filter((business) => business.businessName)
+    .filter((business) => business.businessName && ["active", "disabled"].includes(business.status))
     .sort((a, b) => a.businessName.localeCompare(b.businessName));
 
   return NextResponse.json({ businesses });
