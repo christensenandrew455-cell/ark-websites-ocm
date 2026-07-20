@@ -10,7 +10,9 @@ service cloud.firestore {
     }
 
     function ownsClient(clientId) {
-      return signedIn() && request.auth.token.clientId == clientId;
+      return signedIn()
+        && request.auth.token.clientId == clientId
+        && (!("accountStatus" in request.auth.token) || request.auth.token.accountStatus == "active");
     }
 
     match /accounts/{uid} {
