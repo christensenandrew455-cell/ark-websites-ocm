@@ -1,14 +1,41 @@
 @import "tailwindcss";
 
+:root {
+  --ark-top-safe-area-color: #ffffff;
+}
+
 html,
 body {
   margin: 0;
   min-height: 100vh;
 }
 
+html {
+  background: var(--ark-top-safe-area-color);
+}
+
 body {
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
   background: #f8fafc;
   color: #020617;
+}
+
+/*
+ * Keep the iPhone status-bar and Dynamic Island safe area a solid color.
+ * Page content starts below it and can never scroll behind the camera area.
+ * On devices without a top safe area, the inset is zero and this changes nothing.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  z-index: 2147483647;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--ark-top-safe-area-color);
+  pointer-events: none;
 }
 
 main nav > div {
