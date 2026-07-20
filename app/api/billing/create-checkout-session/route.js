@@ -1,19 +1,10 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function cleanClientId(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 function missingServerVariables() {
   return [
@@ -27,12 +18,23 @@ function missingServerVariables() {
 function safeConfigurationError(error) {
   const message = String(error?.message || "");
   if (/private key|pem|credential|firebase admin/i.test(message)) {
-    return "Firebase Admin credentials are invalid. Check FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in Vercel, then redeploy.";
+    return "Firebase Admin credentials are invalid. Check the Vercel Firebase variables, then redeploy.";
   }
   if (/stripe|api key|authentication/i.test(message)) {
     return "The Stripe secret key is invalid or belongs to the wrong Stripe mode. Check STRIPE_SECRET_KEY in Vercel, then redeploy.";
   }
-  return "Unable to start secure card setup. Check the Vercel function logs for the signup endpoint.";
+  return "Unable to start secure card setup right now.";
+}
+
+async function authorize(request) {
+  const header = String(request.headers.get("authorization") || "");
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token) return { response: NextResponse.json({ error: "Sign in before opening payment setup." }, { status: 401 }) };
+  try {
+    return { decoded: await getAdminAuth().verifyIdToken(token, true) };
+  } catch {
+    return { response: NextResponse.json({ error: "Your sign-in expired. Sign in again." }, { status: 401 }) };
+  }
 }
 
 export async function GET() {
@@ -48,81 +50,77 @@ export async function POST(request) {
   try {
     const missing = missingServerVariables();
     if (missing.length) {
-      return NextResponse.json(
-        { error: `Server setup is incomplete. Missing Vercel variables: ${missing.join(", ")}.` },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: `Server setup is incomplete. Missing Vercel variables: ${missing.join(", ")}.` }, { status: 503 });
     }
 
-    const {
-      businessName,
-      ownerName,
-      accountEmail,
-      accountPhone,
-      acceptedTerms,
-      acceptedPrivacy,
-      termsVersion,
-      privacyVersion,
-    } = await request.json();
-    const email = String(accountEmail || "").trim().toLowerCase();
-    const clientId = cleanClientId(businessName);
+    const authorization = await authorize(request);
+    if (authorization.response) return authorization.response;
 
-    if (!clientId || !String(ownerName || "").trim() || !email || !String(accountPhone || "").trim()) {
-      return NextResponse.json({ error: "Complete every account field before continuing." }, { status: 400 });
+    const db = getAdminDb();
+    const accountRef = db.collection("accounts").doc(authorization.decoded.uid);
+    const accountSnapshot = await accountRef.get();
+    if (!accountSnapshot.exists) {
+      return NextResponse.json({ error: "The account application could not be found." }, { status: 404 });
     }
 
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      return NextResponse.json({ error: "Enter a valid business email address." }, { status: 400 });
+    const account = accountSnapshot.data();
+    if (account.status !== "approved_pending_payment") {
+      const error = account.status === "pending_verification"
+        ? "ARK must verify the account before payment setup."
+        : account.status === "declined"
+          ? "This account was declined and cannot continue to payment setup."
+          : "This account is not waiting for payment setup.";
+      return NextResponse.json({ error }, { status: 409 });
     }
 
-    if (acceptedTerms !== true || acceptedPrivacy !== true) {
-      return NextResponse.json({ error: "You must agree to the Terms of Use and Privacy Policy before continuing." }, { status: 400 });
-    }
-
-    if (termsVersion !== TERMS_VERSION || privacyVersion !== PRIVACY_VERSION) {
-      return NextResponse.json({ error: "The legal policies were updated. Refresh the signup page and review the current versions." }, { status: 409 });
-    }
-
-    const [existingBusiness, existingUser] = await Promise.all([
-      getAdminDb().collection("businesses").doc(clientId).get(),
-      getAdminAuth().getUserByEmail(email).catch(() => null),
-    ]);
-
-    if (existingBusiness.exists) {
-      return NextResponse.json({ error: "That business name is already registered." }, { status: 409 });
-    }
-    if (existingUser) {
-      return NextResponse.json({ error: "That business email is already registered." }, { status: 409 });
+    const clientId = String(account.clientId || "").trim();
+    const email = String(account.accountEmail || authorization.decoded.email || "").trim().toLowerCase();
+    const businessName = String(account.businessName || clientId).trim();
+    const ownerName = String(account.ownerName || "").trim();
+    const accountPhone = String(account.accountPhone || "").trim();
+    if (!clientId || !email || !businessName || !ownerName || !accountPhone) {
+      return NextResponse.json({ error: "The approved account information is incomplete." }, { status: 409 });
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const customer = await stripe.customers.create({
-      email,
-      name: String(ownerName).trim(),
-      phone: String(accountPhone).trim(),
-      metadata: { clientId, businessName: String(businessName).trim() },
-    });
+    let customerId = String(account.stripeCustomerId || "").trim();
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email,
+        name: ownerName,
+        phone: accountPhone,
+        metadata: { uid: authorization.decoded.uid, clientId, businessName },
+      });
+      customerId = customer.id;
+      const update = { stripeCustomerId: customerId, updatedAt: FieldValue.serverTimestamp() };
+      await Promise.all([
+        accountRef.set(update, { merge: true }),
+        db.collection("businesses").doc(clientId).set(update, { merge: true }),
+      ]);
+    }
 
-    const legalAcceptedAt = new Date().toISOString();
     const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
     const session = await stripe.checkout.sessions.create({
       mode: "setup",
-      customer: customer.id,
+      customer: customerId,
       payment_method_types: ["card"],
       success_url: `${appUrl}/signup/complete?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/signup?canceled=1`,
+      cancel_url: `${appUrl}/signup/status?canceled=1`,
       metadata: {
+        uid: authorization.decoded.uid,
         clientId,
-        businessName: String(businessName).trim(),
-        ownerName: String(ownerName).trim(),
+        businessName,
+        ownerName,
         accountEmail: email,
-        accountPhone: String(accountPhone).trim(),
-        legalAccepted: "true",
-        legalAcceptedAt,
-        termsVersion: TERMS_VERSION,
-        privacyVersion: PRIVACY_VERSION,
+        accountPhone,
       },
     });
+
+    await accountRef.set({
+      stripeCheckoutSessionId: session.id,
+      paymentSetupStatus: "in_progress",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
