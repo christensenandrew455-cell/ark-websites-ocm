@@ -76,7 +76,7 @@ export default function AppShell({ children }) {
   if (isAdmin) {
     return (
       <>
-        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur md:px-8 md:py-4">
+        <header className="border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm md:px-8 md:py-4">
           <div className="mx-auto flex max-w-7xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <div className="min-w-0 leading-tight">
@@ -122,7 +122,7 @@ export default function AppShell({ children }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-5 md:px-8 md:py-4">
+      <header className="border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-5 md:px-8 md:py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div className="min-w-0 leading-tight">
             <p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p>
