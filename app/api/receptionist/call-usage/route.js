@@ -104,7 +104,11 @@ export async function POST(request) {
     if (authorization.response) return authorization.response;
 
     const { db, clientId } = authorization;
-    if (text(data.action).toLowerCase() !== "record") {
+    const action = text(data.action).toLowerCase();
+    if (action === "check") {
+      return Response.json({ ok: true, blocked: false });
+    }
+    if (action !== "record") {
       return Response.json({ ok: false, error: "Unsupported call usage action." }, { status: 400 });
     }
 
