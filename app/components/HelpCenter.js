@@ -17,7 +17,7 @@ function makeMessage(role, text, links = []) {
   };
 }
 
-export default function HelpCenter({ isAdmin = false }) {
+export default function HelpCenter() {
   const pathname = usePathname();
   const { user } = useAuth();
   const storageKey = useMemo(() => user?.uid ? `ark-help-chat:${user.uid}` : "", [user?.uid]);
@@ -126,11 +126,9 @@ export default function HelpCenter({ isAdmin = false }) {
     }
   }
 
-  const positionClass = isAdmin ? "top-32 sm:top-24" : "top-20 sm:top-24";
-
   return (
     <>
-      <div className={`fixed right-3 ${positionClass} z-50 sm:right-5 md:right-8`}>
+      <div className="fixed right-3 top-20 z-50 sm:right-5 sm:top-24 md:right-8">
         <button
           type="button"
           onClick={() => setMenuOpen((current) => !current)}
