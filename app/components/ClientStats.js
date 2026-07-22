@@ -6,7 +6,6 @@ import { collection, doc, onSnapshot, serverTimestamp, setDoc } from "firebase/f
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
-const ACCEPTED_COLLECTIONS = ["preClients", "clients", "postClients"];
 const TIME_RANGES = [
   { key: "today", label: "Today" },
   { key: "month", label: "This Month" },
@@ -46,7 +45,7 @@ function addCandidate(map, id, eventType, occurredAt, sourceId) {
 
 function addRowCandidates(map, row, accepted) {
   const sourceId = safeId(row.id);
-  const contactedAt = row.createdAt || row.updatedAt || row.acceptedAt || row.movedAt;
+  const contactedAt = row.createdAt || row.updatedAt || row.acceptedAt;
   addCandidate(map, `contacted:${sourceId}`, "contacted", contactedAt, row.id);
 
   const jobs = Array.isArray(row.Jobs) ? row.Jobs : [];
@@ -66,7 +65,7 @@ function addRowCandidates(map, row, accepted) {
   }
 
   if (accepted) {
-    const acceptedAt = row.acceptedAt || row.movedAt || row.updatedAt || row.createdAt;
+    const acceptedAt = row.acceptedAt || row.updatedAt || row.createdAt;
     addCandidate(map, `client:${sourceId}`, "client", acceptedAt, row.id);
   }
 }
@@ -189,8 +188,9 @@ export default function ClientStats() {
   const clientId = profile?.clientId || "";
   const [mountNode, setMountNode] = useState(null);
   const [contacted, setContacted] = useState([]);
-  const [acceptedByCollection, setAcceptedByCollection] = useState({});
-  const [loadedCollections, setLoadedCollections] = useState(new Set());
+  const [clients, setClients] = useState([]);
+  const [contactedLoaded, setContactedLoaded] = useState(false);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
   const [events, setEvents] = useState([]);
   const [eventsLoaded, setEventsLoaded] = useState(false);
   const [receptionistUsage, setReceptionistUsage] = useState(null);
@@ -216,10 +216,8 @@ export default function ClientStats() {
       header.classList.add("mb-3", "mt-3", "sm:mb-5", "sm:mt-5");
 
       slot = document.querySelector(".client-stats-slot");
-      if (!slot) {
-        slot = document.createElement("div");
-        slot.className = "client-stats-slot";
-      }
+      if (!slot) slot = document.createElement("div");
+      slot.className = "client-stats-slot";
       container.insertBefore(slot, header);
       setMountNode(slot);
       return true;
@@ -248,8 +246,9 @@ export default function ClientStats() {
     if (!clientId) return undefined;
 
     setContacted([]);
-    setAcceptedByCollection({});
-    setLoadedCollections(new Set());
+    setClients([]);
+    setContactedLoaded(false);
+    setClientsLoaded(false);
     setEvents([]);
     setEventsLoaded(false);
     setReceptionistUsage(null);
@@ -283,39 +282,34 @@ export default function ClientStats() {
       collection(db, "ocmClients", clientId, "contactedMe"),
       (snapshot) => {
         setContacted(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
-        setLoadedCollections((current) => new Set(current).add("contactedMe"));
-      }
+        setContactedLoaded(true);
+      },
+      () => setContactedLoaded(true)
     );
 
-    const acceptedUnsubscribers = ACCEPTED_COLLECTIONS.map((collectionKey) => onSnapshot(
-      collection(db, "ocmClients", clientId, collectionKey),
+    const unsubscribeClients = onSnapshot(
+      collection(db, "ocmClients", clientId, "clients"),
       (snapshot) => {
-        setAcceptedByCollection((current) => ({
-          ...current,
-          [collectionKey]: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-        }));
-        setLoadedCollections((current) => new Set(current).add(collectionKey));
-      }
-    ));
+        setClients(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+        setClientsLoaded(true);
+      },
+      () => setClientsLoaded(true)
+    );
 
     return () => {
       unsubscribeUsage();
       unsubscribeEvents();
       unsubscribeContacted();
-      acceptedUnsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribeClients();
     };
   }, [clientId]);
 
   useEffect(() => {
-    const sourceLoaded = loadedCollections.has("contactedMe")
-      && ACCEPTED_COLLECTIONS.every((collectionKey) => loadedCollections.has(collectionKey));
-    if (!clientId || !eventsLoaded || !sourceLoaded) return;
+    if (!clientId || !eventsLoaded || !contactedLoaded || !clientsLoaded) return;
 
     const candidates = new Map();
     contacted.forEach((row) => addRowCandidates(candidates, row, false));
-    ACCEPTED_COLLECTIONS.forEach((collectionKey) => {
-      (acceptedByCollection[collectionKey] || []).forEach((row) => addRowCandidates(candidates, row, true));
-    });
+    clients.forEach((row) => addRowCandidates(candidates, row, true));
 
     const existingIds = new Set(events.map((event) => event.id));
     const missing = [...candidates.entries()].filter(([id]) => !existingIds.has(id));
@@ -324,7 +318,7 @@ export default function ClientStats() {
     writeMissingEvents(clientId, missing).catch((error) => {
       console.error("Could not preserve client stats", error);
     });
-  }, [acceptedByCollection, clientId, contacted, events, eventsLoaded, loadedCollections]);
+  }, [clientId, clients, clientsLoaded, contacted, contactedLoaded, events, eventsLoaded]);
 
   if (!mountNode) return null;
   return createPortal(
