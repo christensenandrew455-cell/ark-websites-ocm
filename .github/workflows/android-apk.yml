@@ -66,12 +66,8 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm install
 
-      - name: Generate Capacitor Android project
-        run: |
-          npx cap add android
-          npx cap sync android
-          node scripts/configure-android.mjs
-          node scripts/configure-phone-permissions.mjs
+      - name: Generate and verify Capacitor Android project
+        run: npm run mobile:android:setup
 
       - name: Add Firebase Android configuration
         env:

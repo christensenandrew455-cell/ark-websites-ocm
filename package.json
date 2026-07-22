@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "mobile:android:add": "npx cap add android && node scripts/configure-android.mjs && node scripts/configure-phone-permissions.mjs",
-    "mobile:android:sync": "npx cap sync android && node scripts/configure-android.mjs && node scripts/configure-phone-permissions.mjs",
-    "mobile:android:open": "npx cap open android",
+    "mobile:android:setup": "node scripts/setup-android.mjs",
+    "mobile:android:add": "npm run mobile:android:setup",
+    "mobile:android:sync": "npm run mobile:android:setup",
+    "mobile:android:open": "npm run mobile:android:setup && npx cap open android",
     "mobile:ios:add": "npx cap add ios && node scripts/configure-ios.mjs",
     "mobile:ios:sync": "npx cap sync ios && node scripts/configure-ios.mjs",
     "mobile:ios:open": "npx cap open ios"
