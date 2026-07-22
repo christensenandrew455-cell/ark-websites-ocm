@@ -43,7 +43,7 @@ export default function ForgotPasswordPage() {
             value={businessName}
             onChange={(event) => setBusinessName(event.target.value)}
             className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-            placeholder="Tabor Painting"
+            placeholder="Example Painting"
           />
           {message && <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{message}</p>}
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
