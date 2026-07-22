@@ -1,0 +1,43 @@
+name: Remove Obsolete Code
+
+on:
+  push:
+    branches:
+      - agent/remove-obsolete-code
+    paths:
+      - scripts/remove-obsolete-code.mjs
+      - .github/workflows/remove-obsolete-code.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out cleanup branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/remove-obsolete-code
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Remove obsolete and disconnected code
+        run: node scripts/remove-obsolete-code.mjs
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No cleanup changes were produced."
+            exit 1
+          fi
+          git commit -m "Remove obsolete and disconnected code"
+          git push origin HEAD:agent/remove-obsolete-code
