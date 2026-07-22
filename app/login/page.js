@@ -45,7 +45,7 @@ export default function LoginPage() {
               value={businessName}
               onChange={(event) => setBusinessName(event.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-              placeholder="Tabor Painting"
+              placeholder="Example Painting"
             />
           </label>
           <label className="block">
