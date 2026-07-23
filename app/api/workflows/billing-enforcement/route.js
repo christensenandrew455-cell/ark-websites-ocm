@@ -1,6 +1,7 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
-import { syncBillingState } from "../../../../lib/billingDelinquency";
+import { computeBillingState } from "../../../../lib/billingDelinquency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +25,39 @@ export async function POST(request) {
 
     for (const document of snapshot.docs) {
       try {
-        const state = await syncBillingState(db, document.id, document.data());
-        results.push({ clientId: document.id, phase: state.phase, changed: state.changed });
+        const business = document.data();
+        const state = computeBillingState(business);
+        const deletionReviewRequired = state.phase === "deletion-review";
+        const changed = business.billingPhase !== state.phase
+          || (business.serviceAccess || "full") !== state.serviceAccess
+          || business.billingDeletionReviewRequired !== deletionReviewRequired;
+
+        if (changed) {
+          const patch = {
+            billingPhase: state.phase,
+            serviceAccess: state.serviceAccess,
+            billingDeletionReviewRequired: deletionReviewRequired,
+            updatedAt: FieldValue.serverTimestamp(),
+          };
+          const batch = db.batch();
+          batch.set(document.ref, patch, { merge: true });
+          if (business.uid) batch.set(db.collection("accounts").doc(String(business.uid)), patch, { merge: true });
+          batch.set(db.collection("ocmClients").doc(document.id), patch, { merge: true });
+          batch.set(
+            db.collection("ocmClients").doc(document.id).collection("settings").doc("account"),
+            {
+              BillingStatus: state.phase,
+              BillingPhase: state.phase,
+              ServiceAccess: state.serviceAccess,
+              BillingDeletionReviewRequired: deletionReviewRequired,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+          await batch.commit();
+        }
+
+        results.push({ clientId: document.id, phase: state.phase, changed });
       } catch (error) {
         console.error(`Unable to enforce billing state for ${document.id}`, error);
         results.push({ clientId: document.id, error: error.message || "Unknown error" });
