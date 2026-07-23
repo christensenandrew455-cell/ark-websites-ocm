@@ -107,10 +107,15 @@ export default function SignupPage() {
             <input required minLength={8} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
           </label>
 
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+            <p className="text-sm font-black text-slate-950">Pricing</p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">$100 USD each month, plus $10 USD for every unique lead first added to Contacted Me. There is no monthly maximum on lead charges.</p>
+          </div>
+
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
             <input required type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-slate-950" />
             <span className="text-sm leading-6 text-slate-700">
-              I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>, including ongoing recurring billing after account approval and payment setup.
+              I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>, including recurring billing of $100 per month plus $10 for each unique lead added to Contacted Me, with no monthly maximum on lead charges.
             </span>
           </label>
 
