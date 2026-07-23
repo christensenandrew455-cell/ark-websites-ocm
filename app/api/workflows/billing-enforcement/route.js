@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { getAdminDb } from "../../../../lib/firebase-admin";
-import { computeBillingState } from "../../../../lib/billingDelinquency";
+import { getAdminDb } from "../../../lib/firebase-admin";
+import { computeBillingState } from "../../../lib/billingDelinquency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
