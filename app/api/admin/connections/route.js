@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../lib/adminRequest";
+import { publicBillingStatus } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
@@ -35,7 +36,6 @@ function connectionPayload(clientId, business, data) {
     accountEmail: text(business.accountEmail).toLowerCase(),
     status: text(business.status || "active"),
     disabledAt: iso(business.disabledAt || data.disabledAt),
-    deletionScheduledFor: iso(business.deletionScheduledFor || data.deletionScheduledFor),
     enabled: data.enabled !== false,
     businessPhone: text(data.businessPhone || business.accountPhone),
     notificationPhone: text(data.notificationPhone || data.businessPhone || business.accountPhone),
@@ -49,6 +49,7 @@ function connectionPayload(clientId, business, data) {
     legalAcceptedAt: iso(business.legalAcceptedAt),
     legalAcceptedBy: text(business.legalAcceptedBy || business.accountEmail).toLowerCase(),
     legalAcceptanceSource: text(business.legalAcceptanceSource),
+    billing: publicBillingStatus(business),
   };
 }
 
@@ -62,16 +63,9 @@ export async function GET(request) {
     db.collection("connections").get(),
   ]);
 
-  const connections = new Map(
-    connectionSnapshot.docs.map((document) => [document.id, document.data()])
-  );
-
+  const connections = new Map(connectionSnapshot.docs.map((document) => [document.id, document.data()]));
   const businesses = businessSnapshot.docs
-    .map((document) => {
-      const business = document.data();
-      const connection = connections.get(document.id) || {};
-      return connectionPayload(document.id, business, connection);
-    })
+    .map((document) => connectionPayload(document.id, document.data(), connections.get(document.id) || {}))
     .filter((business) => business.businessName && ["active", "disabled"].includes(business.status))
     .sort((a, b) => a.businessName.localeCompare(b.businessName));
 
@@ -84,9 +78,7 @@ export async function POST(request) {
 
   const body = await request.json();
   const clientId = cleanClientId(body.clientId);
-  if (!clientId) {
-    return NextResponse.json({ error: "Choose a business account." }, { status: 400 });
-  }
+  if (!clientId) return NextResponse.json({ error: "Choose a business account." }, { status: 400 });
 
   const db = getAdminDb();
   const businessRef = db.collection("businesses").doc(clientId);
