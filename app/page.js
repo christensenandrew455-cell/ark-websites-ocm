@@ -1,5 +1,6 @@
 "use client";
 
+import { Capacitor } from "@capacitor/core";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./components/AuthProvider";
@@ -8,6 +9,8 @@ import ClientStats from "./components/ClientStats";
 import MonthlyBillingCard from "./components/MonthlyBillingCard";
 import ReviewClientsNative from "./components/ReviewClientsNative";
 
+const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
+const PHONE_PERMISSION_REFRESH_KEY = "ark-phone-permission-refresh-v2";
 const REVENUE_RANGES = [
   { key: "today", label: "Today", title: "Paid Today" },
   { key: "month", label: "This Month", title: "Paid This Month" },
@@ -94,8 +97,8 @@ function AdminDashboard({ user }) {
   const selectedRange = REVENUE_RANGES.find((range) => range.key === revenueRange) || REVENUE_RANGES[0];
   const selectedRevenue = totals[revenueRange] || {};
   const revenueDetail = revenueRange === "all" && data?.stripe?.truncated
-    ? "First 10,000 Stripe charges"
-    : data?.stripe?.timeZone || "Stripe successful charges";
+    ? "First 10,000 live Stripe payments"
+    : "Live Stripe payments only";
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
@@ -145,6 +148,19 @@ function AdminDashboard({ user }) {
 
 function CustomerHome() {
   const { status } = useBillingStatus();
+
+  useEffect(() => {
+    const isAndroidApp = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+    if (!isAndroidApp || window.localStorage.getItem(PHONE_PERMISSION_REFRESH_KEY) === "done") return;
+
+    const setupAlreadyPending = window.localStorage.getItem(PHONE_SETUP_PENDING_KEY) === "true";
+    window.localStorage.setItem(PHONE_PERMISSION_REFRESH_KEY, "done");
+    if (!setupAlreadyPending) {
+      window.localStorage.setItem(PHONE_SETUP_PENDING_KEY, "true");
+      window.location.reload();
+    }
+  }, []);
+
   return (
     <div className={status.restricted ? "client-home billing-restricted-client-home" : "client-home"}>
       <style>{`
