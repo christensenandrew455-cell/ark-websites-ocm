@@ -80,14 +80,14 @@ export default function AdminPendingApplications() {
   }, [user]);
 
   useEffect(() => {
-    const connectionsTitle = Array.from(document.querySelectorAll("h1"))
-      .find((element) => element.textContent?.trim() === "Connections");
-    const connectionsHeader = connectionsTitle?.parentElement?.parentElement;
-    if (!connectionsHeader) return undefined;
+    const accountsTitle = Array.from(document.querySelectorAll("h1"))
+      .find((element) => ["Connections", "Accounts"].includes(element.textContent?.trim()));
+    const accountsHeader = accountsTitle?.parentElement?.parentElement;
+    if (!accountsHeader) return undefined;
 
     const mountPoint = document.createElement("div");
     mountPoint.dataset.pendingVerification = "true";
-    connectionsHeader.insertAdjacentElement("afterend", mountPoint);
+    accountsHeader.insertAdjacentElement("afterend", mountPoint);
     setPortalTarget(mountPoint);
 
     return () => {
