@@ -5,18 +5,28 @@ const javaDirectory = "android/app/src/main/java/com/arkwebsites/clientcenter";
 const mainActivityPath = `${javaDirectory}/MainActivity.java`;
 const pluginSourcePath = "mobile-shell/android/PhonePermissionsPlugin.java";
 const pluginTargetPath = `${javaDirectory}/PhonePermissionsPlugin.java`;
-const notificationPermission = "android.permission.POST_NOTIFICATIONS";
+const permissions = [
+  "android.permission.POST_NOTIFICATIONS",
+  "android.permission.READ_CALENDAR",
+  "android.permission.WRITE_CALENDAR",
+  "android.permission.READ_CONTACTS",
+  "android.permission.WRITE_CONTACTS",
+];
 
 await mkdir(javaDirectory, { recursive: true });
 
 let manifest = await readFile(manifestPath, "utf8");
-if (!manifest.includes(`android:name=\"${notificationPermission}\"`)) {
+const missingPermissions = permissions.filter((permission) => !manifest.includes(`android:name=\"${permission}\"`));
+if (missingPermissions.length) {
+  const permissionLines = missingPermissions
+    .map((permission) => `    <uses-permission android:name=\"${permission}\" />`)
+    .join("\n");
   manifest = manifest.replace(
     /<application\b/,
-    `    <uses-permission android:name=\"${notificationPermission}\" />\n\n    <application`
+    `${permissionLines}\n\n    <application`
   );
   await writeFile(manifestPath, manifest, "utf8");
-  console.log("[Android permissions] Added notification permission to the manifest.");
+  console.log(`[Android permissions] Added ${missingPermissions.length} permission declaration(s) to the manifest.`);
 }
 
 const pluginSource = await readFile(pluginSourcePath, "utf8");
@@ -40,4 +50,4 @@ if (!mainActivity.includes(registration)) {
   await writeFile(mainActivityPath, mainActivity, "utf8");
 }
 
-console.log("[Android permissions] Native phone permission checker registered.");
+console.log("[Android permissions] Notifications, contacts, and calendar permission checker registered.");
