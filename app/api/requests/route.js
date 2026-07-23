@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { computeBillingState } from "../../lib/billingDelinquency";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { sendRequestStatusNotification } from "../../lib/notificationService";
 import { requireUser } from "../../lib/userRequest";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_TYPES = new Set(["help", "change"]);
 const ALLOWED_STATUSES = new Set(["new", "in-progress", "completed", "denied"]);
+const OPEN_STATUSES = new Set(["new", "in-progress"]);
 const STATUS_TRANSITIONS = {
   new: new Set(["in-progress", "denied"]),
   "in-progress": new Set(["completed"]),
@@ -51,6 +53,7 @@ function requestPayload(document) {
     adminNote: text(data.adminNote),
     createdAt: iso(data.createdAt),
     updatedAt: iso(data.updatedAt),
+    closedAt: iso(data.closedAt),
   };
 }
 
@@ -60,19 +63,28 @@ export async function GET(request) {
 
   const db = getAdminDb();
   const isAdmin = user.decodedToken.role === "admin";
-  const clientId = cleanClientId(user.decodedToken.clientId);
+  const tokenClientId = cleanClientId(user.decodedToken.clientId);
+  const url = new URL(request.url);
+  const requestedClientId = cleanClientId(url.searchParams.get("clientId"));
+  const includeClosed = url.searchParams.get("includeClosed") === "1";
 
   let snapshot;
   if (isAdmin) {
-    snapshot = await db.collection("supportRequests").get();
+    snapshot = requestedClientId
+      ? await db.collection("supportRequests").where("clientId", "==", requestedClientId).get()
+      : await db.collection("supportRequests").get();
   } else {
-    if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
-    snapshot = await db.collection("supportRequests").where("clientId", "==", clientId).get();
+    if (!tokenClientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
+    snapshot = await db.collection("supportRequests").where("clientId", "==", tokenClientId).get();
   }
 
-  const requests = snapshot.docs
-    .map(requestPayload)
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  let requests = snapshot.docs.map(requestPayload);
+  if (isAdmin && !includeClosed) requests = requests.filter((item) => OPEN_STATUSES.has(item.status));
+  requests.sort((a, b) => {
+    const first = new Date(a.createdAt || 0).getTime();
+    const second = new Date(b.createdAt || 0).getTime();
+    return isAdmin ? first - second : second - first;
+  });
 
   return NextResponse.json({ requests });
 }
@@ -102,8 +114,15 @@ export async function POST(request) {
   ]);
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   const account = accountSnapshot.exists ? accountSnapshot.data() : {};
-  const ref = db.collection("supportRequests").doc();
+  const billingState = computeBillingState(business);
+  if (billingState.restricted) {
+    return NextResponse.json(
+      { error: "Help and change requests are unavailable while the account is payment-restricted. Update the payment method to restore full access." },
+      { status: 402 }
+    );
+  }
 
+  const ref = db.collection("supportRequests").doc();
   await ref.set({
     clientId,
     businessName: text(business.businessName || account.businessName || clientId),
