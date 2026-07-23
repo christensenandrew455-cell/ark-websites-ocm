@@ -38,58 +38,15 @@ export function computeBillingState(data = {}, now = Date.now()) {
     || (offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS);
 
   if (now < quietEndsAt) {
-    return {
-      phase: "quiet",
-      restricted: false,
-      showNotice: false,
-      serviceAccess: "full",
-      offenseNumber,
-      failureAt,
-      quietEndsAt,
-      graceEndsAt,
-      reviewAt,
-    };
+    return { phase: "quiet", restricted: false, showNotice: false, serviceAccess: "full", offenseNumber, failureAt, quietEndsAt, graceEndsAt, reviewAt };
   }
-
   if (offenseNumber === 1 && now < graceEndsAt) {
-    return {
-      phase: "grace",
-      restricted: false,
-      showNotice: true,
-      serviceAccess: "full",
-      offenseNumber,
-      failureAt,
-      quietEndsAt,
-      graceEndsAt,
-      reviewAt,
-    };
+    return { phase: "grace", restricted: false, showNotice: true, serviceAccess: "full", offenseNumber, failureAt, quietEndsAt, graceEndsAt, reviewAt };
   }
-
   if (now < reviewAt) {
-    return {
-      phase: "restricted",
-      restricted: true,
-      showNotice: true,
-      serviceAccess: "leads-only",
-      offenseNumber,
-      failureAt,
-      quietEndsAt,
-      graceEndsAt,
-      reviewAt,
-    };
+    return { phase: "restricted", restricted: true, showNotice: true, serviceAccess: "leads-only", offenseNumber, failureAt, quietEndsAt, graceEndsAt, reviewAt };
   }
-
-  return {
-    phase: "deletion-review",
-    restricted: true,
-    showNotice: true,
-    serviceAccess: "leads-only",
-    offenseNumber,
-    failureAt,
-    quietEndsAt,
-    graceEndsAt,
-    reviewAt,
-  };
+  return { phase: "deletion-review", restricted: true, showNotice: true, serviceAccess: "leads-only", offenseNumber, failureAt, quietEndsAt, graceEndsAt, reviewAt };
 }
 
 export function publicBillingStatus(data = {}, now = Date.now()) {
@@ -114,41 +71,39 @@ export async function findBusinessForStripeCustomer(db, customerId, metadata = {
   }
 
   if (!customerId) return null;
-  const snapshot = await db.collection("businesses")
-    .where("stripeCustomerId", "==", customerId)
-    .limit(1)
-    .get();
+  const snapshot = await db.collection("businesses").where("stripeCustomerId", "==", customerId).limit(1).get();
   if (snapshot.empty) return null;
   return { clientId: snapshot.docs[0].id, business: snapshot.docs[0].data() };
 }
 
-function mirroredBillingPatch(patch) {
+function failureSettingsPatch(patch) {
   return {
-    BillingStatus: patch.billingPastDue === false ? "Active" : patch.billingPhase,
-    BillingPastDue: patch.billingPastDue,
+    BillingStatus: patch.billingPhase,
+    BillingPastDue: true,
     BillingPhase: patch.billingPhase,
     ServiceAccess: patch.serviceAccess,
-    BillingOffenseNumber: patch.billingOffenseNumber || 0,
-    BillingFailureAt: patch.billingFailureAt || FieldValue.delete(),
-    BillingGraceEndsAt: patch.billingGraceEndsAt || FieldValue.delete(),
-    BillingDeletionReviewAt: patch.billingDeletionReviewAt || FieldValue.delete(),
-    BillingAmountDue: patch.billingAmountDue || 0,
-    BillingCurrency: patch.billingCurrency || "usd",
+    BillingOffenseNumber: patch.billingOffenseNumber,
+    BillingFailureAt: patch.billingFailureAt,
+    BillingGraceEndsAt: patch.billingGraceEndsAt,
+    BillingDeletionReviewAt: patch.billingDeletionReviewAt,
+    BillingAmountDue: patch.billingAmountDue,
+    BillingCurrency: patch.billingCurrency,
     updatedAt: FieldValue.serverTimestamp(),
   };
 }
 
-async function writeBillingPatch(db, clientId, business, patch) {
-  const batch = db.batch();
-  batch.set(db.collection("businesses").doc(clientId), patch, { merge: true });
-  if (business.uid) batch.set(db.collection("accounts").doc(text(business.uid)), patch, { merge: true });
-  batch.set(db.collection("ocmClients").doc(clientId), patch, { merge: true });
-  batch.set(
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("account"),
-    mirroredBillingPatch(patch),
-    { merge: true }
-  );
-  await batch.commit();
+function resolvedSettingsPatch() {
+  return {
+    BillingStatus: "Active",
+    BillingPastDue: false,
+    BillingPhase: "current",
+    ServiceAccess: "full",
+    BillingFailureAt: FieldValue.delete(),
+    BillingGraceEndsAt: FieldValue.delete(),
+    BillingDeletionReviewAt: FieldValue.delete(),
+    BillingAmountDue: 0,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
 }
 
 export async function registerPaymentFailure({
@@ -160,9 +115,10 @@ export async function registerPaymentFailure({
   currency = "usd",
   failedAt = Date.now(),
 }) {
-  const eventRef = db.collection("stripeWebhookEvents").doc(text(eventId));
-  const eventSnapshot = await eventRef.get();
-  if (eventSnapshot.exists) return { duplicate: true };
+  const safeEventId = text(eventId);
+  if (!safeEventId) throw new Error("Stripe event ID is required.");
+  const eventRef = db.collection("stripeWebhookEvents").doc(safeEventId);
+  if ((await eventRef.get()).exists) return { duplicate: true };
 
   const businessRef = db.collection("businesses").doc(clientId);
   const businessSnapshot = await businessRef.get();
@@ -172,67 +128,66 @@ export async function registerPaymentFailure({
   const history = Array.isArray(business.billingOffenseHistory)
     ? business.billingOffenseHistory.map(Number).filter(Number.isFinite)
     : [];
-  const recentHistory = history.filter((value) => value >= failedAt - SIX_MONTHS_MS);
   const continuingIncident = business.billingPastDue === true;
+  const incidentFailureAt = continuingIncident ? asMillis(business.billingFailureAt) || failedAt : failedAt;
+  const recentHistory = history.filter((value) => value >= incidentFailureAt - SIX_MONTHS_MS);
   const offenseNumber = continuingIncident
     ? Math.max(1, Number(business.billingOffenseNumber || recentHistory.length || 1))
     : recentHistory.length + 1;
-  const nextHistory = continuingIncident ? recentHistory : [...recentHistory, failedAt];
-  const quietEndsAt = failedAt + DAY_MS;
-  const graceEndsAt = offenseNumber === 1 ? quietEndsAt + 7 * DAY_MS : quietEndsAt;
-  const deletionReviewAt = offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS;
+  const nextHistory = continuingIncident ? recentHistory : [...recentHistory, incidentFailureAt];
+  const quietEndsAt = continuingIncident
+    ? asMillis(business.billingQuietEndsAt) || incidentFailureAt + DAY_MS
+    : incidentFailureAt + DAY_MS;
+  const graceEndsAt = continuingIncident
+    ? asMillis(business.billingGraceEndsAt) || (offenseNumber === 1 ? quietEndsAt + 7 * DAY_MS : quietEndsAt)
+    : offenseNumber === 1 ? quietEndsAt + 7 * DAY_MS : quietEndsAt;
+  const deletionReviewAt = continuingIncident
+    ? asMillis(business.billingDeletionReviewAt) || (offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS)
+    : offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS;
 
   const state = computeBillingState({
     billingPastDue: true,
     billingOffenseNumber: offenseNumber,
-    billingFailureAt: Timestamp.fromMillis(failedAt),
+    billingFailureAt: Timestamp.fromMillis(incidentFailureAt),
     billingQuietEndsAt: Timestamp.fromMillis(quietEndsAt),
     billingGraceEndsAt: Timestamp.fromMillis(graceEndsAt),
     billingDeletionReviewAt: Timestamp.fromMillis(deletionReviewAt),
-  }, failedAt);
+  });
 
   const patch = {
     billingPastDue: true,
     billingPhase: state.phase,
     serviceAccess: state.serviceAccess,
-    billingDeletionReviewRequired: false,
+    billingDeletionReviewRequired: state.phase === "deletion-review",
     billingOffenseNumber: offenseNumber,
     billingOffenseHistory: nextHistory,
-    billingFailureAt: Timestamp.fromMillis(failedAt),
+    billingFailureAt: Timestamp.fromMillis(incidentFailureAt),
     billingQuietEndsAt: Timestamp.fromMillis(quietEndsAt),
     billingGraceEndsAt: Timestamp.fromMillis(graceEndsAt),
     billingDeletionReviewAt: Timestamp.fromMillis(deletionReviewAt),
     billingInvoiceId: text(invoiceId),
     billingAmountDue: Math.max(0, Number(amountDue || 0)),
     billingCurrency: text(currency || "usd").toLowerCase(),
-    billingLastEventId: text(eventId),
+    billingLastEventId: safeEventId,
     billingResolvedAt: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
   };
 
   const batch = db.batch();
-  batch.create(eventRef, {
-    type: "payment-failed",
-    clientId,
-    invoiceId: text(invoiceId),
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  batch.create(eventRef, { type: "payment-failed", clientId, invoiceId: text(invoiceId), createdAt: FieldValue.serverTimestamp() });
   batch.set(businessRef, patch, { merge: true });
   if (business.uid) batch.set(db.collection("accounts").doc(text(business.uid)), patch, { merge: true });
   batch.set(db.collection("ocmClients").doc(clientId), patch, { merge: true });
-  batch.set(
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("account"),
-    mirroredBillingPatch(patch),
-    { merge: true }
-  );
+  batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), failureSettingsPatch(patch), { merge: true });
   await batch.commit();
   return { duplicate: false, offenseNumber, ...state };
 }
 
 export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) {
-  const eventRef = db.collection("stripeWebhookEvents").doc(text(eventId));
-  const eventSnapshot = await eventRef.get();
-  if (eventSnapshot.exists) return { duplicate: true };
+  const safeEventId = text(eventId);
+  if (!safeEventId) throw new Error("Stripe event ID is required.");
+  const eventRef = db.collection("stripeWebhookEvents").doc(safeEventId);
+  if ((await eventRef.get()).exists) return { duplicate: true };
 
   const businessSnapshot = await db.collection("businesses").doc(clientId).get();
   if (!businessSnapshot.exists) return { ignored: true };
@@ -253,41 +208,11 @@ export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) 
   };
 
   const batch = db.batch();
-  batch.create(eventRef, {
-    type: "payment-resolved",
-    clientId,
-    invoiceId: text(invoiceId),
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  batch.create(eventRef, { type: "payment-resolved", clientId, invoiceId: text(invoiceId), createdAt: FieldValue.serverTimestamp() });
   batch.set(db.collection("businesses").doc(clientId), patch, { merge: true });
   if (business.uid) batch.set(db.collection("accounts").doc(text(business.uid)), patch, { merge: true });
   batch.set(db.collection("ocmClients").doc(clientId), patch, { merge: true });
-  batch.set(
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("account"),
-    mirroredBillingPatch(patch),
-    { merge: true }
-  );
+  batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), resolvedSettingsPatch(), { merge: true });
   await batch.commit();
   return { duplicate: false, phase: "current" };
-}
-
-export async function syncBillingState(db, clientId, business, now = Date.now()) {
-  const state = computeBillingState(business, now);
-  const deletionReviewRequired = state.phase === "deletion-review";
-  if (
-    text(business.billingPhase) === state.phase
-    && text(business.serviceAccess || "full") === state.serviceAccess
-    && business.billingDeletionReviewRequired === deletionReviewRequired
-  ) {
-    return { ...state, changed: false };
-  }
-
-  const patch = {
-    billingPhase: state.phase,
-    serviceAccess: state.serviceAccess,
-    billingDeletionReviewRequired: deletionReviewRequired,
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-  await writeBillingPatch(db, clientId, business, patch);
-  return { ...state, changed: true };
 }
