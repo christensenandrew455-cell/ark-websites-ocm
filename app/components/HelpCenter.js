@@ -21,7 +21,6 @@ export default function HelpCenter() {
   const pathname = usePathname();
   const { user } = useAuth();
   const storageKey = useMemo(() => user?.uid ? `ark-help-chat:${user.uid}` : "", [user?.uid]);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [expiresAt, setExpiresAt] = useState(0);
@@ -127,113 +126,68 @@ export default function HelpCenter() {
   }
 
   return (
-    <>
-      <div className="fixed right-3 top-20 z-50 sm:right-5 sm:top-24 md:right-8">
-        <button
-          type="button"
-          onClick={() => setMenuOpen((current) => !current)}
-          aria-expanded={menuOpen}
-          className="rounded-full bg-slate-950 px-5 py-2.5 text-xs font-black text-white shadow-lg hover:bg-slate-800 sm:text-sm"
-        >
-          Help
-        </button>
+    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
+      <div className="mx-auto max-w-3xl">
+        <Link href="/settings" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm"><span aria-hidden="true">←</span>Back to Settings</Link>
+        <header className="mt-5">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
+          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Help</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Choose documentation, ask the in-app AI how to use the app, or send ARK a message about an issue or account request.</p>
+        </header>
 
-        {menuOpen && (
-          <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
-            <Link
-              href="/docs"
-              onClick={() => setMenuOpen(false)}
-              className="block rounded-xl px-3 py-3 text-sm font-black text-slate-950 hover:bg-slate-100"
-            >
-              Open Docs
-              <span className="mt-0.5 block text-[10px] font-semibold text-slate-500">Read the full app guide</span>
-            </Link>
-            <button
-              type="button"
-              onClick={() => { setMenuOpen(false); setChatOpen(true); }}
-              className="mt-1 block w-full rounded-xl px-3 py-3 text-left text-sm font-black text-slate-950 hover:bg-slate-100"
-            >
-              Ask AI for Help
-              <span className="mt-0.5 block text-[10px] font-semibold text-slate-500">Get directions and page links</span>
-            </button>
-          </div>
-        )}
+        <section className="mt-5 grid gap-3 sm:grid-cols-3">
+          <Link href="/docs" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-400">
+            <p className="text-lg font-black">Go to Docs</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Read the full app guide and find where features are located.</p>
+          </Link>
+          <button type="button" onClick={() => setChatOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-slate-400">
+            <p className="text-lg font-black">Ask AI</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Ask how to use ARK Client Center and receive direct page links.</p>
+          </button>
+          <Link href="/messages" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-400">
+            <p className="text-lg font-black">Send a Message</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Submit a problem, question, billing issue, or account-deletion request.</p>
+          </Link>
+        </section>
       </div>
 
       {chatOpen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4"
-          onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}
-        >
+        <div className="fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}>
           <section className="flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl bg-slate-50 shadow-2xl sm:h-[min(720px,88vh)] sm:max-w-lg sm:rounded-3xl">
             <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p>
-                <h2 className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">AI Help</h2>
-              </div>
+              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p><h2 className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">Ask AI</h2></div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={clearChat} className="rounded-xl border border-slate-300 px-3 py-2 text-[11px] font-black text-slate-700 hover:bg-slate-50">Delete Chat</button>
+                <button type="button" onClick={clearChat} className="rounded-xl border border-slate-300 px-3 py-2 text-[11px] font-black text-slate-700">Delete Chat</button>
                 <button type="button" onClick={() => setChatOpen(false)} aria-label="Close help chat" className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white">×</button>
               </div>
             </header>
 
             <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-900">
-                Ask where something is or how to use the app. AI Help can explain and provide links, but it cannot change your account or billing. This chat clears 24 hours after the last message.
-              </div>
-
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-900">Ask where something is or how to use the app. AI can explain and provide links, but it cannot change your account or billing. This chat clears 24 hours after the last message.</div>
               <div className="mt-4 space-y-3">
                 {messages.map((message) => (
                   <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                    <div className={message.role === "user"
-                      ? "max-w-[86%] rounded-2xl rounded-br-md bg-slate-950 px-4 py-3 text-sm leading-6 text-white"
-                      : "max-w-[92%] rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-800 shadow-sm"}
-                    >
+                    <div className={message.role === "user" ? "max-w-[86%] rounded-2xl rounded-br-md bg-slate-950 px-4 py-3 text-sm leading-6 text-white" : "max-w-[92%] rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-800 shadow-sm"}>
                       <p className="whitespace-pre-wrap">{message.text}</p>
-                      {message.role === "assistant" && message.links?.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {message.links.map((link) => (
-                            <Link
-                              key={`${message.id}-${link.href}`}
-                              href={link.href}
-                              onClick={() => setChatOpen(false)}
-                              className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white"
-                            >
-                              {link.label}
-                            </Link>
-                          ))}
-                        </div>
-                      )}
+                      {message.role === "assistant" && message.links?.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{message.links.map((link) => <Link key={`${message.id}-${link.href}`} href={link.href} onClick={() => setChatOpen(false)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white">{link.label}</Link>)}</div>}
                     </div>
                   </div>
                 ))}
-                {sending && (
-                  <div className="flex justify-start">
-                    <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-sm">Thinking…</div>
-                  </div>
-                )}
+                {sending && <div className="flex justify-start"><div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-sm">Thinking…</div></div>}
               </div>
-
               {error && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold leading-5 text-red-700">{error}</p>}
             </div>
 
             <form onSubmit={submitQuestion} className="border-t border-slate-200 bg-white p-3 sm:p-4">
               <label className="sr-only" htmlFor="help-question">Ask for help</label>
               <div className="flex items-end gap-2">
-                <textarea
-                  id="help-question"
-                  rows={2}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  placeholder="Where do I change my payment method?"
-                  className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-950"
-                />
+                <textarea id="help-question" rows={2} value={input} onChange={(event) => setInput(event.target.value)} placeholder="Where do I change my payment method?" className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-950" />
                 <button type="submit" disabled={sending || !input.trim()} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:opacity-40">Send</button>
               </div>
             </form>
           </section>
         </div>
       )}
-    </>
+    </main>
   );
 }
