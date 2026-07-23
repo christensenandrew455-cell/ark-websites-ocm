@@ -101,6 +101,7 @@ function Select({ value, onChange, children, ariaLabel }) {
 
 function DayCheckboxes({ label, hint, selected, onChange }) {
   const values = Array.isArray(selected) ? selected : [];
+
   function toggle(day) {
     const next = new Set(values);
     if (next.has(day)) next.delete(day); else next.add(day);
@@ -168,42 +169,20 @@ function ListEditor({ items, onChange, placeholder, addLabel }) {
 }
 
 function ServicesEditor({ services, onChange }) {
-  const entries = Object.entries(services && typeof services === "object" ? services : {});
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const current = services && typeof services === "object" && !Array.isArray(services) ? services : {};
+  const names = Object.keys(current).map(titleCase);
 
-  function updateEntry(oldName, nextName, nextDescription) {
-    const cleanName = nextName.trim().toLowerCase();
-    const next = { ...(services || {}) };
-    delete next[oldName];
-    if (cleanName) next[cleanName] = nextDescription;
+  function updateServices(nextNames) {
+    const next = Object.fromEntries(
+      nextNames.map((name) => {
+        const key = name.trim().toLowerCase();
+        return [key, key];
+      }).filter(([key]) => key)
+    );
     onChange(next);
   }
 
-  function addService() {
-    const cleanName = name.trim().toLowerCase();
-    if (!cleanName) return;
-    onChange({ ...(services || {}), [cleanName]: description.trim() || `${name.trim()}.` });
-    setName("");
-    setDescription("");
-  }
-
-  return (
-    <div className="space-y-2">
-      {entries.map(([serviceName, serviceDescription]) => (
-        <div key={serviceName} className="grid gap-2 rounded-xl border border-slate-200 p-3 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_auto]">
-          <input value={serviceName} onChange={(event) => updateEntry(serviceName, event.target.value, serviceDescription)} aria-label="Service name" className="h-10 min-w-0 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" />
-          <input value={serviceDescription} onChange={(event) => updateEntry(serviceName, serviceName, event.target.value)} aria-label="Service description" className="h-10 min-w-0 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" />
-          <button type="button" onClick={() => { const next = { ...(services || {}) }; delete next[serviceName]; onChange(next); }} className="rounded-lg border border-red-200 px-3 text-xs font-black text-red-700">Remove</button>
-        </div>
-      ))}
-      <div className="grid gap-2 rounded-xl bg-slate-100 p-3 sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)_auto]">
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Service name" className="h-10 min-w-0 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" />
-        <input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Short description" className="h-10 min-w-0 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" />
-        <button type="button" onClick={addService} className="rounded-lg bg-slate-950 px-4 text-xs font-black text-white">Add Service</button>
-      </div>
-    </div>
-  );
+  return <ListEditor items={names} onChange={updateServices} placeholder="Snow plowing" addLabel="Add Service" />;
 }
 
 export function prepareReceptionistProfile(profile = {}) {
@@ -213,7 +192,6 @@ export function prepareReceptionistProfile(profile = {}) {
   return {
     ...profile,
     serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
-    about: Array.isArray(profile.about) ? profile.about : [],
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
     aiSilenceSeconds: Number(profile.aiSilenceMs || 1200) / 1000,
     businessWeekdays: Array.isArray(profile.businessWeekdays) ? profile.businessWeekdays : hours.days,
@@ -231,6 +209,7 @@ export function prepareReceptionistProfile(profile = {}) {
 export function receptionistRequestPayload(profile = {}) {
   return {
     ...profile,
+    about: [],
     businessHours: businessHoursSummary(profile),
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
     latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
@@ -281,8 +260,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
           <HourPeriodPicker label="Latest estimate time" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
 
           <Field label="Service areas" hint="Add a city, county, state, the whole United States, or any other area the business serves." wide><ListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>
-          <Field label="About the business" hint="Add short facts the receptionist should know, one at a time." wide><ListEditor items={profile.about} onChange={(items) => update("about", items)} placeholder="Family-owned since 2018" addLabel="Add Fact" /></Field>
-          <Field label="Services" hint="Add each service with a short explanation so the receptionist can describe it correctly." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
+          <Field label="Services" hint="Add each service the business provides." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
           <Field label="Extra business information" hint="Use this for policies, common questions, timing, limitations, and anything else the receptionist may need." wide><textarea rows={10} value={profile.extraInformation || ""} onChange={(event) => update("extraInformation", event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-slate-950" /></Field>
         </div>
       </section>
