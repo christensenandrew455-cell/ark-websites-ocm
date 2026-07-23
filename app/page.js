@@ -52,8 +52,17 @@ function AdminDashboard({ user }) {
 
   const load = useCallback(async () => {
     try {
-      const next = await adminApi(user, "/api/admin/dashboard");
-      setData(next);
+      const [dashboard, connections] = await Promise.all([
+        adminApi(user, "/api/admin/dashboard"),
+        adminApi(user, "/api/admin/connections"),
+      ]);
+      setData({
+        ...dashboard,
+        counts: {
+          ...(dashboard.counts || {}),
+          customers: (connections.businesses || []).length,
+        },
+      });
       setError("");
     } catch (loadError) {
       setError(loadError.message);
