@@ -8,7 +8,6 @@ import HelpCenter from "./HelpCenter";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
 
-const DEFAULT_CLIENT_ID = "tabor-painting";
 const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
@@ -39,7 +38,7 @@ export default function AppShell({ children }) {
   const isAuthPublic = matchesPath(pathname, AUTH_PUBLIC_PATHS);
   const isPolicyPublic = matchesPath(pathname, POLICY_PUBLIC_PATHS);
   const isPublic = isAuthPublic || isPolicyPublic;
-  const selectedClientId = profile?.clientId || DEFAULT_CLIENT_ID;
+  const selectedClientId = profile?.clientId || "";
 
   useEffect(() => {
     if (loading) return;
@@ -55,7 +54,7 @@ export default function AppShell({ children }) {
       return;
     }
 
-    if (user && !isAuthPublic) selectClientId(selectedClientId);
+    if (user && !isAuthPublic && selectedClientId) selectClientId(selectedClientId);
   }, [isAuthPublic, isPublic, loading, pathname, router, selectClientId, selectedClientId, user]);
 
   if (loading) return <LoadingScreen />;
@@ -111,14 +110,13 @@ export default function AppShell({ children }) {
             </div>
           </div>
         </header>
-        <NativeAppSetup />
         {children}
       </>
     );
   }
 
   const settingsActive = pathname.startsWith("/settings");
-  const accountLabel = profile?.businessName || "Tabor Painting";
+  const accountLabel = profile?.businessName || "Your Business";
 
   return (
     <>

@@ -13,7 +13,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const allowedSections = ["postClients", "clients", "preClients", "contactedMe"];
+const allowedSections = ["clients", "contactedMe"];
 
 function cleanClientId(value) {
   return String(value || "")
@@ -290,23 +290,9 @@ export async function POST(request) {
       TotalJobs: Jobs.length,
       RepeatJobs: Math.max(0, Jobs.length - 1),
       currentStage: sectionKey,
-      previousStage: primary?.stageKey || "",
       connectionClientId: clientId,
       createdAt: primary?.data.createdAt || FieldValue.serverTimestamp(),
-      movedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      ...(sectionKey === "contactedMe" ? {
-        EstimateDate: FieldValue.delete(),
-        EstimateTime: FieldValue.delete(),
-        EstimateDateTime: FieldValue.delete(),
-        EstimateFollowUpAt: FieldValue.delete(),
-        EstimateFollowUpDue: false,
-        WorkStartDate: FieldValue.delete(),
-        WorkCompleteDate: FieldValue.delete(),
-        completedAt: FieldValue.delete(),
-        estimateCompleted: false,
-        workCompleted: false,
-      } : {}),
     }, { merge: true });
 
     matches.forEach((match) => {

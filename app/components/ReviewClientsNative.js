@@ -14,7 +14,6 @@ import {
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
-const ACCEPTED_COLLECTIONS = ["preClients", "clients", "postClients"];
 const TIME_RANGES = [
   { key: "today", label: "Today" },
   { key: "month", label: "This Month" },
@@ -70,12 +69,12 @@ function toMillis(value) {
 }
 
 function rowTime(row) {
-  return toMillis(row.createdAt || row.acceptedAt || row.movedAt || row.updatedAt);
+  return toMillis(row.createdAt || row.acceptedAt || row.updatedAt);
 }
 
 function rangeTime(row, section) {
   if (section === "clients") {
-    return toMillis(row.acceptedAt || row.movedAt || row.updatedAt || row.createdAt);
+    return toMillis(row.acceptedAt || row.updatedAt || row.createdAt);
   }
   return toMillis(row.createdAt || row.updatedAt || row.acceptedAt);
 }
@@ -395,7 +394,7 @@ function ViewModal({ row, onClose, onContact, onDate }) {
         <Detail label="Requested time" value={row.EstimateTime} />
         <Detail label="Notes" value={row.Notes} wide />
       </div>
-      {row.collectionKey !== "contactedMe" && (
+      {row.collectionKey === "clients" && (
         <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-4 sm:p-6">
           <button type="button" onClick={onContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>
           <button type="button" onClick={onDate} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">Confirm Date</button>
@@ -428,7 +427,7 @@ function EditModal({ row, clientId, onClose, onSaved }) {
     setSaving(true);
     setError("");
     try {
-      await setDoc(doc(db, "ocmClients", clientId, row.collectionKey || "clients", row.id), {
+      await setDoc(doc(db, "ocmClients", clientId, "clients", row.id), {
         ...form,
         PreferredDate: form.EstimateDate,
         updatedAt: serverTimestamp(),
@@ -521,8 +520,9 @@ export default function ReviewClientsNative() {
   const clientId = profile?.clientId || "";
   const businessName = profile?.businessName || "Your Business";
   const [contacted, setContacted] = useState([]);
-  const [acceptedByCollection, setAcceptedByCollection] = useState({});
-  const [loaded, setLoaded] = useState(new Set());
+  const [clients, setClients] = useState([]);
+  const [contactedLoaded, setContactedLoaded] = useState(false);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
   const [busy, setBusy] = useState(new Set());
   const [activeSection, setActiveSection] = useState(null);
   const [activeRange, setActiveRange] = useState("all");
@@ -537,40 +537,41 @@ export default function ReviewClientsNative() {
       return undefined;
     }
 
-    setLoaded(new Set());
     setContacted([]);
-    setAcceptedByCollection({});
+    setClients([]);
+    setContactedLoaded(false);
+    setClientsLoaded(false);
+    setError("");
 
     const unsubscribeContacted = onSnapshot(
       collection(db, "ocmClients", clientId, "contactedMe"),
       (snapshot) => {
         setContacted(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "contactedMe")).sort((a, b) => rowTime(b) - rowTime(a)));
-        setLoaded((current) => new Set(current).add("contactedMe"));
+        setContactedLoaded(true);
       },
       (snapshotError) => {
         console.error(snapshotError);
         setError("Could not load people who contacted you.");
+        setContactedLoaded(true);
       }
     );
 
-    const acceptedUnsubscribers = ACCEPTED_COLLECTIONS.map((collectionKey) => onSnapshot(
-      collection(db, "ocmClients", clientId, collectionKey),
+    const unsubscribeClients = onSnapshot(
+      collection(db, "ocmClients", clientId, "clients"),
       (snapshot) => {
-        setAcceptedByCollection((current) => ({
-          ...current,
-          [collectionKey]: snapshot.docs.map((item) => normalizeRow(item.id, item.data(), collectionKey)),
-        }));
-        setLoaded((current) => new Set(current).add(collectionKey));
+        setClients(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "clients")).sort((a, b) => rowTime(b) - rowTime(a)));
+        setClientsLoaded(true);
       },
       (snapshotError) => {
         console.error(snapshotError);
         setError("Could not load your clients.");
+        setClientsLoaded(true);
       }
-    ));
+    );
 
     return () => {
       unsubscribeContacted();
-      acceptedUnsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribeClients();
     };
   }, [clientId]);
 
@@ -582,12 +583,6 @@ export default function ReviewClientsNative() {
     }
   }, [user]);
 
-  const clients = useMemo(() => (
-    ACCEPTED_COLLECTIONS
-      .flatMap((collectionKey) => acceptedByCollection[collectionKey] || [])
-      .sort((a, b) => rowTime(b) - rowTime(a))
-  ), [acceptedByCollection]);
-
   const filteredContacted = useMemo(
     () => contacted.filter((row) => insideRange(row, activeRange, "contacted")),
     [activeRange, contacted]
@@ -596,9 +591,6 @@ export default function ReviewClientsNative() {
     () => clients.filter((row) => insideRange(row, activeRange, "clients")),
     [activeRange, clients]
   );
-
-  const contactedLoaded = loaded.has("contactedMe");
-  const clientsLoaded = ACCEPTED_COLLECTIONS.every((collectionKey) => loaded.has(collectionKey));
   const rangeLabel = TIME_RANGES.find((item) => item.key === activeRange)?.label || "All Time";
 
   function markBusy(key, value) {
@@ -651,7 +643,7 @@ export default function ReviewClientsNative() {
   }
 
   async function addPhoneContact(row) {
-    const key = `contact:${row.collectionKey}:${row.id}`;
+    const key = `contact:${row.id}`;
     if (busy.has(key)) return;
     markBusy(key, true);
     setNotice("");
@@ -667,7 +659,7 @@ export default function ReviewClientsNative() {
   }
 
   async function confirmDate(row) {
-    const key = `date:${row.collectionKey}:${row.id}`;
+    const key = `date:${row.id}`;
     if (busy.has(key)) return;
     markBusy(key, true);
     setNotice("");
@@ -791,10 +783,10 @@ export default function ReviewClientsNative() {
               {clientsLoaded && filteredClients.length === 0 && <EmptyState>No clients found for {rangeLabel.toLowerCase()}.</EmptyState>}
               {filteredClients.map((row) => {
                 const deleting = busy.has(`delete:${row.collectionKey}:${row.id}`);
-                const contactBusy = busy.has(`contact:${row.collectionKey}:${row.id}`);
-                const dateBusy = busy.has(`date:${row.collectionKey}:${row.id}`);
+                const contactBusy = busy.has(`contact:${row.id}`);
+                const dateBusy = busy.has(`date:${row.id}`);
                 return (
-                  <article key={`${row.collectionKey}:${row.id}`} className="rounded-2xl border border-slate-200 p-4">
+                  <article key={row.id} className="rounded-2xl border border-slate-200 p-4">
                     <button type="button" onClick={() => setViewing(row)} className="w-full text-left">
                       <h3 className="truncate text-base font-black">{row.Name || "Unnamed client"}</h3>
                       <p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
