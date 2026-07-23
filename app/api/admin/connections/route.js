@@ -9,6 +9,19 @@ import { normalizeClientId, toIsoString, trimmedText } from "../../../lib/valueU
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function hasCompletedBusinessSetup(receptionist = {}) {
+  if (receptionist.businessSetupComplete === true) return true;
+  const services = receptionist.services && typeof receptionist.services === "object"
+    ? Object.keys(receptionist.services)
+    : [];
+  return Boolean(
+    trimmedText(receptionist.businessName)
+    && trimmedText(receptionist.businessEmail)
+    && trimmedText(receptionist.businessPhone)
+    && services.length,
+  );
+}
+
 function connectionPayload(clientId, business, data, receptionist = null) {
   return {
     clientId,
@@ -21,8 +34,8 @@ function connectionPayload(clientId, business, data, receptionist = null) {
     phone: trimmedText(data.notificationPhone || data.businessPhone || business.accountPhone),
     sourceLabel: trimmedText(data.sourceLabel || business.businessName || clientId),
     connectionKey: trimmedText(data.connectionKey),
-    receptionistConfigured: Boolean(trimmedText(receptionist?.receptionistPhone || data.receptionistPhone)),
-    receptionistEnabled: receptionist?.enabled !== false,
+    receptionistConfigured: hasCompletedBusinessSetup(receptionist || {}),
+    receptionistEnabled: receptionist?.enabled !== false && data.receptionistEnabled !== false,
     receptionistPhone: trimmedText(receptionist?.receptionistPhone || data.receptionistPhone),
     termsAccepted: business.termsAccepted === true,
     privacyAccepted: business.privacyAccepted === true,
