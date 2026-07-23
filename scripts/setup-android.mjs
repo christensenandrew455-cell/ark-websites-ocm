@@ -34,7 +34,7 @@ async function verifyCapacitorConfig() {
 
   if (config.appId !== EXPECTED_APP_ID) {
     throw new Error(
-      `capacitor.config.json has appId \"${config.appId}\", but Google Play needs \"${EXPECTED_APP_ID}\".`,
+      `capacitor.config.json has appId "${config.appId}", but Google Play needs "${EXPECTED_APP_ID}".`,
     );
   }
 
@@ -67,6 +67,7 @@ async function createOrSyncAndroidProject() {
 async function applyProjectConfiguration() {
   run(nodeCommand, ["scripts/configure-android.mjs"]);
   run(nodeCommand, ["scripts/configure-phone-permissions.mjs"]);
+  run(nodeCommand, ["scripts/configure-file-saver.mjs"]);
 }
 
 async function verifyGeneratedPackageName() {
@@ -83,21 +84,21 @@ async function verifyGeneratedPackageName() {
   const buildFile = await readFile(buildFilePath, "utf8");
   const escapedId = EXPECTED_APP_ID.replaceAll(".", "\\.");
   const applicationIdPattern = new RegExp(
-    `applicationId\\s*(?:=\\s*)?[\"']${escapedId}[\"']`,
+    `applicationId\\s*(?:=\\s*)?["']${escapedId}["']`,
   );
   const namespacePattern = new RegExp(
-    `namespace\\s*(?:=\\s*)?[\"']${escapedId}[\"']`,
+    `namespace\\s*(?:=\\s*)?["']${escapedId}["']`,
   );
 
   if (!applicationIdPattern.test(buildFile)) {
     throw new Error(
-      `${path.relative(root, buildFilePath)} does not contain applicationId \"${EXPECTED_APP_ID}\".`,
+      `${path.relative(root, buildFilePath)} does not contain applicationId "${EXPECTED_APP_ID}".`,
     );
   }
 
   if (!namespacePattern.test(buildFile)) {
     throw new Error(
-      `${path.relative(root, buildFilePath)} does not contain namespace \"${EXPECTED_APP_ID}\".`,
+      `${path.relative(root, buildFilePath)} does not contain namespace "${EXPECTED_APP_ID}".`,
     );
   }
 
