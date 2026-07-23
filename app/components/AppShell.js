@@ -9,7 +9,7 @@ import HelpCenter from "./HelpCenter";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
 
-const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password"];
+const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/forgot-password", "/about", "/support", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },
@@ -87,7 +87,7 @@ function PullToRefresh({ children }) {
       )}
       <div
         style={{
-          transform: `translateY(${distance}px)`,
+          transform: distance > 0 ? `translateY(${distance}px)` : "none",
           transition: tracking.current ? "none" : "transform 160ms ease-out",
         }}
       >
@@ -227,7 +227,7 @@ export default function AppShell({ children }) {
   if (loading) return <LoadingScreen />;
   if (!user && isPublic) return children;
   if (!user) return <LoadingScreen />;
-  if (isAuthPublic) return <LoadingScreen />;
+  if (isAuthPublic) return children;
 
   const signOutButton = (
     <button type="button" onClick={logout} className="whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 hover:text-slate-950 sm:text-sm">
