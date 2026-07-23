@@ -23,23 +23,21 @@ export default function SignupFlowShell({ children }) {
   const router = useRouter();
   const { user, profile, isAdmin, loading } = useAuth();
   const signupPage = routeMatches(pathname, ["/signup/status", "/signup/complete"]);
-  const policyPage = routeMatches(pathname, ["/terms", "/privacy"]);
+  const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/support", "/docs"]);
   const unfinished = Boolean(user && !isAdmin && profile?.status !== "active");
 
   useEffect(() => {
     if (loading) return;
-    if (unfinished && !signupPage && !policyPage) {
+    if (unfinished && !signupPage && !publicInformationPage) {
       router.replace("/signup/status");
       return;
     }
-    if (user && !isAdmin && profile?.status === "active" && pathname === "/signup/status") {
-      router.replace("/");
-    }
-  }, [isAdmin, loading, pathname, policyPage, profile?.status, router, signupPage, unfinished, user]);
+    if (user && !isAdmin && profile?.status === "active" && pathname === "/signup/status") router.replace("/");
+  }, [isAdmin, loading, pathname, profile?.status, publicInformationPage, router, signupPage, unfinished, user]);
 
   if (loading) return <Waiting>Loading client center…</Waiting>;
   if (signupPage) return children;
-  if (unfinished && policyPage) return children;
+  if (unfinished && publicInformationPage) return children;
   if (unfinished) return <Waiting>Opening account verification…</Waiting>;
 
   return (
