@@ -30,4 +30,9 @@ if (!mainActivity.includes(registration)) {
   await writeFile(mainActivityPath, mainActivity, "utf8");
 }
 
-console.log("[Android file saver] System document save picker registered without storage permission.");
+const verifiedActivity = await readFile(mainActivityPath, "utf8");
+if (!verifiedActivity.includes(registration)) {
+  throw new Error("Android FileSaverPlugin registration is missing from MainActivity.java.");
+}
+
+console.log("[Android file saver] System document save picker registered and verified without storage permission.");
