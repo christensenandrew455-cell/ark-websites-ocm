@@ -26,16 +26,24 @@ function secretMatches(expected, supplied) {
 function authorized(request) {
   const expected = text(process.env.RECEPTIONIST_CONFIG_SECRET);
   const authorization = text(request.headers.get("authorization"));
-  const bearer = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
   const supplied = bearer || text(request.headers.get("x-ark-receptionist-key"));
   return secretMatches(expected, supplied);
 }
 
 export async function GET(request) {
-  if (!authorized(request)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  if (!authorized(request)) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
 
-  const phone = normalizePhone(new URL(request.url).searchParams.get("phone"));
-  if (!phone) return NextResponse.json({ error: "The called phone number is required." }, { status: 400 });
+  const requestUrl = new URL(request.url);
+  const phone = normalizePhone(requestUrl.searchParams.get("phone"));
+  const connectionId = text(requestUrl.searchParams.get("connectionId"));
+  if (!phone) {
+    return NextResponse.json({ error: "The called phone number is required." }, { status: 400 });
+  }
 
   const db = getAdminDb();
   const connectionSnapshot = await db.collection("connections")
@@ -43,12 +51,21 @@ export async function GET(request) {
     .limit(2)
     .get();
 
-  if (connectionSnapshot.empty) return NextResponse.json({ error: "No AI receptionist is assigned to that phone number." }, { status: 404 });
-  if (connectionSnapshot.size > 1) return NextResponse.json({ error: "That phone number is assigned to more than one account." }, { status: 409 });
+  if (connectionSnapshot.empty) {
+    return NextResponse.json({ error: "No AI receptionist is assigned to that phone number." }, { status: 404 });
+  }
+  if (connectionSnapshot.size > 1) {
+    return NextResponse.json({ error: "That phone number is assigned to more than one account." }, { status: 409 });
+  }
 
   const connectionDocument = connectionSnapshot.docs[0];
   const clientId = connectionDocument.id;
   const connection = connectionDocument.data();
+  const storedConnectionId = text(connection.telnyxConnectionId);
+  if (connectionId && storedConnectionId && connectionId !== storedConnectionId) {
+    return NextResponse.json({ error: "The Telnyx connection ID does not match this phone number." }, { status: 403 });
+  }
+
   const [businessSnapshot, settingsSnapshot] = await Promise.all([
     db.collection("businesses").doc(clientId).get(),
     db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist").get(),
@@ -60,7 +77,12 @@ export async function GET(request) {
 
   const businessAccount = businessSnapshot.data();
   const settings = settingsSnapshot.data();
-  if (businessAccount.status === "disabled" || connection.receptionistEnabled === false || settings.enabled === false) {
+  if (
+    businessAccount.status === "disabled"
+    || connection.enabled === false
+    || connection.receptionistEnabled === false
+    || settings.enabled === false
+  ) {
     return NextResponse.json({ error: "The AI receptionist is disabled." }, { status: 403 });
   }
 
@@ -70,17 +92,17 @@ export async function GET(request) {
 
   const response = NextResponse.json({
     ok: true,
+    clientId,
     routingPhone: phone,
     intakeUrl: intakeUrl.toString(),
     source: text(connection.sourceLabel || settings.businessName || businessAccount.businessName || "AI receptionist"),
     ai: {
-      model: "gpt-realtime-mini",
       voice: text(settings.aiVoice || "alloy"),
       speechSpeed: Number(settings.aiSpeechSpeed || 0.94),
       silenceMs: Number(settings.aiSilenceMs || 1200),
     },
     business: {
-      name: text(settings.businessName || businessAccount.businessName),
+      name: text(settings.businessName || businessAccount.businessName || clientId),
       receptionist: text(settings.receptionistName || "Alex"),
       owner: text(settings.ownerName || businessAccount.ownerName),
       phone: text(settings.businessPhone || businessAccount.accountPhone),
@@ -93,13 +115,15 @@ export async function GET(request) {
       latestEstimateStart: text(settings.latestEstimateStart),
       base: text(settings.businessBase),
       serviceAreas: Array.isArray(settings.serviceAreas) ? settings.serviceAreas : [],
-      services: settings.services && typeof settings.services === "object" && !Array.isArray(settings.services) ? settings.services : {},
-      about: Array.isArray(settings.about) ? settings.about : [],
+      services: settings.services && typeof settings.services === "object" && !Array.isArray(settings.services)
+        ? settings.services
+        : {},
+      facts: Array.isArray(settings.about) ? settings.about : [],
       openingLine: text(settings.openingLine),
       closingLine: text(settings.closingLine),
-      extraInformation: text(settings.extraInformation),
     },
   });
+
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
