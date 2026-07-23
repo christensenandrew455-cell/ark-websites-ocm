@@ -1,0 +1,22 @@
+name: Billing Enforcement
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Update overdue account access
+        env:
+          APP_URL: ${{ secrets.OCM_APP_URL }}
+          WORKFLOW_SECRET: ${{ secrets.BILLING_WORKFLOW_SECRET || secrets.OCM_REMINDER_SECRET }}
+        run: |
+          test -n "$APP_URL"
+          test -n "$WORKFLOW_SECRET"
+          curl --fail --silent --show-error \
+            -X POST "${APP_URL%/}/api/workflows/billing-enforcement" \
+            -H "Authorization: Bearer $WORKFLOW_SECRET"
