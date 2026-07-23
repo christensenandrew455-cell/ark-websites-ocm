@@ -10,11 +10,11 @@ const sections = [
     title: "2. Information we collect",
     body: (
       <>
-        <p><strong>Account and business information:</strong> business name, owner or contact name, email address, phone number, account status, plan and billing status, settings, and connection details.</p>
+        <p><strong>Account and business information:</strong> business name, owner or contact name, email address, phone number, account status, plan and billing status, settings, connection details, and payment-restriction status.</p>
         <p><strong>Customer and lead information:</strong> names, phone numbers, email addresses, addresses, appointment or job details, messages, notes, call or request information, and other content submitted by you, your customers, or connected services.</p>
-        <p><strong>Billing information:</strong> Stripe customer, payment-method, invoice, and billing-status identifiers. ARK does not receive or store full card numbers; card details are handled by Stripe.</p>
+        <p><strong>Billing information:</strong> Stripe customer, payment-method, charge, invoice, payment-event, amount-due, billing-status, and payment-incident identifiers. ARK does not receive or store full card numbers; card details are handled by Stripe.</p>
         <p><strong>Service and technical information:</strong> account activity, usage records, timestamps, device or browser information, error logs, security events, and information needed to operate connected AI, phone, hosting, database, and notification services.</p>
-        <p><strong>Support and legal records:</strong> change requests, support messages, cancellation or deletion requests, data-export requests, and records showing when and which version of the Terms of Use and Privacy Policy you accepted.</p>
+        <p><strong>Support and legal records:</strong> change requests, support messages, cancellation or deletion requests, data-export requests, account-enforcement actions, and records showing when and which version of the Terms of Use and Privacy Policy you accepted.</p>
       </>
     ),
   },
@@ -22,8 +22,9 @@ const sections = [
     title: "3. How we use information",
     body: (
       <>
-        <p>ARK uses information to create and manage accounts; receive, organize, store, and display leads; operate receptionist and communication features; deliver notifications; process billing; provide support and requested changes; test, maintain, secure, and improve the Service; prevent fraud or abuse; enforce account policies; and comply with legal obligations.</p>
+        <p>ARK uses information to create and manage accounts; receive, organize, store, and display leads; operate receptionist and communication features; deliver notifications; process and reconcile billing; calculate payment status; provide support and requested changes; test, maintain, secure, and improve the Service; prevent fraud or abuse; enforce account policies; and comply with legal obligations.</p>
         <p>Customer and lead information may be processed by automated or AI systems to route, summarize, classify, or respond to communications according to the account’s configuration.</p>
+        <p>Stripe payment events may be used automatically to show payment notices, place an account in or remove it from payment-restricted mode, and place an unpaid account into manual deletion review. Permanent deletion remains a separate administrator action.</p>
       </>
     ),
   },
@@ -31,8 +32,8 @@ const sections = [
     title: "4. Who can see information",
     body: (
       <>
-        <p>Authorized users of your business account can see information available inside that account.</p>
-        <p>Authorized ARK administrators can access account, customer, lead, billing-status, connection, support, and technical information when needed to operate, maintain, test, secure, troubleshoot, support, or administer the Service. This means ARK can see customer data stored in the Service.</p>
+        <p>Authorized users of your business account can see information available inside that account, subject to the account’s current access level.</p>
+        <p>Authorized ARK administrators can access account, customer, lead, billing-status, connection, support, payment-incident, and technical information when needed to operate, maintain, test, secure, troubleshoot, support, bill, enforce, or administer the Service. This means ARK can see customer data stored in the Service.</p>
         <p>ARK may share information with service providers that help provide the Service, such as cloud database and hosting providers, Stripe, phone or messaging providers, AI providers, email or notification providers, security vendors, and professional advisers. They receive only the information reasonably needed for their role and are subject to their own contractual and legal obligations.</p>
         <p>ARK may also disclose information when required by law, legal process, or a valid government request, or when reasonably necessary to protect rights, safety, security, or prevent fraud and abuse.</p>
       </>
@@ -43,12 +44,13 @@ const sections = [
     body: <p>ARK does not sell customer or lead information for money. ARK does not use customer or lead information for unrelated third-party advertising.</p>,
   },
   {
-    title: "6. Retention and deletion",
+    title: "6. Retention, payment restriction, and deletion",
     body: (
       <>
-        <p>ARK generally retains account and customer data while the account is active and as needed to provide the Service. If an account is disabled, data may remain stored during the applicable payment or deletion grace period.</p>
-        <p>You may request account deletion at any time. You may also request a data export before deletion. Once active account data is deleted, it may not be recoverable.</p>
-        <p>Limited backup, billing, transaction, security, fraud-prevention, agreement, audit, or legal records may remain for a reasonable period where required or permitted by law, even after active account data is deleted.</p>
+        <p>ARK generally retains account and customer data while the account is active and as needed to provide the Service. If an account is payment-restricted or waiting for manual deletion review, active data may remain stored so the receptionist can continue receiving leads, payment can be restored, and an administrator can review the account.</p>
+        <p>While required service charges remain unpaid or the account is payment-restricted, account features and data-export services may be unavailable. ARK may require payment before preparing, administering, or delivering an account-data export.</p>
+        <p>You may request account deletion while account-request features are available. Permanent deletion is completed only after administrator review and confirmation. Once active account, lead, and client data is permanently deleted, it may not be recoverable or available for export.</p>
+        <p>Limited backup, billing, transaction, Stripe-event, security, fraud-prevention, agreement, audit, or legal records may remain for a reasonable period where required or permitted by law, even after active account data is deleted.</p>
       </>
     ),
   },
@@ -60,7 +62,8 @@ const sections = [
     title: "8. Your choices and requests",
     body: (
       <>
-        <p>You may request access to, correction of, export of, or deletion of account information through the Request a Change or Priority Support options in Settings. ARK may need to verify identity and account authority before completing a request.</p>
+        <p>While the account has full access, you may request access to, correction of, export of, or deletion of account information through the Request a Change or Priority Support options in Settings. ARK may need to verify identity and account authority before completing a request.</p>
+        <p>During payment-restricted mode, the account may be limited to receiving and accepting leads. Restore payment first to regain support, change-request, settings, and data-export features.</p>
         <p>You may cancel the paid service according to the Terms of Use. Cancellation stops future service and billing according to the applicable billing period, while a separate immediate-deletion request asks ARK to remove the account sooner.</p>
       </>
     ),
@@ -79,7 +82,7 @@ const sections = [
   },
   {
     title: "12. Contact",
-    body: <p>Use the Request a Change or Priority Support options in Settings for privacy questions, access, correction, export, cancellation, or deletion requests.</p>,
+    body: <p>Use the Request a Change or Priority Support options in Settings for privacy questions, access, correction, export, cancellation, or deletion requests while those options are available. During payment restriction, use the payment controls shown in the account to restore full access.</p>,
   },
 ];
 
