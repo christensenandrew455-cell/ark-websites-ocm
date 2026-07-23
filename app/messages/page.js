@@ -165,7 +165,7 @@ function AdminMessages({ user, requests, onRefresh }) {
       <div className="mx-auto max-w-5xl">
         <header className="mb-4 flex items-end justify-between gap-3 sm:mb-7">
           <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Administrator</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Messages</h1><p className="mt-1 text-xs font-semibold text-slate-500">Oldest unresolved request stays at the top. Completed and denied requests leave this page.</p></div>
-          <span className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-black text-white">{requests.length} open</span>
+          <span className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-black text-white">{requests.length}</span>
         </header>
         {error && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
