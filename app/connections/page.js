@@ -219,6 +219,16 @@ export default function ConnectionsPage() {
       .catch((historyError) => setError(historyError.message));
   }, [selected]);
 
+  async function refreshConnections() {
+    setError("");
+    setMessage("");
+    try {
+      await loadBusinesses(selectedId);
+    } catch (refreshError) {
+      setError(refreshError.message);
+    }
+  }
+
   function openAccount(clientId) {
     setSelectedId(clientId);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -324,7 +334,13 @@ export default function ConnectionsPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-4 flex items-end justify-between gap-3 sm:mb-8"><div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Administrator</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Connections</h1></div><button type="button" onClick={() => { setShowCreate((current) => !current); setSelectedId(""); }} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">{showCreate ? "Close" : "Add Customer"}</button></div>
+        <div className="mb-4 flex items-end justify-between gap-3 sm:mb-8">
+          <div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Administrator</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Connections</h1></div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={refreshConnections} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">Refresh</button>
+            <button type="button" onClick={() => { setShowCreate((current) => !current); setSelectedId(""); }} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">{showCreate ? "Close" : "Add Customer"}</button>
+          </div>
+        </div>
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {message && <div className="mb-4 rounded-xl border border-slate-300 bg-white p-3 text-sm font-bold text-slate-800">{message}</div>}
 
@@ -332,7 +348,7 @@ export default function ConnectionsPage() {
           <form onSubmit={createCustomer} className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8">
             <h2 className="text-xl font-black">New Customer</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Field label="Business name"><Input value={newCustomer.businessName} onChange={(event) => updateNewCustomer("businessName", event.target.value)} placeholder="Example Painting" /></Field>
+              <Field label="Business name"><Input value={newCustomer.businessName} onChange={(event) => updateNewCustomer("businessName", event.target.value)} placeholder="Business name" /></Field>
               <Field label="Client ID"><Input value={newCustomer.clientId} onChange={(event) => updateNewCustomer("clientId", slug(event.target.value))} /></Field>
               <Field label="Owner name"><Input value={newCustomer.ownerName} onChange={(event) => updateNewCustomer("ownerName", event.target.value)} /></Field>
               <Field label="Customer email"><Input type="email" value={newCustomer.accountEmail} onChange={(event) => updateNewCustomer("accountEmail", event.target.value)} /></Field>
