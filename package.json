@@ -11,9 +11,9 @@
     "mobile:android:add": "npm run mobile:android:setup",
     "mobile:android:sync": "npm run mobile:android:setup",
     "mobile:android:open": "npm run mobile:android:setup && npx cap open android",
-    "mobile:ios:add": "npx cap add ios && node scripts/configure-ios.mjs",
-    "mobile:ios:sync": "npx cap sync ios && node scripts/configure-ios.mjs",
-    "mobile:ios:open": "npx cap open ios"
+    "mobile:ios:add": "npx cap add ios && node scripts/generate-ios-icon.mjs && node scripts/configure-ios.mjs",
+    "mobile:ios:sync": "npx cap sync ios && node scripts/generate-ios-icon.mjs && node scripts/configure-ios.mjs",
+    "mobile:ios:open": "npm run mobile:ios:sync && npx cap open ios"
   },
   "dependencies": {
     "@capacitor-community/contacts": "7.2.0",
