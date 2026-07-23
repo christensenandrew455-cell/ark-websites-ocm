@@ -9,7 +9,7 @@ import { normalizeClientId, toIsoString, trimmedText } from "../../../lib/valueU
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function connectionPayload(clientId, business, data) {
+function connectionPayload(clientId, business, data, receptionist = null) {
   return {
     clientId,
     businessName: trimmedText(business.businessName || data.businessName || clientId),
@@ -18,11 +18,12 @@ function connectionPayload(clientId, business, data) {
     status: trimmedText(business.status || "active"),
     disabledAt: toIsoString(business.disabledAt || data.disabledAt),
     enabled: data.enabled !== false,
-    businessPhone: trimmedText(data.businessPhone || business.accountPhone),
-    notificationPhone: trimmedText(data.notificationPhone || data.businessPhone || business.accountPhone),
-    notificationEmail: trimmedText(data.notificationEmail || business.accountEmail).toLowerCase(),
+    phone: trimmedText(data.notificationPhone || data.businessPhone || business.accountPhone),
     sourceLabel: trimmedText(data.sourceLabel || business.businessName || clientId),
     connectionKey: trimmedText(data.connectionKey),
+    receptionistConfigured: Boolean(receptionist),
+    receptionistEnabled: receptionist?.enabled !== false,
+    receptionistPhone: trimmedText(receptionist?.receptionistPhone || data.receptionistPhone),
     termsAccepted: business.termsAccepted === true,
     privacyAccepted: business.privacyAccepted === true,
     termsVersion: trimmedText(business.termsVersion),
@@ -47,12 +48,24 @@ export async function GET(request) {
   const adminUid = trimmedText(admin.decodedToken.uid);
   const adminEmail = trimmedText(admin.decodedToken.email).toLowerCase();
   const connections = new Map(connectionSnapshot.docs.map((document) => [document.id, document.data()]));
-  const businesses = businessSnapshot.docs
+  const eligible = businessSnapshot.docs
     .map((document) => ({ clientId: document.id, business: document.data() }))
     .filter(({ business }) => trimmedText(business.uid) !== adminUid)
     .filter(({ business }) => !adminEmail || trimmedText(business.accountEmail).toLowerCase() !== adminEmail)
-    .map(({ clientId, business }) => connectionPayload(clientId, business, connections.get(clientId) || {}))
-    .filter((business) => business.businessName && ["active", "disabled", "approved_pending_payment"].includes(business.status))
+    .filter(({ business }) => ["active", "disabled", "approved_pending_payment"].includes(trimmedText(business.status || "active")));
+
+  const receptionistSnapshots = eligible.length
+    ? await db.getAll(...eligible.map(({ clientId }) => db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist")))
+    : [];
+
+  const businesses = eligible
+    .map(({ clientId, business }, index) => connectionPayload(
+      clientId,
+      business,
+      connections.get(clientId) || {},
+      receptionistSnapshots[index]?.exists ? receptionistSnapshots[index].data() : null,
+    ))
+    .filter((business) => business.businessName)
     .sort((a, b) => a.businessName.localeCompare(b.businessName));
 
   return NextResponse.json({ businesses });
@@ -69,9 +82,11 @@ export async function POST(request) {
   const db = getAdminDb();
   const businessRef = db.collection("businesses").doc(clientId);
   const connectionRef = db.collection("connections").doc(clientId);
-  const [businessSnapshot, connectionSnapshot] = await Promise.all([
+  const receptionistRef = db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist");
+  const [businessSnapshot, connectionSnapshot, receptionistSnapshot] = await Promise.all([
     businessRef.get(),
     connectionRef.get(),
+    receptionistRef.get(),
   ]);
 
   if (!businessSnapshot.exists) {
@@ -80,24 +95,20 @@ export async function POST(request) {
 
   const business = businessSnapshot.data();
   const current = connectionSnapshot.exists ? connectionSnapshot.data() : {};
-  const connectionKey = body.regenerateKey === true || !trimmedText(current.connectionKey)
-    ? randomBytes(24).toString("hex")
-    : trimmedText(current.connectionKey);
-  const notificationEmail = trimmedText(body.notificationEmail || business.accountEmail).toLowerCase();
-
-  if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
-    return NextResponse.json({ error: "Enter a valid lead notification email." }, { status: 400 });
-  }
+  const connectionKey = trimmedText(current.connectionKey) || randomBytes(24).toString("hex");
+  const phone = trimmedText(body.phone || current.notificationPhone || current.businessPhone || business.accountPhone);
+  const ownerName = trimmedText(body.ownerName || business.ownerName);
+  const sourceLabel = trimmedText(body.sourceLabel || business.businessName || clientId);
 
   const data = {
     clientId,
     businessName: trimmedText(business.businessName || clientId),
-    ownerName: trimmedText(body.ownerName || business.ownerName),
+    ownerName,
     enabled: body.enabled !== false && business.status !== "disabled",
-    businessPhone: trimmedText(body.businessPhone || business.accountPhone),
-    notificationPhone: trimmedText(body.notificationPhone || body.businessPhone || business.accountPhone),
-    notificationEmail,
-    sourceLabel: trimmedText(body.sourceLabel || business.businessName || clientId),
+    businessPhone: phone,
+    notificationPhone: phone,
+    notificationEmail: trimmedText(business.accountEmail).toLowerCase(),
+    sourceLabel,
     defaultStage: "contactedMe",
     allowStageOverride: false,
     connectionKey,
@@ -107,44 +118,27 @@ export async function POST(request) {
   };
 
   const batch = db.batch();
-  batch.set(connectionRef, {
-    ...data,
-    receptionistName: FieldValue.delete(),
-    websiteUrl: FieldValue.delete(),
-    businessHours: FieldValue.delete(),
-    estimateDays: FieldValue.delete(),
-    earliestEstimateStart: FieldValue.delete(),
-    latestEstimateStart: FieldValue.delete(),
-    businessBase: FieldValue.delete(),
-    serviceAreas: FieldValue.delete(),
-    services: FieldValue.delete(),
-    about: FieldValue.delete(),
-    businessInfo: FieldValue.delete(),
-    receptionistInstructions: FieldValue.delete(),
-    notes: FieldValue.delete(),
-  }, { merge: true });
+  batch.set(connectionRef, data, { merge: true });
   batch.set(businessRef, {
-    ownerName: data.ownerName,
-    accountPhone: data.businessPhone || business.accountPhone || "",
+    ownerName,
+    accountPhone: phone || business.accountPhone || "",
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), {
     BusinessName: data.businessName,
-    OwnerName: data.ownerName,
+    OwnerName: ownerName,
     AccountEmail: trimmedText(business.accountEmail).toLowerCase(),
-    AccountPhone: data.businessPhone,
-    NotificationEmail: data.notificationEmail,
-    NotificationPhone: data.notificationPhone,
+    AccountPhone: phone,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  batch.delete(db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist"));
   await batch.commit();
 
   return NextResponse.json({
     connection: connectionPayload(
       clientId,
-      { ...business, ownerName: data.ownerName, accountPhone: data.businessPhone },
-      data
+      { ...business, ownerName, accountPhone: phone },
+      data,
+      receptionistSnapshot.exists ? receptionistSnapshot.data() : null,
     ),
   });
 }
