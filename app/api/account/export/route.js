@@ -2,30 +2,16 @@ import { NextResponse } from "next/server";
 import { computeBillingState } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
+import { normalizeClientId, serializeFirestoreValue } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function cleanClientId(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function serializable(value) {
-  if (value === null || value === undefined) return value ?? null;
-  if (typeof value?.toDate === "function") return value.toDate().toISOString();
-  if (typeof value?.seconds === "number" && Object.keys(value).length <= 2) return new Date(value.seconds * 1000).toISOString();
-  if (Array.isArray(value)) return value.map(serializable);
-  if (typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serializable(item)]));
-  return value;
-}
-
 function documents(snapshot) {
-  return snapshot.docs.map((document) => ({ id: document.id, ...serializable(document.data()) }));
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...serializeFirestoreValue(document.data()),
+  }));
 }
 
 function accountSummary(data = {}) {
@@ -35,8 +21,8 @@ function accountSummary(data = {}) {
     accountEmail: data.accountEmail || data.AccountEmail || "",
     accountPhone: data.accountPhone || data.AccountPhone || "",
     status: data.status || "",
-    createdAt: serializable(data.createdAt),
-    updatedAt: serializable(data.updatedAt),
+    createdAt: serializeFirestoreValue(data.createdAt),
+    updatedAt: serializeFirestoreValue(data.updatedAt),
   };
 }
 
@@ -47,7 +33,7 @@ export async function GET(request) {
     return NextResponse.json({ error: "Use a customer account to download that customer’s data." }, { status: 403 });
   }
 
-  const clientId = cleanClientId(user.decodedToken.clientId);
+  const clientId = normalizeClientId(user.decodedToken.clientId);
   if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
 
   try {
