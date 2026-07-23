@@ -4,11 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../components/AuthProvider";
-
-function normalizeBusinessIdentifier(value) {
-  if (String(value || "").includes("@")) return value;
-  return String(value || "").replace(/\s+/g, "-");
-}
+import { normalizeBusinessIdentifier } from "../lib/valueUtils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -86,12 +82,7 @@ export default function LoginPage() {
             Make an account
           </Link>
         </div>
-        <div className="mt-5 flex justify-center gap-4 text-xs font-bold text-slate-500">
-          <Link href="/about" className="hover:text-slate-950">About</Link>
-          <Link href="/support" className="hover:text-slate-950">Support</Link>
-          <Link href="/privacy" className="hover:text-slate-950">Privacy</Link>
-        </div>
-        <p className="mt-4 text-center text-xs text-slate-400">Admin accounts may use their account email in the business-name field.</p>
+        <p className="mt-5 text-center text-xs text-slate-400">Admin accounts may use their account email in the business-name field.</p>
       </div>
     </main>
   );
