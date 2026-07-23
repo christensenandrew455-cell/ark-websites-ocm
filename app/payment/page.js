@@ -44,6 +44,10 @@ async function adminFetch(user, url, options = {}) {
   return data;
 }
 
+function CountBadge({ value }) {
+  return <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-slate-950 px-2.5 py-1 text-xs font-black text-white">{value}</span>;
+}
+
 function CountCard({ label, value, detail }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
@@ -76,8 +80,13 @@ function AccountDetails({ item }) {
 function PaymentSection({ title, description, items, empty, renderActions }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
-      <h2 className="text-xl font-black sm:text-2xl">{title}</h2>
-      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{description}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black sm:text-2xl">{title}</h2>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{description}</p>
+        </div>
+        <CountBadge value={items.length} />
+      </div>
       <div className="mt-4 space-y-3">
         {items.length ? items.map((item) => (
           <article key={item.clientId} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
@@ -196,11 +205,8 @@ export default function PaymentPage() {
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {notice && <div className="mb-4 rounded-xl border border-slate-300 bg-white p-3 text-sm font-bold text-slate-800">{notice}</div>}
 
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4 sm:gap-4">
+        <section className="max-w-sm">
           <CountCard label="Accounts Overdue" value={counts.overdue || 0} detail="All accounts requiring payment attention" />
-          <CountCard label="Grace Period" value={counts.grace || 0} detail="Overdue, but full access remains" />
-          <CountCard label="Accounts Disabled" value={counts.disabled || 0} detail="Payment-restricted; leads only" />
-          <CountCard label="Ready for Deletion" value={counts.ready || 0} detail="Waiting for your decision" />
         </section>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2 sm:mt-6">
