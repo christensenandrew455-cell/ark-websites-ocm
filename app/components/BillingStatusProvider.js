@@ -53,11 +53,11 @@ export function BillingStatusProvider({ children }) {
     } catch (refreshError) {
       console.error("Unable to refresh billing status", refreshError);
       setError(refreshError.message || "Could not check payment status.");
-      return status;
+      return null;
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, status, user]);
+  }, [isAdmin, user]);
 
   useEffect(() => {
     if (authLoading || !user || isAdmin) return undefined;
