@@ -5,18 +5,10 @@ import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/aut
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
+import { normalizeClientId } from "../lib/valueUtils";
 
 const AuthContext = createContext(null);
 const ADMIN_CLIENT_STORAGE_KEY = "arkOcmAdminClientId";
-
-function cleanClientId(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -42,7 +34,7 @@ export function AuthProvider({ children }) {
     }
 
     const role = tokenResult.claims.role || account.role || "customer";
-    const clientId = cleanClientId(tokenResult.claims.clientId || account.clientId || "");
+    const clientId = normalizeClientId(tokenResult.claims.clientId || account.clientId || "");
     const claimedStatus = String(tokenResult.claims.accountStatus || "");
     const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
     const nextProfile = {
@@ -62,7 +54,7 @@ export function AuthProvider({ children }) {
 
     let nextActiveClientId = clientId;
     if (role === "admin" && typeof window !== "undefined") {
-      nextActiveClientId = cleanClientId(window.localStorage.getItem(ADMIN_CLIENT_STORAGE_KEY)) || clientId;
+      nextActiveClientId = normalizeClientId(window.localStorage.getItem(ADMIN_CLIENT_STORAGE_KEY)) || clientId;
       if (nextActiveClientId) window.localStorage.setItem(ADMIN_CLIENT_STORAGE_KEY, nextActiveClientId);
     }
 
@@ -122,10 +114,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   const selectClientId = useCallback((value) => {
-    const requestedClientId = cleanClientId(value);
+    const requestedClientId = normalizeClientId(value);
     const nextClientId = profile?.role === "admin"
-      ? requestedClientId || cleanClientId(profile?.clientId)
-      : cleanClientId(profile?.clientId);
+      ? requestedClientId || normalizeClientId(profile?.clientId)
+      : normalizeClientId(profile?.clientId);
 
     setActiveClientId((current) => current === nextClientId ? current : nextClientId);
     if (profile?.role === "admin" && nextClientId && typeof window !== "undefined") {
