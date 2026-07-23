@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <rect x="52" y="52" width="920" height="920" rx="210" fill="#08245B"/>
+  <text x="512" y="520" text-anchor="middle" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="260" font-weight="800" letter-spacing="16">ARK</text>
+  <text x="512" y="680" text-anchor="middle" fill="#DCE6F7" font-family="Inter, Arial, sans-serif" font-size="76" font-weight="600" letter-spacing="5">CLIENT CENTER</text>
+</svg>
