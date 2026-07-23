@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { ensureCustomerBillingSubscription } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +27,8 @@ function safeSignupError(error) {
   if (/private key|pem|credential|firebase admin/i.test(message)) {
     return "Firebase Admin credentials are invalid. Check the Vercel Firebase variables, then redeploy.";
   }
-  if (/stripe|api key|authentication/i.test(message)) {
-    return "Stripe could not confirm the payment method. Check the Stripe configuration.";
+  if (/stripe|api key|authentication|payment|card|invoice|subscription/i.test(message)) {
+    return "Stripe could not start the monthly service. Check the payment method and Stripe configuration.";
   }
   return "Unable to finish account setup right now.";
 }
@@ -106,6 +107,17 @@ export async function POST(request) {
       }
     }
 
+    const subscription = await ensureCustomerBillingSubscription({
+      stripe,
+      db,
+      clientId,
+      customerId,
+      paymentMethodId,
+      businessName,
+      uid: authorization.decoded.uid,
+      existingSubscriptionId: text(account.stripeSubscriptionId),
+    });
+
     const activeAccount = {
       status: "active",
       verificationStatus: "approved",
@@ -115,6 +127,8 @@ export async function POST(request) {
       stripeSetupIntentId: setupIntentId,
       stripePaymentMethodId: paymentMethodId,
       stripeCheckoutSessionId: sessionId,
+      stripeSubscriptionId: subscription.id,
+      stripeSubscriptionStatus: subscription.status,
       paymentMethodLabel,
       activatedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -146,6 +160,8 @@ export async function POST(request) {
       BillingStatus: "Active",
       PaymentMethodLabel: paymentMethodLabel,
       StripeCustomerId: customerId,
+      StripeSubscriptionId: subscription.id,
+      StripeSubscriptionStatus: subscription.status,
       TermsAccepted: account.termsAccepted === true,
       PrivacyAccepted: account.privacyAccepted === true,
       TermsVersion: text(account.termsVersion),
@@ -192,6 +208,7 @@ export async function POST(request) {
       clientId,
       uid: authorization.decoded.uid,
       completed: true,
+      stripeSubscriptionId: subscription.id,
       createdAt: FieldValue.serverTimestamp(),
     });
     await batch.commit();
