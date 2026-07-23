@@ -2,21 +2,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
+import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function text(value) {
-  return String(value || "").trim();
-}
-
-function cleanClientId(value) {
-  return text(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 function safeApplicationError(error) {
   const code = String(error?.code || error?.errorInfo?.code || "");
@@ -45,11 +34,11 @@ export async function POST(request) {
       privacyVersion,
     } = await request.json();
 
-    const business = text(businessName);
-    const owner = text(ownerName);
-    const email = text(accountEmail).toLowerCase();
-    const phone = text(accountPhone);
-    const clientId = cleanClientId(business);
+    const business = trimmedText(businessName);
+    const owner = trimmedText(ownerName);
+    const email = trimmedText(accountEmail).toLowerCase();
+    const phone = trimmedText(accountPhone);
+    const clientId = normalizeClientId(business);
 
     if (!clientId || !owner || !email || !phone || typeof password !== "string") {
       return NextResponse.json({ error: "Complete every account field before continuing." }, { status: 400 });
