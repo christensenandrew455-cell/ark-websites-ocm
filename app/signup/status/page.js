@@ -10,7 +10,7 @@ function statusCopy(status) {
   if (status === "approved_pending_payment") {
     return {
       title: "Account verified",
-      body: "ARK approved your account. Add your payment method to finish activation and enter the app.",
+      body: "ARK approved your account. Add your payment method to start the $100 monthly service plus $10 for each unique lead added to Contacted Me. There is no monthly maximum on lead charges.",
     };
   }
   if (status === "declined") {
@@ -132,6 +132,13 @@ export default function SignupStatusPage() {
             <p className="mt-1 text-slate-600">{application.ownerName}</p>
             <p className="mt-1 break-all text-slate-600">{application.accountEmail}</p>
             <p className="mt-1 text-slate-600">{application.accountPhone}</p>
+          </div>
+        )}
+
+        {approved && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+            <p><strong>$100 USD monthly</strong> plus <strong>$10 USD per unique Contacted Me lead</strong>.</p>
+            <p className="mt-1">Lead charges have no monthly maximum. Stripe securely stores the payment method and processes the recurring and usage-based invoice.</p>
           </div>
         )}
 
