@@ -4,7 +4,6 @@ import {
   deleteCustomerPermanently,
   disableCustomer,
   restoreCustomer,
-  scheduleCustomerDeletion,
 } from "../../../../lib/customerLifecycle";
 
 export const runtime = "nodejs";
@@ -29,15 +28,13 @@ export async function POST(request) {
       result = await disableCustomer(clientId, admin.decodedToken.uid);
     } else if (action === "restore") {
       result = await restoreCustomer(clientId, admin.decodedToken.uid);
-    } else if (action === "schedule-delete") {
-      result = await scheduleCustomerDeletion(clientId, admin.decodedToken.uid);
     } else if (action === "delete-now") {
-      if (text(body.confirmation) !== clientId) {
-        return NextResponse.json({ error: "Type the exact client ID to permanently delete this customer." }, { status: 400 });
+      if (text(body.confirmation) !== clientId || body.confirmPermanent !== true) {
+        return NextResponse.json({ error: "Confirm permanent deletion and type the exact client ID." }, { status: 400 });
       }
       result = await deleteCustomerPermanently(clientId);
     } else {
-      return NextResponse.json({ error: "Choose a valid account action." }, { status: 400 });
+      return NextResponse.json({ error: "Choose Disable, Restore, or Delete Permanently." }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true, result });
