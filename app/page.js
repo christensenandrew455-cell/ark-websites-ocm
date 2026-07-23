@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./components/AuthProvider";
 import { useBillingStatus } from "./components/BillingStatusProvider";
 import ClientStats from "./components/ClientStats";
+import MonthlyBillingCard from "./components/MonthlyBillingCard";
 import ReviewClientsNative from "./components/ReviewClientsNative";
 
 const REVENUE_RANGES = [
@@ -161,6 +162,7 @@ function CustomerHome() {
         .billing-restricted-client-home article > div.mt-4.grid.grid-cols-2 > button:nth-child(4) { display: none; }
         .billing-restricted-client-home article > div.mt-4.grid.grid-cols-2 > button:nth-child(3) { grid-column: 2; grid-row: 1; }
       `}</style>
+      {!status.restricted && <MonthlyBillingCard />}
       {!status.restricted && <ClientStats />}
       <ReviewClientsNative />
     </div>
