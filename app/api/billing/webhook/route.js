@@ -43,7 +43,7 @@ export async function POST(request) {
         clientId: match.clientId,
         eventId: event.id,
         invoiceId: invoice.id,
-        amountDue: invoice.amount_due || invoice.amount_remaining || 0,
+        amountDue: invoice.amount_remaining || invoice.amount_due || 0,
         currency: invoice.currency || "usd",
         failedAt: event.created * 1000,
       });
@@ -55,12 +55,18 @@ export async function POST(request) {
       const match = await findBusinessForStripeCustomer(db, customerId, invoice.metadata || {});
       if (!match) return NextResponse.json({ received: true, ignored: true });
 
-      await resolvePayment({
-        db,
-        clientId: match.clientId,
-        eventId: event.id,
-        invoiceId: invoice.id,
-      });
+      const remaining = customerId
+        ? await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
+        : { data: [] };
+      const anotherInvoiceIsUnpaid = remaining.data.some((item) => item.id !== invoice.id && Number(item.amount_remaining || 0) > 0);
+      if (!anotherInvoiceIsUnpaid) {
+        await resolvePayment({
+          db,
+          clientId: match.clientId,
+          eventId: event.id,
+          invoiceId: invoice.id,
+        });
+      }
     }
 
     return NextResponse.json({ received: true });
