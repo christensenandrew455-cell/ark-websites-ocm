@@ -7,10 +7,7 @@ import { useState } from "react";
 import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
-
-function normalizeBusinessName(value) {
-  return String(value || "").replace(/\s+/g, "-");
-}
+import { dashBusinessName } from "../lib/valueUtils";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -27,7 +24,7 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
 
   function updateField(event) {
-    const value = event.target.name === "businessName" ? normalizeBusinessName(event.target.value) : event.target.value;
+    const value = event.target.name === "businessName" ? dashBusinessName(event.target.value) : event.target.value;
     setForm((current) => ({ ...current, [event.target.name]: value }));
   }
 
