@@ -9,7 +9,7 @@ import { normalizeClientId, toIsoString, trimmedText } from "../../lib/valueUtil
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALLOWED_TYPES = new Set(["help", "change"]);
+const HISTORICAL_TYPES = new Set(["help", "change"]);
 const ALLOWED_STATUSES = new Set(["new", "in-progress", "completed", "denied"]);
 const OPEN_STATUSES = new Set(["new", "in-progress"]);
 const STATUS_TRANSITIONS = {
@@ -27,7 +27,7 @@ function requestPayload(document) {
     businessName: trimmedText(data.businessName),
     ownerName: trimmedText(data.ownerName),
     accountEmail: trimmedText(data.accountEmail),
-    type: ALLOWED_TYPES.has(data.type) ? data.type : "change",
+    type: HISTORICAL_TYPES.has(data.type) ? data.type : "help",
     subject: trimmedText(data.subject),
     message: trimmedText(data.message),
     status: ALLOWED_STATUSES.has(data.status) ? data.status : "new",
@@ -74,19 +74,17 @@ export async function POST(request) {
   const user = await requireUser(request);
   if (user.response) return user.response;
   if (user.decodedToken.role === "admin") {
-    return NextResponse.json({ error: "Administrators manage requests from the Messages tab." }, { status: 403 });
+    return NextResponse.json({ error: "Administrators manage help requests from the Messages tab." }, { status: 403 });
   }
 
   const body = await request.json();
-  const type = ALLOWED_TYPES.has(body.type) ? body.type : "";
   const subject = trimmedText(body.subject);
   const message = trimmedText(body.message);
   const clientId = normalizeClientId(user.decodedToken.clientId);
 
   if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
-  if (!type) return NextResponse.json({ error: "Choose Help or Change." }, { status: 400 });
-  if (message.length < 10) return NextResponse.json({ error: "Describe the request in at least 10 characters." }, { status: 400 });
-  if (message.length > 4000) return NextResponse.json({ error: "Keep the request under 4,000 characters." }, { status: 400 });
+  if (message.length < 10) return NextResponse.json({ error: "Describe what you need help with in at least 10 characters." }, { status: 400 });
+  if (message.length > 4000) return NextResponse.json({ error: "Keep the help request under 4,000 characters." }, { status: 400 });
 
   const db = getAdminDb();
   const [businessSnapshot, accountSnapshot] = await Promise.all([
@@ -98,8 +96,8 @@ export async function POST(request) {
   const billingState = computeBillingState(business);
   if (billingState.restricted) {
     return NextResponse.json(
-      { error: "Help and change requests are unavailable while the account is payment-restricted. Update the payment method to restore full access." },
-      { status: 402 }
+      { error: "Help requests are unavailable while the account is payment-restricted. Update the payment method to restore full access." },
+      { status: 402 },
     );
   }
 
@@ -109,11 +107,11 @@ export async function POST(request) {
     businessName: trimmedText(business.businessName || account.businessName || clientId),
     ownerName: trimmedText(account.ownerName || business.ownerName || user.decodedToken.name),
     accountEmail: trimmedText(account.accountEmail || user.decodedToken.email).toLowerCase(),
-    type,
-    subject: subject || (type === "help" ? "Urgent help request" : "Receptionist change request"),
+    type: "help",
+    subject: subject || "Help request",
     message,
     status: "new",
-    priority: type === "help" ? "urgent" : "normal",
+    priority: "normal",
     createdByUid: user.decodedToken.uid,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -149,7 +147,7 @@ export async function PATCH(request) {
   if (!STATUS_TRANSITIONS[currentStatus]?.has(status)) {
     return NextResponse.json(
       { error: currentStatus === "new" ? "Start or deny this request first." : currentStatus === "in-progress" ? "Complete this request when the work is finished." : "This request is already closed." },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -173,7 +171,7 @@ export async function PATCH(request) {
       adminNote,
     });
   } catch (notificationError) {
-    console.error("Request status saved but customer notification failed", notificationError);
+    console.error("Help request status saved but customer notification failed", notificationError);
   }
 
   return NextResponse.json({ ok: true });
