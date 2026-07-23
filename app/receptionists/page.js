@@ -187,7 +187,6 @@ export default function ReceptionistsPage() {
               <h2 className="text-xl font-black">Voice and Script</h2>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <Field label="Receptionist name"><Input value={form.receptionistName} onChange={(event) => update("receptionistName", event.target.value)} /></Field>
-                <Field label="Realtime model"><Input value={form.aiModel} onChange={(event) => update("aiModel", event.target.value)} placeholder="gpt-realtime" /></Field>
                 <Field label="Voice"><Select value={form.aiVoice} onChange={(event) => update("aiVoice", event.target.value)}>{VOICES.map((voice) => <option key={voice} value={voice}>{voice}</option>)}</Select></Field>
                 <Field label="Pacing"><Select value={Number(form.aiSpeechSpeed)} onChange={(event) => update("aiSpeechSpeed", Number(event.target.value))}>{PACING.map((pace) => <option key={pace.value} value={pace.value}>{pace.label}</option>)}</Select></Field>
                 <Field label="Pause detection"><Select value={Number(form.aiSilenceMs)} onChange={(event) => update("aiSilenceMs", Number(event.target.value))}>{PAUSES.map((pause) => <option key={pause.value} value={pause.value}>{pause.label}</option>)}</Select></Field>

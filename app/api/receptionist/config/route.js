@@ -94,7 +94,6 @@ export async function GET(request) {
       ocmUsageUrl: usageUrl.toString(),
       receptionistScript: text(settings.receptionistScript),
       ai: {
-        model: text(settings.aiModel || "gpt-realtime"),
         voice: text(settings.aiVoice || "alloy"),
         speechSpeed: Number(settings.aiSpeechSpeed || 1),
         silenceMs: Number(settings.aiSilenceMs || 900),
