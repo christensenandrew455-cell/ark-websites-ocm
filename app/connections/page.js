@@ -66,6 +66,10 @@ function Input({ value, onChange, type = "text", placeholder = "", readOnly = fa
   return <input type={type} value={value || ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "mt-1.5 h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
 }
 
+function CountBadge({ value }) {
+  return <span className="inline-flex min-w-7 items-center justify-center rounded-full bg-slate-950 px-2.5 py-1 text-xs font-black text-white">{value}</span>;
+}
+
 function NeutralPill({ children }) {
   return <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[9px] font-black uppercase text-slate-700">{children}</span>;
 }
@@ -94,7 +98,10 @@ function LegalAgreementPanel({ account }) {
   const accepted = account.termsAccepted && account.privacyAccepted && account.legalAcceptedAt;
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
-      <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Account evidence</p><h2 className="mt-1 text-lg font-black sm:text-2xl">Legal Agreement</h2></div><NeutralPill>{accepted ? "Accepted" : "Not Recorded"}</NeutralPill></div>
+      <div className="flex items-start justify-between gap-3">
+        <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Account evidence</p><h2 className="mt-1 text-lg font-black sm:text-2xl">Legal Agreement</h2></div>
+        <NeutralPill>{accepted ? "Accepted" : "Not Recorded"}</NeutralPill>
+      </div>
       {accepted ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Terms</p><Link href="/terms" target="_blank" className="mt-1 inline-block text-sm font-black text-slate-950 underline">Version {account.termsVersion || "not labeled"}</Link></div>
@@ -120,13 +127,19 @@ function AccountCard({ business, onOpen }) {
   );
 }
 
-function AccountSection({ title, description, businesses, onOpen, empty }) {
+function AccountSection({ title, description, businesses, total = businesses.length, onOpen, empty, searchQuery = "", onSearchChange = null }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <div><h2 className="text-xl font-black">{title}</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{description}</p></div>
-        <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-black">{businesses.length}</span>
+        <CountBadge value={total} />
       </div>
+      {onSearchChange && (
+        <label className="mt-4 block">
+          <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Search connected accounts</span>
+          <input type="search" value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} placeholder="Business, owner, email, or client ID" className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none focus:border-slate-950" />
+        </label>
+      )}
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {businesses.map((business) => <AccountCard key={business.clientId} business={business} onOpen={onOpen} />)}
       </div>
@@ -152,15 +165,15 @@ export default function ConnectionsPage() {
   const [error, setError] = useState("");
 
   const selected = useMemo(() => businesses.find((business) => business.clientId === selectedId) || null, [businesses, selectedId]);
-  const visibleBusinesses = useMemo(() => {
+  const needsConnection = useMemo(() => businesses.filter((business) => business.status !== "disabled" && (!business.connectionKey || business.enabled === false)), [businesses]);
+  const connectedBase = useMemo(() => businesses.filter((business) => business.status !== "disabled" && Boolean(business.connectionKey) && business.enabled !== false), [businesses]);
+  const connectedAccounts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return businesses;
-    return businesses.filter((business) => [business.businessName, business.ownerName, business.accountEmail, business.clientId]
+    if (!query) return connectedBase;
+    return connectedBase.filter((business) => [business.businessName, business.ownerName, business.accountEmail, business.clientId]
       .some((value) => String(value || "").toLowerCase().includes(query)));
-  }, [businesses, searchQuery]);
-  const needsConnection = useMemo(() => visibleBusinesses.filter((business) => business.status !== "disabled" && (!business.connectionKey || business.enabled === false)), [visibleBusinesses]);
-  const connectedAccounts = useMemo(() => visibleBusinesses.filter((business) => business.status !== "disabled" && Boolean(business.connectionKey) && business.enabled !== false), [visibleBusinesses]);
-  const disabledAccounts = useMemo(() => visibleBusinesses.filter((business) => business.status === "disabled"), [visibleBusinesses]);
+  }, [connectedBase, searchQuery]);
+  const disabledAccounts = useMemo(() => businesses.filter((business) => business.status === "disabled"), [businesses]);
 
   async function adminFetch(url, options = {}) {
     const token = await user.getIdToken(true);
@@ -335,13 +348,9 @@ export default function ConnectionsPage() {
 
         {!showCreate && !selectedId && (
           <div className="space-y-4">
-            <label className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
-              <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Search clients</span>
-              <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Business, owner, email, or client ID" className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none focus:border-slate-950" />
-            </label>
-            <AccountSection title="Needs Connection" description="Approved customers that still need a key generated or their connection turned on." businesses={needsConnection} onOpen={openAccount} empty={searchQuery ? "No matching clients need a connection." : "Every approved customer has a connection key."} />
-            <AccountSection title="Connected Accounts" description="Customers with an active receptionist connection and a saved private key." businesses={connectedAccounts} onOpen={openAccount} empty={searchQuery ? "No connected clients match that search." : "No customer connections are active yet."} />
-            {disabledAccounts.length > 0 && <AccountSection title="Disabled Accounts" description="Accounts that are manually disabled and not currently connected." businesses={disabledAccounts} onOpen={openAccount} empty="No disabled accounts." />}
+            <AccountSection title="Needs Connection" description="Approved customers that still need a key generated or their connection turned on." businesses={needsConnection} onOpen={openAccount} empty="Every approved customer has a connection key." />
+            <AccountSection title="Connected Accounts" description="Customers with an active receptionist connection and a saved private key." businesses={connectedAccounts} total={connectedBase.length} onOpen={openAccount} empty={searchQuery ? "No connected clients match that search." : "No customer connections are active yet."} searchQuery={searchQuery} onSearchChange={setSearchQuery} />
+            <AccountSection title="Disabled Accounts" description="Accounts that are manually disabled and not currently connected." businesses={disabledAccounts} onOpen={openAccount} empty="No disabled accounts." />
           </div>
         )}
 
@@ -359,7 +368,7 @@ export default function ConnectionsPage() {
 
             <LegalAgreementPanel account={form} />
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Request History</h2><span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-black">{requestHistory.length}</span></div><div className="mt-4 space-y-2">{requestHistory.map((item) => <article key={item.id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-black">{item.subject}</p><p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">{item.type} · {formatDate(item.createdAt)}</p></div><RequestStatus status={item.status} /></div><p className="mt-2 text-xs leading-5 text-slate-600">{item.message}</p>{item.adminNote && <p className="mt-2 rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold">ARK: {item.adminNote}</p>}</article>)}{requestHistory.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">No requests for this account.</p>}</div></section>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Request History</h2><CountBadge value={requestHistory.length} /></div><div className="mt-4 space-y-2">{requestHistory.map((item) => <article key={item.id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-black">{item.subject}</p><p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">{item.type} · {formatDate(item.createdAt)}</p></div><RequestStatus status={item.status} /></div><p className="mt-2 text-xs leading-5 text-slate-600">{item.message}</p>{item.adminNote && <p className="mt-2 rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold">ARK: {item.adminNote}</p>}</article>)}{requestHistory.length === 0 && <p className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">No requests for this account.</p>}</div></section>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><h2 className="text-lg font-black">Account Control</h2><p className="mt-1 text-xs leading-5 text-slate-500">Payment restriction is automated. Permanent deletion is always your manual decision.</p><div className="mt-4 grid grid-cols-3 gap-2">{form.status === "disabled" ? <button type="button" disabled={lifecycleBusy} onClick={() => lifecycleAction("restore")} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 disabled:opacity-50">Restore</button> : <button type="button" disabled={lifecycleBusy} onClick={() => lifecycleAction("disable")} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-black text-slate-800 disabled:opacity-50">Disable</button>}<button type="button" disabled={lifecycleBusy} onClick={() => lifecycleAction("delete-now")} className="rounded-xl bg-red-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">Delete Permanently</button><button type="submit" disabled={isSaving || form.status === "disabled"} className="rounded-xl bg-slate-950 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">{isSaving ? "Saving…" : "Save Profile"}</button></div></section>
           </form>
