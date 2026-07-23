@@ -7,6 +7,12 @@ import { useBillingStatus } from "./components/BillingStatusProvider";
 import ClientStats from "./components/ClientStats";
 import ReviewClientsNative from "./components/ReviewClientsNative";
 
+const REVENUE_RANGES = [
+  { key: "today", label: "Today", title: "Paid Today" },
+  { key: "month", label: "This Month", title: "Paid This Month" },
+  { key: "all", label: "All Time", title: "Paid All Time" },
+];
+
 async function adminApi(user, url) {
   const token = await user.getIdToken(true);
   const response = await fetch(url, {
@@ -41,33 +47,33 @@ function formatDate(value) {
   }).format(date);
 }
 
-function SummaryCard({ label, value, detail }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
+function SummaryCard({ label, value, detail, href }) {
+  const classes = "block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:rounded-3xl sm:p-6";
+  const content = (
+    <>
       <p className="text-3xl font-black tracking-tight sm:text-4xl">{value}</p>
       <h2 className="mt-1 text-xs font-black uppercase tracking-wide text-slate-700 sm:text-sm">{label}</h2>
       {detail && <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-400 sm:text-xs">{detail}</p>}
-    </div>
+    </>
   );
+
+  return href ? <Link href={href} className={classes}>{content}</Link> : <div className={classes}>{content}</div>;
 }
 
-function QueueSection({ title, count, empty, children, tone = "slate", action }) {
+function QueueSection({ id, title, count, empty, children, tone = "slate", action }) {
   const toneClass = tone === "red"
     ? "border-red-200"
     : tone === "amber"
       ? "border-amber-200"
       : "border-slate-200";
   return (
-    <section className={`rounded-2xl border ${toneClass} bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6`}>
+    <section id={id} className={`scroll-mt-28 rounded-2xl border ${toneClass} bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Needs attention</p>
           <h2 className="mt-1 text-xl font-black sm:text-2xl">{title}</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">{count}</span>
-          {action}
-        </div>
+        {action}
       </div>
       <div className="mt-4 space-y-2">
         {count ? children : <p className="rounded-xl bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">{empty}</p>}
@@ -78,6 +84,7 @@ function QueueSection({ title, count, empty, children, tone = "slate", action })
 
 function AdminDashboard({ user }) {
   const [data, setData] = useState(null);
+  const [revenueRange, setRevenueRange] = useState("today");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -113,9 +120,13 @@ function AdminDashboard({ user }) {
   const counts = data?.counts || {};
   const totals = data?.stripe?.totals || {};
   const paymentIssues = data?.paymentIssues || [];
-  const requests = data?.openRequests || [];
   const pending = data?.pendingAccounts || [];
-  const recentPayments = data?.stripe?.recentPayments || [];
+  const newRequestCount = (data?.openRequests || []).filter((item) => item.status === "new").length;
+  const selectedRange = REVENUE_RANGES.find((range) => range.key === revenueRange) || REVENUE_RANGES[0];
+  const selectedRevenue = totals[revenueRange] || {};
+  const revenueDetail = revenueRange === "all" && data?.stripe?.truncated
+    ? "First 10,000 Stripe charges"
+    : data?.stripe?.timeZone || "Stripe successful charges";
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
@@ -132,13 +143,32 @@ function AdminDashboard({ user }) {
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {data?.stripe?.error && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">{data.stripe.error}</div>}
 
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-          <SummaryCard label="Paid Today" value={formatMoney(totals.today?.amount, totals.today?.currency)} detail={data?.stripe?.timeZone || "Stripe"} />
-          <SummaryCard label="Paid This Month" value={formatMoney(totals.month?.amount, totals.month?.currency)} />
-          <SummaryCard label="Paid All Time" value={formatMoney(totals.all?.amount, totals.all?.currency)} detail={data?.stripe?.truncated ? "First 10,000 Stripe charges" : "Stripe successful charges"} />
-          <SummaryCard label="Needs Payment" value={counts.needsPayment || 0} detail="Visible after the 24-hour quiet window" />
-          <SummaryCard label="Open Requests" value={counts.openRequests || 0} detail="Oldest request first" />
-          <SummaryCard label="New Accounts" value={counts.pendingAccounts || 0} detail="Verification or initial payment setup" />
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
+          <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+            {REVENUE_RANGES.map((range) => (
+              <button
+                key={range.key}
+                type="button"
+                onClick={() => setRevenueRange(range.key)}
+                className={revenueRange === range.key
+                  ? "rounded-lg bg-white px-2 py-2.5 text-[11px] font-black text-slate-950 shadow-sm sm:text-sm"
+                  : "rounded-lg px-2 py-2.5 text-[11px] font-bold text-slate-500 sm:text-sm"}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-5">
+            <p className="text-4xl font-black tracking-tight sm:text-5xl">{formatMoney(selectedRevenue.amount, selectedRevenue.currency)}</p>
+            <h2 className="mt-1 text-sm font-black uppercase tracking-wide text-slate-700">{selectedRange.title}</h2>
+            <p className="mt-1 text-[10px] font-semibold text-slate-400 sm:text-xs">{revenueDetail}</p>
+          </div>
+        </section>
+
+        <section className="mt-3 grid grid-cols-3 gap-3 sm:mt-4 sm:gap-4">
+          <SummaryCard label="Accounts" value={counts.customers || 0} detail="All customer accounts" href="/connections" />
+          <SummaryCard label="New Accounts" value={pending.length} detail="Waiting for verification or payment" href="#new-accounts" />
+          <SummaryCard label="New Requests" value={newRequestCount} detail="Open the request queue" href="/messages" />
         </section>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2 sm:mt-6">
@@ -167,27 +197,7 @@ function AdminDashboard({ user }) {
             ))}
           </QueueSection>
 
-          <QueueSection
-            title="Requests"
-            count={requests.length}
-            empty="No help or change requests are waiting."
-            action={<Link href="/messages" className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] font-black">Messages</Link>}
-          >
-            {requests.map((item) => (
-              <Link key={item.id} href="/messages" className="block rounded-xl border border-slate-200 p-3 hover:bg-slate-50">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black">{item.subject}</p>
-                    <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{item.businessName} · {formatDate(item.createdAt)}</p>
-                  </div>
-                  <span className={item.type === "help" ? "rounded-full bg-red-100 px-2 py-1 text-[9px] font-black uppercase text-red-700" : "rounded-full bg-blue-100 px-2 py-1 text-[9px] font-black uppercase text-blue-700"}>{item.type}</span>
-                </div>
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-600">{item.message}</p>
-              </Link>
-            ))}
-          </QueueSection>
-
-          <QueueSection title="New Accounts" count={pending.length} empty="No account applications are waiting.">
+          <QueueSection id="new-accounts" title="New Accounts" count={pending.length} empty="No account applications are waiting.">
             {pending.map((item) => (
               <div key={item.uid} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-start justify-between gap-3">
@@ -198,18 +208,6 @@ function AdminDashboard({ user }) {
                   <span className="rounded-full bg-violet-100 px-2 py-1 text-[9px] font-black uppercase text-violet-800">{item.status === "pending_verification" ? "verify" : "payment setup"}</span>
                 </div>
                 <p className="mt-2 text-[10px] font-bold text-slate-400">Submitted {formatDate(item.createdAt)}</p>
-              </div>
-            ))}
-          </QueueSection>
-
-          <QueueSection title="Recently Paid" count={recentPayments.length} empty="Stripe has not returned any successful payments yet.">
-            {recentPayments.slice(0, 10).map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black">{item.businessName}</p>
-                  <p className="mt-0.5 text-[10px] font-bold text-slate-400">{formatDate(item.paidAt)}</p>
-                </div>
-                <p className="shrink-0 text-sm font-black text-green-700">{formatMoney(item.amount, item.currency)}</p>
               </div>
             ))}
           </QueueSection>
