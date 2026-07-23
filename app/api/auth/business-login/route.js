@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
-
-function cleanClientId(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
+import { normalizeClientId } from "../../../lib/valueUtils";
 
 const CUSTOMER_STATUSES = new Set([
   "pending_verification",
@@ -31,7 +23,7 @@ export async function POST(request) {
     let email = normalizedIdentifier.toLowerCase();
 
     if (!email.includes("@")) {
-      const clientId = cleanClientId(normalizedIdentifier);
+      const clientId = normalizeClientId(normalizedIdentifier);
       const businessSnapshot = await db.collection("businesses").doc(clientId).get();
       if (!businessSnapshot.exists || !CUSTOMER_STATUSES.has(String(businessSnapshot.data().status || ""))) {
         return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
