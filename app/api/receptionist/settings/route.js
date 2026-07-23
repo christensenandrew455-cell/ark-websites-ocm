@@ -47,20 +47,20 @@ function numberInRange(value, fallback, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, number));
 }
 
-function profilePayload(clientId, business = {}, account = {}, settings = {}, configured = false) {
+function profilePayload(clientId, business = {}, account = {}, settings = {}, connection = {}, configured = false) {
   const services = servicesObject(settings.services);
   return {
     configured,
     clientId,
     enabled: settings.enabled !== false,
-    receptionistPhone: text(settings.receptionistPhone),
-    receptionistPhoneNormalized: text(settings.receptionistPhoneNormalized),
+    receptionistPhone: text(settings.receptionistPhone || connection.receptionistPhone),
+    receptionistPhoneNormalized: text(settings.receptionistPhoneNormalized || connection.receptionistPhoneNormalized),
     businessName: text(settings.businessName || account.BusinessName || business.businessName || clientId),
     receptionistName: text(settings.receptionistName || "Alex"),
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
     businessPhone: text(settings.businessPhone || account.AccountPhone || business.accountPhone),
     businessEmail: text(settings.businessEmail || account.AccountEmail || business.accountEmail).toLowerCase(),
-    businessHours: text(settings.businessHours || "Monday through Friday. Holiday schedules may affect availability."),
+    businessHours: text(settings.businessHours || "Monday through Friday, 9:00 AM to 5:00 PM"),
     timeZone: text(settings.timeZone || "America/New_York"),
     estimateDays: text(settings.estimateDays || "Monday through Friday"),
     estimateWeekdays: list(settings.estimateWeekdays).length ? list(settings.estimateWeekdays).map((day) => day.toLowerCase()) : DEFAULT_WEEKDAYS,
@@ -94,22 +94,31 @@ async function resolveClient(request, body = null) {
 
 async function loadProfile(db, clientId) {
   const businessRef = db.collection("businesses").doc(clientId);
-  const accountRef = db.collection("ocmClients").doc(clientId).collection("settings").doc("account");
+  const accountSettingsRef = db.collection("ocmClients").doc(clientId).collection("settings").doc("account");
   const settingsRef = db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist");
-  const [businessSnapshot, accountSnapshot, settingsSnapshot] = await Promise.all([
+  const connectionRef = db.collection("connections").doc(clientId);
+  const [businessSnapshot, accountSnapshot, settingsSnapshot, connectionSnapshot] = await Promise.all([
     businessRef.get(),
-    accountRef.get(),
+    accountSettingsRef.get(),
     settingsRef.get(),
+    connectionRef.get(),
   ]);
   if (!businessSnapshot.exists) return null;
+  const settings = settingsSnapshot.exists ? settingsSnapshot.data() : {};
+  const configured = settingsSnapshot.exists && (
+    settings.businessSetupComplete === true
+    || Boolean(text(settings.businessName) && text(settings.businessEmail) && text(settings.businessPhone) && Object.keys(servicesObject(settings.services)).length)
+  );
   return {
     businessRef,
-    accountRef,
+    accountSettingsRef,
     settingsRef,
+    connectionRef,
     business: businessSnapshot.data(),
     account: accountSnapshot.exists ? accountSnapshot.data() : {},
-    settings: settingsSnapshot.exists ? settingsSnapshot.data() : {},
-    configured: settingsSnapshot.exists,
+    settings,
+    connection: connectionSnapshot.exists ? connectionSnapshot.data() : {},
+    configured,
   };
 }
 
@@ -118,8 +127,8 @@ function validateProfile(profile) {
   if (!profile.ownerName) return "Enter the owner name.";
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
   if (!profile.businessPhone) return "Enter the business phone number.";
-  if (!profile.estimateWeekdays.length) return "Select at least one estimate weekday.";
-  if (!Object.keys(profile.services).length) return "Enter at least one service using Service | Description.";
+  if (!profile.estimateWeekdays.length) return "Select at least one day available for estimates.";
+  if (!Object.keys(profile.services).length) return "Add at least one service and description.";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format();
   } catch {
@@ -128,13 +137,21 @@ function validateProfile(profile) {
   return "";
 }
 
+async function validateConnectionPhone(db, clientId, phone) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return { error: "Enter the connection phone number." };
+  const duplicate = await db.collection("connections").where("receptionistPhoneNormalized", "==", normalized).limit(2).get();
+  if (duplicate.docs.some((document) => document.id !== clientId)) return { error: "That connection phone number is already assigned to another account." };
+  return { normalized };
+}
+
 export async function GET(request) {
   const access = await resolveClient(request);
   if (access.response) return access.response;
   const db = getAdminDb();
   const loaded = await loadProfile(db, access.clientId);
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
-  return NextResponse.json({ profile: profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.configured) });
+  return NextResponse.json({ profile: profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.connection, loaded.configured) });
 }
 
 export async function POST(request) {
@@ -146,7 +163,22 @@ export async function POST(request) {
   const loaded = await loadProfile(db, access.clientId);
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
 
-  const current = profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.configured);
+  if (access.isAdmin && body.connectionOnly === true) {
+    const phoneCheck = await validateConnectionPhone(db, access.clientId, body.receptionistPhone);
+    if (phoneCheck.error) return NextResponse.json({ error: phoneCheck.error }, { status: 400 });
+    await loaded.connectionRef.set({
+      receptionistPhone: text(body.receptionistPhone),
+      receptionistPhoneNormalized: phoneCheck.normalized,
+      updatedBy: access.user.decodedToken.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return NextResponse.json({
+      profile: profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, { ...loaded.connection, receptionistPhone: text(body.receptionistPhone), receptionistPhoneNormalized: phoneCheck.normalized }, loaded.configured),
+    });
+  }
+
+  const current = profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.connection, loaded.configured);
+  const requestedVoice = text(body.aiVoice ?? current.aiVoice);
   const profile = {
     ...current,
     businessName: text(body.businessName ?? current.businessName),
@@ -167,20 +199,17 @@ export async function POST(request) {
     openingLine: text(body.openingLine ?? current.openingLine) || DEFAULT_OPENING,
     closingLine: text(body.closingLine ?? current.closingLine) || DEFAULT_CLOSING,
     extraInformation: text(body.extraInformation ?? current.extraInformation),
+    aiVoice: ALLOWED_VOICES.has(requestedVoice) ? requestedVoice : current.aiVoice,
+    aiSpeechSpeed: numberInRange(body.aiSpeechSpeed, current.aiSpeechSpeed, 0.25, 1.5),
+    aiSilenceMs: Math.round(numberInRange(body.aiSilenceMs, current.aiSilenceMs, 300, 3000)),
   };
 
   if (access.isAdmin) {
     profile.enabled = body.enabled !== false;
     profile.receptionistPhone = text(body.receptionistPhone ?? current.receptionistPhone);
-    profile.receptionistPhoneNormalized = normalizePhone(profile.receptionistPhone);
-    profile.aiVoice = ALLOWED_VOICES.has(text(body.aiVoice)) ? text(body.aiVoice) : current.aiVoice;
-    profile.aiSpeechSpeed = numberInRange(body.aiSpeechSpeed, current.aiSpeechSpeed, 0.25, 1.5);
-    profile.aiSilenceMs = Math.round(numberInRange(body.aiSilenceMs, current.aiSilenceMs, 300, 3000));
-    if (!profile.receptionistPhoneNormalized) return NextResponse.json({ error: "Enter the AI receptionist phone number." }, { status: 400 });
-    const duplicate = await db.collection("connections").where("receptionistPhoneNormalized", "==", profile.receptionistPhoneNormalized).limit(2).get();
-    if (duplicate.docs.some((document) => document.id !== access.clientId)) {
-      return NextResponse.json({ error: "That AI receptionist phone number is already assigned to another account." }, { status: 409 });
-    }
+    const phoneCheck = await validateConnectionPhone(db, access.clientId, profile.receptionistPhone);
+    if (phoneCheck.error) return NextResponse.json({ error: phoneCheck.error }, { status: 400 });
+    profile.receptionistPhoneNormalized = phoneCheck.normalized;
   }
 
   const validationError = validateProfile(profile);
@@ -188,6 +217,7 @@ export async function POST(request) {
 
   const settingsData = {
     clientId: access.clientId,
+    businessSetupComplete: true,
     enabled: profile.enabled,
     receptionistPhone: profile.receptionistPhone,
     receptionistPhoneNormalized: profile.receptionistPhoneNormalized,
@@ -214,12 +244,12 @@ export async function POST(request) {
     aiSilenceMs: profile.aiSilenceMs,
     updatedBy: access.user.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
-    ...(loaded.configured ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    ...(loaded.settings ? {} : { createdAt: FieldValue.serverTimestamp() }),
   };
 
   const batch = db.batch();
   batch.set(loaded.settingsRef, settingsData, { merge: true });
-  batch.set(loaded.accountRef, {
+  batch.set(loaded.accountSettingsRef, {
     BusinessName: profile.businessName,
     OwnerName: profile.ownerName,
     AccountEmail: profile.businessEmail,
@@ -230,10 +260,26 @@ export async function POST(request) {
     businessName: profile.businessName,
     ownerName: profile.ownerName,
     accountPhone: profile.businessPhone,
+    businessSetupComplete: true,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+  batch.set(db.collection("ocmClients").doc(access.clientId), {
+    businessName: profile.businessName,
+    businessSetupComplete: true,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  const customerUid = text(loaded.business.uid);
+  if (customerUid) {
+    batch.set(db.collection("accounts").doc(customerUid), {
+      businessName: profile.businessName,
+      ownerName: profile.ownerName,
+      accountPhone: profile.businessPhone,
+      businessSetupComplete: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
   if (access.isAdmin) {
-    batch.set(db.collection("connections").doc(access.clientId), {
+    batch.set(loaded.connectionRef, {
       receptionistEnabled: profile.enabled,
       receptionistPhone: profile.receptionistPhone,
       receptionistPhoneNormalized: profile.receptionistPhoneNormalized,
@@ -244,6 +290,13 @@ export async function POST(request) {
   await batch.commit();
 
   return NextResponse.json({
-    profile: profilePayload(access.clientId, { ...loaded.business, businessName: profile.businessName, ownerName: profile.ownerName, accountPhone: profile.businessPhone }, { ...loaded.account, BusinessName: profile.businessName, OwnerName: profile.ownerName, AccountEmail: profile.businessEmail, AccountPhone: profile.businessPhone }, settingsData, true),
+    profile: profilePayload(
+      access.clientId,
+      { ...loaded.business, businessName: profile.businessName, ownerName: profile.ownerName, accountPhone: profile.businessPhone },
+      { ...loaded.account, BusinessName: profile.businessName, OwnerName: profile.ownerName, AccountEmail: profile.businessEmail, AccountPhone: profile.businessPhone },
+      settingsData,
+      { ...loaded.connection, receptionistPhone: profile.receptionistPhone, receptionistPhoneNormalized: profile.receptionistPhoneNormalized },
+      true,
+    ),
   });
 }
