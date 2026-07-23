@@ -8,6 +8,13 @@ import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function normalizePhone(value) {
+  const digits = trimmedText(value).replace(/^tel:/i, "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `+1${digits}`;
+  return `+${digits}`;
+}
+
 export async function POST(request) {
   const admin = await requireAdmin(request);
   if (admin.response) return admin.response;
@@ -26,6 +33,8 @@ export async function POST(request) {
     const notificationEmail = trimmedText(body.notificationEmail || accountEmail).toLowerCase();
     const notificationPhone = trimmedText(body.notificationPhone || businessPhone);
     const sourceLabel = trimmedText(body.sourceLabel || `${businessName} receptionist`);
+    const receptionistPhone = trimmedText(body.receptionistPhone);
+    const receptionistPhoneNormalized = normalizePhone(receptionistPhone);
 
     if (!businessName || !ownerName || !clientId) {
       return NextResponse.json({ error: "Business name, owner name, and client ID are required." }, { status: 400 });
@@ -43,9 +52,12 @@ export async function POST(request) {
     const db = getAdminDb();
     const auth = getAdminAuth();
     const businessRef = db.collection("businesses").doc(clientId);
-    const [businessSnapshot, existingUser] = await Promise.all([
+    const [businessSnapshot, existingUser, duplicatePhone] = await Promise.all([
       businessRef.get(),
       auth.getUserByEmail(accountEmail).catch(() => null),
+      receptionistPhoneNormalized
+        ? db.collection("connections").where("receptionistPhoneNormalized", "==", receptionistPhoneNormalized).limit(1).get()
+        : Promise.resolve({ empty: true }),
     ]);
 
     if (businessSnapshot.exists) {
@@ -53,6 +65,9 @@ export async function POST(request) {
     }
     if (existingUser) {
       return NextResponse.json({ error: "That login email already has an account." }, { status: 409 });
+    }
+    if (!duplicatePhone.empty) {
+      return NextResponse.json({ error: "That connection phone number is already assigned to another account." }, { status: 409 });
     }
 
     createdUser = await auth.createUser({
@@ -73,6 +88,7 @@ export async function POST(request) {
       accountEmail,
       accountPhone: businessPhone,
       status: "active",
+      businessSetupComplete: false,
       paymentSetupStatus: "admin-created",
       createdBy: admin.decodedToken.uid,
       createdAt: FieldValue.serverTimestamp(),
@@ -91,6 +107,8 @@ export async function POST(request) {
       defaultStage: "contactedMe",
       allowStageOverride: false,
       connectionKey,
+      receptionistPhone,
+      receptionistPhoneNormalized,
       updatedBy: admin.decodedToken.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -104,6 +122,7 @@ export async function POST(request) {
       businessName,
       ownerUid: createdUser.uid,
       status: "active",
+      businessSetupComplete: false,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
@@ -150,6 +169,7 @@ export async function POST(request) {
       businessName,
       accountEmail,
       connectionKey,
+      receptionistPhone,
     }, { status: 201 });
   } catch (error) {
     console.error("Unable to create customer account", error);
