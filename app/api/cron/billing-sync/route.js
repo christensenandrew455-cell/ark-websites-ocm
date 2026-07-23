@@ -47,19 +47,35 @@ function leadKey(clientId, leadId) {
   return createHash("sha256").update(`${clientId}:${leadId}`).digest("hex").slice(0, 48);
 }
 
+function addLead(unique, id, occurredAt, startMs, endMs) {
+  const cleanId = text(id);
+  if (!cleanId || !occurredAt || occurredAt < startMs || occurredAt >= endMs) return;
+  const existing = unique.get(cleanId);
+  if (!existing || occurredAt < existing.occurredAt) unique.set(cleanId, { id: cleanId, occurredAt });
+}
+
 async function monthlyLeads(db, clientId, startMs, endMs) {
-  const [contacted, clients] = await Promise.all([
-    db.collection("ocmClients").doc(clientId).collection("contactedMe").get(),
-    db.collection("ocmClients").doc(clientId).collection("clients").get(),
+  const root = db.collection("ocmClients").doc(clientId);
+  const [contacted, clients, stats] = await Promise.all([
+    root.collection("contactedMe").get(),
+    root.collection("clients").get(),
+    root.collection("statsEvents").get(),
   ]);
   const unique = new Map();
+
   for (const document of [...contacted.docs, ...clients.docs]) {
     const data = document.data();
     const occurredAt = toMillis(data.createdAt || data.contactedAt || data.acceptedAt || data.updatedAt);
-    if (!occurredAt || occurredAt < startMs || occurredAt >= endMs) continue;
-    const existing = unique.get(document.id);
-    if (!existing || occurredAt < existing.occurredAt) unique.set(document.id, { id: document.id, occurredAt });
+    addLead(unique, document.id, occurredAt, startMs, endMs);
   }
+  for (const document of stats.docs) {
+    const data = document.data();
+    if (text(data.eventType).toLowerCase() !== "contacted") continue;
+    const sourceId = text(data.sourceId) || document.id.replace(/^contacted:/, "");
+    const occurredAt = toMillis(data.occurredAt || data.createdAt || data.updatedAt);
+    addLead(unique, sourceId, occurredAt, startMs, endMs);
+  }
+
   return [...unique.values()];
 }
 
