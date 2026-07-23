@@ -7,19 +7,22 @@ const sections = [
     title: "1. Agreement to these Terms",
     body: (
       <>
-        <p>These Terms of Use govern access to ARK Client Center and the related receptionist, lead-management, storage, support, billing, and account services provided by ARK Websites (collectively, the “Service”). By creating an account, checking the agreement box, adding a payment method, or continuing to use the Service, you agree to these Terms and the Privacy Policy.</p>
+        <p>These Terms of Use govern access to ARK Client Center and the related receptionist, lead-management, storage, support, website, billing, and account services provided by ARK Websites (collectively, the “Service”). By creating an account, checking the agreement box, adding a payment method, or continuing to use the Service, you agree to these Terms and the Privacy Policy.</p>
         <p>You represent that you have authority to accept these Terms for the business named on the account.</p>
       </>
     ),
   },
   {
     id: "paid-service",
-    title: "2. Ongoing paid service",
+    title: "2. Ongoing paid service, pricing, and minutes",
     body: (
       <>
-        <p>The Service is provided on an ongoing paid basis and continues until canceled or terminated under these Terms. You authorize recurring charges according to the price, billing schedule, and plan terms presented to you or otherwise agreed in writing.</p>
-        <p>Your service fee may cover account and customer-data storage, software maintenance, updates, AI usage, business-number or telephony usage, monthly testing, account support, and the ability to submit change requests.</p>
-        <p>Plans may include usage limits. Additional usage charges may apply when those limits are exceeded, but any applicable limits and overage rates will be disclosed in your order, invoice, plan details, or another written agreement before those charges are assessed.</p>
+        <p>The Service is provided on an ongoing paid basis and continues until canceled or terminated under these Terms. You authorize recurring charges according to the price, billing schedule, and plan terms presented during setup, shown in Stripe or on an invoice, or otherwise agreed in writing.</p>
+        <p>The recurring service fee may cover account and customer-data storage, software maintenance, updates, receptionist and AI usage, business-number or telephony usage, monthly testing, account support, and the ability to submit change requests.</p>
+        <p><strong>Included minutes:</strong> The standard service is designed around up to 1,500 receptionist minutes per billing cycle, unless a different written plan applies. Included minutes reset according to the account’s billing cycle and do not roll over unless ARK agrees otherwise in writing.</p>
+        <p><strong>Usage measurement:</strong> Usage may be measured from records supplied by connected receptionist, AI, telephone, or service providers. Reasonable rounding or provider reporting delays may occur.</p>
+        <p><strong>Overage:</strong> No minute overage is added when recorded usage remains at or below the included amount. If usage exceeds the included minutes, only the excess usage is eligible for an additional charge, and the applicable calculation or rate must be disclosed in the order, invoice, plan details, or another written agreement before it is assessed.</p>
+        <p>The account-specific order, invoice, plan details, or written agreement controls if it differs from this general explanation. Taxes, custom work, provider pass-through charges, or other fees apply only when separately disclosed or agreed.</p>
       </>
     ),
   },
@@ -33,7 +36,7 @@ const sections = [
         <p><strong>First incident within six months:</strong> After the initial 24-hour period, ARK normally provides seven days to complete payment before placing the account in payment-restricted mode. If payment remains unpaid for seven additional days while restricted, the account may be placed into manual deletion review.</p>
         <p><strong>Second incident within six months:</strong> After the initial 24-hour period, ARK may place the account directly into payment-restricted mode without another seven-day full-access grace period. If payment remains unpaid for seven days while restricted, the account may be placed into manual deletion review.</p>
         <p><strong>Third or later incident within six months:</strong> After the initial 24-hour period, ARK may place the account into payment-restricted mode and manual deletion review without another grace period.</p>
-        <p><strong>Payment-restricted mode:</strong> The business may continue receiving new leads and may review and accept those leads into Clients. Other account features may be unavailable, including settings changes, help requests, change requests, billing-independent account changes, and data-export requests.</p>
+        <p><strong>Payment-restricted mode:</strong> The business may continue receiving new leads and may review and accept those leads into Clients. Other account features may be unavailable, including settings changes, help requests, change requests, billing-independent account changes, and client-data downloads.</p>
         <p><strong>Deletion is a manual decision:</strong> The Service does not automatically permanently delete an account solely because a payment deadline passes. An authorized ARK administrator reviews the account and must separately confirm permanent deletion. ARK may provide additional time, restore access, or choose not to delete an account, but doing so once does not require ARK to do so again.</p>
         <p><strong>Payment restoration:</strong> When Stripe confirms that the required payment has been completed, the payment warning and payment restriction are designed to clear automatically. Processing delays, disputes, reversals, or provider outages may delay restoration.</p>
         <p>Applicable law and any separate written agreement control if they require a different process.</p>
@@ -45,19 +48,20 @@ const sections = [
     title: "4. Cancellation and deletion requests",
     body: (
       <>
-        <p>You may request cancellation at any time through the Request a Change or support feature while those features are available. Unless you request immediate deletion or ARK agrees otherwise, service normally remains available through the end of the current paid billing period and then stops before the next renewal.</p>
-        <p>You may also request immediate account deletion. Permanent deletion requires administrator review and confirmation. Once deletion is completed, account access and active customer data may not be recoverable.</p>
+        <p>You may request cancellation at any time through Request a Change while that feature is available. Unless you request immediate deletion or ARK agrees otherwise, service normally remains available through the end of the current paid billing period and then stops before the next renewal.</p>
+        <p>You may also request immediate account deletion. Permanent deletion requires administrator review and confirmation. <strong>When permanent deletion is completed, the active business account and its active Contacted Me and Clients records are deleted together.</strong> Deleted active account, lead, and client data may not be recoverable.</p>
       </>
     ),
   },
   {
     id: "data-export",
-    title: "5. Data export and retention",
+    title: "5. Client-data download and retention",
     body: (
       <>
-        <p>While the account is in good standing, you may request a copy or export of the account data ARK maintains for your business. Submit the request before account deletion and allow reasonable time for preparation and delivery.</p>
-        <p>ARK may postpone or decline a data-export request while required service charges remain unpaid or the account is in payment-restricted mode. Payment is required for the storage, preparation, administration, and delivery services involved in providing an export.</p>
-        <p>After permanent deletion, active account, lead, and client data may no longer exist and may not be recoverable or available for export. ARK may retain limited backup, billing, transaction, security, fraud-prevention, agreement, audit, or legal records for a reasonable period where required or permitted by law. The Privacy Policy explains data handling in more detail.</p>
+        <p>While the account is in good standing, Settings includes a Download Client Data button that provides a JSON copy of current Contacted Me records, accepted Clients, account details, and request history. You are responsible for securing the downloaded file and using it lawfully.</p>
+        <p>ARK may disable downloads while required service charges remain unpaid or the account is in payment-restricted mode. A separate custom export may require additional preparation time or an agreed service charge.</p>
+        <p>Download needed information before permanent deletion. After deletion, the active account, Contacted Me records, and Clients records may no longer exist and may not be recoverable or available for export.</p>
+        <p>ARK may retain limited backup, billing, transaction, security, fraud-prevention, agreement, audit, or legal records for a reasonable period where required or permitted by law. Backup copies may remain until normal backup rotation completes. The Privacy Policy explains data handling in more detail.</p>
       </>
     ),
   },
@@ -67,7 +71,8 @@ const sections = [
     body: (
       <>
         <p>You may submit change requests as often as needed while the account has full access. Requests are reviewed for feasibility, safety, compatibility, scope, and account status. Submission does not guarantee that every request will be completed exactly as proposed or within a particular time.</p>
-        <p>Priority support is intended for serious service problems. Routine updates should be submitted as normal change requests. Change requests and support requests may be unavailable while the account is payment-restricted.</p>
+        <p>Priority support is intended for serious service problems. Routine updates should be submitted as normal change requests. Change requests and signed-in support requests may be unavailable while the account is payment-restricted.</p>
+        <p>The public Support page is available for login trouble, App Store questions, privacy questions, and general support. Public submissions may require identity or account-authority verification before ARK discusses account-specific information.</p>
       </>
     ),
   },
@@ -76,7 +81,7 @@ const sections = [
     title: "7. Customer responsibilities",
     body: (
       <>
-        <p>You are responsible for the accuracy and legality of information you provide, your instructions to the Service, the security of your login credentials, and your use of customer or lead information. You must have any notices, permissions, and consents required to collect, record, contact, store, or process information through the Service.</p>
+        <p>You are responsible for the accuracy and legality of information you provide, your instructions to the Service, the security of your login credentials and downloaded client-data files, and your use of customer or lead information. You must have any notices, permissions, and consents required to collect, record, contact, store, export, or process information through the Service.</p>
         <p>You may not use the Service for unlawful, fraudulent, abusive, harassing, deceptive, or privacy-invasive activity, or to interfere with the Service or another account.</p>
       </>
     ),
@@ -104,9 +109,7 @@ const sections = [
   {
     id: "suspension",
     title: "10. Suspension and termination",
-    body: (
-      <p>ARK may suspend, restrict, or terminate access for nonpayment, misuse, security risk, legal requirements, material breach of these Terms, or conduct that could harm ARK, its providers, customers, or other people. Where reasonable, ARK will provide notice and an opportunity to correct the issue.</p>
-    ),
+    body: <p>ARK may suspend, restrict, or terminate access for nonpayment, misuse, security risk, legal requirements, material breach of these Terms, or conduct that could harm ARK, its providers, customers, or other people. Where reasonable, ARK will provide notice and an opportunity to correct the issue.</p>,
   },
   {
     id: "liability",
@@ -121,16 +124,12 @@ const sections = [
   {
     id: "updates",
     title: "12. Updates to these Terms",
-    body: (
-      <p>ARK may update these Terms as the Service or legal requirements change. The version and effective date appear at the top of this page. If a material update requires new consent, ARK may ask you to accept the revised Terms before continuing to use the Service.</p>
-    ),
+    body: <p>ARK may update these Terms as the Service or legal requirements change. The version and effective date appear at the top of this page. If a material update requires new consent, ARK may ask you to accept the revised Terms before continuing to use the Service.</p>,
   },
   {
     id: "contact",
     title: "13. Contact and account requests",
-    body: (
-      <p>Use the Request a Change or Priority Support options in Settings for questions, cancellation, deletion, data-export, billing, or account requests while those options are available. During payment restriction, use the payment controls shown in the account to restore access before submitting other requests.</p>
-    ),
+    body: <p>Use the signed-in Requests page for account-specific questions, cancellation, deletion, billing, or account requests while those options are available. Use the public <Link href="/support" className="font-black underline">Support page</Link> for login trouble, App Store questions, privacy questions, or general support.</p>,
   },
 ];
 
@@ -144,9 +143,10 @@ export default function TermsPage() {
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Terms of Use</h1>
             <p className="mt-3 text-sm font-semibold text-slate-500">Effective {LEGAL_EFFECTIVE_DATE} · Version {TERMS_VERSION}</p>
           </div>
-          <div className="flex gap-2">
-            <Link href="/privacy" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Privacy Policy</Link>
-            <Link href="/signup" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white">Back</Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/about" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">About</Link>
+            <Link href="/support" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Support</Link>
+            <Link href="/privacy" className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-bold text-white">Privacy</Link>
           </div>
         </div>
 
