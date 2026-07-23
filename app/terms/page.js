@@ -3,6 +3,7 @@ import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "../lib/legal";
 
 const sections = [
   {
+    id: "agreement",
     title: "1. Agreement to these Terms",
     body: (
       <>
@@ -12,6 +13,7 @@ const sections = [
     ),
   },
   {
+    id: "paid-service",
     title: "2. Ongoing paid service",
     body: (
       <>
@@ -22,44 +24,55 @@ const sections = [
     ),
   },
   {
+    id: "payment-enforcement",
     title: "3. Payment failures and account enforcement",
     body: (
       <>
-        <p><strong>First late-payment incident:</strong> ARK may allow seven days to cure the missed payment before disabling the account. If the balance remains unpaid for seven additional days after disablement, ARK may permanently delete the account and its data.</p>
-        <p><strong>Second late-payment incident:</strong> ARK may disable the account immediately after a missed payment. If the balance is not paid within seven days, ARK may permanently delete the account and its data.</p>
-        <p><strong>Third late-payment incident:</strong> ARK may permanently delete the account after the missed payment without another grace period.</p>
-        <p>ARK may choose to provide additional time or restore an account, but doing so once does not require ARK to do so again. Applicable law and any separate written agreement control if they require a different process.</p>
+        <p><strong>Initial 24-hour period:</strong> When Stripe reports that a scheduled payment was not completed, ARK normally allows a 24-hour period for the payment to clear or the payment method to be corrected before showing the incident in the account or beginning the enforcement period.</p>
+        <p><strong>Rolling six-month incident record:</strong> Late-payment incidents are counted within a rolling six-month period. A successfully completed payment resolves the current incident and restores available access, but the incident may remain in the rolling count for six months.</p>
+        <p><strong>First incident within six months:</strong> After the initial 24-hour period, ARK normally provides seven days to complete payment before placing the account in payment-restricted mode. If payment remains unpaid for seven additional days while restricted, the account may be placed into manual deletion review.</p>
+        <p><strong>Second incident within six months:</strong> After the initial 24-hour period, ARK may place the account directly into payment-restricted mode without another seven-day full-access grace period. If payment remains unpaid for seven days while restricted, the account may be placed into manual deletion review.</p>
+        <p><strong>Third or later incident within six months:</strong> After the initial 24-hour period, ARK may place the account into payment-restricted mode and manual deletion review without another grace period.</p>
+        <p><strong>Payment-restricted mode:</strong> The business may continue receiving new leads and may review and accept those leads into Clients. Other account features may be unavailable, including settings changes, help requests, change requests, billing-independent account changes, and data-export requests.</p>
+        <p><strong>Deletion is a manual decision:</strong> The Service does not automatically permanently delete an account solely because a payment deadline passes. An authorized ARK administrator reviews the account and must separately confirm permanent deletion. ARK may provide additional time, restore access, or choose not to delete an account, but doing so once does not require ARK to do so again.</p>
+        <p><strong>Payment restoration:</strong> When Stripe confirms that the required payment has been completed, the payment warning and payment restriction are designed to clear automatically. Processing delays, disputes, reversals, or provider outages may delay restoration.</p>
+        <p>Applicable law and any separate written agreement control if they require a different process.</p>
       </>
     ),
   },
   {
+    id: "cancellation",
     title: "4. Cancellation and deletion requests",
     body: (
       <>
-        <p>You may request cancellation at any time through the Request a Change or support feature. Unless you request immediate deletion or ARK agrees otherwise, service normally remains available through the end of the current paid billing period and then stops before the next renewal.</p>
-        <p>You may also request immediate account deletion. Once deletion is completed, account access and active customer data may not be recoverable.</p>
+        <p>You may request cancellation at any time through the Request a Change or support feature while those features are available. Unless you request immediate deletion or ARK agrees otherwise, service normally remains available through the end of the current paid billing period and then stops before the next renewal.</p>
+        <p>You may also request immediate account deletion. Permanent deletion requires administrator review and confirmation. Once deletion is completed, account access and active customer data may not be recoverable.</p>
       </>
     ),
   },
   {
+    id: "data-export",
     title: "5. Data export and retention",
     body: (
       <>
-        <p>You may request a copy or export of the account data ARK maintains for your business. Submit the request before account deletion and allow reasonable time for preparation and delivery.</p>
-        <p>After deletion, ARK may retain limited backup, billing, security, fraud-prevention, or legal records for a reasonable period where required or permitted by law. The Privacy Policy explains data handling in more detail.</p>
+        <p>While the account is in good standing, you may request a copy or export of the account data ARK maintains for your business. Submit the request before account deletion and allow reasonable time for preparation and delivery.</p>
+        <p>ARK may postpone or decline a data-export request while required service charges remain unpaid or the account is in payment-restricted mode. Payment is required for the storage, preparation, administration, and delivery services involved in providing an export.</p>
+        <p>After permanent deletion, active account, lead, and client data may no longer exist and may not be recoverable or available for export. ARK may retain limited backup, billing, transaction, security, fraud-prevention, agreement, audit, or legal records for a reasonable period where required or permitted by law. The Privacy Policy explains data handling in more detail.</p>
       </>
     ),
   },
   {
+    id: "support",
     title: "6. Change requests and support",
     body: (
       <>
-        <p>You may submit change requests as often as needed. Requests are reviewed for feasibility, safety, compatibility, scope, and account status. Submission does not guarantee that every request will be completed exactly as proposed or within a particular time.</p>
-        <p>Priority support is intended for serious service problems. Routine updates should be submitted as normal change requests.</p>
+        <p>You may submit change requests as often as needed while the account has full access. Requests are reviewed for feasibility, safety, compatibility, scope, and account status. Submission does not guarantee that every request will be completed exactly as proposed or within a particular time.</p>
+        <p>Priority support is intended for serious service problems. Routine updates should be submitted as normal change requests. Change requests and support requests may be unavailable while the account is payment-restricted.</p>
       </>
     ),
   },
   {
+    id: "responsibilities",
     title: "7. Customer responsibilities",
     body: (
       <>
@@ -69,6 +82,7 @@ const sections = [
     ),
   },
   {
+    id: "ai-output",
     title: "8. Use of information and AI output",
     body: (
       <>
@@ -78,6 +92,7 @@ const sections = [
     ),
   },
   {
+    id: "availability",
     title: "9. Availability and changes to the Service",
     body: (
       <>
@@ -87,12 +102,14 @@ const sections = [
     ),
   },
   {
+    id: "suspension",
     title: "10. Suspension and termination",
     body: (
       <p>ARK may suspend, restrict, or terminate access for nonpayment, misuse, security risk, legal requirements, material breach of these Terms, or conduct that could harm ARK, its providers, customers, or other people. Where reasonable, ARK will provide notice and an opportunity to correct the issue.</p>
     ),
   },
   {
+    id: "liability",
     title: "11. Disclaimer and limitation of liability",
     body: (
       <>
@@ -102,15 +119,17 @@ const sections = [
     ),
   },
   {
+    id: "updates",
     title: "12. Updates to these Terms",
     body: (
       <p>ARK may update these Terms as the Service or legal requirements change. The version and effective date appear at the top of this page. If a material update requires new consent, ARK may ask you to accept the revised Terms before continuing to use the Service.</p>
     ),
   },
   {
+    id: "contact",
     title: "13. Contact and account requests",
     body: (
-      <p>Use the Request a Change or Priority Support options in Settings for questions, cancellation, deletion, data-export, billing, or account requests.</p>
+      <p>Use the Request a Change or Priority Support options in Settings for questions, cancellation, deletion, data-export, billing, or account requests while those options are available. During payment restriction, use the payment controls shown in the account to restore access before submitting other requests.</p>
     ),
   },
 ];
@@ -133,7 +152,7 @@ export default function TermsPage() {
 
         <div className="mt-7 space-y-8 text-sm leading-7 text-slate-700 sm:text-base">
           {sections.map((section) => (
-            <section key={section.title}>
+            <section key={section.id} id={section.id} className="scroll-mt-28">
               <h2 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{section.title}</h2>
               <div className="mt-2 space-y-3">{section.body}</div>
             </section>
