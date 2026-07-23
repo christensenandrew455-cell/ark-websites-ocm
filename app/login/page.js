@@ -21,8 +21,7 @@ export default function LoginPage() {
 
     try {
       await login(businessName, password);
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.replace(next?.startsWith("/") ? next : "/");
+      router.replace("/");
     } catch (loginError) {
       setError(loginError.message);
     } finally {
