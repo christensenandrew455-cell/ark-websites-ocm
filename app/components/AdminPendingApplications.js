@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "./AuthProvider";
 
 function formatDateTime(value) {
@@ -35,6 +36,7 @@ export default function AdminPendingApplications() {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [portalTarget, setPortalTarget] = useState(null);
 
   async function adminFetch(url, options = {}) {
     const token = await user.getIdToken(true);
@@ -77,6 +79,22 @@ export default function AdminPendingApplications() {
     };
   }, [user]);
 
+  useEffect(() => {
+    const connectionsTitle = Array.from(document.querySelectorAll("h1"))
+      .find((element) => element.textContent?.trim() === "Connections");
+    const connectionsHeader = connectionsTitle?.parentElement?.parentElement;
+    if (!connectionsHeader) return undefined;
+
+    const mountPoint = document.createElement("div");
+    mountPoint.dataset.pendingVerification = "true";
+    connectionsHeader.insertAdjacentElement("afterend", mountPoint);
+    setPortalTarget(mountPoint);
+
+    return () => {
+      mountPoint.remove();
+    };
+  }, []);
+
   async function decide(application, action) {
     const verb = action === "accept" ? "accept" : "decline";
     if (!window.confirm(`${verb.charAt(0).toUpperCase()}${verb.slice(1)} ${application.businessName}?`)) return;
@@ -100,8 +118,8 @@ export default function AdminPendingApplications() {
     }
   }
 
-  return (
-    <section className="mx-auto mt-4 w-full max-w-6xl px-3 sm:mt-6 sm:px-5 md:px-8">
+  const panel = (
+    <section className="mb-4 w-full sm:mb-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -166,4 +184,6 @@ export default function AdminPendingApplications() {
       </div>
     </section>
   );
+
+  return portalTarget ? createPortal(panel, portalTarget) : null;
 }
