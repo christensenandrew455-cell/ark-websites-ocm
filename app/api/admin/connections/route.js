@@ -4,51 +4,32 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { publicBillingStatus } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { normalizeClientId, toIsoString, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function text(value) {
-  return String(value || "").trim();
-}
-
-function cleanClientId(value) {
-  return text(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function iso(value) {
-  if (!value) return "";
-  if (typeof value.toDate === "function") return value.toDate().toISOString();
-  if (typeof value.seconds === "number") return new Date(value.seconds * 1000).toISOString();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
-}
-
 function connectionPayload(clientId, business, data) {
   return {
     clientId,
-    businessName: text(business.businessName || data.businessName || clientId),
-    ownerName: text(data.ownerName || business.ownerName),
-    accountEmail: text(business.accountEmail).toLowerCase(),
-    status: text(business.status || "active"),
-    disabledAt: iso(business.disabledAt || data.disabledAt),
+    businessName: trimmedText(business.businessName || data.businessName || clientId),
+    ownerName: trimmedText(data.ownerName || business.ownerName),
+    accountEmail: trimmedText(business.accountEmail).toLowerCase(),
+    status: trimmedText(business.status || "active"),
+    disabledAt: toIsoString(business.disabledAt || data.disabledAt),
     enabled: data.enabled !== false,
-    businessPhone: text(data.businessPhone || business.accountPhone),
-    notificationPhone: text(data.notificationPhone || data.businessPhone || business.accountPhone),
-    notificationEmail: text(data.notificationEmail || business.accountEmail).toLowerCase(),
-    sourceLabel: text(data.sourceLabel || business.businessName || clientId),
-    connectionKey: text(data.connectionKey),
+    businessPhone: trimmedText(data.businessPhone || business.accountPhone),
+    notificationPhone: trimmedText(data.notificationPhone || data.businessPhone || business.accountPhone),
+    notificationEmail: trimmedText(data.notificationEmail || business.accountEmail).toLowerCase(),
+    sourceLabel: trimmedText(data.sourceLabel || business.businessName || clientId),
+    connectionKey: trimmedText(data.connectionKey),
     termsAccepted: business.termsAccepted === true,
     privacyAccepted: business.privacyAccepted === true,
-    termsVersion: text(business.termsVersion),
-    privacyVersion: text(business.privacyVersion),
-    legalAcceptedAt: iso(business.legalAcceptedAt),
-    legalAcceptedBy: text(business.legalAcceptedBy || business.accountEmail).toLowerCase(),
-    legalAcceptanceSource: text(business.legalAcceptanceSource),
+    termsVersion: trimmedText(business.termsVersion),
+    privacyVersion: trimmedText(business.privacyVersion),
+    legalAcceptedAt: toIsoString(business.legalAcceptedAt),
+    legalAcceptedBy: trimmedText(business.legalAcceptedBy || business.accountEmail).toLowerCase(),
+    legalAcceptanceSource: trimmedText(business.legalAcceptanceSource),
     billing: publicBillingStatus(business),
   };
 }
@@ -63,13 +44,13 @@ export async function GET(request) {
     db.collection("connections").get(),
   ]);
 
-  const adminUid = text(admin.decodedToken.uid);
-  const adminEmail = text(admin.decodedToken.email).toLowerCase();
+  const adminUid = trimmedText(admin.decodedToken.uid);
+  const adminEmail = trimmedText(admin.decodedToken.email).toLowerCase();
   const connections = new Map(connectionSnapshot.docs.map((document) => [document.id, document.data()]));
   const businesses = businessSnapshot.docs
     .map((document) => ({ clientId: document.id, business: document.data() }))
-    .filter(({ business }) => text(business.uid) !== adminUid)
-    .filter(({ business }) => !adminEmail || text(business.accountEmail).toLowerCase() !== adminEmail)
+    .filter(({ business }) => trimmedText(business.uid) !== adminUid)
+    .filter(({ business }) => !adminEmail || trimmedText(business.accountEmail).toLowerCase() !== adminEmail)
     .map(({ clientId, business }) => connectionPayload(clientId, business, connections.get(clientId) || {}))
     .filter((business) => business.businessName && ["active", "disabled", "approved_pending_payment"].includes(business.status))
     .sort((a, b) => a.businessName.localeCompare(b.businessName));
@@ -82,7 +63,7 @@ export async function POST(request) {
   if (admin.response) return admin.response;
 
   const body = await request.json();
-  const clientId = cleanClientId(body.clientId);
+  const clientId = normalizeClientId(body.clientId);
   if (!clientId) return NextResponse.json({ error: "Choose a business account." }, { status: 400 });
 
   const db = getAdminDb();
@@ -99,10 +80,10 @@ export async function POST(request) {
 
   const business = businessSnapshot.data();
   const current = connectionSnapshot.exists ? connectionSnapshot.data() : {};
-  const connectionKey = body.regenerateKey === true || !text(current.connectionKey)
+  const connectionKey = body.regenerateKey === true || !trimmedText(current.connectionKey)
     ? randomBytes(24).toString("hex")
-    : text(current.connectionKey);
-  const notificationEmail = text(body.notificationEmail || business.accountEmail).toLowerCase();
+    : trimmedText(current.connectionKey);
+  const notificationEmail = trimmedText(body.notificationEmail || business.accountEmail).toLowerCase();
 
   if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) {
     return NextResponse.json({ error: "Enter a valid lead notification email." }, { status: 400 });
@@ -110,13 +91,13 @@ export async function POST(request) {
 
   const data = {
     clientId,
-    businessName: text(business.businessName || clientId),
-    ownerName: text(body.ownerName || business.ownerName),
+    businessName: trimmedText(business.businessName || clientId),
+    ownerName: trimmedText(body.ownerName || business.ownerName),
     enabled: body.enabled !== false && business.status !== "disabled",
-    businessPhone: text(body.businessPhone || business.accountPhone),
-    notificationPhone: text(body.notificationPhone || body.businessPhone || business.accountPhone),
+    businessPhone: trimmedText(body.businessPhone || business.accountPhone),
+    notificationPhone: trimmedText(body.notificationPhone || body.businessPhone || business.accountPhone),
     notificationEmail,
-    sourceLabel: text(body.sourceLabel || business.businessName || clientId),
+    sourceLabel: trimmedText(body.sourceLabel || business.businessName || clientId),
     defaultStage: "contactedMe",
     allowStageOverride: false,
     connectionKey,
@@ -150,7 +131,7 @@ export async function POST(request) {
   batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), {
     BusinessName: data.businessName,
     OwnerName: data.ownerName,
-    AccountEmail: text(business.accountEmail).toLowerCase(),
+    AccountEmail: trimmedText(business.accountEmail).toLowerCase(),
     AccountPhone: data.businessPhone,
     NotificationEmail: data.notificationEmail,
     NotificationPhone: data.notificationPhone,
