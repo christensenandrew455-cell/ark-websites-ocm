@@ -130,6 +130,7 @@ export async function POST(request) {
         serviceAccess: "full",
         billingDeletionReviewRequired: false,
         billingGraceEndsAt: graceEndsAt,
+        billingAdminGraceEndsAt: graceEndsAt,
         billingDeletionReviewAt: reviewAt,
         billingReviewSnoozedUntil: FieldValue.delete(),
         billingReviewSnoozedBy: FieldValue.delete(),
@@ -143,6 +144,7 @@ export async function POST(request) {
         ServiceAccess: "full",
         BillingDeletionReviewRequired: false,
         BillingGraceEndsAt: graceEndsAt,
+        BillingAdminGraceEndsAt: graceEndsAt,
         BillingDeletionReviewAt: reviewAt,
         BillingReviewSnoozedUntil: FieldValue.delete(),
       });
