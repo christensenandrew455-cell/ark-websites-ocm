@@ -21,7 +21,7 @@ function connectionPayload(clientId, business, data, receptionist = null) {
     phone: trimmedText(data.notificationPhone || data.businessPhone || business.accountPhone),
     sourceLabel: trimmedText(data.sourceLabel || business.businessName || clientId),
     connectionKey: trimmedText(data.connectionKey),
-    receptionistConfigured: Boolean(receptionist),
+    receptionistConfigured: Boolean(trimmedText(receptionist?.receptionistPhone || data.receptionistPhone)),
     receptionistEnabled: receptionist?.enabled !== false,
     receptionistPhone: trimmedText(receptionist?.receptionistPhone || data.receptionistPhone),
     termsAccepted: business.termsAccepted === true,
