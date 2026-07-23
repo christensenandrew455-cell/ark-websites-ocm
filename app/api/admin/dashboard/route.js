@@ -80,7 +80,7 @@ function primaryTotals(map) {
 
 async function stripePaymentData(businesses) {
   const stripeKey = text(process.env.STRIPE_SECRET_KEY);
-  if (!stripeKey) return { configured: false, totals: {}, recentPayments: [] };
+  if (!stripeKey) return { configured: false, liveOnly: true, totals: {}, recentPayments: [] };
 
   const stripe = new Stripe(stripeKey);
   const timeZone = text(process.env.ADMIN_TIME_ZONE || "America/New_York");
@@ -107,8 +107,8 @@ async function stripePaymentData(businesses) {
     pages += 1;
 
     for (const charge of response.data) {
-      if (!charge.paid || charge.status !== "succeeded") continue;
-      const netAmount = Math.max(0, Number(charge.amount_captured || charge.amount || 0) - Number(charge.amount_refunded || 0));
+      if (!charge.livemode || !charge.paid || charge.status !== "succeeded" || Number(charge.amount_captured || 0) <= 0) continue;
+      const netAmount = Math.max(0, Number(charge.amount_captured || 0) - Number(charge.amount_refunded || 0));
       addAmount(all, charge.currency, netAmount);
       if (charge.created >= monthStart) addAmount(month, charge.currency, netAmount);
       if (charge.created >= todayStart) addAmount(today, charge.currency, netAmount);
@@ -134,6 +134,7 @@ async function stripePaymentData(businesses) {
 
   return {
     configured: true,
+    liveOnly: true,
     truncated: hasMore,
     timeZone,
     totals: {
@@ -212,7 +213,7 @@ export async function GET(request) {
 
     const stripe = await stripePaymentData(businesses).catch((error) => {
       console.error("Unable to load Stripe dashboard totals", error);
-      return { configured: true, error: "Stripe totals are temporarily unavailable.", totals: {}, recentPayments: [] };
+      return { configured: true, liveOnly: true, error: "Stripe totals are temporarily unavailable.", totals: {}, recentPayments: [] };
     });
 
     return NextResponse.json({
