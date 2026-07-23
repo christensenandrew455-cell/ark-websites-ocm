@@ -85,3 +85,5 @@ jobs:
           git add app/api/admin/receptionists/route.js app/api/receptionist/config/route.js app/receptionists/page.js RECEPTIONIST_MULTI_TENANT.md .github/workflows/apply-railway-owned-ai-model.yml
           git commit -m "Keep AI runtime configuration on Railway"
           git push origin HEAD:agent/receptionist-control-plane
+
+# trigger
