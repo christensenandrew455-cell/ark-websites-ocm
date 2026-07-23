@@ -40,13 +40,13 @@ export default function SignupCompletePage() {
           },
           body: JSON.stringify({ sessionId }),
         });
-        const data = await readApiJson(response, "Unable to finish account setup.");
+        await readApiJson(response, "Unable to finish account setup.");
 
-        setStatus("Account activated. Opening ARK Client Center…");
+        setStatus("Payment method saved. Opening business setup…");
         window.localStorage.setItem(PHONE_SETUP_PENDING_KEY, "true");
         await user.getIdToken(true);
         await refreshProfile();
-        router.replace(`/?clientId=${encodeURIComponent(data.clientId)}`);
+        router.replace("/setup/business");
       } catch (completeError) {
         setError(completeError.message);
       }
