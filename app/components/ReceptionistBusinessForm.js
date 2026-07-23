@@ -29,14 +29,13 @@ const SILENCE_SECONDS = [
 ];
 
 function titleCase(value) {
-  return String(value || "").charAt(0).toUpperCase() + String(value || "").slice(1);
+  const text = String(value || "");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function parseTime(value, fallbackHour, fallbackPeriod) {
   const match = String(value || "").toUpperCase().match(/\b(1[0-2]|[1-9])(?::\d{2})?\s*(AM|PM)\b/);
-  return match
-    ? { hour: Number(match[1]), period: match[2] }
-    : { hour: fallbackHour, period: fallbackPeriod };
+  return match ? { hour: Number(match[1]), period: match[2] } : { hour: fallbackHour, period: fallbackPeriod };
 }
 
 function formatTime(hour, period) {
@@ -46,7 +45,6 @@ function formatTime(hour, period) {
 function parseBusinessDays(value) {
   const normalized = String(value || "").toLowerCase();
   if (normalized.includes("every day") || normalized.includes("daily")) return [...WEEKDAYS];
-
   const matchedDays = WEEKDAYS.filter((day) => normalized.includes(day));
   if (normalized.includes("through") && matchedDays.length >= 2) {
     const start = WEEKDAYS.indexOf(matchedDays[0]);
@@ -58,13 +56,11 @@ function parseBusinessDays(value) {
 
 function parseBusinessHours(value) {
   const matches = [...String(value || "").toUpperCase().matchAll(/\b(1[0-2]|[1-9])(?::\d{2})?\s*(AM|PM)\b/g)];
-  const start = matches[0]
-    ? { hour: Number(matches[0][1]), period: matches[0][2] }
-    : { hour: 9, period: "AM" };
-  const end = matches[1]
-    ? { hour: Number(matches[1][1]), period: matches[1][2] }
-    : { hour: 5, period: "PM" };
-  return { days: parseBusinessDays(value), start, end };
+  return {
+    days: parseBusinessDays(value),
+    start: matches[0] ? { hour: Number(matches[0][1]), period: matches[0][2] } : { hour: 9, period: "AM" },
+    end: matches[1] ? { hour: Number(matches[1][1]), period: matches[1][2] } : { hour: 5, period: "PM" },
+  };
 }
 
 function formatDayList(days) {
@@ -101,24 +97,17 @@ function Select({ value, onChange, children, ariaLabel }) {
 
 function DayCheckboxes({ label, hint, selected, onChange }) {
   const values = Array.isArray(selected) ? selected : [];
-
   function toggle(day) {
     const next = new Set(values);
     if (next.has(day)) next.delete(day); else next.add(day);
     onChange(WEEKDAYS.filter((item) => next.has(item)));
   }
-
   return (
     <div className="md:col-span-2">
       <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{label}</p>
       <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">{hint}</p>
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-7">
-        {WEEKDAYS.map((day) => (
-          <label key={day} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold capitalize">
-            <input type="checkbox" checked={values.includes(day)} onChange={() => toggle(day)} />
-            {day}
-          </label>
-        ))}
+        {WEEKDAYS.map((day) => <label key={day} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold capitalize"><input type="checkbox" checked={values.includes(day)} onChange={() => toggle(day)} />{day}</label>)}
       </div>
     </div>
   );
@@ -128,12 +117,8 @@ function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeri
   return (
     <Field label={label} hint={hint}>
       <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
-        <Select ariaLabel={`${label} hour`} value={Number(hour) || 12} onChange={(event) => onHourChange(Number(event.target.value))}>
-          {HOURS.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
-        <Select ariaLabel={`${label} AM or PM`} value={period || "AM"} onChange={(event) => onPeriodChange(event.target.value)}>
-          {PERIODS.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
+        <Select ariaLabel={`${label} hour`} value={Number(hour) || 12} onChange={(event) => onHourChange(Number(event.target.value))}>{HOURS.map((value) => <option key={value} value={value}>{value}</option>)}</Select>
+        <Select ariaLabel={`${label} AM or PM`} value={period || "AM"} onChange={(event) => onPeriodChange(event.target.value)}>{PERIODS.map((value) => <option key={value} value={value}>{value}</option>)}</Select>
       </div>
     </Field>
   );
@@ -142,14 +127,12 @@ function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeri
 function ListEditor({ items, onChange, placeholder, addLabel }) {
   const [draft, setDraft] = useState("");
   const values = Array.isArray(items) ? items : [];
-
   function addItem() {
     const value = draft.trim();
     if (!value) return;
     if (!values.some((item) => item.toLowerCase() === value.toLowerCase())) onChange([...values, value]);
     setDraft("");
   }
-
   return (
     <div>
       <div className="flex gap-2">
@@ -157,12 +140,7 @@ function ListEditor({ items, onChange, placeholder, addLabel }) {
         <button type="button" onClick={addItem} className="rounded-xl bg-slate-950 px-4 text-xs font-black text-white">{addLabel}</button>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        {values.map((item) => (
-          <span key={item} className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700">
-            {item}
-            <button type="button" onClick={() => onChange(values.filter((value) => value !== item))} aria-label={`Remove ${item}`} className="text-base leading-none text-slate-400 hover:text-red-600">×</button>
-          </span>
-        ))}
+        {values.map((item) => <span key={item} className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700">{item}<button type="button" onClick={() => onChange(values.filter((value) => value !== item))} aria-label={`Remove ${item}`} className="text-base leading-none text-slate-400 hover:text-red-600">×</button></span>)}
       </div>
     </div>
   );
@@ -171,17 +149,9 @@ function ListEditor({ items, onChange, placeholder, addLabel }) {
 function ServicesEditor({ services, onChange }) {
   const current = services && typeof services === "object" && !Array.isArray(services) ? services : {};
   const names = Object.keys(current).map(titleCase);
-
   function updateServices(nextNames) {
-    const next = Object.fromEntries(
-      nextNames.map((name) => {
-        const key = name.trim().toLowerCase();
-        return [key, key];
-      }).filter(([key]) => key)
-    );
-    onChange(next);
+    onChange(Object.fromEntries(nextNames.map((name) => { const key = name.trim().toLowerCase(); return [key, key]; }).filter(([key]) => key)));
   }
-
   return <ListEditor items={names} onChange={updateServices} placeholder="Snow plowing" addLabel="Add Service" />;
 }
 
@@ -192,6 +162,7 @@ export function prepareReceptionistProfile(profile = {}) {
   return {
     ...profile,
     serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
+    about: Array.isArray(profile.about) ? profile.about : [],
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
     aiSilenceSeconds: Number(profile.aiSilenceMs || 1200) / 1000,
     businessWeekdays: Array.isArray(profile.businessWeekdays) ? profile.businessWeekdays : hours.days,
@@ -209,7 +180,7 @@ export function prepareReceptionistProfile(profile = {}) {
 export function receptionistRequestPayload(profile = {}) {
   return {
     ...profile,
-    about: [],
+    extraInformation: "",
     businessHours: businessHoursSummary(profile),
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
     latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
@@ -221,11 +192,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
   if (!profile) return null;
   const voice = VOICES.find((item) => item.value === profile.aiVoice) || VOICES[0];
   const speed = SPEEDS.find((item) => item.value === Number(profile.aiSpeechSpeed)) || SPEEDS[1];
-
-  function update(field, value) {
-    onChange({ ...profile, [field]: value });
-  }
-
+  function update(field, value) { onChange({ ...profile, [field]: value }); }
   return (
     <div className="space-y-7">
       <section>
@@ -239,7 +206,6 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
           {adminMode && <label className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black md:self-end">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label>}
         </div>
       </section>
-
       <section>
         <h3 className="text-lg font-black">Business Information</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>
@@ -250,18 +216,15 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
           <Field label="Business phone"><Input type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
           <Field label="Business email"><Input type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
           <Field label="Time zone"><Select value={profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select></Field>
-
           <DayCheckboxes label="Business days" hint="Choose every day the business is normally open." selected={profile.businessWeekdays} onChange={(days) => update("businessWeekdays", days)} />
           <HourPeriodPicker label="Business opens" hour={profile.businessStartHour} period={profile.businessStartPeriod} onHourChange={(value) => update("businessStartHour", value)} onPeriodChange={(value) => update("businessStartPeriod", value)} />
           <HourPeriodPicker label="Business closes" hour={profile.businessEndHour} period={profile.businessEndPeriod} onHourChange={(value) => update("businessEndHour", value)} onPeriodChange={(value) => update("businessEndPeriod", value)} />
-
           <DayCheckboxes label="Days available for estimates" hint="Choose the days the receptionist may offer an estimate appointment." selected={profile.estimateWeekdays} onChange={(days) => update("estimateWeekdays", days)} />
           <HourPeriodPicker label="Earliest estimate time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
           <HourPeriodPicker label="Latest estimate time" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
-
           <Field label="Service areas" hint="Add a city, county, state, the whole United States, or any other area the business serves." wide><ListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>
+          <Field label="About the business" hint="Add short facts the receptionist should know, one at a time." wide><ListEditor items={profile.about} onChange={(items) => update("about", items)} placeholder="Family-owned since 2018" addLabel="Add Fact" /></Field>
           <Field label="Services" hint="Add each service the business provides." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
-          <Field label="Extra business information" hint="Use this for policies, common questions, timing, limitations, and anything else the receptionist may need." wide><textarea rows={10} value={profile.extraInformation || ""} onChange={(event) => update("extraInformation", event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm leading-6 outline-none focus:border-slate-950" /></Field>
         </div>
       </section>
     </div>
