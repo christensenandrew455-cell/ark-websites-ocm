@@ -63,10 +63,15 @@ export async function GET(request) {
     db.collection("connections").get(),
   ]);
 
+  const adminUid = text(admin.decodedToken.uid);
+  const adminEmail = text(admin.decodedToken.email).toLowerCase();
   const connections = new Map(connectionSnapshot.docs.map((document) => [document.id, document.data()]));
   const businesses = businessSnapshot.docs
-    .map((document) => connectionPayload(document.id, document.data(), connections.get(document.id) || {}))
-    .filter((business) => business.businessName && ["active", "disabled"].includes(business.status))
+    .map((document) => ({ clientId: document.id, business: document.data() }))
+    .filter(({ business }) => text(business.uid) !== adminUid)
+    .filter(({ business }) => !adminEmail || text(business.accountEmail).toLowerCase() !== adminEmail)
+    .map(({ clientId, business }) => connectionPayload(clientId, business, connections.get(clientId) || {}))
+    .filter((business) => business.businessName && ["active", "disabled", "approved_pending_payment"].includes(business.status))
     .sort((a, b) => a.businessName.localeCompare(b.businessName));
 
   return NextResponse.json({ businesses });
