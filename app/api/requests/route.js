@@ -4,6 +4,7 @@ import { computeBillingState } from "../../lib/billingDelinquency";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { sendRequestStatusNotification } from "../../lib/notificationService";
 import { requireUser } from "../../lib/userRequest";
+import { normalizeClientId, toIsoString, trimmedText } from "../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,42 +19,22 @@ const STATUS_TRANSITIONS = {
   denied: new Set(),
 };
 
-function text(value) {
-  return String(value || "").trim();
-}
-
-function cleanClientId(value) {
-  return text(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function iso(value) {
-  if (!value) return "";
-  if (typeof value.toDate === "function") return value.toDate().toISOString();
-  if (typeof value.seconds === "number") return new Date(value.seconds * 1000).toISOString();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
-}
-
 function requestPayload(document) {
   const data = document.data();
   return {
     id: document.id,
-    clientId: text(data.clientId),
-    businessName: text(data.businessName),
-    ownerName: text(data.ownerName),
-    accountEmail: text(data.accountEmail),
+    clientId: trimmedText(data.clientId),
+    businessName: trimmedText(data.businessName),
+    ownerName: trimmedText(data.ownerName),
+    accountEmail: trimmedText(data.accountEmail),
     type: ALLOWED_TYPES.has(data.type) ? data.type : "change",
-    subject: text(data.subject),
-    message: text(data.message),
+    subject: trimmedText(data.subject),
+    message: trimmedText(data.message),
     status: ALLOWED_STATUSES.has(data.status) ? data.status : "new",
-    adminNote: text(data.adminNote),
-    createdAt: iso(data.createdAt),
-    updatedAt: iso(data.updatedAt),
-    closedAt: iso(data.closedAt),
+    adminNote: trimmedText(data.adminNote),
+    createdAt: toIsoString(data.createdAt),
+    updatedAt: toIsoString(data.updatedAt),
+    closedAt: toIsoString(data.closedAt),
   };
 }
 
@@ -63,9 +44,9 @@ export async function GET(request) {
 
   const db = getAdminDb();
   const isAdmin = user.decodedToken.role === "admin";
-  const tokenClientId = cleanClientId(user.decodedToken.clientId);
+  const tokenClientId = normalizeClientId(user.decodedToken.clientId);
   const url = new URL(request.url);
-  const requestedClientId = cleanClientId(url.searchParams.get("clientId"));
+  const requestedClientId = normalizeClientId(url.searchParams.get("clientId"));
   const includeClosed = url.searchParams.get("includeClosed") === "1";
 
   let snapshot;
@@ -98,9 +79,9 @@ export async function POST(request) {
 
   const body = await request.json();
   const type = ALLOWED_TYPES.has(body.type) ? body.type : "";
-  const subject = text(body.subject);
-  const message = text(body.message);
-  const clientId = cleanClientId(user.decodedToken.clientId);
+  const subject = trimmedText(body.subject);
+  const message = trimmedText(body.message);
+  const clientId = normalizeClientId(user.decodedToken.clientId);
 
   if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
   if (!type) return NextResponse.json({ error: "Choose Help or Change." }, { status: 400 });
@@ -125,9 +106,9 @@ export async function POST(request) {
   const ref = db.collection("supportRequests").doc();
   await ref.set({
     clientId,
-    businessName: text(business.businessName || account.businessName || clientId),
-    ownerName: text(account.ownerName || business.ownerName || user.decodedToken.name),
-    accountEmail: text(account.accountEmail || user.decodedToken.email).toLowerCase(),
+    businessName: trimmedText(business.businessName || account.businessName || clientId),
+    ownerName: trimmedText(account.ownerName || business.ownerName || user.decodedToken.name),
+    accountEmail: trimmedText(account.accountEmail || user.decodedToken.email).toLowerCase(),
     type,
     subject: subject || (type === "help" ? "Urgent help request" : "Receptionist change request"),
     message,
@@ -149,9 +130,9 @@ export async function PATCH(request) {
   }
 
   const body = await request.json();
-  const id = text(body.id);
+  const id = trimmedText(body.id);
   const status = ALLOWED_STATUSES.has(body.status) ? body.status : "";
-  const adminNote = text(body.adminNote);
+  const adminNote = trimmedText(body.adminNote);
 
   if (!id || !status) return NextResponse.json({ error: "Choose a request and status." }, { status: 400 });
   if (status === "denied" && !adminNote) {
@@ -185,9 +166,9 @@ export async function PATCH(request) {
   try {
     await sendRequestStatusNotification({
       db,
-      clientId: cleanClientId(current.clientId),
+      clientId: normalizeClientId(current.clientId),
       requestId: id,
-      subject: text(current.subject),
+      subject: trimmedText(current.subject),
       status,
       adminNote,
     });
