@@ -44,7 +44,7 @@ jobs:
           replace_once(
               "app/api/admin/receptionists/route.js",
               '    receptionistScript,\n    aiModel: text(body.aiModel || "gpt-realtime"),\n    aiVoice:',
-              '    receptionistScript,\n    aiModel: FieldValue.delete(),\n    aiVoice:',
+              '    receptionistScript,\n    aiVoice:',
               "saved AI model field",
           )
           replace_once(
@@ -63,11 +63,15 @@ jobs:
           docs = Path("RECEPTIONIST_MULTI_TENANT.md")
           text = docs.read_text(encoding="utf-8")
           text = text.replace(
-              "The administrator can edit the script, model, voice, pacing, pause detection, and business information.",
-              "The administrator can edit the script, voice, pacing, pause detection, and business information. The AI model and provider runtime stay on Railway.",
+              "- voice, pacing, pause detection, and Realtime model",
+              "- voice, pacing, and pause detection",
           )
-          if "Vercel does not need AI_MODEL" not in text:
-              text += "\n## Runtime ownership\n\nVercel is only the control plane and Firestore-backed profile store. Vercel does not need `AI_MODEL`, `OPENAI_API_KEY`, or other AI runtime variables. The shared Railway service owns the model and provider credentials.\n"
+          text = text.replace(
+              "Railway calls `/api/receptionist/config` with the destination number and Telnyx connection ID.",
+              "Railway calls `/api/receptionist/config` with the destination number and Telnyx connection ID. The AI model and provider credentials stay on Railway.",
+          )
+          if "Vercel does not need `AI_MODEL`" not in text:
+              text += "\n## Runtime ownership\n\nVercel is only the control panel and Firestore-backed profile store. Vercel does not need `AI_MODEL`, `OPENAI_API_KEY`, or any other AI runtime variable. The shared Railway service owns the model and provider credentials.\n"
           docs.write_text(text, encoding="utf-8")
           PY
 
@@ -85,5 +89,3 @@ jobs:
           git add app/api/admin/receptionists/route.js app/api/receptionist/config/route.js app/receptionists/page.js RECEPTIONIST_MULTI_TENANT.md .github/workflows/apply-railway-owned-ai-model.yml
           git commit -m "Keep AI runtime configuration on Railway"
           git push origin HEAD:agent/receptionist-control-plane
-
-# trigger
