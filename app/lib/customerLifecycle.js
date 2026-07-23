@@ -1,4 +1,4 @@
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminAuth, getAdminDb } from "./firebase-admin";
 
 function text(value) {
@@ -90,15 +90,6 @@ export async function restoreCustomer(clientId, actorUid) {
   return { clientId, status: "active" };
 }
 
-export async function scheduleCustomerDeletion(clientId, actorUid) {
-  const deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  await disableCustomer(clientId, actorUid, {
-    deletionScheduledFor: Timestamp.fromDate(deletionDate),
-    deletionScheduledBy: actorUid,
-  });
-  return { clientId, status: "scheduled-for-deletion", deletionScheduledFor: deletionDate.toISOString() };
-}
-
 async function deleteQueryDocuments(query) {
   const snapshot = await query.get();
   if (!snapshot.size) return;
@@ -118,6 +109,7 @@ export async function deleteCustomerPermanently(clientId) {
   await Promise.all([
     db.recursiveDelete(db.collection("ocmClients").doc(clientId)),
     deleteQueryDocuments(db.collection("supportRequests").where("clientId", "==", clientId)),
+    deleteQueryDocuments(db.collection("stripeWebhookEvents").where("clientId", "==", clientId)),
   ]);
 
   const batch = db.batch();
@@ -134,21 +126,4 @@ export async function deleteCustomerPermanently(clientId) {
   });
 
   return { clientId, deleted: true };
-}
-
-export async function purgeDueCustomers() {
-  const db = getAdminDb();
-  const snapshot = await db.collection("businesses")
-    .where("deletionScheduledFor", "<=", Timestamp.now())
-    .get();
-  const results = [];
-  for (const document of snapshot.docs) {
-    try {
-      results.push(await deleteCustomerPermanently(document.id));
-    } catch (error) {
-      console.error(`Unable to purge customer ${document.id}`, error);
-      results.push({ clientId: document.id, deleted: false, error: error.message });
-    }
-  }
-  return results;
 }
