@@ -14,6 +14,7 @@ const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },
   { label: "Messages", mobileLabel: "Messages", href: "/messages" },
+  { label: "Payment", mobileLabel: "Pay", href: "/payment" },
   { label: "Connections", mobileLabel: "Accounts", href: "/connections" },
   { label: "Settings", mobileLabel: "Settings", href: "/settings" },
 ];
