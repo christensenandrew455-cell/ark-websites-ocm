@@ -30,15 +30,24 @@ function normalizePhone(value) {
 
 function servicesObject(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    return Object.fromEntries(Object.entries(value)
-      .map(([name, description]) => [text(name).toLowerCase(), text(description)])
-      .filter(([name, description]) => name && description));
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([name, description]) => {
+          const cleanName = text(name).toLowerCase();
+          return [cleanName, text(description) || cleanName];
+        })
+        .filter(([name]) => name)
+    );
   }
-  return Object.fromEntries(list(value).map((line) => {
-    const [name, ...description] = line.split("|");
-    const cleanName = text(name).toLowerCase();
-    return [cleanName, text(description.join("|")) || `${text(name)}.`];
-  }).filter(([name]) => name));
+  return Object.fromEntries(
+    list(value)
+      .map((line) => {
+        const [name, ...description] = line.split("|");
+        const cleanName = text(name).toLowerCase();
+        return [cleanName, text(description.join("|")) || cleanName];
+      })
+      .filter(([name]) => name)
+  );
 }
 
 function numberInRange(value, fallback, minimum, maximum) {
@@ -48,7 +57,6 @@ function numberInRange(value, fallback, minimum, maximum) {
 }
 
 function profilePayload(clientId, business = {}, account = {}, settings = {}, connection = {}, configured = false) {
-  const services = servicesObject(settings.services);
   return {
     configured,
     clientId,
@@ -68,7 +76,7 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     latestEstimateStart: text(settings.latestEstimateStart || "4:30 PM"),
     businessBase: text(settings.businessBase),
     serviceAreas: list(settings.serviceAreas),
-    services,
+    services: servicesObject(settings.services),
     about: list(settings.about),
     openingLine: text(settings.openingLine || DEFAULT_OPENING),
     closingLine: text(settings.closingLine || DEFAULT_CLOSING),
@@ -128,7 +136,7 @@ function validateProfile(profile) {
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
   if (!profile.businessPhone) return "Enter the business phone number.";
   if (!profile.estimateWeekdays.length) return "Select at least one day available for estimates.";
-  if (!Object.keys(profile.services).length) return "Add at least one service and description.";
+  if (!Object.keys(profile.services).length) return "Add at least one service.";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format();
   } catch {
@@ -139,9 +147,9 @@ function validateProfile(profile) {
 
 async function validateConnectionPhone(db, clientId, phone) {
   const normalized = normalizePhone(phone);
-  if (!normalized) return { error: "Enter the connection phone number." };
+  if (!normalized) return { normalized: "" };
   const duplicate = await db.collection("connections").where("receptionistPhoneNormalized", "==", normalized).limit(2).get();
-  if (duplicate.docs.some((document) => document.id !== clientId)) return { error: "That connection phone number is already assigned to another account." };
+  if (duplicate.docs.some((document) => document.id !== clientId)) return { error: "That connected phone number is already assigned to another account." };
   return { normalized };
 }
 
@@ -164,16 +172,34 @@ export async function POST(request) {
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
 
   if (access.isAdmin && body.connectionOnly === true) {
-    const phoneCheck = await validateConnectionPhone(db, access.clientId, body.receptionistPhone);
+    const phone = text(body.receptionistPhone);
+    const phoneCheck = await validateConnectionPhone(db, access.clientId, phone);
     if (phoneCheck.error) return NextResponse.json({ error: phoneCheck.error }, { status: 400 });
-    await loaded.connectionRef.set({
-      receptionistPhone: text(body.receptionistPhone),
+    const connected = Boolean(phoneCheck.normalized);
+    const batch = db.batch();
+    batch.set(loaded.connectionRef, {
+      receptionistEnabled: connected,
+      receptionistPhone: phone,
       receptionistPhoneNormalized: phoneCheck.normalized,
       updatedBy: access.user.decodedToken.uid,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+    batch.set(loaded.settingsRef, {
+      receptionistPhone: phone,
+      receptionistPhoneNormalized: phoneCheck.normalized,
+      updatedBy: access.user.decodedToken.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    await batch.commit();
     return NextResponse.json({
-      profile: profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, { ...loaded.connection, receptionistPhone: text(body.receptionistPhone), receptionistPhoneNormalized: phoneCheck.normalized }, loaded.configured),
+      profile: profilePayload(
+        access.clientId,
+        loaded.business,
+        loaded.account,
+        { ...loaded.settings, receptionistPhone: phone, receptionistPhoneNormalized: phoneCheck.normalized },
+        { ...loaded.connection, receptionistPhone: phone, receptionistPhoneNormalized: phoneCheck.normalized },
+        loaded.configured,
+      ),
     });
   }
 
@@ -244,7 +270,7 @@ export async function POST(request) {
     aiSilenceMs: profile.aiSilenceMs,
     updatedBy: access.user.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
-    ...(loaded.settings ? {} : { createdAt: FieldValue.serverTimestamp() }),
+    ...(loaded.configured ? {} : { createdAt: FieldValue.serverTimestamp() }),
   };
 
   const batch = db.batch();
@@ -268,6 +294,7 @@ export async function POST(request) {
     businessSetupComplete: true,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
+
   const customerUid = text(loaded.business.uid);
   if (customerUid) {
     batch.set(db.collection("accounts").doc(customerUid), {
@@ -278,17 +305,18 @@ export async function POST(request) {
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }
+
   if (access.isAdmin) {
     batch.set(loaded.connectionRef, {
-      receptionistEnabled: profile.enabled,
+      receptionistEnabled: Boolean(profile.receptionistPhoneNormalized) && profile.enabled,
       receptionistPhone: profile.receptionistPhone,
       receptionistPhoneNormalized: profile.receptionistPhoneNormalized,
       updatedBy: access.user.decodedToken.uid,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }
-  await batch.commit();
 
+  await batch.commit();
   return NextResponse.json({
     profile: profilePayload(
       access.clientId,
