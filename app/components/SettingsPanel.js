@@ -6,7 +6,12 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
-import { chooseClientFileDestination, saveClientFile } from "../lib/clientFileSave";
+import {
+  androidNativeFileSaveAvailable,
+  chooseClientFileDestination,
+  saveClientFile,
+  saveClientFileFromUrl,
+} from "../lib/clientFileSave";
 import { db } from "../lib/firebase";
 
 const DEFAULT_SETTINGS = {
@@ -118,6 +123,16 @@ export default function SettingsPanel({ setupMode = false }) {
       if (destination.kind === "canceled") return;
 
       const token = await user.getIdToken(true);
+      if (androidNativeFileSaveAvailable()) {
+        const result = await saveClientFileFromUrl({
+          url: new URL("/api/account/export", window.location.origin).toString(),
+          bearerToken: token,
+          fileName: suggestedName,
+        });
+        if (result?.saved) setDownloadNotice("Client data saved.");
+        return;
+      }
+
       const response = await fetch("/api/account/export", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
