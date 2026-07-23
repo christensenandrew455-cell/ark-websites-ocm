@@ -25,6 +25,12 @@ function saveWithDownloadLink(blob, fileName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export function androidNativeFileSaveAvailable() {
+  return Capacitor.isNativePlatform()
+    && Capacitor.getPlatform() === "android"
+    && Capacitor.isPluginAvailable("FileSaver");
+}
+
 export async function chooseClientFileDestination(fileName, mimeType = "application/json") {
   if (typeof window === "undefined" || Capacitor.isNativePlatform() || typeof window.showSaveFilePicker !== "function") {
     return { kind: "deferred" };
@@ -42,6 +48,19 @@ export async function chooseClientFileDestination(fileName, mimeType = "applicat
   }
 }
 
+export async function saveClientFileFromUrl({ url, bearerToken, fileName, mimeType = "application/json" }) {
+  if (!androidNativeFileSaveAvailable()) {
+    throw new Error("The Android file saver is not available in this app build. Update the app and try again.");
+  }
+
+  return NativeFileSaver.saveFromUrl({
+    url,
+    bearerToken,
+    fileName,
+    mimeType,
+  });
+}
+
 export async function saveClientFile({ blob, fileName, mimeType = "application/json", destination }) {
   if (destination?.kind === "canceled") return { saved: false, canceled: true };
 
@@ -52,12 +71,16 @@ export async function saveClientFile({ blob, fileName, mimeType = "application/j
     return { saved: true, canceled: false };
   }
 
-  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android" && Capacitor.isPluginAvailable("FileSaver")) {
+  if (androidNativeFileSaveAvailable()) {
     return NativeFileSaver.save({
       base64: await blobToBase64(blob),
       fileName,
       mimeType,
     });
+  }
+
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    throw new Error("The Android file saver is not available in this app build. Update the app and try again.");
   }
 
   if (Capacitor.isNativePlatform() && typeof navigator !== "undefined" && typeof navigator.share === "function") {
