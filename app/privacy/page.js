@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LEGAL_EFFECTIVE_DATE, PRIVACY_VERSION } from "../lib/legal";
+import { PRIVACY_EFFECTIVE_DATE, PRIVACY_VERSION } from "../lib/legal";
 
 const sections = [
   {
@@ -12,9 +12,9 @@ const sections = [
       <>
         <p><strong>Account and business information:</strong> business name, owner or contact name, email address, phone number, account identifier, account status, plan and billing status, settings, connection details, usage information, and payment-restriction status.</p>
         <p><strong>Customer and lead information:</strong> names, phone numbers, email addresses, addresses, requested services, appointment or job details, messages, notes, call or request information, and other content submitted by you, your customers, or connected services. This includes records shown in Contacted Me and Clients.</p>
-        <p><strong>Billing information:</strong> Stripe customer, payment-method, charge, invoice, payment-event, amount-due, billing-status, and payment-incident identifiers. ARK does not receive or store full card numbers; full card details are handled by Stripe.</p>
+        <p><strong>Billing information:</strong> Stripe customer, payment-method, subscription, metered-lead, charge, invoice, payment-event, amount-due, billing-status, and payment-incident identifiers. ARK does not receive or store full card numbers; full card details are handled by Stripe.</p>
         <p><strong>Service and technical information:</strong> receptionist and AI usage records, timestamps, device or browser information, notification tokens, error logs, security events, and information needed to operate connected AI, phone, hosting, database, and notification services.</p>
-        <p><strong>Support and legal records:</strong> change requests, support messages, public support submissions, cancellation or deletion requests, data-export activity, account-enforcement actions, and records showing when and which version of the Terms of Use and Privacy Policy you accepted.</p>
+        <p><strong>Support and legal records:</strong> Help messages, AI-help chat stored on the device for up to 24 hours, public support submissions, cancellation or deletion requests, data-export activity, account-enforcement actions, and records showing when and which version of the Terms of Use and Privacy Policy you accepted.</p>
       </>
     ),
   },
@@ -22,9 +22,9 @@ const sections = [
     title: "3. How we use information",
     body: (
       <>
-        <p>ARK uses information to create and manage accounts; receive, organize, store, and display leads; operate receptionist and communication features; deliver notifications; process and reconcile billing; measure usage; provide support and requested changes; prepare customer-requested downloads; test, maintain, secure, and improve the Service; prevent fraud or abuse; enforce account policies; and comply with legal obligations.</p>
+        <p>ARK uses information to create and manage accounts; receive, organize, store, and display leads; operate receptionist and communication features; deliver notifications; process and reconcile monthly and per-lead billing; measure usage; provide support; prepare customer-requested downloads; test, maintain, secure, and improve the Service; prevent fraud or abuse; enforce account policies; and comply with legal obligations.</p>
         <p>Customer and lead information may be processed by automated or AI systems to route, summarize, classify, or respond to communications according to the account’s configuration.</p>
-        <p>Stripe payment events may be used automatically to show payment notices, place an account in or remove it from payment-restricted mode, and place an unpaid account into manual deletion review. Permanent deletion remains a separate administrator action.</p>
+        <p>Stripe payment events may be used automatically to show the current monthly amount due, record billable lead usage, show payment notices, place an account in or remove it from payment-restricted mode, and place an unpaid account into manual deletion review. Permanent deletion remains a separate administrator action.</p>
       </>
     ),
   },
@@ -33,7 +33,7 @@ const sections = [
     body: (
       <>
         <p>Authorized users of your business account can see information available inside that account, subject to the account’s current access level.</p>
-        <p>Authorized ARK administrators can access the business name, owner and contact details, account email and phone, account and connection status, Contacted Me records, accepted Client records, requested services, appointment details, messages, notes, request history, usage records, billing status, amount-due and payment-incident information, policy-acceptance records, notification status, and technical or security information when needed to operate, maintain, test, secure, troubleshoot, support, bill, enforce, or administer the Service. This means ARK can see customer and lead data stored in the Service.</p>
+        <p>Authorized ARK administrators can access the business name, owner and contact details, account email and phone, account and connection status, Contacted Me records, accepted Client records, requested services, appointment details, messages, notes, Help-message history, usage records, billing status, amount-due and payment-incident information, policy-acceptance records, notification status, and technical or security information when needed to operate, maintain, test, secure, troubleshoot, support, bill, enforce, or administer the Service. This means ARK can see customer and lead data stored in the Service.</p>
         <p>ARK administrators do not receive your account password. ARK also does not receive or store your full payment-card number; Stripe handles full card details.</p>
         <p>Administrative access is intended for providing and protecting the Service, not for unrelated advertising or selling customer information.</p>
       </>
@@ -71,8 +71,8 @@ const sections = [
     title: "9. Your choices and requests",
     body: (
       <>
-        <p>While the account has full access, you may use Download Client Data in Settings to obtain a JSON copy of current Contacted Me records, accepted Clients, account details, and request history. You may also request access, correction, cancellation, or deletion through the Requests page.</p>
-        <p>ARK may need to verify identity and account authority before completing a request. During payment-restricted mode, the account may be limited to receiving and accepting leads; restore payment first to regain settings, support, change-request, and download features.</p>
+        <p>While the account has full access, you may use Download Client Data in Settings to obtain a JSON copy of current Contacted Me records, accepted Clients, account details, and Help-message history. You may request access, correction, cancellation, or deletion through Settings, Help, and Send a Message.</p>
+        <p>ARK may need to verify identity and account authority before completing a request. During payment-restricted mode, the account may be limited to receiving and accepting leads; restore payment first to regain Settings, signed-in Help messages, and download features.</p>
         <p>You may cancel the paid service according to the Terms of Use. Cancellation stops future service and billing according to the applicable billing period, while a separate immediate-deletion request asks ARK to remove the active account and active client data sooner.</p>
       </>
     ),
@@ -90,7 +90,7 @@ const sections = [
     body: (
       <>
         <p>ARK may update this Privacy Policy as the Service, providers, or legal requirements change. The version and effective date appear at the top of this page. ARK may request renewed acceptance when a material change requires it.</p>
-        <p>Use the signed-in Requests page for account-specific privacy, access, correction, cancellation, or deletion requests. The public <Link href="/support" className="font-black underline">Support page</Link> is available for login trouble, App Store questions, and general privacy questions.</p>
+        <p>Use Settings, Help, and Send a Message for account-specific privacy, access, correction, cancellation, or deletion requests. The public <Link href="/support" className="font-black underline">Support page</Link> is available for login trouble, App Store questions, and general privacy questions.</p>
       </>
     ),
   },
@@ -104,7 +104,7 @@ export default function PrivacyPage() {
           <div>
             <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">ARK Client Center</p>
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-5xl">Privacy Policy</h1>
-            <p className="mt-3 text-sm font-semibold text-slate-500">Effective {LEGAL_EFFECTIVE_DATE} · Version {PRIVACY_VERSION}</p>
+            <p className="mt-3 text-sm font-semibold text-slate-500">Effective {PRIVACY_EFFECTIVE_DATE} · Version {PRIVACY_VERSION}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/about" className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">About</Link>
