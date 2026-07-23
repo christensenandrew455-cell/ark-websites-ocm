@@ -63,26 +63,39 @@ function monthWindow(timeZone) {
 }
 
 function leadTimestamp(data) {
-  return toMillis(data.createdAt || data.contactedAt || data.acceptedAt || data.updatedAt);
+  return toMillis(data.createdAt || data.contactedAt || data.acceptedAt || data.occurredAt || data.updatedAt);
 }
 
 function leadKey(clientId, leadId) {
   return createHash("sha256").update(`${clientId}:${leadId}`).digest("hex").slice(0, 48);
 }
 
+function addLead(unique, id, occurredAt, startMs, endMs) {
+  const cleanId = text(id);
+  if (!cleanId || !occurredAt || occurredAt < startMs || occurredAt >= endMs) return;
+  const existing = unique.get(cleanId);
+  if (!existing || occurredAt < existing.occurredAt) unique.set(cleanId, { id: cleanId, occurredAt });
+}
+
 async function loadMonthlyLeads(db, clientId, startMs, endMs) {
-  const [contactedSnapshot, clientsSnapshot] = await Promise.all([
-    db.collection("ocmClients").doc(clientId).collection("contactedMe").get(),
-    db.collection("ocmClients").doc(clientId).collection("clients").get(),
+  const root = db.collection("ocmClients").doc(clientId);
+  const [contactedSnapshot, clientsSnapshot, statsSnapshot] = await Promise.all([
+    root.collection("contactedMe").get(),
+    root.collection("clients").get(),
+    root.collection("statsEvents").get(),
   ]);
 
   const unique = new Map();
   for (const document of [...contactedSnapshot.docs, ...clientsSnapshot.docs]) {
-    const occurredAt = leadTimestamp(document.data());
-    if (!occurredAt || occurredAt < startMs || occurredAt >= endMs) continue;
-    const existing = unique.get(document.id);
-    if (!existing || occurredAt < existing.occurredAt) unique.set(document.id, { id: document.id, occurredAt });
+    addLead(unique, document.id, leadTimestamp(document.data()), startMs, endMs);
   }
+  for (const document of statsSnapshot.docs) {
+    const data = document.data();
+    if (text(data.eventType).toLowerCase() !== "contacted") continue;
+    const sourceId = text(data.sourceId) || document.id.replace(/^contacted:/, "");
+    addLead(unique, sourceId, leadTimestamp(data), startMs, endMs);
+  }
+
   return [...unique.values()].sort((first, second) => first.occurredAt - second.occurredAt);
 }
 
