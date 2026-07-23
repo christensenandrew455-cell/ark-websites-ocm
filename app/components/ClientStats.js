@@ -48,22 +48,6 @@ function addRowCandidates(map, row, accepted) {
   const contactedAt = row.createdAt || row.updatedAt || row.acceptedAt;
   addCandidate(map, `contacted:${sourceId}`, "contacted", contactedAt, row.id);
 
-  const jobs = Array.isArray(row.Jobs) ? row.Jobs : [];
-  if (jobs.length) {
-    jobs.forEach((job, index) => {
-      const jobId = safeId(job?.id || index);
-      addCandidate(
-        map,
-        `usage:${sourceId}:job:${jobId}`,
-        "usage",
-        job?.createdAt || contactedAt,
-        row.id
-      );
-    });
-  } else {
-    addCandidate(map, `usage:${sourceId}:lead`, "usage", contactedAt, row.id);
-  }
-
   if (accepted) {
     const acceptedAt = row.acceptedAt || row.updatedAt || row.createdAt;
     addCandidate(map, `client:${sourceId}`, "client", acceptedAt, row.id);
