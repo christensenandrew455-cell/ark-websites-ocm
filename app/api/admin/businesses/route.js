@@ -3,21 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function text(value) {
-  return String(value || "").trim();
-}
-
-function cleanClientId(value) {
-  return text(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 export async function POST(request) {
   const admin = await requireAdmin(request);
@@ -28,15 +17,15 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const businessName = text(body.businessName);
-    const ownerName = text(body.ownerName);
-    const accountEmail = text(body.accountEmail).toLowerCase();
+    const businessName = trimmedText(body.businessName);
+    const ownerName = trimmedText(body.ownerName);
+    const accountEmail = trimmedText(body.accountEmail).toLowerCase();
     const temporaryPassword = String(body.temporaryPassword || "");
-    const clientId = cleanClientId(body.clientId || businessName);
-    const businessPhone = text(body.businessPhone);
-    const notificationEmail = text(body.notificationEmail || accountEmail).toLowerCase();
-    const notificationPhone = text(body.notificationPhone || businessPhone);
-    const sourceLabel = text(body.sourceLabel || `${businessName} receptionist`);
+    const clientId = normalizeClientId(body.clientId || businessName);
+    const businessPhone = trimmedText(body.businessPhone);
+    const notificationEmail = trimmedText(body.notificationEmail || accountEmail).toLowerCase();
+    const notificationPhone = trimmedText(body.notificationPhone || businessPhone);
+    const sourceLabel = trimmedText(body.sourceLabel || `${businessName} receptionist`);
 
     if (!businessName || !ownerName || !clientId) {
       return NextResponse.json({ error: "Business name, owner name, and client ID are required." }, { status: 400 });
@@ -128,7 +117,7 @@ export async function POST(request) {
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    const adminClientId = text(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
+    const adminClientId = trimmedText(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
     if (adminClientId && adminClientId !== clientId) {
       batch.set(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId), {
         Name: ownerName,
