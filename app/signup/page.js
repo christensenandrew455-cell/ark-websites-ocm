@@ -81,7 +81,7 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
           <label className="block md:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Business name</span>
-            <input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
+            <input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} placeholder="Business name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
           </label>
           <label className="block md:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Your name</span>
