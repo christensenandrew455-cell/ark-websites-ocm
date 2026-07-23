@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import AppShell from "./AppShell";
 import AdminPendingApplications from "./AdminPendingApplications";
@@ -21,6 +21,7 @@ function Waiting({ children }) {
 export default function SignupFlowShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
+  const initialAuthenticatedRouteHandled = useRef(false);
   const { user, profile, isAdmin, loading } = useAuth();
   const signupPage = routeMatches(pathname, ["/signup/status", "/signup/complete"]);
   const setupPage = routeMatches(pathname, ["/setup/business"]);
@@ -30,8 +31,17 @@ export default function SignupFlowShell({ children }) {
 
   useEffect(() => {
     if (loading) return;
+
+    if (user && !initialAuthenticatedRouteHandled.current) {
+      initialAuthenticatedRouteHandled.current = true;
+      if (!unfinished && !needsBusinessSetup && pathname !== "/") {
+        router.replace("/");
+        return;
+      }
+    }
+
     if (setupPage && !user) {
-      router.replace("/login?next=/setup/business");
+      router.replace("/login");
       return;
     }
     if (setupPage && isAdmin) {
