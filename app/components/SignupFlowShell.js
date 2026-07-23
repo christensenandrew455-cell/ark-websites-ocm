@@ -30,6 +30,14 @@ export default function SignupFlowShell({ children }) {
 
   useEffect(() => {
     if (loading) return;
+    if (setupPage && !user) {
+      router.replace("/login?next=/setup/business");
+      return;
+    }
+    if (setupPage && isAdmin) {
+      router.replace("/");
+      return;
+    }
     if (unfinished && !signupPage && !publicInformationPage) {
       router.replace("/signup/status");
       return;
@@ -44,6 +52,7 @@ export default function SignupFlowShell({ children }) {
   }, [isAdmin, loading, needsBusinessSetup, pathname, profile?.status, publicInformationPage, router, setupPage, signupPage, unfinished, user]);
 
   if (loading) return <Waiting>Loading client center…</Waiting>;
+  if (setupPage && (!user || isAdmin)) return <Waiting>Opening the correct account page…</Waiting>;
   if (signupPage || setupPage) return children;
   if (unfinished && publicInformationPage) return children;
   if (unfinished) return <Waiting>Opening account verification…</Waiting>;
