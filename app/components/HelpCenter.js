@@ -125,6 +125,8 @@ export default function HelpCenter() {
     }
   }
 
+  if (!pathname.startsWith("/help")) return null;
+
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-3xl">
