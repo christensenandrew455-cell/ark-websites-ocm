@@ -32,15 +32,17 @@ export function computeBillingState(data = {}, now = Date.now()) {
   const offenseNumber = Math.max(1, Number(data.billingOffenseNumber || 1));
   const failureAt = asMillis(data.billingFailureAt) || now;
   const quietEndsAt = asMillis(data.billingQuietEndsAt) || failureAt + DAY_MS;
-  const graceEndsAt = asMillis(data.billingGraceEndsAt)
+  const automaticGraceEndsAt = asMillis(data.billingGraceEndsAt)
     || (offenseNumber === 1 ? quietEndsAt + 7 * DAY_MS : quietEndsAt);
+  const manualGraceEndsAt = asMillis(data.billingAdminGraceEndsAt);
+  const graceEndsAt = Math.max(automaticGraceEndsAt, manualGraceEndsAt);
   const reviewAt = asMillis(data.billingDeletionReviewAt)
     || (offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS);
 
   if (now < quietEndsAt) {
     return { phase: "quiet", restricted: false, showNotice: false, serviceAccess: "full", offenseNumber, failureAt, quietEndsAt, graceEndsAt, reviewAt };
   }
-  if (offenseNumber === 1 && now < graceEndsAt) {
+  if ((offenseNumber === 1 || now < manualGraceEndsAt) && now < graceEndsAt) {
     return { phase: "grace", restricted: false, showNotice: true, serviceAccess: "full", offenseNumber, failureAt, quietEndsAt, graceEndsAt, reviewAt };
   }
   if (now < reviewAt) {
@@ -100,7 +102,9 @@ function resolvedSettingsPatch() {
     ServiceAccess: "full",
     BillingFailureAt: FieldValue.delete(),
     BillingGraceEndsAt: FieldValue.delete(),
+    BillingAdminGraceEndsAt: FieldValue.delete(),
     BillingDeletionReviewAt: FieldValue.delete(),
+    BillingReviewSnoozedUntil: FieldValue.delete(),
     BillingAmountDue: 0,
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -144,6 +148,7 @@ export async function registerPaymentFailure({
   const deletionReviewAt = continuingIncident
     ? asMillis(business.billingDeletionReviewAt) || (offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS)
     : offenseNumber >= 3 ? quietEndsAt : graceEndsAt + 7 * DAY_MS;
+  const adminGraceEndsAt = continuingIncident ? asMillis(business.billingAdminGraceEndsAt) : 0;
 
   const state = computeBillingState({
     billingPastDue: true,
@@ -151,6 +156,7 @@ export async function registerPaymentFailure({
     billingFailureAt: Timestamp.fromMillis(incidentFailureAt),
     billingQuietEndsAt: Timestamp.fromMillis(quietEndsAt),
     billingGraceEndsAt: Timestamp.fromMillis(graceEndsAt),
+    billingAdminGraceEndsAt: adminGraceEndsAt ? Timestamp.fromMillis(adminGraceEndsAt) : null,
     billingDeletionReviewAt: Timestamp.fromMillis(deletionReviewAt),
   });
 
@@ -170,6 +176,9 @@ export async function registerPaymentFailure({
     billingCurrency: text(currency || "usd").toLowerCase(),
     billingLastEventId: safeEventId,
     billingResolvedAt: FieldValue.delete(),
+    ...(adminGraceEndsAt
+      ? { billingAdminGraceEndsAt: Timestamp.fromMillis(adminGraceEndsAt) }
+      : { billingAdminGraceEndsAt: FieldValue.delete() }),
     updatedAt: FieldValue.serverTimestamp(),
   };
 
@@ -203,7 +212,10 @@ export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) 
     billingFailureAt: FieldValue.delete(),
     billingQuietEndsAt: FieldValue.delete(),
     billingGraceEndsAt: FieldValue.delete(),
+    billingAdminGraceEndsAt: FieldValue.delete(),
     billingDeletionReviewAt: FieldValue.delete(),
+    billingReviewSnoozedUntil: FieldValue.delete(),
+    billingReviewSnoozedBy: FieldValue.delete(),
     updatedAt: FieldValue.serverTimestamp(),
   };
 
