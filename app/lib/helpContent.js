@@ -37,7 +37,6 @@ export const HELP_SECTIONS = [
       "There is no monthly maximum on billable lead charges.",
       "A lead remains billable after it is accepted, moved, contacted, edited, or deleted because the charge occurs when the lead first enters Contacted Me.",
       "Stripe receives the monthly subscription and unique lead usage. Recent usage can take time to appear, and Stripe's finalized invoice controls the final charged amount.",
-      "The receptionist-minutes display is an operational usage indicator and is not the formula used by the Dashboard Amount Due card.",
     ],
     links: ["Dashboard", "Payment Terms", "Terms of Use"],
   },
