@@ -8,6 +8,10 @@ import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
 
+function normalizeBusinessName(value) {
+  return String(value || "").replace(/\s+/g, "-");
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -23,7 +27,8 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
 
   function updateField(event) {
-    setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
+    const value = event.target.name === "businessName" ? normalizeBusinessName(event.target.value) : event.target.value;
+    setForm((current) => ({ ...current, [event.target.name]: value }));
   }
 
   async function handleSubmit(event) {
@@ -81,7 +86,8 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
           <label className="block md:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Business name</span>
-            <input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} placeholder="Business name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
+            <input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} placeholder="Your business name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
+            <span className="mt-1.5 block text-xs font-semibold text-slate-400">Spaces are changed to dashes automatically for the account name.</span>
           </label>
           <label className="block md:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Your name</span>
@@ -124,6 +130,11 @@ export default function SignupPage() {
         <Link href="/login" className="mt-5 block text-center text-sm font-semibold text-slate-600 hover:text-slate-950">
           Already submitted? Log in
         </Link>
+        <div className="mt-4 flex justify-center gap-4 text-xs font-bold text-slate-500">
+          <Link href="/about" className="hover:text-slate-950">About</Link>
+          <Link href="/support" className="hover:text-slate-950">Support</Link>
+          <Link href="/privacy" className="hover:text-slate-950">Privacy</Link>
+        </div>
       </div>
     </main>
   );
