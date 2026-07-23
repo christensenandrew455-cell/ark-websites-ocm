@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
 import HelpCenter from "./HelpCenter";
@@ -29,6 +29,71 @@ function LoadingScreen({ message = "Loading client center…" }) {
         {message}
       </div>
     </main>
+  );
+}
+
+function PullToRefresh({ children }) {
+  const startY = useRef(0);
+  const tracking = useRef(false);
+  const [distance, setDistance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  function handleTouchStart(event) {
+    if (refreshing || window.scrollY > 0 || event.touches.length !== 1) return;
+    startY.current = event.touches[0].clientY;
+    tracking.current = true;
+  }
+
+  function handleTouchMove(event) {
+    if (!tracking.current || event.touches.length !== 1) return;
+    const delta = event.touches[0].clientY - startY.current;
+    if (delta <= 0) {
+      setDistance(0);
+      return;
+    }
+    if (event.cancelable) event.preventDefault();
+    setDistance(Math.min(96, delta * 0.45));
+  }
+
+  function handleTouchEnd() {
+    if (!tracking.current) return;
+    tracking.current = false;
+    if (distance >= 60) {
+      setRefreshing(true);
+      setDistance(72);
+      window.setTimeout(() => window.location.reload(), 120);
+      return;
+    }
+    setDistance(0);
+  }
+
+  const label = refreshing ? "Refreshing client center…" : distance >= 60 ? "Release to refresh" : "Pull to refresh";
+
+  return (
+    <div
+      className="relative min-h-screen overflow-x-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
+      {(distance > 0 || refreshing) && (
+        <div className="pointer-events-none fixed inset-x-0 top-2 z-[100] flex justify-center">
+          <div className="flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg">
+            {refreshing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+            {label}
+          </div>
+        </div>
+      )}
+      <div
+        style={{
+          transform: `translateY(${distance}px)`,
+          transition: tracking.current ? "none" : "transform 160ms ease-out",
+        }}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -100,7 +165,7 @@ function CustomerShell({ children, pathname, isPolicyPublic, signOutButton, prof
   const accountLabel = profile?.businessName || "Your Business";
 
   return (
-    <>
+    <PullToRefresh>
       <header className="border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-5 md:px-8 md:py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div className="min-w-0 leading-tight">
@@ -132,7 +197,7 @@ function CustomerShell({ children, pathname, isPolicyPublic, signOutButton, prof
       <NativeAppSetup />
       {!status.restricted && <HelpCenter />}
       {children}
-    </>
+    </PullToRefresh>
   );
 }
 
