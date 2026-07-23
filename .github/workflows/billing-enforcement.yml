@@ -12,11 +12,9 @@ jobs:
     steps:
       - name: Update overdue account access
         env:
-          APP_URL: ${{ secrets.OCM_APP_URL }}
           WORKFLOW_SECRET: ${{ secrets.BILLING_WORKFLOW_SECRET || secrets.OCM_REMINDER_SECRET }}
         run: |
-          test -n "$APP_URL"
           test -n "$WORKFLOW_SECRET"
           curl --fail --silent --show-error \
-            -X POST "${APP_URL%/}/api/workflows/billing-enforcement" \
+            -X POST "https://ark-websites-ocm.vercel.app/api/workflows/billing-enforcement" \
             -H "Authorization: Bearer $WORKFLOW_SECRET"
