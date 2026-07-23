@@ -44,6 +44,7 @@ export default function SettingsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isOpeningBilling, setIsOpeningBilling] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
@@ -116,19 +117,48 @@ export default function SettingsPanel() {
       const token = await user.getIdToken(true);
       const response = await fetch("/api/billing/create-portal-session", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || "Could not open secure billing settings.");
-      }
+      if (!response.ok || !data.url) throw new Error(data.error || "Could not open secure billing settings.");
       window.location.assign(data.url);
     } catch (billingError) {
       console.error(billingError);
       setError(billingError.message || "Could not open secure billing settings.");
       setIsOpeningBilling(false);
+    }
+  }
+
+  async function downloadClientData() {
+    if (!user || isDownloading) return;
+    setIsDownloading(true);
+    setError("");
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/account/export", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Client data could not be downloaded.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const fileName = disposition.match(/filename="([^"]+)"/)?.[1] || `${clientId}-client-data.json`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (downloadError) {
+      console.error(downloadError);
+      setError(downloadError.message || "Client data could not be downloaded.");
+    } finally {
+      setIsDownloading(false);
     }
   }
 
@@ -146,9 +176,7 @@ export default function SettingsPanel() {
             </Link>
           )}
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Settings</h1>
-          <p className="mt-2 hidden max-w-2xl leading-7 text-slate-600 sm:block">
-            Manage the basic business, billing, and notification details used by the client collection center.
-          </p>
+          <p className="mt-2 hidden max-w-2xl leading-7 text-slate-600 sm:block">Manage the basic business, billing, notification, and account-data controls used by the client center.</p>
         </header>
 
         {error && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700 sm:mb-5 sm:p-4">{error}</div>}
@@ -160,45 +188,15 @@ export default function SettingsPanel() {
           <>
             <form id="business-details" onSubmit={saveSettings} className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6 md:p-8">
               <h2 className="text-lg font-black sm:text-2xl">Business Details</h2>
-              <p className="mt-1 hidden text-sm leading-6 text-slate-600 sm:block">
-                These details identify the business and determine where important client notifications should go.
-              </p>
-
+              <p className="mt-1 hidden text-sm leading-6 text-slate-600 sm:block">These details identify the business and determine where important client notifications should go.</p>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-5">
-                <Field
-                  label="Business Name"
-                  value={form.BusinessName}
-                  onChange={(event) => updateField("BusinessName", event.target.value)}
-                />
-                <Field
-                  label="Owner Name"
-                  value={form.OwnerName}
-                  onChange={(event) => updateField("OwnerName", event.target.value)}
-                />
-                <Field
-                  label="Notification Email"
-                  type="email"
-                  value={form.AccountEmail}
-                  onChange={(event) => updateField("AccountEmail", event.target.value)}
-                  placeholder="owner@example.com"
-                />
-                <Field
-                  label="Notification Phone"
-                  type="tel"
-                  value={form.AccountPhone}
-                  onChange={(event) => updateField("AccountPhone", event.target.value)}
-                  placeholder="(555) 555-5555"
-                />
+                <Field label="Business Name" value={form.BusinessName} onChange={(event) => updateField("BusinessName", event.target.value)} />
+                <Field label="Owner Name" value={form.OwnerName} onChange={(event) => updateField("OwnerName", event.target.value)} />
+                <Field label="Notification Email" type="email" value={form.AccountEmail} onChange={(event) => updateField("AccountEmail", event.target.value)} placeholder="owner@example.com" />
+                <Field label="Notification Phone" type="tel" value={form.AccountPhone} onChange={(event) => updateField("AccountPhone", event.target.value)} placeholder="(555) 555-5555" />
               </div>
-
               <div className="mt-4 sm:mt-7 sm:flex sm:justify-end">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:bg-slate-400 sm:w-auto"
-                >
-                  {isSaving ? "Saving…" : "Save Settings"}
-                </button>
+                <button type="submit" disabled={isSaving} className="w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:bg-slate-400 sm:w-auto">{isSaving ? "Saving…" : "Save Settings"}</button>
               </div>
             </form>
 
@@ -206,46 +204,32 @@ export default function SettingsPanel() {
               <>
                 <section id="billing" className="scroll-mt-28 mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Secure billing</p>
-                      <h2 className="mt-1 text-lg font-black sm:text-2xl">Payment Method</h2>
-                    </div>
+                    <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Secure billing</p><h2 className="mt-1 text-lg font-black sm:text-2xl">Payment Method</h2></div>
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span>
                   </div>
                   <p className="mt-3 text-sm font-bold text-slate-800">{paymentLabel}</p>
                   <p className="mt-1 text-xs leading-5 text-slate-500">Stripe opens a secure hosted page where you can replace or update the card attached to this account.</p>
-                  <button
-                    type="button"
-                    onClick={openBillingPortal}
-                    disabled={isOpeningBilling}
-                    className="mt-4 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto"
-                  >
-                    {isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}
-                  </button>
+                  <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-4 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
+                </section>
+
+                <section id="account-data" className="scroll-mt-28 mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Your information</p>
+                  <h2 className="mt-1 text-lg font-black sm:text-2xl">Download Client Data</h2>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Download a JSON copy of your current Contacted Me records, accepted Clients, account details, and request history. Keep the file secure because it can contain personal information.</p>
+                  <button type="button" onClick={downloadClientData} disabled={isDownloading} className="mt-4 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button>
                 </section>
 
                 <section id="requests" className="scroll-mt-28 mt-4 grid grid-cols-2 gap-3 sm:mt-6">
-                  <Link href="/messages?type=change" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
-                    <p className="text-2xl font-black">Change</p>
-                    <h2 className="mt-1 text-sm font-black">Request a Change</h2>
-                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, data exports, or another routine update.</p>
-                  </Link>
-                  <Link href="/messages?type=help" className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6">
-                    <p className="text-2xl font-black text-red-600">Help</p>
-                    <h2 className="mt-1 text-sm font-black">Priority Support</h2>
-                    <p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls, missing lead data, or urgent account issues.</p>
-                  </Link>
+                  <Link href="/messages?type=change" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6"><p className="text-2xl font-black">Change</p><h2 className="mt-1 text-sm font-black">Request a Change</h2><p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Wording, voice, hours, business information, or another routine update.</p></Link>
+                  <Link href="/messages?type=help" className="rounded-2xl border border-red-200 bg-white p-4 shadow-sm active:scale-[0.99] sm:p-6"><p className="text-2xl font-black text-red-600">Help</p><h2 className="mt-1 text-sm font-black">Priority Support</h2><p className="mt-2 text-[10px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">Only for serious problems such as broken calls, missing lead data, or urgent account issues.</p></Link>
                 </section>
 
                 <section id="policies" className="scroll-mt-28 mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-6">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Learn and review</p>
                   <h2 className="mt-1 text-lg font-black sm:text-2xl">Docs, Terms, and Privacy</h2>
-                  <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Learn how the app works and review recurring billing, cancellation, data access, retention, and privacy practices.</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 sm:text-sm">Learn how the app works and review recurring billing, usage, cancellation, data access, retention, and privacy practices.</p>
                   <Link href="/docs" className="mt-4 block rounded-xl bg-slate-950 px-3 py-3 text-center text-xs font-black text-white hover:bg-slate-800 sm:text-sm">Open Docs and Learn More</Link>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <Link href="/terms" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Terms of Use</Link>
-                    <Link href="/privacy" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Privacy Policy</Link>
-                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2"><Link href="/terms" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 px-3 py-2.5 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">Privacy Policy</Link></div>
                 </section>
               </>
             )}
