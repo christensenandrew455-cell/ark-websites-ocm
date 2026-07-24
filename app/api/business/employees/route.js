@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
@@ -17,6 +18,10 @@ function iso(value) {
   if (typeof value.seconds === "number") return new Date(value.seconds * 1000).toISOString();
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
+function conversationId(clientId, collectionKey, leadId) {
+  return createHash("sha256").update(`${clientId}:${collectionKey}:${leadId}`).digest("hex").slice(0, 48);
 }
 
 async function authorizeOwner(request) {
@@ -152,15 +157,20 @@ export async function POST(request) {
         }
         employeeName = text(employeeSnapshot.data().employeeName);
       }
-      const recordRef = access.db.collection("ocmClients").doc(access.clientId).collection(collectionKey).doc(recordId);
+      const root = access.db.collection("ocmClients").doc(access.clientId);
+      const recordRef = root.collection(collectionKey).doc(recordId);
       if (!(await recordRef.get()).exists) return NextResponse.json({ error: "That lead or client no longer exists." }, { status: 404 });
-      await recordRef.set({
+      const assignment = {
         assignedEmployeeUid: employeeUid || null,
         assignedEmployeeName: employeeName || null,
         assignedAt: employeeUid ? FieldValue.serverTimestamp() : null,
         assignedBy: access.decoded.uid,
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      };
+      const batch = access.db.batch();
+      batch.set(recordRef, assignment, { merge: true });
+      batch.set(root.collection("leadConversations").doc(conversationId(access.clientId, collectionKey, recordId)), assignment, { merge: true });
+      await batch.commit();
       return NextResponse.json({ ok: true });
     }
 
