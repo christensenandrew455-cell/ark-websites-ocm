@@ -2,7 +2,7 @@
 	"appId": "com.arkwebsites.clientcenter",
 	"appName": "ARK Client Center",
 	"webDir": "mobile-shell",
-	"appendUserAgent": " ARKClientCenter/1.1",
+	"appendUserAgent": " ARKClientCenter/1.2",
 	"backgroundColor": "#f8fafc",
 	"loggingBehavior": "debug",
 	"server": {
