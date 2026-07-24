@@ -5,7 +5,7 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const INCLUDED_MINUTES = 1500;
+const MIN_BILLABLE_SECONDS = 20;
 const ALLOWED_OUTCOMES = new Set([
   "lead-saved",
   "max-duration-no-lead",
@@ -59,6 +59,11 @@ function numberWithin(value, minimum, maximum, fallback = minimum) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function isBillableCall({ durationSeconds, endReason }) {
+  if (durationSeconds < MIN_BILLABLE_SECONDS) return false;
+  return !["failed", "rejected", "system-error", "test"].includes(text(endReason).toLowerCase());
 }
 
 async function authorize(request, data) {
@@ -122,6 +127,7 @@ export async function POST(request) {
       ? requestedOutcome
       : leadSaved ? "lead-saved" : "ended-no-lead";
     const endReason = text(data.endReason).slice(0, 80);
+    const billable = isBillableCall({ durationSeconds, endReason });
     const timeZone = safeTimeZone(data.timeZone);
     const endedAtMs = Number.isFinite(Date.parse(data.endedAt)) ? Date.parse(data.endedAt) : now;
     const startedAtMs = Number.isFinite(Date.parse(data.startedAt))
@@ -147,15 +153,19 @@ export async function POST(request) {
       const sameCurrentMonth = currentUsage.monthKey === usageMonth;
       const nextCurrentSeconds = (sameCurrentMonth ? Number(currentUsage.totalSeconds || 0) : 0) + durationSeconds;
       const nextCurrentCalls = (sameCurrentMonth ? Number(currentUsage.totalCalls || 0) : 0) + 1;
+      const nextCurrentBillableCalls = (sameCurrentMonth ? Number(currentUsage.billableCalls || 0) : 0) + (billable ? 1 : 0);
 
       const monthUsage = monthUsageSnapshot.data() || {};
       const nextMonthSeconds = Number(monthUsage.totalSeconds || 0) + durationSeconds;
       const nextMonthCalls = Number(monthUsage.totalCalls || 0) + 1;
+      const nextMonthBillableCalls = Number(monthUsage.billableCalls || 0) + (billable ? 1 : 0);
 
       transaction.create(callRef, {
         callIdHash: stableHash(callId),
         durationSeconds,
         durationMinutes: durationSeconds / 60,
+        billable,
+        minimumBillableSeconds: MIN_BILLABLE_SECONDS,
         leadSaved,
         outcome,
         endReason,
@@ -169,18 +179,22 @@ export async function POST(request) {
       transaction.set(currentUsageRef, {
         monthKey: usageMonth,
         timeZone,
-        includedMinutes: INCLUDED_MINUTES,
+        billingUnit: "completed-call",
+        minimumBillableSeconds: MIN_BILLABLE_SECONDS,
         totalSeconds: nextCurrentSeconds,
         totalCalls: nextCurrentCalls,
+        billableCalls: nextCurrentBillableCalls,
         updatedAt: FieldValue.serverTimestamp(),
       });
 
       transaction.set(monthUsageRef, {
         monthKey: usageMonth,
         timeZone,
-        includedMinutes: INCLUDED_MINUTES,
+        billingUnit: "completed-call",
+        minimumBillableSeconds: MIN_BILLABLE_SECONDS,
         totalSeconds: nextMonthSeconds,
         totalCalls: nextMonthCalls,
+        billableCalls: nextMonthBillableCalls,
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
@@ -190,8 +204,10 @@ export async function POST(request) {
     return Response.json({
       ok: true,
       duplicate,
+      billable,
       monthKey: usageMonth,
-      includedMinutes: INCLUDED_MINUTES,
+      billingUnit: "completed-call",
+      minimumBillableSeconds: MIN_BILLABLE_SECONDS,
     });
   } catch (error) {
     console.error("Unable to process receptionist call usage", error);
