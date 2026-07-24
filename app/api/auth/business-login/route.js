@@ -3,7 +3,7 @@ import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
-const CUSTOMER_STATUSES = new Set(["pending_verification", "approved_pending_payment", "declined", "active", "disabled"]);
+const OWNER_STATUSES = new Set(["approved_pending_payment", "active", "disabled"]);
 const EMPLOYEE_STATUSES = new Set(["pending_owner_approval", "active", "disabled"]);
 
 async function resolveBusiness(db, identifier) {
@@ -19,7 +19,7 @@ export async function POST(request) {
   try {
     const { identifier, personName, password, loginMode } = await request.json();
     const normalizedIdentifier = String(identifier || "").trim();
-    const mode = String(loginMode || "solo").trim().toLowerCase() === "business" ? "business" : "solo";
+    const mode = String(loginMode || "owner").trim().toLowerCase() === "employee" ? "employee" : "owner";
     if (!normalizedIdentifier || !password) return NextResponse.json({ error: "Enter the required sign-in information." }, { status: 400 });
 
     const db = getAdminDb();
@@ -27,22 +27,15 @@ export async function POST(request) {
 
     if (!email.includes("@")) {
       const resolvedBusiness = await resolveBusiness(db, normalizedIdentifier);
-      if (!resolvedBusiness || !CUSTOMER_STATUSES.has(String(resolvedBusiness.data.status || ""))) return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
+      if (!resolvedBusiness || !OWNER_STATUSES.has(String(resolvedBusiness.data.status || ""))) return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
 
-      if (mode === "business") {
+      if (mode === "employee") {
         const personKey = normalizePersonKey(personName);
-        if (!personKey) return NextResponse.json({ error: "Enter your name for Business sign in." }, { status: 400 });
-        if (resolvedBusiness.data.billingPlan !== "business") return NextResponse.json({ error: "That account uses Solo sign in." }, { status: 409 });
-        const ownerKeys = new Set([normalizePersonKey(resolvedBusiness.data.ownerNameKey), normalizePersonKey(resolvedBusiness.data.ownerName)].filter(Boolean));
-        if (ownerKeys.has(personKey)) {
-          email = String(resolvedBusiness.data.accountEmail || "").toLowerCase();
-        } else {
-          const handleSnapshot = await db.collection("businesses").doc(resolvedBusiness.clientId).collection("employeeHandles").doc(personKey).get();
-          if (!handleSnapshot.exists) return NextResponse.json({ error: "Business, name, or password is incorrect." }, { status: 401 });
-          email = String(handleSnapshot.data().email || "").toLowerCase();
-        }
+        if (!personKey) return NextResponse.json({ error: "Enter your name for employee sign in." }, { status: 400 });
+        const handleSnapshot = await db.collection("businesses").doc(resolvedBusiness.clientId).collection("employeeHandles").doc(personKey).get();
+        if (!handleSnapshot.exists) return NextResponse.json({ error: "Business, employee name, or password is incorrect." }, { status: 401 });
+        email = String(handleSnapshot.data().email || "").toLowerCase();
       } else {
-        if (resolvedBusiness.data.billingPlan === "business") return NextResponse.json({ error: "Use Business sign in for this account." }, { status: 409 });
         email = String(resolvedBusiness.data.accountEmail || "").toLowerCase();
       }
     }
@@ -56,29 +49,34 @@ export async function POST(request) {
       cache: "no-store",
     });
     const passwordResult = await passwordResponse.json();
-    if (!passwordResponse.ok || !passwordResult.localId) return NextResponse.json({ error: mode === "business" ? "Business, name, or password is incorrect." : "Business name or password is incorrect." }, { status: 401 });
+    if (!passwordResponse.ok || !passwordResult.localId) return NextResponse.json({ error: mode === "employee" ? "Business, employee name, or password is incorrect." : "Business name or password is incorrect." }, { status: 401 });
 
     const auth = getAdminAuth();
     const userRecord = await auth.getUser(passwordResult.localId);
     const accountSnapshot = await db.collection("accounts").doc(userRecord.uid).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
     const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
-    const isEmployee = account.role === "employee" || account.accountType === ACCOUNT_TYPES.BUSINESS_EMPLOYEE;
+    const isEmployee = account.role === "employee" || account.accountType === ACCOUNT_TYPES.EMPLOYEE;
+
     if (!isAdmin && !accountSnapshot.exists) return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     if (!isAdmin && isEmployee && !EMPLOYEE_STATUSES.has(String(account.status || ""))) return NextResponse.json({ error: "This employee account is not available." }, { status: 403 });
-    if (!isAdmin && !isEmployee && (!CUSTOMER_STATUSES.has(String(account.status || "")) || !account.clientId)) return NextResponse.json({ error: "This account is not available." }, { status: 403 });
+    if (!isAdmin && !isEmployee && (!OWNER_STATUSES.has(String(account.status || "")) || !account.clientId)) return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     if (!isAdmin && account.status === "disabled") return NextResponse.json({ error: "This account is disabled." }, { status: 403 });
+    if (!isAdmin && mode === "employee" && !isEmployee) return NextResponse.json({ error: "Use Owner Sign In for this account." }, { status: 409 });
+    if (!isAdmin && mode === "owner" && isEmployee) return NextResponse.json({ error: "Use Employee Sign In for this account." }, { status: 409 });
 
     const claims = isAdmin
       ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }
       : isEmployee
         ? {
             role: "employee",
-            accountType: ACCOUNT_TYPES.BUSINESS_EMPLOYEE,
+            accountType: ACCOUNT_TYPES.EMPLOYEE,
             businessRole: "employee",
             businessClientId: account.clientId,
             accountStatus: account.status,
-            billingPlan: "business",
+            billingPlan: "standard",
+            messagesEnabled: account.messagesEnabled === true,
+            employeeMessagingEnabled: account.employeeMessagingEnabled === true,
             termsAccepted: account.termsAccepted === true,
             privacyAccepted: account.privacyAccepted === true,
             termsVersion: String(account.termsVersion || ""),
@@ -86,11 +84,14 @@ export async function POST(request) {
           }
         : {
             role: "customer",
-            accountType: account.accountType || (account.billingPlan === "business" ? ACCOUNT_TYPES.BUSINESS_OWNER : ACCOUNT_TYPES.SOLO_OWNER),
+            accountType: ACCOUNT_TYPES.OWNER,
             businessRole: "owner",
             clientId: account.clientId,
             accountStatus: account.status,
-            billingPlan: account.billingPlan || "solo",
+            billingPlan: "standard",
+            messagesEnabled: account.messagesEnabled === true,
+            employeesEnabled: account.employeesEnabled === true,
+            employeeMessagingEnabled: account.employeeMessagingEnabled === true,
             termsAccepted: account.termsAccepted === true,
             privacyAccepted: account.privacyAccepted === true,
             termsVersion: String(account.termsVersion || ""),
