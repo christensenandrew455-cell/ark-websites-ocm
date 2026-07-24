@@ -98,3 +98,81 @@ main .space-y-4 > section:nth-child(4)
   > div.mt-4:not(.grid) {
   display: none;
 }
+
+html.ark-dark {
+  --ark-top-safe-area-color: #020617;
+  color-scheme: dark;
+  background: #020617;
+}
+
+html.ark-dark body {
+  background: #020617;
+  color: #f8fafc;
+}
+
+html.ark-dark .bg-slate-50 {
+  background-color: #020617 !important;
+}
+
+html.ark-dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.ark-dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+html.ark-dark .bg-slate-200 {
+  background-color: #334155 !important;
+}
+
+html.ark-dark .bg-slate-950 {
+  background-color: #f8fafc !important;
+}
+
+html.ark-dark .bg-slate-950.text-white,
+html.ark-dark button.bg-slate-950,
+html.ark-dark a.bg-slate-950 {
+  color: #020617 !important;
+}
+
+html.ark-dark .text-slate-950,
+html.ark-dark .text-slate-900,
+html.ark-dark .text-slate-800,
+html.ark-dark .text-slate-700 {
+  color: #f8fafc !important;
+}
+
+html.ark-dark .text-slate-600,
+html.ark-dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+html.ark-dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+html.ark-dark .border-slate-100,
+html.ark-dark .border-slate-200,
+html.ark-dark .border-slate-300,
+html.ark-dark .border-slate-400 {
+  border-color: #334155 !important;
+}
+
+html.ark-dark input,
+html.ark-dark textarea,
+html.ark-dark select {
+  border-color: #475569 !important;
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+html.ark-dark input::placeholder,
+html.ark-dark textarea::placeholder {
+  color: #94a3b8;
+}
+
+html.ark-dark .hover\:bg-slate-50:hover,
+html.ark-dark .hover\:bg-slate-100:hover {
+  background-color: #1e293b !important;
+}
