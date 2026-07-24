@@ -4,10 +4,8 @@ import { Capacitor } from "@capacitor/core";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./components/AuthProvider";
-import { useBillingStatus } from "./components/BillingStatusProvider";
 import ClientStats from "./components/ClientStats";
 import EmployeeDashboard from "./components/EmployeeDashboard";
-import ReviewClientsNative from "./components/ReviewClientsNative";
 
 const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
 const PHONE_PERMISSION_REFRESH_KEY = "ark-phone-permission-refresh-v2";
@@ -88,7 +86,6 @@ function AdminDashboard({ user }) {
 }
 
 function CustomerHome() {
-  const { status } = useBillingStatus();
   useEffect(() => {
     const isAndroidApp = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
     if (!isAndroidApp || window.localStorage.getItem(PHONE_PERMISSION_REFRESH_KEY) === "done") return;
@@ -100,17 +97,7 @@ function CustomerHome() {
     }
   }, []);
 
-  return (
-    <div className={status.restricted ? "client-home billing-restricted-client-home" : "client-home"}>
-      <style>{`
-        .billing-restricted-client-home main > div > section.grid.grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
-        .billing-restricted-client-home main > div > section.grid.grid-cols-2 > button:nth-child(2) { display: none; }
-        .billing-restricted-client-home section:has(article > div.mt-4.grid) { display: none; }
-      `}</style>
-      {!status.restricted && <ClientStats />}
-      <ReviewClientsNative />
-    </div>
-  );
+  return <ClientStats />;
 }
 
 export default function HomePage() {
