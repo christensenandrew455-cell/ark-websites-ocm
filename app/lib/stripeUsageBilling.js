@@ -4,7 +4,6 @@ import {
   DEFAULT_RECEPTIONIST_PLAN_KEY,
   RECEPTIONIST_PLANS,
   getReceptionistPlan,
-  monthKeyInTimeZone,
   receptionistPlanSnapshot,
 } from "./receptionistPricing";
 
@@ -161,8 +160,6 @@ async function persistSubscription({ db, clientId, uid, subscription, plan, pric
     receptionistIncludedCalls: plan.includedCalls,
     receptionistMonthlyCents: plan.monthlyCents,
     receptionistOverageCents: plan.overageCents,
-    receptionistPlanStartedMonth: monthKeyInTimeZone(new Date(), "America/New_York"),
-    billingStartedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
   await Promise.all([
