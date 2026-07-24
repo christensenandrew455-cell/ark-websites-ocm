@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { billingPlanDefinition, normalizeBillingPlan } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,8 @@ export async function POST(request) {
     const businessName = String(account.businessName || clientId).trim();
     const ownerName = String(account.ownerName || "").trim();
     const accountPhone = String(account.accountPhone || "").trim();
+    const billingPlan = normalizeBillingPlan(account.billingPlan);
+    const plan = billingPlanDefinition(billingPlan);
     if (!clientId || !email || !businessName || !ownerName || !accountPhone) {
       return NextResponse.json({ error: "The approved account information is incomplete." }, { status: 409 });
     }
@@ -89,7 +92,7 @@ export async function POST(request) {
         email,
         name: ownerName,
         phone: accountPhone,
-        metadata: { uid: authorization.decoded.uid, clientId, businessName },
+        metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan },
       });
       customerId = customer.id;
       const update = { stripeCustomerId: customerId, updatedAt: FieldValue.serverTimestamp() };
@@ -97,6 +100,10 @@ export async function POST(request) {
         accountRef.set(update, { merge: true }),
         db.collection("businesses").doc(clientId).set(update, { merge: true }),
       ]);
+    } else {
+      await stripe.customers.update(customerId, {
+        metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan },
+      }).catch(() => null);
     }
 
     const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
@@ -113,10 +120,14 @@ export async function POST(request) {
         ownerName,
         accountEmail: email,
         accountPhone,
+        billingPlan,
+        planName: plan.name,
       },
     });
 
     await accountRef.set({
+      billingPlan,
+      billingPlanName: plan.name,
       stripeCheckoutSessionId: session.id,
       paymentSetupStatus: "in_progress",
       updatedAt: FieldValue.serverTimestamp(),
