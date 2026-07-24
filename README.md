@@ -33,7 +33,7 @@ android/                Generated Capacitor Android project
 
 ios/                    Capacitor iOS project and native resources
 scripts/                 Cross-platform mobile setup and asset generators
-.github/workflows/       Android build automation
+.github/workflows/       Build, deployment, and enforcement workflows
 ```
 
 ## File conventions
@@ -45,7 +45,7 @@ scripts/                 Cross-platform mobile setup and asset generators
 - Keep Firebase Admin code server-only. Do not import `firebase-admin` modules into client components.
 - Use `normalizeClientId` from `app/lib/valueUtils.js` whenever a business or client identifier becomes a Firestore document ID.
 - Use `toIsoString` or `serializeFirestoreValue` from `app/lib/valueUtils.js` when returning Firestore timestamps through an API.
-- Keep Terms, Privacy, Docs, About, and Support accessible for app-store review.
+- Keep Terms, Privacy, Docs, About, and Support publicly accessible for customers and app-store review.
 - Do not commit secrets, Firebase private keys, Stripe secrets, signing keys, or production environment files.
 
 ## Development
@@ -55,7 +55,7 @@ npm install
 npm run dev
 ```
 
-Build validation:
+Production build:
 
 ```bash
 npm run build
@@ -77,8 +77,6 @@ npm run mobile:ios:sync
 
 The setup scripts regenerate required native configuration and app assets. Make source changes in the maintained scripts or source directories rather than editing generated output without updating its generator.
 
-The Capacitor configuration currently has no remote server URL. Generated Android builds therefore open the local `mobile-shell` directory. A replacement hosted backend or a fully bundled mobile client must be configured before authentication, server API routes, Stripe, Telnyx, and scheduled server workflows can operate from the APK.
+## Deployment checks
 
-## Android checks
-
-Changes pushed to `main` run the Android build workflow. Treat a mobile change as complete after the APK build and artifact upload succeed.
+Changes pushed to `main` run the production smoke test, Vercel deployment status, and Android build workflow. Treat a change as complete only after the relevant checks pass.
