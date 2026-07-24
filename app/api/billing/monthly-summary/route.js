@@ -4,11 +4,13 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { TERMS_VERSION } from "../../../lib/legal";
 import {
+  BILLING_VERSION,
+  billingPlanDefinition,
   ensureCustomerBillingSubscription,
-  MONTHLY_BASE_CENTS,
-  PER_LEAD_CENTS,
+  normalizeBillingPlan,
+  PER_OVERAGE_CENTS,
+  reportBillableConversation,
   reportBillableLead,
 } from "../../../lib/stripeUsageBilling";
 
@@ -51,7 +53,7 @@ function zonedDateToUtc(year, month, day, timeZone) {
   return adjusted - secondOffset;
 }
 
-function monthWindow(timeZone) {
+function calendarMonthWindow(timeZone) {
   const now = zoneParts(new Date(), timeZone);
   const nextYear = now.month === 12 ? now.year + 1 : now.year;
   const nextMonth = now.month === 12 ? 1 : now.month + 1;
@@ -62,15 +64,46 @@ function monthWindow(timeZone) {
   };
 }
 
+async function resolveBillingWindow({ business, account, timeZone }) {
+  const fallback = calendarMonthWindow(timeZone);
+  const subscriptionId = text(business.stripeSubscriptionId || account.stripeSubscriptionId);
+  if (!process.env.STRIPE_SECRET_KEY || !subscriptionId) return fallback;
+
+  try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data"] });
+    const periods = (subscription.items?.data || [])
+      .map((item) => ({
+        startMs: Number(item.current_period_start || subscription.current_period_start || 0) * 1000,
+        endMs: Number(item.current_period_end || subscription.current_period_end || 0) * 1000,
+      }))
+      .filter((period) => period.startMs > 0 && period.endMs > period.startMs);
+    if (!periods.length) return fallback;
+
+    const startMs = Math.max(...periods.map((period) => period.startMs));
+    const endMs = Math.min(...periods.map((period) => period.endMs));
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return fallback;
+
+    return {
+      monthKey: new Date(startMs).toISOString().slice(0, 10),
+      startMs,
+      endMs,
+    };
+  } catch (error) {
+    console.warn("Unable to read the Stripe billing period; using the calendar month", error);
+    return fallback;
+  }
+}
+
 function leadTimestamp(data) {
   return toMillis(data.createdAt || data.contactedAt || data.acceptedAt || data.occurredAt || data.updatedAt);
 }
 
-function leadKey(clientId, leadId) {
-  return createHash("sha256").update(`${clientId}:${leadId}`).digest("hex").slice(0, 48);
+function usageKey(clientId, sourceId) {
+  return createHash("sha256").update(`${clientId}:${sourceId}`).digest("hex").slice(0, 48);
 }
 
-function addLead(unique, id, occurredAt, startMs, endMs) {
+function addUsage(unique, id, occurredAt, startMs, endMs) {
   const cleanId = text(id);
   if (!cleanId || !occurredAt || occurredAt < startMs || occurredAt >= endMs) return;
   const existing = unique.get(cleanId);
@@ -87,25 +120,38 @@ async function loadMonthlyLeads(db, clientId, startMs, endMs) {
 
   const unique = new Map();
   for (const document of [...contactedSnapshot.docs, ...clientsSnapshot.docs]) {
-    addLead(unique, document.id, leadTimestamp(document.data()), startMs, endMs);
+    addUsage(unique, document.id, leadTimestamp(document.data()), startMs, endMs);
   }
   for (const document of statsSnapshot.docs) {
     const data = document.data();
     if (text(data.eventType).toLowerCase() !== "contacted") continue;
     const sourceId = text(data.sourceId) || document.id.replace(/^contacted:/, "");
-    addLead(unique, sourceId, leadTimestamp(data), startMs, endMs);
+    addUsage(unique, sourceId, leadTimestamp(data), startMs, endMs);
   }
 
   return [...unique.values()].sort((first, second) => first.occurredAt - second.occurredAt);
 }
 
-async function reconcileStripe({ db, auth, business, account, leads }) {
-  if (!process.env.STRIPE_SECRET_KEY) return { status: "not-configured", synced: 0 };
+async function loadMonthlyConversations(db, clientId, startMs, endMs) {
+  const snapshot = await db.collection("ocmClients").doc(clientId).collection("billingConversationEvents").get();
+  const unique = new Map();
+  for (const document of snapshot.docs) {
+    const data = document.data();
+    const conversationId = text(data.conversationId || data.leadId || document.id);
+    const occurredAt = toMillis(data.startedAt || data.occurredAt || data.createdAt);
+    addUsage(unique, conversationId, occurredAt, startMs, endMs);
+  }
+  return [...unique.values()].sort((first, second) => first.occurredAt - second.occurredAt);
+}
+
+async function reconcileStripe({ db, auth, business, account, planKey, leads, conversations }) {
+  if (!process.env.STRIPE_SECRET_KEY) return { status: "not-configured", leadsSynced: 0, conversationsSynced: 0 };
+
   const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
   const paymentMethodId = text(business.stripePaymentMethodId || account.stripePaymentMethodId);
-  const acceptedCurrentTerms = account.termsAccepted === true && text(account.termsVersion) === TERMS_VERSION;
-  if (!customerId || !paymentMethodId) return { status: "payment-method-required", synced: 0 };
-  if (!acceptedCurrentTerms) return { status: "terms-required", synced: 0 };
+  const acceptedCurrentTerms = account.termsAccepted === true;
+  if (!customerId || !paymentMethodId) return { status: "payment-method-required", leadsSynced: 0, conversationsSynced: 0 };
+  if (!acceptedCurrentTerms) return { status: "terms-required", leadsSynced: 0, conversationsSynced: 0 };
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const subscription = await ensureCustomerBillingSubscription({
@@ -116,14 +162,16 @@ async function reconcileStripe({ db, auth, business, account, leads }) {
     paymentMethodId,
     businessName: text(business.businessName || account.businessName || auth.clientId),
     uid: auth.decodedToken.uid,
+    billingPlan: planKey,
     existingSubscriptionId: text(business.stripeSubscriptionId || account.stripeSubscriptionId),
   });
 
-  let synced = 0;
+  let leadsSynced = 0;
   for (const lead of leads) {
-    const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingLeadEvents").doc(leadKey(auth.clientId, lead.id));
+    const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingLeadEvents").doc(usageKey(auth.clientId, lead.id));
     const record = await recordRef.get();
-    if (record.exists && record.data().stripeReported === true) continue;
+    const recordData = record.exists ? record.data() : {};
+    if (recordData.stripeReported === true && text(recordData.stripePricingVersion) === BILLING_VERSION) continue;
 
     await reportBillableLead({
       stripe,
@@ -136,14 +184,43 @@ async function reconcileStripe({ db, auth, business, account, leads }) {
       leadId: lead.id,
       occurredAt: new Date(lead.occurredAt),
       stripeReported: true,
+      stripePricingVersion: BILLING_VERSION,
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
       reportedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    synced += 1;
+    leadsSynced += 1;
   }
 
-  return { status: subscription.status, synced };
+  let conversationsSynced = 0;
+  if (planKey === "solo_pro") {
+    for (const conversation of conversations) {
+      const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingConversationEvents").doc(usageKey(auth.clientId, conversation.id));
+      const record = await recordRef.get();
+      const recordData = record.exists ? record.data() : {};
+      if (recordData.stripeReported === true && text(recordData.stripePricingVersion) === BILLING_VERSION) continue;
+
+      await reportBillableConversation({
+        stripe,
+        customerId,
+        clientId: auth.clientId,
+        conversationId: conversation.id,
+        occurredAt: conversation.occurredAt,
+      });
+      await recordRef.set({
+        conversationId: conversation.id,
+        startedAt: new Date(conversation.occurredAt),
+        stripeReported: true,
+        stripePricingVersion: BILLING_VERSION,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscription.id,
+        reportedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      conversationsSynced += 1;
+    }
+  }
+
+  return { status: subscription.status, leadsSynced, conversationsSynced };
 }
 
 export async function GET(request) {
@@ -167,36 +244,79 @@ export async function GET(request) {
 
     const business = businessSnapshot.data();
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
+    const planKey = normalizeBillingPlan(account.billingPlan || business.billingPlan);
+    const plan = billingPlanDefinition(planKey);
     const timeZone = text(receptionistSnapshot.exists ? receptionistSnapshot.data().timeZone : "") || "America/New_York";
-    const window = monthWindow(timeZone);
-    const leads = await loadMonthlyLeads(db, auth.clientId, window.startMs, window.endMs);
-    const amountDue = MONTHLY_BASE_CENTS + leads.length * PER_LEAD_CENTS;
+    const window = await resolveBillingWindow({ business, account, timeZone });
 
-    let stripe = { status: "not-synced", synced: 0 };
+    const [leads, conversations] = await Promise.all([
+      loadMonthlyLeads(db, auth.clientId, window.startMs, window.endMs),
+      plan.conversationsEnabled
+        ? loadMonthlyConversations(db, auth.clientId, window.startMs, window.endMs)
+        : Promise.resolve([]),
+    ]);
+
+    const leadOverageCount = Math.max(0, leads.length - plan.includedLeads);
+    const conversationOverageCount = plan.conversationsEnabled
+      ? Math.max(0, conversations.length - plan.includedConversations)
+      : 0;
+    const leadOverageCents = leadOverageCount * PER_OVERAGE_CENTS;
+    const conversationOverageCents = conversationOverageCount * PER_OVERAGE_CENTS;
+    const overageCents = leadOverageCents + conversationOverageCents;
+    const amountDue = plan.monthlyBaseCents + overageCents;
+
+    let stripe = { status: "not-synced", leadsSynced: 0, conversationsSynced: 0 };
     try {
-      stripe = await reconcileStripe({ db, auth, business, account, leads });
+      stripe = await reconcileStripe({ db, auth, business, account, planKey, leads, conversations });
     } catch (stripeError) {
       console.error("Unable to reconcile monthly Stripe billing", stripeError);
-      stripe = { status: "sync-error", synced: 0 };
+      stripe = { status: "sync-error", leadsSynced: 0, conversationsSynced: 0 };
     }
 
-    await businessRef.set({
+    const summaryUpdate = {
+      billingPlan: planKey,
+      billingPlanName: plan.name,
+      billingVersion: BILLING_VERSION,
       currentBillingMonth: window.monthKey,
       currentMonthLeadCount: leads.length,
+      currentMonthConversationCount: conversations.length,
+      currentMonthLeadOverageCount: leadOverageCount,
+      currentMonthConversationOverageCount: conversationOverageCount,
+      currentMonthOverageCents: overageCents,
       currentMonthAmountDue: amountDue,
       currentMonthCurrency: "usd",
       billingSummaryUpdatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    };
+    await Promise.all([
+      businessRef.set(summaryUpdate, { merge: true }),
+      accountRef.set(summaryUpdate, { merge: true }),
+    ]);
 
     return NextResponse.json({
       monthKey: window.monthKey,
+      periodStart: new Date(window.startMs).toISOString(),
+      periodEnd: new Date(window.endMs).toISOString(),
+      billingPlan: planKey,
+      planName: plan.name,
       amountDue,
       currency: "usd",
+      monthlyBaseCents: plan.monthlyBaseCents,
+      overageCents,
+      perOverageCents: PER_OVERAGE_CENTS,
       leadCount: leads.length,
-      monthlyBaseCents: MONTHLY_BASE_CENTS,
-      perLeadCents: PER_LEAD_CENTS,
+      includedLeads: plan.includedLeads,
+      freeLeadsRemaining: Math.max(0, plan.includedLeads - leads.length),
+      leadOverageCount,
+      leadOverageCents,
+      conversationsEnabled: plan.conversationsEnabled,
+      conversationCount: conversations.length,
+      includedConversations: plan.includedConversations,
+      freeConversationsRemaining: Math.max(0, plan.includedConversations - conversations.length),
+      conversationOverageCount,
+      conversationOverageCents,
       stripeStatus: stripe.status,
-      stripeLeadsSynced: stripe.synced,
+      stripeLeadsSynced: stripe.leadsSynced,
+      stripeConversationsSynced: stripe.conversationsSynced,
     });
   } catch (error) {
     console.error("Unable to load monthly billing summary", error);
