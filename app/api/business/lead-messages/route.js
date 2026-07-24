@@ -116,7 +116,17 @@ async function loadMessages(access, conversationKey) {
   const snapshot = await access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations").doc(conversationKey).collection("messages").orderBy("createdAt", "asc").limit(250).get();
   return snapshot.docs.map((document) => {
     const data = document.data();
-    return { id: document.id, direction: text(data.direction || "outbound"), body: text(data.body), senderName: text(data.senderName), senderRole: text(data.senderRole), deliveryStatus: text(data.deliveryStatus), createdAt: iso(data.createdAt) };
+    return {
+      id: document.id,
+      direction: text(data.direction || "outbound"),
+      body: text(data.body),
+      senderName: text(data.senderName),
+      senderRole: text(data.senderRole),
+      deliveryStatus: text(data.deliveryStatus),
+      providerErrorCode: text(data.providerErrorCode),
+      providerError: text(data.providerError),
+      createdAt: iso(data.createdAt),
+    };
   });
 }
 
@@ -160,23 +170,32 @@ export async function GET(request) {
 
 async function sendThroughTelnyx({ from, to, message }) {
   const apiKey = text(process.env.TELNYX_API_KEY);
-  if (!apiKey || !from) return { status: "provider-not-configured", providerMessageId: "", providerError: "The connected business number is not configured for Telnyx messaging." };
+  if (!apiKey || !from) return { status: "provider-not-configured", providerMessageId: "", providerErrorCode: "", providerError: "The connected business number is not configured for Telnyx messaging." };
   try {
+    const appOrigin = text(process.env.NEXT_PUBLIC_APP_URL).replace(/\/$/, "");
+    const webhookUrl = appOrigin ? `${appOrigin}/api/business/lead-messages/incoming` : "";
     const response = await fetch("https://api.telnyx.com/v2/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ from, to: normalizePhone(to), text: message }),
+      body: JSON.stringify({
+        from,
+        to: normalizePhone(to),
+        text: message,
+        use_profile_webhooks: true,
+        ...(webhookUrl ? { webhook_url: webhookUrl } : {}),
+      }),
       cache: "no-store",
     });
     const result = await response.json().catch(() => ({}));
     const providerMessageId = text(result?.data?.id || result?.id);
-    if (!response.ok) {
-      const providerError = text(result?.errors?.[0]?.detail || result?.errors?.[0]?.title || result?.error || `Telnyx returned ${response.status}.`);
-      return { status: "provider-error", providerMessageId, providerError };
-    }
-    return { status: "sent", providerMessageId };
+    const destination = Array.isArray(result?.data?.to) ? result.data.to[0] : null;
+    const firstError = Array.isArray(result?.errors) ? result.errors[0] : Array.isArray(result?.data?.errors) ? result.data.errors[0] : null;
+    const providerErrorCode = text(firstError?.code);
+    const providerError = text(firstError?.detail || firstError?.title || result?.error);
+    if (!response.ok) return { status: "provider-error", providerMessageId, providerErrorCode, providerError: providerError || `Telnyx returned ${response.status}.` };
+    return { status: text(destination?.status) || "queued", providerMessageId, providerErrorCode, providerError };
   } catch (error) {
-    return { status: "provider-error", providerMessageId: "", providerError: text(error.message) };
+    return { status: "provider-error", providerMessageId: "", providerErrorCode: "", providerError: text(error.message) };
   }
 }
 
@@ -211,11 +230,26 @@ export async function POST(request) {
       senderRole: access.isEmployee ? "employee" : "owner",
       deliveryStatus: provider.status,
       providerMessageId: provider.providerMessageId || null,
+      providerErrorCode: provider.providerErrorCode || null,
       providerError: provider.providerError || null,
       providerFrom: access.fromPhone,
       providerTo: loaded.lead.phoneNormalized,
       createdAt: FieldValue.serverTimestamp(),
     });
+    if (provider.providerMessageId) {
+      batch.set(root.collection("telnyxMessageIndex").doc(provider.providerMessageId), {
+        providerMessageId: provider.providerMessageId,
+        conversationId: key,
+        messageId: messageRef.id,
+        fromPhone: access.fromPhone,
+        toPhone: loaded.lead.phoneNormalized,
+        deliveryStatus: provider.status,
+        providerErrorCode: provider.providerErrorCode || null,
+        providerError: provider.providerError || null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
     batch.set(conversationRef, {
       conversationId: key,
       leadId,
@@ -234,8 +268,12 @@ export async function POST(request) {
     }, { merge: true });
     await batch.commit();
 
-    const notice = provider.status === "sent" ? "Message sent." : provider.status === "provider-not-configured" ? "The message was saved, but this business number is not configured for Telnyx messaging." : "The message was saved, but Telnyx reported an error.";
-    return NextResponse.json({ ok: true, conversationId: key, newConversation: !existingConversation.exists, deliveryStatus: provider.status, notice });
+    const notice = provider.status === "provider-not-configured"
+      ? "The message was saved, but this business number is not configured for Telnyx messaging."
+      : provider.status === "provider-error"
+        ? `Telnyx rejected the message${provider.providerErrorCode ? ` (${provider.providerErrorCode})` : ""}: ${provider.providerError || "Unknown error."}`
+        : `Message ${provider.status || "queued"}.`;
+    return NextResponse.json({ ok: true, conversationId: key, newConversation: !existingConversation.exists, deliveryStatus: provider.status, providerErrorCode: provider.providerErrorCode, providerError: provider.providerError, notice });
   } catch (error) {
     console.error("Unable to send lead message", error);
     return NextResponse.json({ error: "Could not send this message." }, { status: 500 });
