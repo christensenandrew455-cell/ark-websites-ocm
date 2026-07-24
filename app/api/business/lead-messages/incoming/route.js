@@ -45,26 +45,87 @@ function telnyxSignatureMatches(request, rawBody) {
 function parsePayload(body) {
   const event = body?.data || body;
   const payload = event?.payload || body?.payload || body;
-  const to = Array.isArray(payload?.to) ? payload.to[0]?.phone_number || payload.to[0]?.number : payload?.to?.phone_number || payload?.to;
+  const destination = Array.isArray(payload?.to) ? payload.to[0] : payload?.to;
+  const to = destination?.phone_number || destination?.number || destination;
   const from = payload?.from?.phone_number || payload?.from?.number || payload?.from;
+  const firstError = Array.isArray(payload?.errors) ? payload.errors[0] : null;
   return {
     eventType: text(event?.event_type || body?.event_type),
     toPhone: normalizePhone(to || body?.toPhone || body?.recipient),
     fromPhone: normalizePhone(from || body?.fromPhone || body?.sender),
     messageBody: text(payload?.text || payload?.body || body?.message || body?.body).slice(0, 1600),
     providerMessageId: text(payload?.id || body?.providerMessageId || body?.messageId),
+    deliveryStatus: text(destination?.status || payload?.status),
+    providerErrorCode: text(firstError?.code),
+    providerError: text(firstError?.detail || firstError?.title),
     senderName: text(body?.senderName),
     clientId: text(body?.clientId),
     providedConversationId: text(body?.conversationId),
   };
 }
-async function resolveClientId(db, suppliedClientId, toPhone) {
+async function resolveClientId(db, suppliedClientId, businessPhone) {
   if (suppliedClientId) return suppliedClientId;
-  if (!toPhone) return "";
-  const normalizedMatch = await db.collection("connections").where("receptionistPhoneNormalized", "==", toPhone).limit(1).get();
+  if (!businessPhone) return "";
+  const normalizedMatch = await db.collection("connections").where("receptionistPhoneNormalized", "==", businessPhone).limit(1).get();
   if (!normalizedMatch.empty) return normalizedMatch.docs[0].id;
-  const rawMatch = await db.collection("connections").where("receptionistPhone", "==", toPhone).limit(1).get();
+  const rawMatch = await db.collection("connections").where("receptionistPhone", "==", businessPhone).limit(1).get();
   return rawMatch.empty ? "" : rawMatch.docs[0].id;
+}
+async function findOutboundMessage(db, clientId, providerMessageId) {
+  const root = db.collection("ocmClients").doc(clientId);
+  const indexRef = root.collection("telnyxMessageIndex").doc(providerMessageId);
+  const indexSnapshot = await indexRef.get();
+  if (indexSnapshot.exists) {
+    const index = indexSnapshot.data();
+    const conversationKey = text(index.conversationId);
+    const messageId = text(index.messageId);
+    if (conversationKey && messageId) {
+      return {
+        messageRef: root.collection("leadConversations").doc(conversationKey).collection("messages").doc(messageId),
+        indexRef,
+        conversationKey,
+        messageId,
+      };
+    }
+  }
+
+  const conversations = await root.collection("leadConversations").get();
+  for (const conversation of conversations.docs) {
+    const match = await conversation.ref.collection("messages").where("providerMessageId", "==", providerMessageId).limit(1).get();
+    if (match.empty) continue;
+    const message = match.docs[0];
+    return { messageRef: message.ref, indexRef, conversationKey: conversation.id, messageId: message.id };
+  }
+  return null;
+}
+async function recordDeliveryUpdate(db, event) {
+  if (!event.providerMessageId) return { matched: false, reason: "missing-message-id" };
+  const clientId = await resolveClientId(db, event.clientId, event.fromPhone);
+  if (!clientId) return { matched: false, reason: "business-not-found" };
+  const matched = await findOutboundMessage(db, clientId, event.providerMessageId);
+  if (!matched) return { matched: false, reason: "message-not-found", clientId };
+
+  const status = event.deliveryStatus || (event.eventType === "message.sent" ? "sent" : "delivery-unconfirmed");
+  const patch = {
+    deliveryStatus: status,
+    providerErrorCode: event.providerErrorCode || null,
+    providerError: event.providerError || null,
+    providerEventType: event.eventType,
+    providerUpdatedAt: FieldValue.serverTimestamp(),
+  };
+  const batch = db.batch();
+  batch.set(matched.messageRef, patch, { merge: true });
+  batch.set(matched.indexRef, {
+    providerMessageId: event.providerMessageId,
+    conversationId: matched.conversationKey,
+    messageId: matched.messageId,
+    fromPhone: event.fromPhone || null,
+    toPhone: event.toPhone || null,
+    ...patch,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await batch.commit();
+  return { matched: true, clientId, conversationId: matched.conversationKey, messageId: matched.messageId, deliveryStatus: status };
 }
 async function resolveConversation(db, clientId, fromPhone, suppliedConversationId) {
   const root = db.collection("ocmClients").doc(clientId);
@@ -118,15 +179,20 @@ export async function POST(request) {
 
   try {
     const body = JSON.parse(rawBody || "{}");
-    const inbound = parsePayload(body);
-    if (inbound.eventType && inbound.eventType !== "message.received") return NextResponse.json({ ok: true, ignored: true });
-    if (!inbound.messageBody || !inbound.fromPhone) return NextResponse.json({ error: "An inbound phone number and message are required." }, { status: 400 });
-
+    const event = parsePayload(body);
     const db = getAdminDb();
-    const clientId = await resolveClientId(db, inbound.clientId, inbound.toPhone);
+
+    if (event.eventType === "message.sent" || event.eventType === "message.finalized") {
+      const result = await recordDeliveryUpdate(db, event);
+      return NextResponse.json({ ok: true, eventType: event.eventType, providerMessageId: event.providerMessageId, ...result });
+    }
+    if (event.eventType && event.eventType !== "message.received") return NextResponse.json({ ok: true, ignored: true, eventType: event.eventType });
+    if (!event.messageBody || !event.fromPhone) return NextResponse.json({ error: "An inbound phone number and message are required." }, { status: 400 });
+
+    const clientId = await resolveClientId(db, event.clientId, event.toPhone);
     if (!clientId) return NextResponse.json({ error: "No ARK business is assigned to that Telnyx number." }, { status: 404 });
 
-    const resolved = await resolveConversation(db, clientId, inbound.fromPhone, inbound.providedConversationId);
+    const resolved = await resolveConversation(db, clientId, event.fromPhone, event.providedConversationId);
     if (!resolved) return NextResponse.json({ error: "No lead in this business matches the incoming phone number." }, { status: 404 });
 
     const conversation = resolved.conversation;
@@ -144,19 +210,19 @@ export async function POST(request) {
     }
     batch.set(messageRef, {
       direction: "inbound",
-      body: inbound.messageBody,
-      senderName: inbound.senderName || conversation.leadName || inbound.fromPhone,
+      body: event.messageBody,
+      senderName: event.senderName || conversation.leadName || event.fromPhone,
       senderRole: "lead",
-      providerMessageId: inbound.providerMessageId || null,
-      providerFrom: inbound.fromPhone,
-      providerTo: inbound.toPhone || null,
+      providerMessageId: event.providerMessageId || null,
+      providerFrom: event.fromPhone,
+      providerTo: event.toPhone || null,
       deliveryStatus: "received",
       createdAt: FieldValue.serverTimestamp(),
     });
     batch.set(resolved.ref, {
       ...conversation,
-      businessPhone: inbound.toPhone || conversation.businessPhone || null,
-      lastMessage: inbound.messageBody,
+      businessPhone: event.toPhone || conversation.businessPhone || null,
+      lastMessage: event.messageBody,
       lastMessageDirection: "inbound",
       lastMessageAt: FieldValue.serverTimestamp(),
       ownerUnreadCount: FieldValue.increment(1),
@@ -168,13 +234,13 @@ export async function POST(request) {
 
     let notification = { attempted: 0, sent: 0, failed: 0 };
     try {
-      notification = await sendInboundMessageNotification({ db, clientId, conversationId: resolved.conversationId, conversation, messageBody: inbound.messageBody });
+      notification = await sendInboundMessageNotification({ db, clientId, conversationId: resolved.conversationId, conversation, messageBody: event.messageBody });
     } catch (notificationError) {
       console.error("Unable to notify account about inbound lead message", notificationError);
     }
     return NextResponse.json({ ok: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, notification });
   } catch (error) {
-    console.error("Unable to record inbound Telnyx message", error);
-    return NextResponse.json({ error: "Could not record the inbound message." }, { status: 500 });
+    console.error("Unable to process Telnyx messaging webhook", error);
+    return NextResponse.json({ error: "Could not process the messaging webhook." }, { status: 500 });
   }
 }
