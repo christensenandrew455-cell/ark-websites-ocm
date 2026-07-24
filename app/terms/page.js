@@ -14,14 +14,18 @@ const sections = [
   },
   {
     id: "paid-service",
-    title: "2. Ongoing paid service and pricing",
+    title: "2. Ongoing paid service and receptionist pricing",
     body: (
       <>
-        <p>The Service is provided on an ongoing paid basis and continues until canceled or terminated under these Terms. You authorize Stripe to charge the payment method associated with the account for recurring service fees, billable lead usage, taxes where applicable, and other charges separately agreed in writing.</p>
-        <p><strong>Monthly service fee:</strong> The recurring base service fee is $100 USD per month.</p>
-        <p><strong>Billable leads:</strong> A $10 USD usage charge applies each time a unique lead record is first added to the account’s Contacted Me area. The lead is billable when it is added to Contacted Me, whether or not the business later accepts, contacts, converts, moves, edits, or deletes that lead. A unique lead record is charged once. There is no monthly maximum on billable lead charges.</p>
-        <p><strong>Monthly amount shown in the app:</strong> The customer dashboard may show the current amount due for the month based on the $100 monthly fee plus recorded billable leads. Recent usage can take time to reach Stripe, and Stripe’s finalized invoice, credits, taxes, adjustments, disputes, or payment processing records control the final amount charged.</p>
-        <p><strong>What the service charge supports:</strong> The recurring and usage charges support the Service as a whole, including storage, AI usage, maintenance, upkeep, testing, third-party subscriptions, labor, the monthly business phone-number cost, and phone usage. These descriptions explain what the customer is paying for; they do not create separate itemized rates unless a separate order, invoice, or written agreement expressly states one.</p>
+        <p>The Service is provided on an ongoing paid basis and continues until canceled or terminated under these Terms. You authorize Stripe to charge the payment method associated with the account for the selected monthly receptionist plan, completed-call overage, taxes where applicable, and other charges separately agreed in writing.</p>
+        <p><strong>Starter month:</strong> Unless an account-specific written agreement says otherwise, a new account begins on the Starter 25 plan at $49 USD per month. Starter 25 includes 25 completed calls during the monthly billing period. Calls above the included amount are charged at $1.50 USD each.</p>
+        <p><strong>Other plans:</strong> ARK offers additional plans with a higher monthly payment, a larger included-call allowance, and a lower per-call overage rate. The plan name, monthly fee, included calls, and overage rate displayed in the signed-in Dashboard for the account are the account’s current pricing terms. Custom high-volume pricing applies only when separately confirmed in writing.</p>
+        <p><strong>Completed call:</strong> A completed call is generally a legitimate receptionist call lasting at least 20 seconds. Known tests, immediate hang-ups, failed or rejected calls, calls caused by a documented system error, and other calls marked non-billable by ARK do not use the included-call allowance. ARK may use reasonable anti-abuse and duplicate-detection controls when classifying calls.</p>
+        <p><strong>Overage:</strong> After the included-call allowance is used, each additional completed call is charged at the overage rate assigned to the current plan. Unless an account-specific written agreement states a cap, overage charges do not have a monthly maximum.</p>
+        <p><strong>Plan recommendations:</strong> After the first full month, the Dashboard may use the previous month’s completed-call total to show three plan choices: a lower-monthly option, a recommended option, and an option with more included calls or a lower overage rate. Recommendations are estimates and do not guarantee that a plan will be cheapest in a future month.</p>
+        <p><strong>Plan changes:</strong> A plan selected in the Dashboard is scheduled for the next calendar billing month. The current month’s plan remains locked through that month, and changing a future plan does not erase or reduce completed calls or overage already recorded. ARK does not automatically change the plan solely because usage rises or falls unless the customer separately authorizes automatic changes.</p>
+        <p><strong>Monthly amount shown in the app:</strong> The Dashboard may show calls used, calls remaining, overage calls, overage dollars, and an estimated current amount due. Recent usage can take time to reach Stripe, and Stripe’s finalized invoice, credits, taxes, adjustments, disputes, or payment-processing records control the final amount charged.</p>
+        <p><strong>What service charges support:</strong> The recurring and usage charges support the Service as a whole, including storage, AI usage, maintenance, upkeep, testing, third-party subscriptions, labor, the monthly business phone-number cost, and phone usage. These descriptions explain what the customer is paying for; they do not create separate itemized rates unless a separate order, invoice, or written agreement expressly states one.</p>
         <p>Taxes, custom work, provider pass-through charges, or other fees apply only when separately disclosed or agreed. An account-specific written agreement controls if it expressly differs from these general pricing terms.</p>
       </>
     ),
@@ -48,7 +52,7 @@ const sections = [
     title: "4. Cancellation and deletion requests",
     body: (
       <>
-        <p>You may request cancellation through Settings, Help, and Send a Message while the account has full access. Unless you request immediate deletion or ARK agrees otherwise, service normally remains available through the end of the current paid billing period and then stops before the next renewal.</p>
+        <p>You may request cancellation through Settings, Help, and Send a Message while the account has full access. Unless you request immediate deletion or ARK agrees otherwise, service normally remains available through the end of the current paid billing period and then stops before the next renewal. Cancellation does not reverse completed-call overage or other charges already incurred during the current period.</p>
         <p>You may also request immediate account deletion through Help. Permanent deletion requires administrator review and confirmation. <strong>When permanent deletion is completed, the active business account and its active Contacted Me and Clients records are deleted together.</strong> Deleted active account, lead, and client data may not be recoverable.</p>
       </>
     ),
@@ -82,6 +86,7 @@ const sections = [
     body: (
       <>
         <p>You are responsible for the accuracy and legality of information you provide, your instructions to the Service, the security of your login credentials and downloaded client-data files, and your use of customer or lead information. You must have any notices, permissions, and consents required to collect, record, contact, store, export, or process information through the Service.</p>
+        <p>You are responsible for reviewing your Dashboard usage, current plan, pending next-month plan, overage, and estimated amount due. Contact ARK promptly if you believe a call was incorrectly classified or a billing record is inaccurate.</p>
         <p>You may not use the Service for unlawful, fraudulent, abusive, harassing, deceptive, or privacy-invasive activity, or to interfere with the Service or another account.</p>
       </>
     ),
