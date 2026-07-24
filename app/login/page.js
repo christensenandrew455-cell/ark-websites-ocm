@@ -9,7 +9,9 @@ import { normalizeBusinessIdentifier } from "../lib/valueUtils";
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const [loginMode, setLoginMode] = useState("solo");
   const [businessName, setBusinessName] = useState("");
+  const [personName, setPersonName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -20,7 +22,7 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      await login(businessName, password);
+      await login(businessName, password, { loginMode, personName });
       router.replace("/");
     } catch (loginError) {
       setError(loginError.message);
@@ -34,9 +36,24 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Websites</p>
         <h1 className="mt-3 text-3xl font-bold text-slate-950">Welcome to ARK OCM</h1>
-        <p className="mt-2 text-sm text-slate-600">Log in with your business name and password.</p>
+        <p className="mt-2 text-sm text-slate-600">Choose the account side you use, then sign in.</p>
 
-        <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+        <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+          {[['solo', 'Solo'], ['business', 'Business']].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => { setLoginMode(value); setError(""); }}
+              className={loginMode === value
+                ? "rounded-lg bg-white px-3 py-2.5 text-sm font-black text-slate-950 shadow-sm"
+                : "rounded-lg px-3 py-2.5 text-sm font-bold text-slate-500"}
+            >
+              {label} Sign In
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Business name</span>
             <input
@@ -47,8 +64,23 @@ export default function LoginPage() {
               className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
               placeholder="Your business name"
             />
-            <span className="mt-1.5 block text-xs font-semibold text-slate-400">Spaces are changed to dashes automatically.</span>
+            <span className="mt-1.5 block text-xs font-semibold text-slate-400">Capitalization does not create a separate business.</span>
           </label>
+
+          {loginMode === "business" && (
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-700">Your name</span>
+              <input
+                required
+                autoComplete="name"
+                value={personName}
+                onChange={(event) => setPersonName(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
+                placeholder="Owner or employee name"
+              />
+            </label>
+          )}
+
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Password</span>
             <input
@@ -69,7 +101,7 @@ export default function LoginPage() {
             disabled={submitting}
             className="w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitting ? "Signing in…" : "Log in"}
+            {submitting ? "Signing in…" : `Sign in to ${loginMode === "business" ? "Business" : "Solo"}`}
           </button>
         </form>
 
