@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
+import { billingPlanDefinition, normalizeBillingPlan } from "../../../lib/stripeUsageBilling";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -28,6 +29,7 @@ export async function POST(request) {
       accountEmail,
       accountPhone,
       password,
+      billingPlan,
       acceptedTerms,
       acceptedPrivacy,
       termsVersion,
@@ -39,6 +41,12 @@ export async function POST(request) {
     const email = trimmedText(accountEmail).toLowerCase();
     const phone = trimmedText(accountPhone);
     const clientId = normalizeClientId(business);
+    const requestedPlan = String(billingPlan || "").trim().toLowerCase();
+    if (!new Set(["solo", "solo_pro"]).has(requestedPlan)) {
+      return NextResponse.json({ error: "Choose either the Solo or Solo Pro plan." }, { status: 400 });
+    }
+    const planKey = normalizeBillingPlan(requestedPlan);
+    const plan = billingPlanDefinition(planKey);
 
     if (!clientId || !owner || !email || !phone || typeof password !== "string") {
       return NextResponse.json({ error: "Complete every account field before continuing." }, { status: 400 });
@@ -82,6 +90,7 @@ export async function POST(request) {
       role: "customer",
       clientId,
       accountStatus: "pending_verification",
+      billingPlan: planKey,
       termsAccepted: true,
       privacyAccepted: true,
       termsVersion,
@@ -98,6 +107,11 @@ export async function POST(request) {
       ownerName: owner,
       accountEmail: email,
       accountPhone: phone,
+      billingPlan: planKey,
+      billingPlanName: plan.name,
+      monthlyBaseCents: plan.monthlyBaseCents,
+      includedLeads: plan.includedLeads,
+      includedConversations: plan.includedConversations,
       status: "pending_verification",
       verificationStatus: "pending",
       paymentSetupStatus: "awaiting_verification",
@@ -122,7 +136,7 @@ export async function POST(request) {
       transaction.create(accountRef, accountData);
     });
 
-    return NextResponse.json({ ok: true, email, clientId, status: "pending_verification" });
+    return NextResponse.json({ ok: true, email, clientId, billingPlan: planKey, status: "pending_verification" });
   } catch (error) {
     console.error("Unable to submit account application", error);
     if (createdUser?.uid) await getAdminAuth().deleteUser(createdUser.uid).catch(() => null);
