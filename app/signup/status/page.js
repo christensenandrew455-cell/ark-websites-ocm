@@ -7,6 +7,13 @@ import { useAuth } from "../../components/AuthProvider";
 import { readApiJson } from "../../lib/apiResponse";
 
 function planDetails(application) {
+  if (application?.billingPlan === "business") {
+    return {
+      name: "Business",
+      price: "$300 USD monthly",
+      summary: "75 leads, 75 new lead conversations, and 3 active employee accounts are included. Additional leads and conversations are $5 each, and additional active employees are $25 each. Individual texts inside one conversation are included.",
+    };
+  }
   if (application?.billingPlan === "solo_pro") {
     return {
       name: "Solo Pro",
@@ -120,7 +127,7 @@ export default function SignupStatusPage() {
       <main className="grid min-h-screen place-items-center bg-slate-950 p-5">
         <section className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl">
           <h1 className="text-2xl font-black">Sign in to check verification</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">Use the business email or business name and password entered during signup.</p>
+          <p className="mt-3 text-sm leading-6 text-slate-600">Use the same account side and credentials entered during signup.</p>
           <Link href="/login?next=/signup/status" className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-black text-white">Go to login</Link>
         </section>
       </main>
@@ -161,7 +168,7 @@ export default function SignupStatusPage() {
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
             <p><strong>{plan.name}: {plan.price}</strong></p>
             <p className="mt-1">{plan.summary}</p>
-            <p className="mt-1">Stripe securely stores the payment method and processes the recurring and usage-based invoice.</p>
+            <p className="mt-1">Stripe securely stores the payment method and processes recurring and usage-based invoices.</p>
           </div>
         )}
 
