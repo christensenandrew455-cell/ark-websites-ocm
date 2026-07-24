@@ -46,7 +46,7 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           set -euo pipefail
-          BASE_URL="https://ark-websites-ocm.vercel.app"
+          BASE_URL="https://ark-websites-ocm-xi.vercel.app"
 
           wait_for_response() {
             local name="$1"
@@ -149,7 +149,7 @@ jobs:
             --retry-delay 10 \
             -H "Accept: application/json" \
             "${AUTH_ARGS[@]}" \
-            https://ark-websites-ocm.vercel.app/api/cron/workflow
+            https://ark-websites-ocm-xi.vercel.app/api/cron/workflow
 
   lead-reminders:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *'
@@ -166,7 +166,7 @@ jobs:
           fi
           curl --fail-with-body --silent --show-error \
             -H "Authorization: Bearer $REMINDER_SECRET" \
-            https://ark-websites-ocm.vercel.app/api/notifications/reminders
+            https://ark-websites-ocm-xi.vercel.app/api/notifications/reminders
 
   billing-enforcement:
     if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *'
@@ -184,4 +184,4 @@ jobs:
           curl --fail-with-body --silent --show-error \
             -X POST \
             -H "Authorization: Bearer $WORKFLOW_SECRET" \
-            https://ark-websites-ocm.vercel.app/api/workflows/billing-enforcement
+            https://ark-websites-ocm-xi.vercel.app/api/workflows/billing-enforcement
