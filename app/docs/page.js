@@ -26,7 +26,7 @@ export default function DocsPage() {
             <div className="flex gap-2"><Link href="/about" className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black">About</Link><Link href="/support" className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white">Support</Link></div>
           </div>
           <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-5xl">Docs</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">Use this public guide to understand what the app does, where to find things, how minutes and pricing work, what information ARK can access, and how each part works.</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">Use this public guide to understand what the app does, where to find things, how completed-call plans, overage, and recommendations work, what information ARK can access, and how each part works.</p>
         </header>
 
         <nav className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
