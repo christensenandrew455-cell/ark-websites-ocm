@@ -1,12 +1,17 @@
 import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 
-export const BILLING_VERSION = "solo-plans-v1";
+export const BILLING_VERSION = "solo-business-plans-v2";
 export const INCLUDED_LEADS = 50;
 export const INCLUDED_CONVERSATIONS = 50;
+export const BUSINESS_INCLUDED_LEADS = 75;
+export const BUSINESS_INCLUDED_CONVERSATIONS = 75;
+export const BUSINESS_INCLUDED_EMPLOYEES = 3;
 export const PER_OVERAGE_CENTS = 500;
-export const LEAD_METER_EVENT = "ark_solo_plan_lead";
-export const CONVERSATION_METER_EVENT = "ark_solo_plan_conversation";
+export const PER_EMPLOYEE_OVERAGE_CENTS = 2500;
+export const LEAD_METER_EVENT = "ark_plan_lead_v2";
+export const CONVERSATION_METER_EVENT = "ark_plan_conversation_v2";
+export const EMPLOYEE_METER_EVENT = "ark_business_employee_v2";
 
 export const BILLING_PLANS = Object.freeze({
   solo: Object.freeze({
@@ -15,7 +20,9 @@ export const BILLING_PLANS = Object.freeze({
     monthlyBaseCents: 10000,
     includedLeads: INCLUDED_LEADS,
     includedConversations: 0,
+    includedEmployees: 0,
     conversationsEnabled: false,
+    employeesEnabled: false,
   }),
   solo_pro: Object.freeze({
     key: "solo_pro",
@@ -23,11 +30,23 @@ export const BILLING_PLANS = Object.freeze({
     monthlyBaseCents: 20000,
     includedLeads: INCLUDED_LEADS,
     includedConversations: INCLUDED_CONVERSATIONS,
+    includedEmployees: 0,
     conversationsEnabled: true,
+    employeesEnabled: false,
+  }),
+  business: Object.freeze({
+    key: "business",
+    name: "Business",
+    monthlyBaseCents: 30000,
+    includedLeads: BUSINESS_INCLUDED_LEADS,
+    includedConversations: BUSINESS_INCLUDED_CONVERSATIONS,
+    includedEmployees: BUSINESS_INCLUDED_EMPLOYEES,
+    conversationsEnabled: true,
+    employeesEnabled: true,
   }),
 });
 
-// Backward-compatible exports for any older imports that still exist elsewhere.
+// Backward-compatible exports for older imports.
 export const MONTHLY_BASE_CENTS = BILLING_PLANS.solo.monthlyBaseCents;
 export const PER_LEAD_CENTS = PER_OVERAGE_CENTS;
 export const BILLABLE_LEAD_EVENT = LEAD_METER_EVENT;
@@ -37,7 +56,10 @@ function text(value) {
 }
 
 export function normalizeBillingPlan(value) {
-  return text(value).toLowerCase() === "solo_pro" ? "solo_pro" : "solo";
+  const candidate = text(value).toLowerCase();
+  if (candidate === "business") return "business";
+  if (candidate === "solo_pro") return "solo_pro";
+  return "solo";
 }
 
 export function billingPlanDefinition(value) {
@@ -74,132 +96,185 @@ async function createMeter(stripe, displayName, eventName) {
   });
 }
 
-async function createTieredMeteredPrice({ stripe, productId, meterId, nickname, component }) {
+async function createTieredMeteredPrice({
+  stripe,
+  productId,
+  meterId,
+  nickname,
+  component,
+  includedUnits,
+  overageCents,
+}) {
   return stripe.prices.create({
     product: productId,
     currency: "usd",
     billing_scheme: "tiered",
     tiers_mode: "graduated",
     tiers: [
-      { up_to: INCLUDED_LEADS, unit_amount: 0 },
-      { up_to: "inf", unit_amount: PER_OVERAGE_CENTS },
+      { up_to: includedUnits, unit_amount: 0 },
+      { up_to: "inf", unit_amount: overageCents },
     ],
     recurring: { interval: "month", usage_type: "metered", meter: meterId },
     nickname,
     metadata: {
       ark_billing_component: component,
       ark_billing_version: BILLING_VERSION,
-      included_units: String(INCLUDED_LEADS),
-      overage_cents: String(PER_OVERAGE_CENTS),
+      included_units: String(includedUnits),
+      overage_cents: String(overageCents),
     },
   });
 }
 
 export async function ensureStripeBillingCatalog({ stripe, db }) {
-  const configRef = db.collection("systemConfig").doc("stripeSoloPlansV1");
+  const configRef = db.collection("systemConfig").doc("stripePlansV2");
   const snapshot = await configRef.get();
   const saved = snapshot.exists ? snapshot.data() : {};
 
   let plansProductId = text(saved.plansProductId);
   let leadProductId = text(saved.leadProductId);
   let conversationProductId = text(saved.conversationProductId);
+  let employeeProductId = text(saved.employeeProductId);
   let leadMeterId = text(saved.leadMeterId);
   let conversationMeterId = text(saved.conversationMeterId);
+  let employeeMeterId = text(saved.employeeMeterId);
 
   let soloBasePriceId = configuredPrice("STRIPE_SOLO_BASE_PRICE_ID") || text(saved.soloBasePriceId);
   let soloProBasePriceId = configuredPrice("STRIPE_SOLO_PRO_BASE_PRICE_ID") || text(saved.soloProBasePriceId);
-  let leadOveragePriceId = configuredPrice("STRIPE_SOLO_LEAD_PRICE_ID") || text(saved.leadOveragePriceId);
-  let conversationOveragePriceId = configuredPrice("STRIPE_SOLO_CONVERSATION_PRICE_ID") || text(saved.conversationOveragePriceId);
+  let businessBasePriceId = configuredPrice("STRIPE_BUSINESS_BASE_PRICE_ID") || text(saved.businessBasePriceId);
+  let soloLeadOveragePriceId = configuredPrice("STRIPE_SOLO_LEAD_PRICE_ID") || text(saved.soloLeadOveragePriceId);
+  let businessLeadOveragePriceId = configuredPrice("STRIPE_BUSINESS_LEAD_PRICE_ID") || text(saved.businessLeadOveragePriceId);
+  let soloConversationOveragePriceId = configuredPrice("STRIPE_SOLO_CONVERSATION_PRICE_ID") || text(saved.soloConversationOveragePriceId);
+  let businessConversationOveragePriceId = configuredPrice("STRIPE_BUSINESS_CONVERSATION_PRICE_ID") || text(saved.businessConversationOveragePriceId);
+  let employeeOveragePriceId = configuredPrice("STRIPE_BUSINESS_EMPLOYEE_PRICE_ID") || text(saved.employeeOveragePriceId);
 
   if (!plansProductId) {
     const product = await stripe.products.create({
-      name: "ARK OCM Solo Plans",
-      description: "ARK OCM Solo and Solo Pro monthly plans.",
-      metadata: { ark_billing_component: "solo_plans", ark_billing_version: BILLING_VERSION },
+      name: "ARK OCM Plans",
+      description: "ARK OCM Solo, Solo Pro, and Business monthly plans.",
+      metadata: { ark_billing_component: "plans", ark_billing_version: BILLING_VERSION },
     });
     plansProductId = product.id;
   }
 
-  if (!soloBasePriceId) {
+  async function ensureBasePrice(currentId, planKey, nickname) {
+    if (currentId) return currentId;
+    const plan = BILLING_PLANS[planKey];
     const price = await stripe.prices.create({
       product: plansProductId,
       currency: "usd",
-      unit_amount: BILLING_PLANS.solo.monthlyBaseCents,
+      unit_amount: plan.monthlyBaseCents,
       recurring: { interval: "month" },
-      nickname: "ARK OCM Solo monthly plan",
+      nickname,
       metadata: {
         ark_billing_component: "base_plan",
-        ark_billing_plan: "solo",
+        ark_billing_plan: planKey,
         ark_billing_version: BILLING_VERSION,
       },
     });
-    soloBasePriceId = price.id;
+    return price.id;
   }
 
-  if (!soloProBasePriceId) {
-    const price = await stripe.prices.create({
-      product: plansProductId,
-      currency: "usd",
-      unit_amount: BILLING_PLANS.solo_pro.monthlyBaseCents,
-      recurring: { interval: "month" },
-      nickname: "ARK OCM Solo Pro monthly plan",
-      metadata: {
-        ark_billing_component: "base_plan",
-        ark_billing_plan: "solo_pro",
-        ark_billing_version: BILLING_VERSION,
-      },
-    });
-    soloProBasePriceId = price.id;
-  }
+  soloBasePriceId = await ensureBasePrice(soloBasePriceId, "solo", "ARK OCM Solo monthly plan");
+  soloProBasePriceId = await ensureBasePrice(soloProBasePriceId, "solo_pro", "ARK OCM Solo Pro monthly plan");
+  businessBasePriceId = await ensureBasePrice(businessBasePriceId, "business", "ARK OCM Business monthly plan");
 
   if (!leadMeterId) {
-    const meter = await createMeter(stripe, "ARK OCM Solo Plan Leads", LEAD_METER_EVENT);
+    const meter = await createMeter(stripe, "ARK OCM Plan Leads", LEAD_METER_EVENT);
     leadMeterId = meter.id;
   }
-
   if (!leadProductId) {
     const product = await stripe.products.create({
       name: "ARK OCM Lead Overage",
-      description: "First 50 unique leads per billing month are included, then $5 per additional lead.",
+      description: "Plan-specific included leads followed by a $5 per-lead overage.",
       metadata: { ark_billing_component: "lead_overage", ark_billing_version: BILLING_VERSION },
     });
     leadProductId = product.id;
   }
-
-  if (!leadOveragePriceId) {
+  if (!soloLeadOveragePriceId) {
     const price = await createTieredMeteredPrice({
       stripe,
       productId: leadProductId,
       meterId: leadMeterId,
-      nickname: "ARK OCM leads: 50 included, then $5 each",
-      component: "lead_overage",
+      nickname: "ARK OCM Solo leads: 50 included, then $5 each",
+      component: "solo_lead_overage",
+      includedUnits: INCLUDED_LEADS,
+      overageCents: PER_OVERAGE_CENTS,
     });
-    leadOveragePriceId = price.id;
+    soloLeadOveragePriceId = price.id;
+  }
+  if (!businessLeadOveragePriceId) {
+    const price = await createTieredMeteredPrice({
+      stripe,
+      productId: leadProductId,
+      meterId: leadMeterId,
+      nickname: "ARK OCM Business leads: 75 included, then $5 each",
+      component: "business_lead_overage",
+      includedUnits: BUSINESS_INCLUDED_LEADS,
+      overageCents: PER_OVERAGE_CENTS,
+    });
+    businessLeadOveragePriceId = price.id;
   }
 
   if (!conversationMeterId) {
-    const meter = await createMeter(stripe, "ARK OCM Solo Pro Conversations", CONVERSATION_METER_EVENT);
+    const meter = await createMeter(stripe, "ARK OCM Lead Conversations", CONVERSATION_METER_EVENT);
     conversationMeterId = meter.id;
   }
-
   if (!conversationProductId) {
     const product = await stripe.products.create({
       name: "ARK OCM Conversation Overage",
-      description: "Solo Pro includes 50 new lead conversations per billing month, then $5 per additional conversation. Messages inside a conversation are included.",
+      description: "Plan-specific included new lead conversations followed by a $5 per-conversation overage. Messages inside one conversation are included.",
       metadata: { ark_billing_component: "conversation_overage", ark_billing_version: BILLING_VERSION },
     });
     conversationProductId = product.id;
   }
-
-  if (!conversationOveragePriceId) {
+  if (!soloConversationOveragePriceId) {
     const price = await createTieredMeteredPrice({
       stripe,
       productId: conversationProductId,
       meterId: conversationMeterId,
-      nickname: "ARK OCM conversations: 50 included, then $5 each",
-      component: "conversation_overage",
+      nickname: "ARK OCM Solo Pro conversations: 50 included, then $5 each",
+      component: "solo_conversation_overage",
+      includedUnits: INCLUDED_CONVERSATIONS,
+      overageCents: PER_OVERAGE_CENTS,
     });
-    conversationOveragePriceId = price.id;
+    soloConversationOveragePriceId = price.id;
+  }
+  if (!businessConversationOveragePriceId) {
+    const price = await createTieredMeteredPrice({
+      stripe,
+      productId: conversationProductId,
+      meterId: conversationMeterId,
+      nickname: "ARK OCM Business conversations: 75 included, then $5 each",
+      component: "business_conversation_overage",
+      includedUnits: BUSINESS_INCLUDED_CONVERSATIONS,
+      overageCents: PER_OVERAGE_CENTS,
+    });
+    businessConversationOveragePriceId = price.id;
+  }
+
+  if (!employeeMeterId) {
+    const meter = await createMeter(stripe, "ARK OCM Active Business Employees", EMPLOYEE_METER_EVENT);
+    employeeMeterId = meter.id;
+  }
+  if (!employeeProductId) {
+    const product = await stripe.products.create({
+      name: "ARK OCM Employee Seats",
+      description: "Business includes 3 active employee accounts, then $25 per additional active employee each billing period.",
+      metadata: { ark_billing_component: "employee_overage", ark_billing_version: BILLING_VERSION },
+    });
+    employeeProductId = product.id;
+  }
+  if (!employeeOveragePriceId) {
+    const price = await createTieredMeteredPrice({
+      stripe,
+      productId: employeeProductId,
+      meterId: employeeMeterId,
+      nickname: "ARK OCM employees: 3 included, then $25 each",
+      component: "employee_overage",
+      includedUnits: BUSINESS_INCLUDED_EMPLOYEES,
+      overageCents: PER_EMPLOYEE_OVERAGE_CENTS,
+    });
+    employeeOveragePriceId = price.id;
   }
 
   await configRef.set({
@@ -207,32 +282,56 @@ export async function ensureStripeBillingCatalog({ stripe, db }) {
     plansProductId,
     soloBasePriceId,
     soloProBasePriceId,
+    businessBasePriceId,
     leadProductId,
-    leadOveragePriceId,
     leadMeterId,
     leadEventName: LEAD_METER_EVENT,
+    soloLeadOveragePriceId,
+    businessLeadOveragePriceId,
     conversationProductId,
-    conversationOveragePriceId,
     conversationMeterId,
     conversationEventName: CONVERSATION_METER_EVENT,
+    soloConversationOveragePriceId,
+    businessConversationOveragePriceId,
+    employeeProductId,
+    employeeMeterId,
+    employeeEventName: EMPLOYEE_METER_EVENT,
+    employeeOveragePriceId,
     includedLeads: INCLUDED_LEADS,
     includedConversations: INCLUDED_CONVERSATIONS,
+    businessIncludedLeads: BUSINESS_INCLUDED_LEADS,
+    businessIncludedConversations: BUSINESS_INCLUDED_CONVERSATIONS,
+    businessIncludedEmployees: BUSINESS_INCLUDED_EMPLOYEES,
     perOverageCents: PER_OVERAGE_CENTS,
+    perEmployeeOverageCents: PER_EMPLOYEE_OVERAGE_CENTS,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
   return {
     soloBasePriceId,
     soloProBasePriceId,
-    leadOveragePriceId,
-    conversationOveragePriceId,
+    businessBasePriceId,
+    soloLeadOveragePriceId,
+    businessLeadOveragePriceId,
+    soloConversationOveragePriceId,
+    businessConversationOveragePriceId,
+    employeeOveragePriceId,
   };
 }
 
 function expectedPriceIds(catalog, planKey) {
-  return planKey === "solo_pro"
-    ? [catalog.soloProBasePriceId, catalog.leadOveragePriceId, catalog.conversationOveragePriceId]
-    : [catalog.soloBasePriceId, catalog.leadOveragePriceId];
+  if (planKey === "business") {
+    return [
+      catalog.businessBasePriceId,
+      catalog.businessLeadOveragePriceId,
+      catalog.businessConversationOveragePriceId,
+      catalog.employeeOveragePriceId,
+    ];
+  }
+  if (planKey === "solo_pro") {
+    return [catalog.soloProBasePriceId, catalog.soloLeadOveragePriceId, catalog.soloConversationOveragePriceId];
+  }
+  return [catalog.soloBasePriceId, catalog.soloLeadOveragePriceId];
 }
 
 function subscriptionHasPrices(subscription, priceIds) {
@@ -306,6 +405,18 @@ export async function ensureCustomerBillingSubscription({
       metadata,
     });
 
+  const basePriceId = planKey === "business"
+    ? catalog.businessBasePriceId
+    : planKey === "solo_pro"
+      ? catalog.soloProBasePriceId
+      : catalog.soloBasePriceId;
+  const leadPriceId = planKey === "business" ? catalog.businessLeadOveragePriceId : catalog.soloLeadOveragePriceId;
+  const conversationPriceId = planKey === "business"
+    ? catalog.businessConversationOveragePriceId
+    : plan.conversationsEnabled
+      ? catalog.soloConversationOveragePriceId
+      : null;
+
   const update = {
     billingPlan: planKey,
     billingPlanName: plan.name,
@@ -313,12 +424,15 @@ export async function ensureCustomerBillingSubscription({
     monthlyBaseCents: plan.monthlyBaseCents,
     includedLeads: plan.includedLeads,
     includedConversations: plan.includedConversations,
+    includedEmployees: plan.includedEmployees,
     perOverageCents: PER_OVERAGE_CENTS,
+    perEmployeeOverageCents: PER_EMPLOYEE_OVERAGE_CENTS,
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
-    stripeBasePriceId: planKey === "solo_pro" ? catalog.soloProBasePriceId : catalog.soloBasePriceId,
-    stripeLeadPriceId: catalog.leadOveragePriceId,
-    stripeConversationPriceId: plan.conversationsEnabled ? catalog.conversationOveragePriceId : null,
+    stripeBasePriceId: basePriceId,
+    stripeLeadPriceId: leadPriceId,
+    stripeConversationPriceId: conversationPriceId,
+    stripeEmployeePriceId: plan.employeesEnabled ? catalog.employeeOveragePriceId : null,
     billingStartedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -333,7 +447,9 @@ export async function ensureCustomerBillingSubscription({
       MonthlyBaseCents: plan.monthlyBaseCents,
       IncludedLeads: plan.includedLeads,
       IncludedConversations: plan.includedConversations,
+      IncludedEmployees: plan.includedEmployees,
       PerOverageCents: PER_OVERAGE_CENTS,
+      PerEmployeeOverageCents: PER_EMPLOYEE_OVERAGE_CENTS,
       StripeSubscriptionId: subscription.id,
       StripeSubscriptionStatus: subscription.status,
       updatedAt: FieldValue.serverTimestamp(),
@@ -366,7 +482,7 @@ export async function reportBillableLead({ stripe, customerId, clientId, leadId,
   return reportMeterEvent({
     stripe,
     eventName: LEAD_METER_EVENT,
-    identifier: usageIdentifier("ark-solo-v1-lead", clientId, leadId),
+    identifier: usageIdentifier("ark-v2-lead", clientId, leadId),
     customerId,
     occurredAt,
   });
@@ -376,7 +492,17 @@ export async function reportBillableConversation({ stripe, customerId, clientId,
   return reportMeterEvent({
     stripe,
     eventName: CONVERSATION_METER_EVENT,
-    identifier: usageIdentifier("ark-solo-v1-conversation", clientId, conversationId),
+    identifier: usageIdentifier("ark-v2-conversation", clientId, conversationId),
+    customerId,
+    occurredAt,
+  });
+}
+
+export async function reportBillableEmployee({ stripe, customerId, clientId, employeeId, billingPeriodKey, occurredAt }) {
+  return reportMeterEvent({
+    stripe,
+    eventName: EMPLOYEE_METER_EVENT,
+    identifier: usageIdentifier("ark-v2-employee", clientId, `${billingPeriodKey}:${employeeId}`),
     customerId,
     occurredAt,
   });
