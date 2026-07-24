@@ -5,10 +5,13 @@ import Stripe from "stripe";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { TERMS_VERSION } from "../../../lib/legal";
 import {
+  getReceptionistPlan,
+  monthKeyInTimeZone,
+  receptionistOverage,
+} from "../../../lib/receptionistPricing";
+import {
   ensureCustomerBillingSubscription,
-  MONTHLY_BASE_CENTS,
-  PER_LEAD_CENTS,
-  reportBillableLead,
+  reportBillableCall,
 } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
@@ -34,49 +37,72 @@ function authorized(request) {
   return text(request.headers.get("user-agent")).includes("vercel-cron/1.0");
 }
 
-function monthWindowUtc() {
-  const now = new Date();
-  return {
-    monthKey: now.toISOString().slice(0, 7),
-    startMs: Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-    endMs: Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+function callEventKey(clientId, callId) {
+  return createHash("sha256").update(`${clientId}:${callId}`).digest("hex").slice(0, 48);
+}
+
+function isBillableCall(call) {
+  if (call.billable === false) return false;
+  if (call.billable === true) return true;
+  return Number(call.durationSeconds || 0) >= Number(call.minimumBillableSeconds || 20);
+}
+
+function callOrder(call) {
+  const sequence = Number(call.billableSequence);
+  if (Number.isFinite(sequence) && sequence > 0) return sequence;
+  return Number.MAX_SAFE_INTEGER;
+}
+
+async function monthlyCalls(db, clientId, monthKey) {
+  const snapshot = await db.collection("ocmClients").doc(clientId).collection("receptionistCalls").get();
+  return snapshot.docs
+    .map((document) => ({ id: document.id, ...document.data() }))
+    .filter((call) => isBillableCall(call) && text(call.monthKey) === monthKey)
+    .sort((first, second) => {
+      const sequenceDifference = callOrder(first) - callOrder(second);
+      if (sequenceDifference !== 0) return sequenceDifference;
+      return toMillis(first.startedAt || first.endedAt || first.createdAt) - toMillis(second.startedAt || second.endedAt || second.createdAt);
+    });
+}
+
+async function applyPendingPlan({ db, clientId, uid, business, currentMonthKey }) {
+  const pendingKey = text(business.pendingReceptionistPlanKey);
+  const pendingMonth = text(business.pendingReceptionistPlanEffectiveMonth);
+  const currentPlan = getReceptionistPlan(business.receptionistPlanKey);
+  if (!pendingKey || !pendingMonth || pendingMonth > currentMonthKey) return currentPlan;
+
+  const plan = getReceptionistPlan(pendingKey);
+  const businessRef = db.collection("businesses").doc(clientId);
+  const accountRef = uid ? db.collection("accounts").doc(uid) : null;
+  const accountSettingsRef = db.collection("ocmClients").doc(clientId).collection("settings").doc("account");
+  const planUpdate = {
+    receptionistPlanKey: plan.key,
+    receptionistPlanName: plan.name,
+    receptionistIncludedCalls: plan.includedCalls,
+    receptionistMonthlyCents: plan.monthlyCents,
+    receptionistOverageCents: plan.overageCents,
+    pendingReceptionistPlanKey: FieldValue.delete(),
+    pendingReceptionistPlanEffectiveMonth: FieldValue.delete(),
+    receptionistPlanUpdatedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   };
-}
 
-function leadKey(clientId, leadId) {
-  return createHash("sha256").update(`${clientId}:${leadId}`).digest("hex").slice(0, 48);
-}
-
-function addLead(unique, id, occurredAt, startMs, endMs) {
-  const cleanId = text(id);
-  if (!cleanId || !occurredAt || occurredAt < startMs || occurredAt >= endMs) return;
-  const existing = unique.get(cleanId);
-  if (!existing || occurredAt < existing.occurredAt) unique.set(cleanId, { id: cleanId, occurredAt });
-}
-
-async function monthlyLeads(db, clientId, startMs, endMs) {
-  const root = db.collection("ocmClients").doc(clientId);
-  const [contacted, clients, stats] = await Promise.all([
-    root.collection("contactedMe").get(),
-    root.collection("clients").get(),
-    root.collection("statsEvents").get(),
+  await Promise.all([
+    businessRef.set(planUpdate, { merge: true }),
+    accountRef ? accountRef.set(planUpdate, { merge: true }) : Promise.resolve(),
+    accountSettingsRef.set({
+      ReceptionistPlanKey: plan.key,
+      ReceptionistPlanName: plan.name,
+      ReceptionistIncludedCalls: plan.includedCalls,
+      ReceptionistMonthlyCents: plan.monthlyCents,
+      ReceptionistOverageCents: plan.overageCents,
+      PendingReceptionistPlanKey: FieldValue.delete(),
+      PendingReceptionistPlanEffectiveMonth: FieldValue.delete(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true }),
   ]);
-  const unique = new Map();
 
-  for (const document of [...contacted.docs, ...clients.docs]) {
-    const data = document.data();
-    const occurredAt = toMillis(data.createdAt || data.contactedAt || data.acceptedAt || data.updatedAt);
-    addLead(unique, document.id, occurredAt, startMs, endMs);
-  }
-  for (const document of stats.docs) {
-    const data = document.data();
-    if (text(data.eventType).toLowerCase() !== "contacted") continue;
-    const sourceId = text(data.sourceId) || document.id.replace(/^contacted:/, "");
-    const occurredAt = toMillis(data.occurredAt || data.createdAt || data.updatedAt);
-    addLead(unique, sourceId, occurredAt, startMs, endMs);
-  }
-
-  return [...unique.values()];
+  return plan;
 }
 
 export async function GET(request) {
@@ -85,7 +111,6 @@ export async function GET(request) {
 
   const db = getAdminDb();
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-  const window = monthWindowUtc();
   const businesses = await db.collection("businesses").where("status", "==", "active").get();
   const results = [];
 
@@ -94,14 +119,22 @@ export async function GET(request) {
     const business = document.data();
     const uid = text(business.uid || business.ownerUid);
     try {
-      const accountSnapshot = uid ? await db.collection("accounts").doc(uid).get() : null;
+      const root = db.collection("ocmClients").doc(clientId);
+      const [accountSnapshot, receptionistSnapshot] = await Promise.all([
+        uid ? db.collection("accounts").doc(uid).get() : Promise.resolve(null),
+        root.collection("settings").doc("receptionist").get(),
+      ]);
       const account = accountSnapshot?.exists ? accountSnapshot.data() : {};
+      const timeZone = text(receptionistSnapshot?.exists ? receptionistSnapshot.data().timeZone : "") || "America/New_York";
+      const currentMonthKey = monthKeyInTimeZone(new Date(), timeZone);
+      const plan = await applyPendingPlan({ db, clientId, uid, business, currentMonthKey });
+      const calls = await monthlyCalls(db, clientId, currentMonthKey);
+      const usage = receptionistOverage(plan, calls.length);
       const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
       const paymentMethodId = text(business.stripePaymentMethodId || account.stripePaymentMethodId);
       const acceptedCurrentTerms = account.termsAccepted === true && text(account.termsVersion) === TERMS_VERSION;
-      const leads = await monthlyLeads(db, clientId, window.startMs, window.endMs);
-      const amountDue = MONTHLY_BASE_CENTS + leads.length * PER_LEAD_CENTS;
       let synced = 0;
+      let subscriptionStatus = text(business.stripeSubscriptionStatus);
 
       if (customerId && paymentMethodId && acceptedCurrentTerms) {
         const subscription = await ensureCustomerBillingSubscription({
@@ -113,19 +146,25 @@ export async function GET(request) {
           businessName: text(business.businessName || account.businessName || clientId),
           uid,
           existingSubscriptionId: text(business.stripeSubscriptionId || account.stripeSubscriptionId),
+          planKey: plan.key,
         });
+        subscriptionStatus = subscription.status;
 
-        for (const lead of leads) {
-          const recordRef = db.collection("ocmClients").doc(clientId).collection("billingLeadEvents").doc(leadKey(clientId, lead.id));
+        for (const call of calls.slice(plan.includedCalls)) {
+          const recordRef = root.collection("billingCallEvents").doc(callEventKey(clientId, call.id));
           const record = await recordRef.get();
           if (record.exists && record.data().stripeReported === true) continue;
-          await reportBillableLead({ stripe, customerId, clientId, leadId: lead.id, occurredAt: lead.occurredAt });
+          const occurredAt = toMillis(call.startedAt || call.endedAt || call.createdAt) || Date.now();
+          await reportBillableCall({ stripe, customerId, clientId, callId: call.id, occurredAt });
           await recordRef.set({
-            leadId: lead.id,
-            occurredAt: new Date(lead.occurredAt),
+            callId: call.id,
+            monthKey: currentMonthKey,
+            occurredAt: new Date(occurredAt),
             stripeReported: true,
             stripeCustomerId: customerId,
             stripeSubscriptionId: subscription.id,
+            planKey: plan.key,
+            overageCents: plan.overageCents,
             reportedAt: FieldValue.serverTimestamp(),
           }, { merge: true });
           synced += 1;
@@ -133,18 +172,29 @@ export async function GET(request) {
       }
 
       await document.ref.set({
-        currentBillingMonth: window.monthKey,
-        currentMonthLeadCount: leads.length,
-        currentMonthAmountDue: amountDue,
+        currentBillingMonth: currentMonthKey,
+        currentMonthCallCount: calls.length,
+        currentMonthIncludedCalls: plan.includedCalls,
+        currentMonthOverageCalls: usage.overageCalls,
+        currentMonthOverageAmount: usage.overageAmountCents,
+        currentMonthAmountDue: usage.estimatedTotalCents,
         currentMonthCurrency: "usd",
+        stripeSubscriptionStatus: subscriptionStatus,
         billingSummaryUpdatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
-      results.push({ clientId, leads: leads.length, amountDue, synced });
+      results.push({
+        clientId,
+        planKey: plan.key,
+        calls: calls.length,
+        overageCalls: usage.overageCalls,
+        amountDue: usage.estimatedTotalCents,
+        synced,
+      });
     } catch (error) {
       console.error(`Billing sync failed for ${clientId}`, error);
       results.push({ clientId, error: String(error?.message || "Billing sync failed.") });
     }
   }
 
-  return NextResponse.json({ ok: true, monthKey: window.monthKey, accounts: results.length, results });
+  return NextResponse.json({ ok: true, accounts: results.length, results });
 }
