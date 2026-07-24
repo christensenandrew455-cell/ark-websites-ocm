@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { publicBillingStatus } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { getReceptionistPlan, receptionistPlanSnapshot } from "../../../lib/receptionistPricing";
 import { normalizeClientId, toIsoString, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -23,6 +24,8 @@ function hasCompletedBusinessSetup(receptionist = {}) {
 }
 
 function connectionPayload(clientId, business, data, receptionist = null) {
+  const plan = getReceptionistPlan(business.receptionistPlanKey);
+  const pendingPlanKey = trimmedText(business.pendingReceptionistPlanKey);
   return {
     clientId,
     businessName: trimmedText(business.businessName || data.businessName || clientId),
@@ -44,6 +47,20 @@ function connectionPayload(clientId, business, data, receptionist = null) {
     legalAcceptedAt: toIsoString(business.legalAcceptedAt),
     legalAcceptedBy: trimmedText(business.legalAcceptedBy || business.accountEmail).toLowerCase(),
     legalAcceptanceSource: trimmedText(business.legalAcceptanceSource),
+    paymentMethodLabel: trimmedText(business.paymentMethodLabel),
+    stripeSubscriptionStatus: trimmedText(business.stripeSubscriptionStatus),
+    receptionistPlan: receptionistPlanSnapshot(plan.key),
+    pendingReceptionistPlan: pendingPlanKey ? {
+      ...receptionistPlanSnapshot(pendingPlanKey),
+      effectiveMonth: trimmedText(business.pendingReceptionistPlanEffectiveMonth),
+    } : null,
+    currentBillingMonth: trimmedText(business.currentBillingMonth),
+    currentMonthCallCount: Math.max(0, Number(business.currentMonthCallCount || 0)),
+    currentMonthIncludedCalls: Math.max(0, Number(business.currentMonthIncludedCalls || plan.includedCalls)),
+    currentMonthOverageCalls: Math.max(0, Number(business.currentMonthOverageCalls || 0)),
+    currentMonthOverageAmount: Math.max(0, Number(business.currentMonthOverageAmount || 0)),
+    currentMonthAmountDue: Math.max(0, Number(business.currentMonthAmountDue || plan.monthlyCents)),
+    currentMonthCurrency: trimmedText(business.currentMonthCurrency || "usd"),
     billing: publicBillingStatus(business),
   };
 }
