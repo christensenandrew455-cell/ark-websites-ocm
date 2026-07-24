@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
+import { ACCOUNT_TYPES } from "../lib/accountTypes";
 import { auth, db } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 import { normalizeClientId } from "../lib/valueUtils";
@@ -37,15 +38,24 @@ export function AuthProvider({ children }) {
     const clientId = normalizeClientId(tokenResult.claims.clientId || account.clientId || "");
     const claimedStatus = String(tokenResult.claims.accountStatus || "");
     const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
+    const billingPlan = account.billingPlan || String(tokenResult.claims.billingPlan || "solo");
+    const accountType = account.accountType
+      || String(tokenResult.claims.accountType || "")
+      || (role === "employee" ? ACCOUNT_TYPES.BUSINESS_EMPLOYEE : billingPlan === "business" ? ACCOUNT_TYPES.BUSINESS_OWNER : ACCOUNT_TYPES.SOLO_OWNER);
+    const businessRole = account.businessRole || String(tokenResult.claims.businessRole || (role === "employee" ? "employee" : "owner"));
+
     const nextProfile = {
       ...account,
       uid: nextUser.uid,
       email: nextUser.email,
       accountEmail: account.accountEmail || nextUser.email || "",
       role,
+      accountType,
+      businessRole,
+      billingPlan,
       clientId,
       status,
-      paymentSetupStatus: account.paymentSetupStatus || (status === "active" ? "complete" : ""),
+      paymentSetupStatus: account.paymentSetupStatus || (status === "active" && role !== "employee" ? "complete" : ""),
       termsAccepted: account.termsAccepted === true || tokenResult.claims.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true || tokenResult.claims.privacyAccepted === true,
       termsVersion: account.termsVersion || String(tokenResult.claims.termsVersion || ""),
@@ -84,6 +94,9 @@ export function AuthProvider({ children }) {
           email: nextUser.email,
           accountEmail: nextUser.email || "",
           role: "customer",
+          accountType: ACCOUNT_TYPES.SOLO_OWNER,
+          businessRole: "owner",
+          billingPlan: "solo",
           clientId: "",
           status: "",
           paymentSetupStatus: "",
@@ -99,11 +112,16 @@ export function AuthProvider({ children }) {
     });
   }, [loadProfile]);
 
-  const login = useCallback(async (identifier, password) => {
+  const login = useCallback(async (identifier, password, options = {}) => {
     const response = await fetch("/api/auth/business-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier, password }),
+      body: JSON.stringify({
+        identifier,
+        password,
+        loginMode: options.loginMode || "solo",
+        personName: options.personName || "",
+      }),
     });
     const data = await readApiJson(response, "Unable to sign in.");
     return signInWithCustomToken(auth, data.token);
@@ -147,6 +165,8 @@ export function AuthProvider({ children }) {
       refreshProfile,
       selectClientId,
       isAdmin: profile?.role === "admin",
+      isEmployee: profile?.role === "employee" || profile?.accountType === ACCOUNT_TYPES.BUSINESS_EMPLOYEE,
+      isBusinessOwner: profile?.accountType === ACCOUNT_TYPES.BUSINESS_OWNER,
     }),
     [user, profile, activeClientId, loading, login, logout, refreshProfile, selectClientId]
   );
