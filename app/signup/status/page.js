@@ -6,11 +6,27 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { readApiJson } from "../../lib/apiResponse";
 
-function statusCopy(status) {
+function planDetails(application) {
+  if (application?.billingPlan === "solo_pro") {
+    return {
+      name: "Solo Pro",
+      price: "$200 USD monthly",
+      summary: "50 leads and 50 new lead conversations are included each month. Additional leads and conversations are $5 each. Individual texts inside a conversation are included.",
+    };
+  }
+  return {
+    name: "Solo",
+    price: "$100 USD monthly",
+    summary: "50 leads are included each month. Each additional lead is $5.",
+  };
+}
+
+function statusCopy(status, application) {
+  const plan = planDetails(application);
   if (status === "approved_pending_payment") {
     return {
       title: "Account verified",
-      body: "ARK approved your account. Add your payment method to start the $100 monthly service plus $10 for each unique lead added to Contacted Me. There is no monthly maximum on lead charges.",
+      body: `ARK approved your ${plan.name} account. Add your payment method to start ${plan.price.toLowerCase()} under the selected plan.`,
     };
   }
   if (status === "declined") {
@@ -21,7 +37,7 @@ function statusCopy(status) {
   }
   return {
     title: "Waiting on verification",
-    body: "Your information was submitted successfully. ARK must review and approve the account before payment setup is unlocked.",
+    body: `Your ${plan.name} application was submitted successfully. ARK must review and approve the account before payment setup is unlocked.`,
   };
 }
 
@@ -36,7 +52,7 @@ export default function SignupStatusPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("canceled") === "1") setNotice("Payment setup was canceled. Your approval is still saved.");
+    if (params.get("canceled") === "1") setNotice("Payment setup was canceled. Your approval and selected plan are still saved.");
   }, []);
 
   useEffect(() => {
@@ -111,7 +127,8 @@ export default function SignupStatusPage() {
     );
   }
 
-  const copy = statusCopy(application?.status);
+  const plan = planDetails(application);
+  const copy = statusCopy(application?.status, application);
   const approved = application?.status === "approved_pending_payment";
   const declined = application?.status === "declined";
   const pending = !approved && !declined;
@@ -128,17 +145,23 @@ export default function SignupStatusPage() {
 
         {application && (
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-            <p className="font-black text-slate-950">{application.businessName}</p>
-            <p className="mt-1 text-slate-600">{application.ownerName}</p>
-            <p className="mt-1 break-all text-slate-600">{application.accountEmail}</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-black text-slate-950">{application.businessName}</p>
+                <p className="mt-1 text-slate-600">{application.ownerName}</p>
+              </div>
+              <span className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase text-white">{plan.name}</span>
+            </div>
+            <p className="mt-2 break-all text-slate-600">{application.accountEmail}</p>
             <p className="mt-1 text-slate-600">{application.accountPhone}</p>
           </div>
         )}
 
         {approved && (
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
-            <p><strong>$100 USD monthly</strong> plus <strong>$10 USD per unique Contacted Me lead</strong>.</p>
-            <p className="mt-1">Lead charges have no monthly maximum. Stripe securely stores the payment method and processes the recurring and usage-based invoice.</p>
+            <p><strong>{plan.name}: {plan.price}</strong></p>
+            <p className="mt-1">{plan.summary}</p>
+            <p className="mt-1">Stripe securely stores the payment method and processes the recurring and usage-based invoice.</p>
           </div>
         )}
 
@@ -147,7 +170,7 @@ export default function SignupStatusPage() {
 
         {approved && (
           <button type="button" disabled={billing} onClick={openBilling} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3 font-black text-white disabled:opacity-50">
-            {billing ? "Opening Stripe…" : "Continue to secure payment setup"}
+            {billing ? "Opening Stripe…" : `Continue with ${plan.name}`}
           </button>
         )}
 
