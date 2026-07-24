@@ -5,6 +5,13 @@
   "appendUserAgent": " ARKClientCenter/1.1",
   "backgroundColor": "#f8fafc",
   "loggingBehavior": "debug",
+  "server": {
+    "url": "https://ark-websites-ocm.vercel.app",
+    "androidScheme": "https",
+    "iosScheme": "https",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
   "plugins": {
     "PushNotifications": {
       "presentationOptions": ["sound", "alert", "banner", "list"]
