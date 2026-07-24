@@ -19,6 +19,17 @@ const EMPTY_ACCOUNT = {
   receptionistConfigured: false,
   receptionistEnabled: true,
   receptionistPhone: "",
+  paymentMethodLabel: "",
+  stripeSubscriptionStatus: "",
+  receptionistPlan: { key: "starter-25", name: "Starter 25", includedCalls: 25, monthlyCents: 4900, overageCents: 150 },
+  pendingReceptionistPlan: null,
+  currentBillingMonth: "",
+  currentMonthCallCount: 0,
+  currentMonthIncludedCalls: 25,
+  currentMonthOverageCalls: 0,
+  currentMonthOverageAmount: 0,
+  currentMonthAmountDue: 4900,
+  currentMonthCurrency: "usd",
   billing: { phase: "current", restricted: false, showNotice: false, offenseNumber: 0 },
 };
 
@@ -101,13 +112,48 @@ function LegalAgreementPanel({ account }) {
   );
 }
 
+function BillingDetailsPanel({ account }) {
+  const plan = account.receptionistPlan || EMPTY_ACCOUNT.receptionistPlan;
+  const includedCalls = Math.max(0, Number(account.currentMonthIncludedCalls || plan.includedCalls || 0));
+  const callsUsed = Math.max(0, Number(account.currentMonthCallCount || 0));
+  const callsRemaining = Math.max(0, includedCalls - callsUsed);
+  const pending = account.pendingReceptionistPlan;
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Private account billing</p>
+          <h2 className="mt-1 text-lg font-black sm:text-2xl">Receptionist Plan and Payment</h2>
+        </div>
+        <Pill>{account.stripeSubscriptionStatus || "Not configured"}</Pill>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Current plan</p><p className="mt-1 text-sm font-black">{plan.name}</p><p className="mt-1 text-[11px] font-semibold text-slate-500">{formatMoney(plan.monthlyCents)} monthly</p></div>
+        <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Included and overage</p><p className="mt-1 text-sm font-black">{Number(plan.includedCalls || 0).toLocaleString()} calls</p><p className="mt-1 text-[11px] font-semibold text-slate-500">{formatMoney(plan.overageCents)} per extra call</p></div>
+        <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Payment method</p><p className="mt-1 break-words text-sm font-black">{account.paymentMethodLabel || "No payment method recorded"}</p></div>
+        <div className="rounded-xl border border-slate-200 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Amount due</p><p className="mt-1 text-sm font-black">{formatMoney(account.currentMonthAmountDue, account.currentMonthCurrency)}</p><p className="mt-1 text-[11px] font-semibold text-slate-500">{account.currentBillingMonth || "Current month"}</p></div>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl bg-slate-100 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Calls used</p><p className="mt-1 text-2xl font-black">{callsUsed.toLocaleString()}</p></div>
+        <div className="rounded-xl bg-slate-100 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Calls remaining</p><p className="mt-1 text-2xl font-black">{callsRemaining.toLocaleString()}</p></div>
+        <div className="rounded-xl bg-slate-100 p-3"><p className="text-[10px] font-black uppercase text-slate-500">Overage</p><p className="mt-1 text-2xl font-black">{Number(account.currentMonthOverageCalls || 0).toLocaleString()} calls</p><p className="mt-1 text-[11px] font-semibold text-slate-500">{formatMoney(account.currentMonthOverageAmount, account.currentMonthCurrency)}</p></div>
+      </div>
+
+      {pending && <p className="mt-3 rounded-xl border border-slate-300 bg-slate-50 p-3 text-xs font-bold text-slate-700">Pending: {pending.name} begins in {pending.effectiveMonth}. It includes {Number(pending.includedCalls || 0).toLocaleString()} calls at {formatMoney(pending.monthlyCents)} per month, then {formatMoney(pending.overageCents)} per extra call.</p>}
+    </section>
+  );
+}
+
 function AccountCard({ business, onOpen }) {
   return (
     <button type="button" onClick={() => onOpen(business.clientId)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-slate-400">
       <div className="min-w-0">
         <span className="block truncate text-sm font-black">{business.businessName}</span>
         <span className="mt-0.5 block truncate text-xs font-semibold text-slate-500">{business.ownerName || business.accountEmail}</span>
-        <span className="mt-1 block truncate text-[10px] text-slate-400">{business.receptionistPhone || business.phone || business.clientId}</span>
+        <span className="mt-1 block truncate text-[10px] text-slate-400">{business.receptionistPlan?.name || "Starter 25"} · {business.receptionistPhone || business.phone || business.clientId}</span>
       </div>
       <AccountStatus account={business} />
     </button>
@@ -117,7 +163,7 @@ function AccountCard({ business, onOpen }) {
 function AccountSection({ businesses, onOpen, searchQuery, onSearchChange }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
-      <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">Accounts</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Open a customer account to manage its connection number, business information, AI settings, requests, and account controls.</p></div><CountBadge value={businesses.length} /></div>
+      <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">Accounts</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Open a customer account to manage its connection number, business information, AI settings, requests, billing details, and account controls.</p></div><CountBadge value={businesses.length} /></div>
       <input type="search" value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search business, name, email, phone, or client ID" className="mt-4 h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none focus:border-slate-950" />
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{businesses.map((business) => <AccountCard key={business.clientId} business={business} onOpen={onOpen} />)}</div>
       {businesses.length === 0 && <p className="mt-4 rounded-xl border border-slate-200 p-5 text-center text-sm font-semibold text-slate-500">{searchQuery ? "No accounts match that search." : "No active customer accounts."}</p>}
@@ -369,6 +415,7 @@ export default function ConnectionsPage() {
               <div className="mt-6"><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} adminMode /></div>
             </section>
 
+            <BillingDetailsPanel account={form} />
             {form.billing?.showNotice && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"><h2 className="text-lg font-black">Payment Status</h2><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="text-[10px] font-black uppercase text-slate-500">Phase</p><p className="font-black">{form.billing.phase.replaceAll("-", " ")}</p></div><div><p className="text-[10px] font-black uppercase text-slate-500">Amount due</p><p className="font-black">{formatMoney(form.billing.amountDue, form.billing.currency)}</p></div></div></section>}
             <LegalAgreementPanel account={form} />
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Request History</h2><CountBadge value={requestHistory.length} /></div><div className="mt-4 space-y-2">{requestHistory.map((item) => <article key={item.id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-black">{item.subject}</p><p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">{item.type} · {formatDate(item.createdAt)}</p></div><RequestStatus status={item.status} /></div><p className="mt-2 text-xs leading-5 text-slate-600">{item.message}</p></article>)}{requestHistory.length === 0 && <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">No requests for this account.</p>}</div></section>
