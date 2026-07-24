@@ -1,11 +1,13 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { accountTypeForBillingPlan, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import {
   billingPlanDefinition,
   ensureCustomerBillingSubscription,
   normalizeBillingPlan,
+  PER_EMPLOYEE_OVERAGE_CENTS,
   PER_OVERAGE_CENTS,
 } from "../../../lib/stripeUsageBilling";
 
@@ -99,6 +101,7 @@ export async function POST(request) {
     const accountPhone = text(account.accountPhone || metadata.accountPhone);
     const billingPlan = normalizeBillingPlan(account.billingPlan || metadata.billingPlan);
     const plan = billingPlanDefinition(billingPlan);
+    const accountType = accountTypeForBillingPlan(billingPlan);
     const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id || text(account.stripeCustomerId);
     const setupIntentId = typeof setupIntent === "string" ? setupIntent : setupIntent.id;
     const paymentMethodId = typeof setupIntent.payment_method === "string"
@@ -131,12 +134,20 @@ export async function POST(request) {
       verificationStatus: "approved",
       paymentSetupStatus: "complete",
       businessSetupComplete: false,
+      role: "customer",
+      accountType,
+      businessRole: "owner",
+      ownerUid: authorization.decoded.uid,
+      ownerNameKey: account.ownerNameKey || normalizePersonKey(ownerName),
       billingPlan,
       billingPlanName: plan.name,
       monthlyBaseCents: plan.monthlyBaseCents,
       includedLeads: plan.includedLeads,
       includedConversations: plan.includedConversations,
+      includedEmployees: plan.includedEmployees,
       perOverageCents: PER_OVERAGE_CENTS,
+      perEmployeeOverageCents: PER_EMPLOYEE_OVERAGE_CENTS,
+      ...(billingPlan === "business" ? { employeeVisibility: DEFAULT_EMPLOYEE_VISIBILITY } : {}),
       stripeCustomerId: customerId,
       stripeSetupIntentId: setupIntentId,
       stripePaymentMethodId: paymentMethodId,
@@ -148,20 +159,30 @@ export async function POST(request) {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
+    const businessRef = db.collection("businesses").doc(clientId);
     const batch = db.batch();
     batch.set(accountRef, activeAccount, { merge: true });
-    batch.set(db.collection("businesses").doc(clientId), activeAccount, { merge: true });
+    batch.set(businessRef, activeAccount, { merge: true });
+    batch.set(db.collection("businessNameRegistry").doc(text(account.businessNameKey || clientId)), {
+      clientId,
+      businessName,
+      ownerUid: authorization.decoded.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     batch.set(db.collection("ocmClients").doc(clientId), {
       businessName,
       ownerUid: authorization.decoded.uid,
       status: "active",
       businessSetupComplete: false,
+      accountType,
       billingPlan,
       billingPlanName: plan.name,
       monthlyBaseCents: plan.monthlyBaseCents,
       includedLeads: plan.includedLeads,
       includedConversations: plan.includedConversations,
+      includedEmployees: plan.includedEmployees,
       perOverageCents: PER_OVERAGE_CENTS,
+      perEmployeeOverageCents: PER_EMPLOYEE_OVERAGE_CENTS,
       termsAccepted: account.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true,
       termsVersion: text(account.termsVersion),
@@ -178,12 +199,15 @@ export async function POST(request) {
       AccountPhone: accountPhone,
       BillingEmail: accountEmail,
       BillingStatus: "Active",
+      AccountType: accountType,
       BillingPlan: billingPlan,
       BillingPlanName: plan.name,
       MonthlyBaseCents: plan.monthlyBaseCents,
       IncludedLeads: plan.includedLeads,
       IncludedConversations: plan.includedConversations,
+      IncludedEmployees: plan.includedEmployees,
       PerOverageCents: PER_OVERAGE_CENTS,
+      PerEmployeeOverageCents: PER_EMPLOYEE_OVERAGE_CENTS,
       PaymentMethodLabel: paymentMethodLabel,
       StripeCustomerId: customerId,
       StripeSubscriptionId: subscription.id,
@@ -235,6 +259,7 @@ export async function POST(request) {
       email: accountEmail,
       clientId,
       uid: authorization.decoded.uid,
+      accountType,
       billingPlan,
       completed: true,
       stripeSubscriptionId: subscription.id,
@@ -244,6 +269,8 @@ export async function POST(request) {
 
     await getAdminAuth().setCustomUserClaims(authorization.decoded.uid, {
       role: "customer",
+      accountType,
+      businessRole: "owner",
       clientId,
       accountStatus: "active",
       billingPlan,
@@ -255,11 +282,11 @@ export async function POST(request) {
 
     if (customerId) {
       await stripe.customers.update(customerId, {
-        metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan },
+        metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan, accountType },
       }).catch((stripeError) => console.error("Unable to update Stripe customer metadata", stripeError));
     }
 
-    return NextResponse.json({ email: accountEmail, clientId, billingPlan, completed: true });
+    return NextResponse.json({ email: accountEmail, clientId, accountType, billingPlan, completed: true });
   } catch (error) {
     console.error("Unable to complete approved signup", error);
     return NextResponse.json({ error: safeSignupError(error) }, { status: 500 });
