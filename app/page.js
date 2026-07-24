@@ -7,7 +7,6 @@ import { useAuth } from "./components/AuthProvider";
 import { useBillingStatus } from "./components/BillingStatusProvider";
 import ClientStats from "./components/ClientStats";
 import EmployeeDashboard from "./components/EmployeeDashboard";
-import MonthlyBillingCard from "./components/MonthlyBillingCard";
 import ReviewClientsNative from "./components/ReviewClientsNative";
 
 const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
@@ -28,7 +27,7 @@ async function adminApi(user, url) {
 
 function formatMoney(amount = 0, currency = "usd") {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: String(currency || "usd").toUpperCase() }).format(Number(amount || 0) / 100);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: String(currency || "usd").toUpperCase() }).format(Number(amount || 0) / 100);
   } catch {
     return `$${(Number(amount || 0) / 100).toFixed(2)}`;
   }
@@ -104,17 +103,10 @@ function CustomerHome() {
   return (
     <div className={status.restricted ? "client-home billing-restricted-client-home" : "client-home"}>
       <style>{`
-        .client-home main > div > section.mt-4 > div.mt-4.grid.grid-cols-3.rounded-xl { display: none; }
-        .client-home section:has(article > div.mt-4.grid.grid-cols-2) > div[class*="max-h-[60vh]"] { display: flex; flex-direction: column-reverse; gap: 0.5rem; }
-        .client-home section:has(article > div.mt-4.grid.grid-cols-2) > div[class*="max-h-[60vh]"] > * { margin-top: 0 !important; }
         .billing-restricted-client-home main > div > section.grid.grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
         .billing-restricted-client-home main > div > section.grid.grid-cols-2 > button:nth-child(2) { display: none; }
-        .billing-restricted-client-home section:has(article > div.mt-4.grid.grid-cols-3) { display: none; }
-        .billing-restricted-client-home article > div.mt-4.grid.grid-cols-2 > button:nth-child(2),
-        .billing-restricted-client-home article > div.mt-4.grid.grid-cols-2 > button:nth-child(4) { display: none; }
-        .billing-restricted-client-home article > div.mt-4.grid.grid-cols-2 > button:nth-child(3) { grid-column: 2; grid-row: 1; }
+        .billing-restricted-client-home section:has(article > div.mt-4.grid) { display: none; }
       `}</style>
-      {!status.restricted && <MonthlyBillingCard />}
       {!status.restricted && <ClientStats />}
       <ReviewClientsNative />
     </div>
