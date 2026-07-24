@@ -11,6 +11,14 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
 
+function statusLabel(value) {
+  return String(value || "").replaceAll("_", " ").replaceAll("-", " ");
+}
+
+function failedStatus(value) {
+  return ["provider-error", "sending-failed", "sending_failed", "delivery-failed", "delivery_failed", "failed", "gw-timeout", "gw_timeout", "dlr-timeout", "dlr_timeout"].includes(String(value || "").toLowerCase());
+}
+
 async function messageApi(user, query = "", options = {}) {
   const token = await user.getIdToken(true);
   const response = await fetch(`/api/business/lead-messages${query}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) }, cache: "no-store" });
@@ -96,7 +104,8 @@ export default function LeadMessagesPage() {
     try {
       const result = await messageApi(user, "", { method: "POST", body: JSON.stringify({ leadId: selectedLead, collectionKey: selectedCollection, message }) });
       setMessage("");
-      setNotice(result.notice || "Message sent.");
+      if (result.providerError || failedStatus(result.deliveryStatus)) setError(result.notice || result.providerError || "Telnyx rejected the message.");
+      else setNotice(result.notice || "Message queued.");
       await load(selectedLead, selectedCollection);
     } catch (sendError) {
       setError(sendError.message);
@@ -117,7 +126,11 @@ export default function LeadMessagesPage() {
           </div>
           {notice && <div className="border-b border-green-200 bg-green-50 px-4 py-2 text-xs font-bold text-green-800">{notice}</div>}
           {error && <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700">{error}</div>}
-          {loading ? <div className="grid flex-1 place-items-center text-sm font-semibold text-slate-500">Loading conversation…</div> : <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-slate-50 p-4 sm:p-6">{messages.map((item) => <article key={item.id} className={item.direction === "inbound" ? "mr-auto max-w-[85%] rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 shadow-sm" : "ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-slate-950 px-4 py-3 text-white shadow-sm"}><p className="whitespace-pre-wrap text-sm leading-6">{item.body}</p><p className="mt-1 text-[10px] font-bold text-slate-400">{formatDate(item.createdAt)}{item.deliveryStatus && item.direction === "outbound" ? ` · ${item.deliveryStatus.replaceAll("-", " ")}` : ""}</p></article>)}{messages.length === 0 && <div className="m-auto text-center"><p className="text-base font-black text-slate-700">No messages yet</p><p className="mt-1 text-xs text-slate-500">Send the first message to start this chat.</p></div>}</div>}
+          {loading ? <div className="grid flex-1 place-items-center text-sm font-semibold text-slate-500">Loading conversation…</div> : <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-slate-50 p-4 sm:p-6">{messages.map((item) => {
+            const outbound = item.direction === "outbound";
+            const failed = outbound && (failedStatus(item.deliveryStatus) || item.providerError);
+            return <article key={item.id} className={outbound ? "ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-slate-950 px-4 py-3 text-white shadow-sm" : "mr-auto max-w-[85%] rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3 shadow-sm"}><p className="whitespace-pre-wrap text-sm leading-6">{item.body}</p><p className="mt-1 text-[10px] font-bold text-slate-400">{formatDate(item.createdAt)}{item.deliveryStatus && outbound ? ` · ${statusLabel(item.deliveryStatus)}` : ""}</p>{failed && <p className="mt-1 text-[10px] font-bold leading-4 text-red-300">{item.providerErrorCode ? `${item.providerErrorCode}: ` : ""}{item.providerError || "Telnyx could not deliver this message."}</p>}</article>;
+          })}{messages.length === 0 && <div className="m-auto text-center"><p className="text-base font-black text-slate-700">No messages yet</p><p className="mt-1 text-xs text-slate-500">Send the first message to start this chat.</p></div>}</div>}
           <form onSubmit={send} className="border-t border-slate-200 bg-white p-3 sm:p-4"><div className="flex items-end gap-2"><textarea required rows={2} maxLength={1600} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Message" className="min-h-12 flex-1 resize-none rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-950" /><button disabled={sending || !selected?.leadPhone} className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{sending ? "Sending…" : "Send"}</button></div></form>
         </div>
       </main>
