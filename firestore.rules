@@ -9,10 +9,11 @@ service cloud.firestore {
       return signedIn() && request.auth.token.role == "admin";
     }
 
-    function ownsClient(clientId) {
+    function isActiveOwner(clientId) {
       return signedIn()
+        && request.auth.token.role == "customer"
         && request.auth.token.clientId == clientId
-        && (!("accountStatus" in request.auth.token) || request.auth.token.accountStatus == "active");
+        && (!('accountStatus' in request.auth.token) || request.auth.token.accountStatus == "active");
     }
 
     match /accounts/{uid} {
@@ -21,9 +22,17 @@ service cloud.firestore {
     }
 
     match /businesses/{clientId} {
-      allow get: if isAdmin() || ownsClient(clientId);
+      allow get: if isAdmin() || isActiveOwner(clientId);
       allow list: if isAdmin();
       allow write: if false;
+
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /businessNameRegistry/{nameKey} {
+      allow read, write: if false;
     }
 
     match /connections/{clientId} {
@@ -31,10 +40,10 @@ service cloud.firestore {
     }
 
     match /ocmClients/{clientId} {
-      allow read, write: if isAdmin() || ownsClient(clientId);
+      allow read, write: if isAdmin() || isActiveOwner(clientId);
 
       match /{document=**} {
-        allow read, write: if isAdmin() || ownsClient(clientId);
+        allow read, write: if isAdmin() || isActiveOwner(clientId);
       }
     }
 
