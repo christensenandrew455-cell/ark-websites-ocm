@@ -35,7 +35,12 @@ export function AuthProvider({ children }) {
     }
 
     const role = tokenResult.claims.role || account.role || "customer";
-    const clientId = normalizeClientId(tokenResult.claims.clientId || account.clientId || "");
+    const clientId = normalizeClientId(
+      tokenResult.claims.clientId
+        || tokenResult.claims.businessClientId
+        || account.clientId
+        || ""
+    );
     const claimedStatus = String(tokenResult.claims.accountStatus || "");
     const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
     const billingPlan = account.billingPlan || String(tokenResult.claims.billingPlan || "solo");
