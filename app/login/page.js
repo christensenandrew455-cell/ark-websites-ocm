@@ -9,7 +9,7 @@ import { normalizeBusinessIdentifier } from "../lib/valueUtils";
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [loginMode, setLoginMode] = useState("solo");
+  const [loginMode, setLoginMode] = useState("owner");
   const [businessName, setBusinessName] = useState("");
   const [personName, setPersonName] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +20,6 @@ export default function LoginPage() {
     event.preventDefault();
     setError("");
     setSubmitting(true);
-
     try {
       await login(businessName, password, { loginMode, personName });
       router.replace("/");
@@ -36,18 +35,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Websites</p>
         <h1 className="mt-3 text-3xl font-bold text-slate-950">Welcome to ARK OCM</h1>
-        <p className="mt-2 text-sm text-slate-600">Choose the account side you use, then sign in.</p>
+        <p className="mt-2 text-sm text-slate-600">Owners and employees use separate sign-in paths inside the same business account.</p>
 
         <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-          {[['solo', 'Solo'], ['business', 'Business']].map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => { setLoginMode(value); setError(""); }}
-              className={loginMode === value
-                ? "rounded-lg bg-white px-3 py-2.5 text-sm font-black text-slate-950 shadow-sm"
-                : "rounded-lg px-3 py-2.5 text-sm font-bold text-slate-500"}
-            >
+          {[["owner", "Owner"], ["employee", "Employee"]].map(([value, label]) => (
+            <button key={value} type="button" onClick={() => { setLoginMode(value); setError(""); }} className={loginMode === value ? "rounded-lg bg-white px-3 py-2.5 text-sm font-black text-slate-950 shadow-sm" : "rounded-lg px-3 py-2.5 text-sm font-bold text-slate-500"}>
               {label} Sign In
             </button>
           ))}
@@ -56,62 +48,28 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Business name</span>
-            <input
-              required
-              autoComplete="organization"
-              value={businessName}
-              onChange={(event) => setBusinessName(normalizeBusinessIdentifier(event.target.value))}
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-              placeholder="Your business name"
-            />
-            <span className="mt-1.5 block text-xs font-semibold text-slate-400">Capitalization does not create a separate business.</span>
+            <input required autoComplete="organization" value={businessName} onChange={(event) => setBusinessName(normalizeBusinessIdentifier(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your business name" />
           </label>
 
-          {loginMode === "business" && (
+          {loginMode === "employee" && (
             <label className="block">
-              <span className="text-sm font-semibold text-slate-700">Your name</span>
-              <input
-                required
-                autoComplete="name"
-                value={personName}
-                onChange={(event) => setPersonName(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-                placeholder="Owner or employee name"
-              />
+              <span className="text-sm font-semibold text-slate-700">Employee name</span>
+              <input required autoComplete="name" value={personName} onChange={(event) => setPersonName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your employee name" />
             </label>
           )}
 
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Password</span>
-            <input
-              required
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-              placeholder="Your password"
-            />
+            <input required type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your password" />
           </label>
 
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? "Signing in…" : `Sign in to ${loginMode === "business" ? "Business" : "Solo"}`}
-          </button>
+          <button type="submit" disabled={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Signing in…" : `Sign in as ${loginMode === "employee" ? "Employee" : "Owner"}`}</button>
         </form>
 
         <div className="mt-5 flex items-center justify-between gap-3 text-sm">
-          <Link href="/forgot-password" className="font-semibold text-slate-600 hover:text-slate-950">
-            Forgot password?
-          </Link>
-          <Link href="/signup" className="font-bold text-slate-950 hover:underline">
-            Make an account
-          </Link>
+          <Link href="/forgot-password" className="font-semibold text-slate-600 hover:text-slate-950">Forgot password?</Link>
+          <Link href="/signup" className="font-bold text-slate-950 hover:underline">Make an account</Link>
         </div>
         <p className="mt-5 text-center text-xs text-slate-400">Admin accounts may use their account email in the business-name field.</p>
       </div>
