@@ -217,19 +217,6 @@ export async function POST(request) {
     const messageRef = conversationRef.collection("messages").doc();
     const batch = access.db.batch();
     if (!existingConversation.exists) {
-      batch.create(conversationRef, {
-        conversationId: key,
-        leadId,
-        collectionKey,
-        leadName: loaded.lead.name,
-        leadPhone: loaded.lead.phone,
-        assignedEmployeeUid: loaded.lead.assignedEmployeeUid || null,
-        assignedEmployeeName: loaded.lead.assignedEmployeeName || null,
-        startedByUid: access.decoded.uid,
-        startedByRole: access.isEmployee ? "employee" : "owner",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
       batch.set(billingRef, {
         conversationId: key,
         leadId,
@@ -251,6 +238,9 @@ export async function POST(request) {
       createdAt: FieldValue.serverTimestamp(),
     });
     batch.set(conversationRef, {
+      conversationId: key,
+      leadId,
+      collectionKey,
       leadName: loaded.lead.name,
       leadPhone: loaded.lead.phone,
       assignedEmployeeUid: loaded.lead.assignedEmployeeUid || null,
@@ -259,6 +249,11 @@ export async function POST(request) {
       lastMessageDirection: "outbound",
       lastMessageAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+      ...(!existingConversation.exists ? {
+        startedByUid: access.decoded.uid,
+        startedByRole: access.isEmployee ? "employee" : "owner",
+        createdAt: FieldValue.serverTimestamp(),
+      } : {}),
     }, { merge: true });
     await batch.commit();
 
