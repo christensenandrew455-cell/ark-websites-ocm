@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { billingPlanDefinition, normalizeBillingPlan } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,11 +34,18 @@ export async function GET(request) {
   }
 
   const account = snapshot.data();
+  const billingPlan = normalizeBillingPlan(account.billingPlan);
+  const plan = billingPlanDefinition(billingPlan);
   return NextResponse.json({
     ok: true,
     status: String(account.status || "pending_verification"),
     verificationStatus: String(account.verificationStatus || "pending"),
     paymentSetupStatus: String(account.paymentSetupStatus || "awaiting_verification"),
+    billingPlan,
+    planName: plan.name,
+    monthlyBaseCents: plan.monthlyBaseCents,
+    includedLeads: plan.includedLeads,
+    includedConversations: plan.includedConversations,
     businessName: String(account.businessName || ""),
     ownerName: String(account.ownerName || ""),
     accountEmail: String(account.accountEmail || ""),
