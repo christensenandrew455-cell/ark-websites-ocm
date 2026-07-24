@@ -7,13 +7,13 @@ import { useAuth } from "../components/AuthProvider";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { isAdmin, loading } = useAuth();
+  const { isAdmin, isEmployee, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && isAdmin) router.replace("/");
-  }, [isAdmin, loading, router]);
+    if (!loading && (isAdmin || isEmployee)) router.replace("/");
+  }, [isAdmin, isEmployee, loading, router]);
 
-  if (loading || isAdmin) {
+  if (loading || isAdmin || isEmployee) {
     return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening dashboard…</main>;
   }
 
