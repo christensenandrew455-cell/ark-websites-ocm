@@ -24,14 +24,14 @@ export async function POST(request) {
 
     const db = getAdminDb();
     let email = normalizedIdentifier.toLowerCase();
-
+    let resolvedBusiness = null;
     if (!email.includes("@")) {
-      const resolvedBusiness = await resolveBusiness(db, normalizedIdentifier);
+      resolvedBusiness = await resolveBusiness(db, normalizedIdentifier);
       if (!resolvedBusiness || !OWNER_STATUSES.has(String(resolvedBusiness.data.status || ""))) return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
-
       if (mode === "employee") {
         const personKey = normalizePersonKey(personName);
         if (!personKey) return NextResponse.json({ error: "Enter your name for employee sign in." }, { status: 400 });
+        if (resolvedBusiness.data.employeesEnabled !== true) return NextResponse.json({ error: "The owner has turned off employee access." }, { status: 403 });
         const handleSnapshot = await db.collection("businesses").doc(resolvedBusiness.clientId).collection("employeeHandles").doc(personKey).get();
         if (!handleSnapshot.exists) return NextResponse.json({ error: "Business, employee name, or password is incorrect." }, { status: 401 });
         email = String(handleSnapshot.data().email || "").toLowerCase();
@@ -42,12 +42,7 @@ export async function POST(request) {
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "Firebase Authentication is not configured." }, { status: 500 });
-    const passwordResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-      cache: "no-store",
-    });
+    const passwordResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, returnSecureToken: true }), cache: "no-store" });
     const passwordResult = await passwordResponse.json();
     if (!passwordResponse.ok || !passwordResult.localId) return NextResponse.json({ error: mode === "employee" ? "Business, employee name, or password is incorrect." : "Business name or password is incorrect." }, { status: 401 });
 
@@ -57,6 +52,11 @@ export async function POST(request) {
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
     const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
     const isEmployee = account.role === "employee" || account.accountType === ACCOUNT_TYPES.EMPLOYEE;
+    let business = resolvedBusiness?.data || null;
+    if (!isAdmin && account.clientId && !business) {
+      const businessSnapshot = await db.collection("businesses").doc(String(account.clientId)).get();
+      business = businessSnapshot.exists ? businessSnapshot.data() : null;
+    }
 
     if (!isAdmin && !accountSnapshot.exists) return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     if (!isAdmin && isEmployee && !EMPLOYEE_STATUSES.has(String(account.status || ""))) return NextResponse.json({ error: "This employee account is not available." }, { status: 403 });
@@ -64,44 +64,19 @@ export async function POST(request) {
     if (!isAdmin && account.status === "disabled") return NextResponse.json({ error: "This account is disabled." }, { status: 403 });
     if (!isAdmin && mode === "employee" && !isEmployee) return NextResponse.json({ error: "Use Owner Sign In for this account." }, { status: 409 });
     if (!isAdmin && mode === "owner" && isEmployee) return NextResponse.json({ error: "Use Employee Sign In for this account." }, { status: 409 });
+    if (!isAdmin && isEmployee && (!business || business.status !== "active" || business.employeesEnabled !== true)) return NextResponse.json({ error: "The owner has turned off employee access." }, { status: 403 });
 
+    const messagesEnabled = business?.messagesEnabled === true || account.messagesEnabled === true;
+    const employeesEnabled = business?.employeesEnabled === true || account.employeesEnabled === true;
+    const employeeMessagingEnabled = messagesEnabled && employeesEnabled && (business?.employeeMessagingEnabled === true || account.employeeMessagingEnabled === true);
     const claims = isAdmin
       ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }
       : isEmployee
-        ? {
-            role: "employee",
-            accountType: ACCOUNT_TYPES.EMPLOYEE,
-            businessRole: "employee",
-            businessClientId: account.clientId,
-            accountStatus: account.status,
-            billingPlan: "standard",
-            messagesEnabled: account.messagesEnabled === true,
-            employeeMessagingEnabled: account.employeeMessagingEnabled === true,
-            termsAccepted: account.termsAccepted === true,
-            privacyAccepted: account.privacyAccepted === true,
-            termsVersion: String(account.termsVersion || ""),
-            privacyVersion: String(account.privacyVersion || ""),
-          }
-        : {
-            role: "customer",
-            accountType: ACCOUNT_TYPES.OWNER,
-            businessRole: "owner",
-            clientId: account.clientId,
-            accountStatus: account.status,
-            billingPlan: "standard",
-            messagesEnabled: account.messagesEnabled === true,
-            employeesEnabled: account.employeesEnabled === true,
-            employeeMessagingEnabled: account.employeeMessagingEnabled === true,
-            termsAccepted: account.termsAccepted === true,
-            privacyAccepted: account.privacyAccepted === true,
-            termsVersion: String(account.termsVersion || ""),
-            privacyVersion: String(account.privacyVersion || ""),
-          };
+        ? { role: "employee", accountType: ACCOUNT_TYPES.EMPLOYEE, businessRole: "employee", businessClientId: account.clientId, accountStatus: account.status, billingPlan: "standard", messagesEnabled, employeesEnabled, employeeMessagingEnabled, termsAccepted: account.termsAccepted === true, privacyAccepted: account.privacyAccepted === true, termsVersion: String(account.termsVersion || ""), privacyVersion: String(account.privacyVersion || "") }
+        : { role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId: account.clientId, accountStatus: account.status, billingPlan: "standard", messagesEnabled, employeesEnabled, employeeMessagingEnabled, termsAccepted: account.termsAccepted === true, privacyAccepted: account.privacyAccepted === true, termsVersion: String(account.termsVersion || ""), privacyVersion: String(account.privacyVersion || "") };
 
     await auth.setCustomUserClaims(userRecord.uid, claims);
-    if (isAdmin) {
-      await db.collection("accounts").doc(userRecord.uid).set({ uid: userRecord.uid, accountEmail: email, ownerName: account.ownerName || userRecord.displayName || "ARK OCM Admin", businessName: account.businessName || "ARK Websites", clientId: account.clientId || "", role: "admin", status: "active", updatedAt: new Date() }, { merge: true });
-    }
+    if (isAdmin) await db.collection("accounts").doc(userRecord.uid).set({ uid: userRecord.uid, accountEmail: email, ownerName: account.ownerName || userRecord.displayName || "ARK OCM Admin", businessName: account.businessName || "ARK Websites", clientId: account.clientId || "", role: "admin", status: "active", updatedAt: new Date() }, { merge: true });
     const token = await auth.createCustomToken(userRecord.uid, claims);
     return NextResponse.json({ token, role: isAdmin ? "admin" : isEmployee ? "employee" : "customer", accountType: claims.accountType || "admin", status: isAdmin ? "active" : account.status });
   } catch (error) {
