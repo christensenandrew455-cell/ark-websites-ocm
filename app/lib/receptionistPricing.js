@@ -78,16 +78,21 @@ function recommendationIndexes(recommendedIndex) {
   return [recommendedIndex - 1, recommendedIndex, recommendedIndex + 1];
 }
 
+function recommendationLabel(index, recommendedIndex, optionIndex) {
+  if (index === recommendedIndex) return "Recommended";
+  if (index < recommendedIndex) return optionIndex === 0 ? "Lower monthly" : "Middle option";
+  return optionIndex === 2 ? "Lower overage" : "More included";
+}
+
 export function receptionistPlanRecommendations(callCount) {
   const calls = wholeCalls(callCount);
   const recommended = bestReceptionistPlan(calls);
   const recommendedIndex = RECEPTIONIST_PLANS.findIndex((plan) => plan.key === recommended.key);
-  const labels = ["Lower monthly", "Recommended", "Lower overage"];
   return recommendationIndexes(recommendedIndex).map((index, optionIndex) => {
     const plan = RECEPTIONIST_PLANS[index];
     return {
       ...receptionistPlanSnapshot(plan.key),
-      label: labels[optionIndex],
+      label: recommendationLabel(index, recommendedIndex, optionIndex),
       estimatedTotalCents: receptionistPlanTotalCents(plan, calls),
       expectedCalls: calls,
       recommended: plan.key === recommended.key,
