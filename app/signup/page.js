@@ -9,6 +9,23 @@ import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
 import { dashBusinessName } from "../lib/valueUtils";
 
+const PLANS = [
+  {
+    key: "solo",
+    name: "Solo",
+    price: "$100/month",
+    description: "50 leads included each month, then $5 per additional lead.",
+    details: ["50 free leads", "$5 per lead after 50"],
+  },
+  {
+    key: "solo_pro",
+    name: "Solo Pro",
+    price: "$200/month",
+    description: "50 leads and 50 new lead conversations included each month.",
+    details: ["50 free leads", "50 free conversations", "$5 per extra lead or conversation", "Texts inside a conversation are included"],
+  },
+];
+
 export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -18,6 +35,7 @@ export default function SignupPage() {
     accountPhone: "",
     password: "",
     confirmPassword: "",
+    billingPlan: "solo",
   });
   const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +74,7 @@ export default function SignupPage() {
           accountEmail: form.accountEmail,
           accountPhone: form.accountPhone,
           password: form.password,
+          billingPlan: form.billingPlan,
           acceptedTerms: true,
           acceptedPrivacy: true,
           termsVersion: TERMS_VERSION,
@@ -71,16 +90,55 @@ export default function SignupPage() {
     }
   }
 
+  const selectedPlan = PLANS.find((plan) => plan.key === form.billingPlan) || PLANS[0];
+  const billingAgreement = form.billingPlan === "solo_pro"
+    ? "$200 per month with 50 leads and 50 new lead conversations included, then $5 for each additional lead or conversation. Individual texts inside a conversation are not charged separately."
+    : "$100 per month with 50 leads included, then $5 for each additional lead.";
+
   return (
     <main className="min-h-screen bg-slate-950 p-5 py-10">
-      <div className="mx-auto w-full max-w-xl rounded-3xl bg-white p-7 shadow-2xl md:p-9">
+      <div className="mx-auto w-full max-w-2xl rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK OCM</p>
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          Enter the business information and choose a password. ARK will verify the account before payment setup is available.
+          Choose a Solo plan, enter the business information, and create a password. ARK verifies the account before payment setup is available.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
+          <fieldset className="md:col-span-2">
+            <legend className="text-sm font-black text-slate-950">Choose your plan</legend>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {PLANS.map((plan) => {
+                const selected = form.billingPlan === plan.key;
+                return (
+                  <button
+                    key={plan.key}
+                    type="button"
+                    onClick={() => setForm((current) => ({ ...current, billingPlan: plan.key }))}
+                    className={selected
+                      ? "rounded-2xl border-2 border-slate-950 bg-slate-950 p-5 text-left text-white shadow-lg"
+                      : "rounded-2xl border-2 border-slate-200 bg-white p-5 text-left text-slate-950 hover:border-slate-400"}
+                    aria-pressed={selected}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xl font-black">{plan.name}</p>
+                        <p className={selected ? "mt-1 text-sm font-black text-white" : "mt-1 text-sm font-black text-slate-700"}>{plan.price}</p>
+                      </div>
+                      <span className={selected ? "rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase text-slate-950" : "rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-500"}>
+                        {selected ? "Selected" : "Choose"}
+                      </span>
+                    </div>
+                    <p className={selected ? "mt-3 text-sm leading-6 text-slate-200" : "mt-3 text-sm leading-6 text-slate-600"}>{plan.description}</p>
+                    <ul className={selected ? "mt-3 space-y-1 text-xs font-bold text-slate-200" : "mt-3 space-y-1 text-xs font-bold text-slate-600"}>
+                      {plan.details.map((detail) => <li key={detail}>• {detail}</li>)}
+                    </ul>
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+
           <label className="block md:col-span-2">
             <span className="text-sm font-semibold text-slate-700">Business name</span>
             <input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} placeholder="Your business name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" />
@@ -108,21 +166,21 @@ export default function SignupPage() {
           </label>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
-            <p className="text-sm font-black text-slate-950">Pricing</p>
-            <p className="mt-1 text-sm leading-6 text-slate-700">$100 USD each month, plus $10 USD for every unique lead first added to Contacted Me. There is no monthly maximum on lead charges.</p>
+            <p className="text-sm font-black text-slate-950">Selected: {selectedPlan.name}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">{billingAgreement}</p>
           </div>
 
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
             <input required type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-slate-950" />
             <span className="text-sm leading-6 text-slate-700">
-              I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>, including recurring billing of $100 per month plus $10 for each unique lead added to Contacted Me, with no monthly maximum on lead charges.
+              I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>, including recurring billing under the selected {selectedPlan.name} plan: {billingAgreement}
             </span>
           </label>
 
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 md:col-span-2">{error}</p>}
 
           <button disabled={submitting || !acceptedLegal} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60 md:col-span-2">
-            {submitting ? "Submitting for verification…" : "Submit for verification"}
+            {submitting ? "Submitting for verification…" : `Submit ${selectedPlan.name} for verification`}
           </button>
         </form>
 
