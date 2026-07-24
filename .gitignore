@@ -5,3 +5,4 @@ android
 .env
 .env.local
 .env.production
+.vercel
