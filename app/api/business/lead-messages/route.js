@@ -42,8 +42,12 @@ async function authorizeMessaging(request) {
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
-  if (!decoded.clientId || !["customer", "employee"].includes(decoded.role)) {
+  if (!["customer", "employee"].includes(decoded.role)) {
     return { response: NextResponse.json({ error: "A Solo Pro, Business owner, or approved employee account is required." }, { status: 403 }) };
+  }
+  const clientId = text(decoded.role === "employee" ? decoded.businessClientId || decoded.clientId : decoded.clientId);
+  if (!clientId) {
+    return { response: NextResponse.json({ error: "This account does not have a business workspace." }, { status: 403 }) };
   }
   const db = getAdminDb();
   const accountSnapshot = await db.collection("accounts").doc(decoded.uid).get();
@@ -51,6 +55,9 @@ async function authorizeMessaging(request) {
   const account = accountSnapshot.data();
   const isEmployee = decoded.role === "employee" || account.role === "employee";
   const plan = text(account.billingPlan || decoded.billingPlan);
+  if (text(account.clientId) !== clientId) {
+    return { response: NextResponse.json({ error: "This account does not match the requested business workspace." }, { status: 403 }) };
+  }
   if (account.status !== "active") {
     return { response: NextResponse.json({ error: isEmployee ? "The business owner has not approved this employee account." : "This account is not active." }, { status: 403 }) };
   }
@@ -60,7 +67,7 @@ async function authorizeMessaging(request) {
   if (isEmployee && plan !== "business") {
     return { response: NextResponse.json({ error: "This employee account is not attached to an active Business plan." }, { status: 403 }) };
   }
-  return { db, decoded, account, clientId: text(decoded.clientId), isEmployee, plan };
+  return { db, decoded, account, clientId, isEmployee, plan };
 }
 
 async function loadLead(access, collectionKey, leadId) {
