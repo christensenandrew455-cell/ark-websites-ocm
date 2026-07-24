@@ -11,7 +11,7 @@ export function normalizeClientId(value) {
 }
 
 export function dashBusinessName(value) {
-  return String(value ?? "").replace(/\s+/g, "-");
+  return String(value ?? "").replace(/\s+/g, " ");
 }
 
 export function normalizeBusinessIdentifier(value) {
