@@ -27,19 +27,13 @@ export async function POST(request) {
 
     if (!email.includes("@")) {
       const resolvedBusiness = await resolveBusiness(db, normalizedIdentifier);
-      if (!resolvedBusiness || !CUSTOMER_STATUSES.has(String(resolvedBusiness.data.status || ""))) {
-        return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
-      }
+      if (!resolvedBusiness || !CUSTOMER_STATUSES.has(String(resolvedBusiness.data.status || ""))) return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
 
       if (mode === "business") {
         const personKey = normalizePersonKey(personName);
         if (!personKey) return NextResponse.json({ error: "Enter your name for Business sign in." }, { status: 400 });
         if (resolvedBusiness.data.billingPlan !== "business") return NextResponse.json({ error: "That account uses Solo sign in." }, { status: 409 });
-
-        const ownerKeys = new Set([
-          normalizePersonKey(resolvedBusiness.data.ownerNameKey),
-          normalizePersonKey(resolvedBusiness.data.ownerName),
-        ].filter(Boolean));
+        const ownerKeys = new Set([normalizePersonKey(resolvedBusiness.data.ownerNameKey), normalizePersonKey(resolvedBusiness.data.ownerName)].filter(Boolean));
         if (ownerKeys.has(personKey)) {
           email = String(resolvedBusiness.data.accountEmail || "").toLowerCase();
         } else {
@@ -55,7 +49,6 @@ export async function POST(request) {
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "Firebase Authentication is not configured." }, { status: 500 });
-
     const passwordResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -63,9 +56,7 @@ export async function POST(request) {
       cache: "no-store",
     });
     const passwordResult = await passwordResponse.json();
-    if (!passwordResponse.ok || !passwordResult.localId) {
-      return NextResponse.json({ error: mode === "business" ? "Business, name, or password is incorrect." : "Business name or password is incorrect." }, { status: 401 });
-    }
+    if (!passwordResponse.ok || !passwordResult.localId) return NextResponse.json({ error: mode === "business" ? "Business, name, or password is incorrect." : "Business name or password is incorrect." }, { status: 401 });
 
     const auth = getAdminAuth();
     const userRecord = await auth.getUser(passwordResult.localId);
@@ -73,7 +64,6 @@ export async function POST(request) {
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
     const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
     const isEmployee = account.role === "employee" || account.accountType === ACCOUNT_TYPES.BUSINESS_EMPLOYEE;
-
     if (!isAdmin && !accountSnapshot.exists) return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     if (!isAdmin && isEmployee && !EMPLOYEE_STATUSES.has(String(account.status || ""))) return NextResponse.json({ error: "This employee account is not available." }, { status: 403 });
     if (!isAdmin && !isEmployee && (!CUSTOMER_STATUSES.has(String(account.status || "")) || !account.clientId)) return NextResponse.json({ error: "This account is not available." }, { status: 403 });
@@ -81,33 +71,36 @@ export async function POST(request) {
 
     const claims = isAdmin
       ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }
-      : {
-          role: isEmployee ? "employee" : "customer",
-          accountType: account.accountType || (account.billingPlan === "business" ? ACCOUNT_TYPES.BUSINESS_OWNER : ACCOUNT_TYPES.SOLO_OWNER),
-          businessRole: isEmployee ? "employee" : "owner",
-          clientId: account.clientId,
-          accountStatus: account.status,
-          billingPlan: account.billingPlan || "solo",
-          termsAccepted: account.termsAccepted === true,
-          privacyAccepted: account.privacyAccepted === true,
-          termsVersion: String(account.termsVersion || ""),
-          privacyVersion: String(account.privacyVersion || ""),
-        };
+      : isEmployee
+        ? {
+            role: "employee",
+            accountType: ACCOUNT_TYPES.BUSINESS_EMPLOYEE,
+            businessRole: "employee",
+            businessClientId: account.clientId,
+            accountStatus: account.status,
+            billingPlan: "business",
+            termsAccepted: account.termsAccepted === true,
+            privacyAccepted: account.privacyAccepted === true,
+            termsVersion: String(account.termsVersion || ""),
+            privacyVersion: String(account.privacyVersion || ""),
+          }
+        : {
+            role: "customer",
+            accountType: account.accountType || (account.billingPlan === "business" ? ACCOUNT_TYPES.BUSINESS_OWNER : ACCOUNT_TYPES.SOLO_OWNER),
+            businessRole: "owner",
+            clientId: account.clientId,
+            accountStatus: account.status,
+            billingPlan: account.billingPlan || "solo",
+            termsAccepted: account.termsAccepted === true,
+            privacyAccepted: account.privacyAccepted === true,
+            termsVersion: String(account.termsVersion || ""),
+            privacyVersion: String(account.privacyVersion || ""),
+          };
 
     await auth.setCustomUserClaims(userRecord.uid, claims);
     if (isAdmin) {
-      await db.collection("accounts").doc(userRecord.uid).set({
-        uid: userRecord.uid,
-        accountEmail: email,
-        ownerName: account.ownerName || userRecord.displayName || "ARK OCM Admin",
-        businessName: account.businessName || "ARK Websites",
-        clientId: account.clientId || "",
-        role: "admin",
-        status: "active",
-        updatedAt: new Date(),
-      }, { merge: true });
+      await db.collection("accounts").doc(userRecord.uid).set({ uid: userRecord.uid, accountEmail: email, ownerName: account.ownerName || userRecord.displayName || "ARK OCM Admin", businessName: account.businessName || "ARK Websites", clientId: account.clientId || "", role: "admin", status: "active", updatedAt: new Date() }, { merge: true });
     }
-
     const token = await auth.createCustomToken(userRecord.uid, claims);
     return NextResponse.json({ token, role: isAdmin ? "admin" : isEmployee ? "employee" : "customer", accountType: claims.accountType || "admin", status: isAdmin ? "active" : account.status });
   } catch (error) {
