@@ -2,7 +2,12 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { ensureCustomerBillingSubscription } from "../../../lib/stripeUsageBilling";
+import {
+  billingPlanDefinition,
+  ensureCustomerBillingSubscription,
+  normalizeBillingPlan,
+  PER_OVERAGE_CENTS,
+} from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +33,7 @@ function safeSignupError(error) {
     return "Firebase Admin credentials are invalid. Check the Vercel Firebase variables, then redeploy.";
   }
   if (/stripe|api key|authentication|payment|card|invoice|subscription/i.test(message)) {
-    return "Stripe could not start the monthly service. Check the payment method and Stripe configuration.";
+    return "Stripe could not start the selected monthly plan. Check the payment method and Stripe configuration.";
   }
   return "Unable to finish account setup right now.";
 }
@@ -92,6 +97,8 @@ export async function POST(request) {
     const ownerName = text(account.ownerName || metadata.ownerName);
     const accountEmail = text(account.accountEmail || metadata.accountEmail).toLowerCase();
     const accountPhone = text(account.accountPhone || metadata.accountPhone);
+    const billingPlan = normalizeBillingPlan(account.billingPlan || metadata.billingPlan);
+    const plan = billingPlanDefinition(billingPlan);
     const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id || text(account.stripeCustomerId);
     const setupIntentId = typeof setupIntent === "string" ? setupIntent : setupIntent.id;
     const paymentMethodId = typeof setupIntent.payment_method === "string"
@@ -115,6 +122,7 @@ export async function POST(request) {
       paymentMethodId,
       businessName,
       uid: authorization.decoded.uid,
+      billingPlan,
       existingSubscriptionId: text(account.stripeSubscriptionId),
     });
 
@@ -123,6 +131,12 @@ export async function POST(request) {
       verificationStatus: "approved",
       paymentSetupStatus: "complete",
       businessSetupComplete: false,
+      billingPlan,
+      billingPlanName: plan.name,
+      monthlyBaseCents: plan.monthlyBaseCents,
+      includedLeads: plan.includedLeads,
+      includedConversations: plan.includedConversations,
+      perOverageCents: PER_OVERAGE_CENTS,
       stripeCustomerId: customerId,
       stripeSetupIntentId: setupIntentId,
       stripePaymentMethodId: paymentMethodId,
@@ -142,6 +156,12 @@ export async function POST(request) {
       ownerUid: authorization.decoded.uid,
       status: "active",
       businessSetupComplete: false,
+      billingPlan,
+      billingPlanName: plan.name,
+      monthlyBaseCents: plan.monthlyBaseCents,
+      includedLeads: plan.includedLeads,
+      includedConversations: plan.includedConversations,
+      perOverageCents: PER_OVERAGE_CENTS,
       termsAccepted: account.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true,
       termsVersion: text(account.termsVersion),
@@ -158,6 +178,12 @@ export async function POST(request) {
       AccountPhone: accountPhone,
       BillingEmail: accountEmail,
       BillingStatus: "Active",
+      BillingPlan: billingPlan,
+      BillingPlanName: plan.name,
+      MonthlyBaseCents: plan.monthlyBaseCents,
+      IncludedLeads: plan.includedLeads,
+      IncludedConversations: plan.includedConversations,
+      PerOverageCents: PER_OVERAGE_CENTS,
       PaymentMethodLabel: paymentMethodLabel,
       StripeCustomerId: customerId,
       StripeSubscriptionId: subscription.id,
@@ -180,12 +206,14 @@ export async function POST(request) {
         Email: accountEmail,
         Address: businessName,
         PropertyKey: `business-${clientId}`,
-        Job: "ARK OCM account",
+        Job: `ARK OCM ${plan.name} account`,
         BestContactMethod: accountPhone ? "Call" : "Email",
-        Notes: `ARK OCM customer account for ${businessName}.`,
+        Notes: `ARK OCM ${plan.name} customer account for ${businessName}.`,
         source: "business-signup",
         RelatedBusinessClientId: clientId,
         AccountStatus: "active",
+        BillingPlan: billingPlan,
+        BillingPlanName: plan.name,
         TermsAccepted: account.termsAccepted === true,
         PrivacyAccepted: account.privacyAccepted === true,
         TermsVersion: text(account.termsVersion),
@@ -207,6 +235,7 @@ export async function POST(request) {
       email: accountEmail,
       clientId,
       uid: authorization.decoded.uid,
+      billingPlan,
       completed: true,
       stripeSubscriptionId: subscription.id,
       createdAt: FieldValue.serverTimestamp(),
@@ -217,6 +246,7 @@ export async function POST(request) {
       role: "customer",
       clientId,
       accountStatus: "active",
+      billingPlan,
       termsAccepted: account.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true,
       termsVersion: text(account.termsVersion),
@@ -225,11 +255,11 @@ export async function POST(request) {
 
     if (customerId) {
       await stripe.customers.update(customerId, {
-        metadata: { uid: authorization.decoded.uid, clientId, businessName },
+        metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan },
       }).catch((stripeError) => console.error("Unable to update Stripe customer metadata", stripeError));
     }
 
-    return NextResponse.json({ email: accountEmail, clientId, completed: true });
+    return NextResponse.json({ email: accountEmail, clientId, billingPlan, completed: true });
   } catch (error) {
     console.error("Unable to complete approved signup", error);
     return NextResponse.json({ error: safeSignupError(error) }, { status: 500 });
