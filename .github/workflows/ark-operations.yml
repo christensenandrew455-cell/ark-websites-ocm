@@ -1,0 +1,187 @@
+name: ARK Operations
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.*"
+      - ".github/workflows/ark-operations.yml"
+  schedule:
+    - cron: "*/15 * * * *"
+    - cron: "7 * * * *"
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  production-smoke:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Mark production smoke test pending
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          retries: 3
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'pending',
+              context: 'Production Smoke Test',
+              description: 'Waiting for the live APIs to become healthy',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Verify live page and JSON APIs
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_URL="https://ark-websites-ocm.vercel.app"
+
+          wait_for_response() {
+            local name="$1"
+            local expected_status="$2"
+            shift 2
+
+            for attempt in $(seq 1 36); do
+              rm -f response-body response-headers
+              status=$(curl --silent --show-error \
+                --output response-body \
+                --dump-header response-headers \
+                --write-out '%{http_code}' \
+                "$@" || true)
+
+              echo "$name attempt $attempt: HTTP $status"
+              if [ "$status" = "$expected_status" ]; then
+                return 0
+              fi
+              if [ "$attempt" -lt 36 ]; then sleep 10; fi
+            done
+
+            echo "::$name failed::Expected HTTP $expected_status but received $status"
+            cat response-body || true
+            return 1
+          }
+
+          wait_for_response "Home page" "200" "$BASE_URL/"
+          wait_for_response \
+            "Approved signup API" \
+            "401" \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "Accept: application/json" \
+            --data '{}' \
+            "$BASE_URL/api/signup/complete"
+          python -m json.tool response-body >/dev/null
+
+          AUTH_ARGS=()
+          if [ -n "$CRON_SECRET" ]; then
+            AUTH_ARGS=(--header "Authorization: Bearer $CRON_SECRET")
+          fi
+
+          wait_for_response \
+            "Workflow scheduler API" \
+            "200" \
+            --header "Accept: application/json" \
+            "${AUTH_ARGS[@]}" \
+            "$BASE_URL/api/cron/workflow"
+          python -m json.tool response-body >/dev/null
+
+      - name: Mark production smoke test successful
+        if: success()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          retries: 3
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'Production Smoke Test',
+              description: 'Live page and production APIs are healthy',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+      - name: Mark production smoke test failed
+        if: failure()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          retries: 3
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'failure',
+              context: 'Production Smoke Test',
+              description: 'A live production route returned an unexpected response',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
+  workflow-check:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run OCM workflow check
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          AUTH_ARGS=()
+          if [ -n "$CRON_SECRET" ]; then
+            AUTH_ARGS=(-H "Authorization: Bearer $CRON_SECRET")
+          fi
+          curl --fail-with-body --silent --show-error \
+            --retry 3 \
+            --retry-delay 10 \
+            -H "Accept: application/json" \
+            "${AUTH_ARGS[@]}" \
+            https://ark-websites-ocm.vercel.app/api/cron/workflow
+
+  lead-reminders:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '7 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send unread lead reminders
+        env:
+          REMINDER_SECRET: ${{ secrets.OCM_REMINDER_SECRET }}
+        run: |
+          if [ -z "$REMINDER_SECRET" ]; then
+            echo "::warning::OCM_REMINDER_SECRET is not configured. Lead reminders are skipped."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $REMINDER_SECRET" \
+            https://ark-websites-ocm.vercel.app/api/notifications/reminders
+
+  billing-enforcement:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Update overdue account access
+        env:
+          WORKFLOW_SECRET: ${{ secrets.BILLING_WORKFLOW_SECRET || secrets.OCM_REMINDER_SECRET }}
+        run: |
+          if [ -z "$WORKFLOW_SECRET" ]; then
+            echo "::warning::No billing workflow secret is configured. Billing enforcement is skipped."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $WORKFLOW_SECRET" \
+            https://ark-websites-ocm.vercel.app/api/workflows/billing-enforcement
