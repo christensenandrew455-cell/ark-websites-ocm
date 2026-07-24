@@ -1,7 +1,10 @@
 export const ACCOUNT_TYPES = Object.freeze({
-  SOLO_OWNER: "solo_owner",
-  BUSINESS_OWNER: "business_owner",
-  BUSINESS_EMPLOYEE: "business_employee",
+  OWNER: "owner",
+  EMPLOYEE: "employee",
+  // Compatibility aliases for records and imports created by the old plan model.
+  SOLO_OWNER: "owner",
+  BUSINESS_OWNER: "owner",
+  BUSINESS_EMPLOYEE: "employee",
 });
 
 export const DEFAULT_EMPLOYEE_VISIBILITY = Object.freeze({
@@ -34,12 +37,10 @@ export function normalizeEmployeeVisibility(value = {}) {
   );
 }
 
-export function accountTypeForBillingPlan(plan) {
-  return String(plan || "").trim().toLowerCase() === "business"
-    ? ACCOUNT_TYPES.BUSINESS_OWNER
-    : ACCOUNT_TYPES.SOLO_OWNER;
+export function accountTypeForBillingPlan() {
+  return ACCOUNT_TYPES.OWNER;
 }
 
 export function isBusinessAccountType(value) {
-  return value === ACCOUNT_TYPES.BUSINESS_OWNER || value === ACCOUNT_TYPES.BUSINESS_EMPLOYEE;
+  return value === ACCOUNT_TYPES.OWNER || value === ACCOUNT_TYPES.EMPLOYEE;
 }
