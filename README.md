@@ -48,6 +48,15 @@ scripts/                 Cross-platform mobile setup and asset generators
 - Keep Terms, Privacy, Docs, About, and Support publicly accessible for customers and app-store review.
 - Do not commit secrets, Firebase private keys, Stripe secrets, signing keys, or production environment files.
 
+## Messaging compliance flow
+
+- The receptionist records verbal contact consent before a lead is saved.
+- The first outbound chat sends an automatic consent confirmation before the employee or owner message.
+- Telnyx profile keyword responses provide the configured STOP, START, and HELP confirmations.
+- The inbound webhook mirrors those keywords into Firestore so STOP locks the OCM composer, START restores it, and HELP/REPORT creates a platform compliance event.
+- The public reporting path is configured with `ARK_CLIENT_CENTER_SUPPORT_URL` and defaults to `https://arkwebsites.com/support`.
+- Do not add a second application-level STOP or HELP autoresponse while Telnyx Advanced Opt-Out is enabled, because that would send duplicate replies.
+
 ## Development
 
 ```bash
@@ -79,4 +88,4 @@ The setup scripts regenerate required native configuration and app assets. Make 
 
 ## Deployment checks
 
-Changes pushed to `main` run the production smoke test, Vercel deployment status, and Android build workflow. Treat a change as complete only after the relevant checks pass.
+Changes pushed to `main` run the web build, production smoke test, Vercel deployment status, and Android build workflow. Treat a change as complete only after the relevant checks pass.
