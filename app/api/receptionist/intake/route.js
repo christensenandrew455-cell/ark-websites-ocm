@@ -30,6 +30,34 @@ function authorized(request) {
   return secretMatches(expected, supplied);
 }
 
+function withoutCallerEmail(data = {}) {
+  const payload = { ...data };
+  [
+    "Email",
+    "email",
+    "EmailAddress",
+    "emailAddress",
+    "callerEmail",
+    "customerEmail",
+  ].forEach((field) => delete payload[field]);
+
+  const contactFields = [
+    "BestContactMethod",
+    "bestContactMethod",
+    "BestFormOfContact",
+    "bestFormOfContact",
+    "BestWayToContact",
+    "bestWayToContact",
+    "preferredContactMethod",
+    "contactMethod",
+  ];
+  contactFields.forEach((field) => {
+    if (/^e-?mail$/i.test(text(payload[field]))) payload[field] = "";
+  });
+
+  return payload;
+}
+
 export async function POST(request) {
   if (!authorized(request)) return Response.json({ ok: false, error: "Unauthorized." }, { status: 401 });
 
@@ -66,7 +94,7 @@ export async function POST(request) {
   intakeUrl.searchParams.set("key", connectionKey);
   intakeUrl.searchParams.set("source", text(connection.sourceLabel || "AI receptionist"));
 
-  const payload = { ...data };
+  const payload = withoutCallerEmail(data);
   delete payload.routingPhone;
   delete payload.receptionistPhone;
   delete payload.clientId;
