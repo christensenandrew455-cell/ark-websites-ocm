@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
 import { requireUser } from "../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -70,7 +71,8 @@ async function authorizeMessaging(request) {
   if (business.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
   if (isEmployee && (business.employeesEnabled !== true || business.employeeMessagingEnabled !== true)) return { response: NextResponse.json({ error: "The owner has not enabled messaging for employees." }, { status: 403 }) };
   const fromPhone = normalizePhone(connection.receptionistPhoneNormalized || receptionist.receptionistPhoneNormalized || connection.receptionistPhone || receptionist.receptionistPhone);
-  return { db, decoded, account, business, clientId, isEmployee, fromPhone };
+  const businessName = text(business.businessName || business.name || account.businessName || receptionist.businessName) || "the business";
+  return { db, decoded, account, business, businessName, clientId, isEmployee, fromPhone };
 }
 
 async function loadLead(access, collectionKey, leadId) {
@@ -105,6 +107,7 @@ async function loadConversations(access) {
       assignedEmployeeName: text(data.assignedEmployeeName),
       lastMessage: text(data.lastMessage),
       lastMessageDirection: text(data.lastMessageDirection),
+      messagingOptedOut: data.messagingOptedOut === true,
       unreadCount: access.isEmployee ? Number(data.employeeUnreadCount || 0) : Number(data.ownerUnreadCount || 0),
       lastMessageAt: iso(data.lastMessageAt || data.updatedAt || data.createdAt),
       createdAt: iso(data.createdAt),
@@ -122,6 +125,7 @@ async function loadMessages(access, conversationKey) {
       body: text(data.body),
       senderName: text(data.senderName),
       senderRole: text(data.senderRole),
+      messageType: text(data.messageType),
       deliveryStatus: text(data.deliveryStatus),
       providerErrorCode: text(data.providerErrorCode),
       providerError: text(data.providerError),
@@ -144,7 +148,7 @@ export async function GET(request) {
       const loaded = await loadLead(access, selectedCollection, selectedLeadId);
       if (!loaded) return NextResponse.json({ error: "That lead is not available to this account." }, { status: 404 });
       const key = conversationId(access.clientId, selectedCollection, selectedLeadId);
-      selectedConversation = conversations.find((item) => item.id === key) || { id: key, leadId: selectedLeadId, collectionKey: selectedCollection, leadName: loaded.lead.name, leadPhone: loaded.lead.phone, assignedEmployeeUid: loaded.lead.assignedEmployeeUid, assignedEmployeeName: loaded.lead.assignedEmployeeName, newConversation: true };
+      selectedConversation = conversations.find((item) => item.id === key) || { id: key, leadId: selectedLeadId, collectionKey: selectedCollection, leadName: loaded.lead.name, leadPhone: loaded.lead.phone, assignedEmployeeUid: loaded.lead.assignedEmployeeUid, assignedEmployeeName: loaded.lead.assignedEmployeeName, messagingOptedOut: false, newConversation: true };
       const conversationRef = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations").doc(key);
       const conversationSnapshot = await conversationRef.get();
       if (conversationSnapshot.exists) {
@@ -177,13 +181,7 @@ async function sendThroughTelnyx({ from, to, message }) {
     const response = await fetch("https://api.telnyx.com/v2/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        from,
-        to: normalizePhone(to),
-        text: message,
-        use_profile_webhooks: true,
-        ...(webhookUrl ? { webhook_url: webhookUrl } : {}),
-      }),
+      body: JSON.stringify({ from, to: normalizePhone(to), text: message, use_profile_webhooks: true, ...(webhookUrl ? { webhook_url: webhookUrl } : {}) }),
       cache: "no-store",
     });
     const result = await response.json().catch(() => ({}));
@@ -196,6 +194,42 @@ async function sendThroughTelnyx({ from, to, message }) {
     return { status: text(destination?.status) || "queued", providerMessageId, providerErrorCode, providerError };
   } catch (error) {
     return { status: "provider-error", providerMessageId: "", providerErrorCode: "", providerError: text(error.message) };
+  }
+}
+
+function providerFailed(provider) {
+  return provider.status === "provider-error" || provider.status === "provider-not-configured";
+}
+
+function setMessageAndIndex({ batch, root, conversationRef, messageRef, body, provider, senderUid, senderName, senderRole, messageType, from, to, createdAt }) {
+  batch.set(messageRef, {
+    direction: "outbound",
+    body,
+    senderUid: senderUid || null,
+    senderName,
+    senderRole,
+    messageType,
+    deliveryStatus: provider.status,
+    providerMessageId: provider.providerMessageId || null,
+    providerErrorCode: provider.providerErrorCode || null,
+    providerError: provider.providerError || null,
+    providerFrom: from,
+    providerTo: to,
+    createdAt,
+  });
+  if (provider.providerMessageId) {
+    batch.set(root.collection("telnyxMessageIndex").doc(provider.providerMessageId), {
+      providerMessageId: provider.providerMessageId,
+      conversationId: conversationRef.id,
+      messageId: messageRef.id,
+      fromPhone: from,
+      toPhone: to,
+      deliveryStatus: provider.status,
+      providerErrorCode: provider.providerErrorCode || null,
+      providerError: provider.providerError || null,
+      createdAt,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
   }
 }
 
@@ -218,38 +252,62 @@ export async function POST(request) {
     const conversationRef = root.collection("leadConversations").doc(key);
     const billingRef = root.collection("billingConversationEvents").doc(key);
     const existingConversation = await conversationRef.get();
+    const existingData = existingConversation.exists ? existingConversation.data() : {};
+    if (existingData.messagingOptedOut === true) {
+      return NextResponse.json({ error: "This customer opted out of text messages. Do not send another message unless they opt back in." }, { status: 409 });
+    }
+
+    let optInBody = "";
+    let optInProvider = null;
+    if (!existingConversation.exists) {
+      optInBody = optInConfirmationMessage(access.businessName);
+      optInProvider = await sendThroughTelnyx({ from: access.fromPhone, to: loaded.lead.phoneNormalized, message: optInBody });
+      if (providerFailed(optInProvider)) {
+        return NextResponse.json({ error: `The required opt-in confirmation could not be sent${optInProvider.providerErrorCode ? ` (${optInProvider.providerErrorCode})` : ""}: ${optInProvider.providerError || "Unknown Telnyx error."}` }, { status: 502 });
+      }
+    }
+
     const provider = await sendThroughTelnyx({ from: access.fromPhone, to: loaded.lead.phoneNormalized, message: messageBody });
     const messageRef = conversationRef.collection("messages").doc();
     const batch = access.db.batch();
-    if (!existingConversation.exists) batch.set(billingRef, { conversationId: key, leadId, collectionKey, startedAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, createdAt: FieldValue.serverTimestamp() }, { merge: true });
-    batch.set(messageRef, {
-      direction: "outbound",
+    const now = Date.now();
+
+    if (!existingConversation.exists) {
+      batch.set(billingRef, { conversationId: key, leadId, collectionKey, startedAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, createdAt: FieldValue.serverTimestamp() }, { merge: true });
+      const optInRef = conversationRef.collection("messages").doc();
+      setMessageAndIndex({
+        batch,
+        root,
+        conversationRef,
+        messageRef: optInRef,
+        body: optInBody,
+        provider: optInProvider,
+        senderUid: "",
+        senderName: "ARK Client Center",
+        senderRole: "system",
+        messageType: "opt-in-confirmation",
+        from: access.fromPhone,
+        to: loaded.lead.phoneNormalized,
+        createdAt: Timestamp.fromMillis(now),
+      });
+    }
+
+    setMessageAndIndex({
+      batch,
+      root,
+      conversationRef,
+      messageRef,
       body: messageBody,
+      provider,
       senderUid: access.decoded.uid,
       senderName: text(access.account.employeeName || access.account.ownerName || access.account.accountEmail),
       senderRole: access.isEmployee ? "employee" : "owner",
-      deliveryStatus: provider.status,
-      providerMessageId: provider.providerMessageId || null,
-      providerErrorCode: provider.providerErrorCode || null,
-      providerError: provider.providerError || null,
-      providerFrom: access.fromPhone,
-      providerTo: loaded.lead.phoneNormalized,
-      createdAt: FieldValue.serverTimestamp(),
+      messageType: "conversation",
+      from: access.fromPhone,
+      to: loaded.lead.phoneNormalized,
+      createdAt: Timestamp.fromMillis(now + (!existingConversation.exists ? 1 : 0)),
     });
-    if (provider.providerMessageId) {
-      batch.set(root.collection("telnyxMessageIndex").doc(provider.providerMessageId), {
-        providerMessageId: provider.providerMessageId,
-        conversationId: key,
-        messageId: messageRef.id,
-        fromPhone: access.fromPhone,
-        toPhone: loaded.lead.phoneNormalized,
-        deliveryStatus: provider.status,
-        providerErrorCode: provider.providerErrorCode || null,
-        providerError: provider.providerError || null,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
+
     batch.set(conversationRef, {
       conversationId: key,
       leadId,
@@ -260,11 +318,12 @@ export async function POST(request) {
       businessPhone: access.fromPhone,
       assignedEmployeeUid: loaded.lead.assignedEmployeeUid || null,
       assignedEmployeeName: loaded.lead.assignedEmployeeName || null,
+      messagingOptedOut: false,
       lastMessage: messageBody,
       lastMessageDirection: "outbound",
       lastMessageAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      ...(!existingConversation.exists ? { startedByUid: access.decoded.uid, startedByRole: access.isEmployee ? "employee" : "owner", ownerUnreadCount: 0, employeeUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
+      ...(!existingConversation.exists ? { optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: access.isEmployee ? "employee" : "owner", ownerUnreadCount: 0, employeeUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
     }, { merge: true });
     await batch.commit();
 
@@ -272,8 +331,10 @@ export async function POST(request) {
       ? "The message was saved, but this business number is not configured for Telnyx messaging."
       : provider.status === "provider-error"
         ? `Telnyx rejected the message${provider.providerErrorCode ? ` (${provider.providerErrorCode})` : ""}: ${provider.providerError || "Unknown error."}`
-        : `Message ${provider.status || "queued"}.`;
-    return NextResponse.json({ ok: true, conversationId: key, newConversation: !existingConversation.exists, deliveryStatus: provider.status, providerErrorCode: provider.providerErrorCode, providerError: provider.providerError, notice });
+        : !existingConversation.exists
+          ? `Consent notice sent. Message ${provider.status || "queued"}.`
+          : `Message ${provider.status || "queued"}.`;
+    return NextResponse.json({ ok: true, conversationId: key, newConversation: !existingConversation.exists, optInSent: !existingConversation.exists, deliveryStatus: provider.status, providerErrorCode: provider.providerErrorCode, providerError: provider.providerError, notice });
   } catch (error) {
     console.error("Unable to send lead message", error);
     return NextResponse.json({ error: "Could not send this message." }, { status: 500 });
