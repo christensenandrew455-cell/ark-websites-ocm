@@ -2,6 +2,13 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import {
+  ARK_SUPPORT_URL,
+  helpConfirmationMessage,
+  messagingKeyword,
+  optInKeywordConfirmationMessage,
+  optOutConfirmationMessage,
+} from "../../../../lib/messagingCompliance";
 import { sendInboundMessageNotification } from "../../../../lib/messageNotificationService";
 
 export const runtime = "nodejs";
@@ -79,16 +86,8 @@ async function findOutboundMessage(db, clientId, providerMessageId) {
     const index = indexSnapshot.data();
     const conversationKey = text(index.conversationId);
     const messageId = text(index.messageId);
-    if (conversationKey && messageId) {
-      return {
-        messageRef: root.collection("leadConversations").doc(conversationKey).collection("messages").doc(messageId),
-        indexRef,
-        conversationKey,
-        messageId,
-      };
-    }
+    if (conversationKey && messageId) return { messageRef: root.collection("leadConversations").doc(conversationKey).collection("messages").doc(messageId), indexRef, conversationKey, messageId };
   }
-
   const conversations = await root.collection("leadConversations").get();
   for (const conversation of conversations.docs) {
     const match = await conversation.ref.collection("messages").where("providerMessageId", "==", providerMessageId).limit(1).get();
@@ -104,26 +103,11 @@ async function recordDeliveryUpdate(db, event) {
   if (!clientId) return { matched: false, reason: "business-not-found" };
   const matched = await findOutboundMessage(db, clientId, event.providerMessageId);
   if (!matched) return { matched: false, reason: "message-not-found", clientId };
-
   const status = event.deliveryStatus || (event.eventType === "message.sent" ? "sent" : "delivery-unconfirmed");
-  const patch = {
-    deliveryStatus: status,
-    providerErrorCode: event.providerErrorCode || null,
-    providerError: event.providerError || null,
-    providerEventType: event.eventType,
-    providerUpdatedAt: FieldValue.serverTimestamp(),
-  };
+  const patch = { deliveryStatus: status, providerErrorCode: event.providerErrorCode || null, providerError: event.providerError || null, providerEventType: event.eventType, providerUpdatedAt: FieldValue.serverTimestamp() };
   const batch = db.batch();
   batch.set(matched.messageRef, patch, { merge: true });
-  batch.set(matched.indexRef, {
-    providerMessageId: event.providerMessageId,
-    conversationId: matched.conversationKey,
-    messageId: matched.messageId,
-    fromPhone: event.fromPhone || null,
-    toPhone: event.toPhone || null,
-    ...patch,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  batch.set(matched.indexRef, { providerMessageId: event.providerMessageId, conversationId: matched.conversationKey, messageId: matched.messageId, fromPhone: event.fromPhone || null, toPhone: event.toPhone || null, ...patch, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   await batch.commit();
   return { matched: true, clientId, conversationId: matched.conversationKey, messageId: matched.messageId, deliveryStatus: status };
 }
@@ -134,7 +118,6 @@ async function resolveConversation(db, clientId, fromPhone, suppliedConversation
     const snapshot = await ref.get();
     if (snapshot.exists) return { ref, snapshot, conversationId: suppliedConversationId, conversation: snapshot.data(), created: false };
   }
-
   if (fromPhone) {
     const normalizedMatch = await root.collection("leadConversations").where("leadPhoneNormalized", "==", fromPhone).limit(1).get();
     if (!normalizedMatch.empty) {
@@ -145,7 +128,6 @@ async function resolveConversation(db, clientId, fromPhone, suppliedConversation
     const existing = conversations.docs.find((document) => normalizePhone(document.data().leadPhone) === fromPhone);
     if (existing) return { ref: existing.ref, snapshot: existing, conversationId: existing.id, conversation: existing.data(), created: false };
   }
-
   for (const collectionKey of ["contactedMe", "clients"]) {
     const leads = await root.collection(collectionKey).get();
     const leadDocument = leads.docs.find((document) => normalizePhone(document.data().Phone || document.data().phone || document.data().phoneNumber) === fromPhone);
@@ -191,13 +173,17 @@ export async function POST(request) {
 
     const clientId = await resolveClientId(db, event.clientId, event.toPhone);
     if (!clientId) return NextResponse.json({ error: "No ARK business is assigned to that Telnyx number." }, { status: 404 });
-
     const resolved = await resolveConversation(db, clientId, event.fromPhone, event.providedConversationId);
     if (!resolved) return NextResponse.json({ error: "No lead in this business matches the incoming phone number." }, { status: 404 });
 
+    const businessSnapshot = await db.collection("businesses").doc(clientId).get();
+    const business = businessSnapshot.exists ? businessSnapshot.data() : {};
+    const businessName = text(business.businessName || business.name) || "the business";
+    const keyword = messagingKeyword(event.messageBody);
     const conversation = resolved.conversation;
     const messageRef = resolved.ref.collection("messages").doc();
     const batch = db.batch();
+
     if (resolved.created) {
       batch.set(db.collection("ocmClients").doc(clientId).collection("billingConversationEvents").doc(resolved.conversationId), {
         conversationId: resolved.conversationId,
@@ -208,37 +194,80 @@ export async function POST(request) {
         createdAt: FieldValue.serverTimestamp(),
       }, { merge: true });
     }
+
     batch.set(messageRef, {
       direction: "inbound",
       body: event.messageBody,
       senderName: event.senderName || conversation.leadName || event.fromPhone,
       senderRole: "lead",
+      messageType: keyword ? "compliance-keyword" : "conversation",
+      complianceKeyword: keyword || null,
       providerMessageId: event.providerMessageId || null,
       providerFrom: event.fromPhone,
       providerTo: event.toPhone || null,
       deliveryStatus: "received",
       createdAt: FieldValue.serverTimestamp(),
     });
+
+    const compliancePatch = keyword === "stop"
+      ? { messagingOptedOut: true, messagingOptedOutAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "STOP" }
+      : keyword === "start"
+        ? { messagingOptedOut: false, messagingOptedInAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "START" }
+        : keyword === "help"
+          ? { supportRequestedAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "HELP" }
+          : {};
+
     batch.set(resolved.ref, {
       ...conversation,
       businessPhone: event.toPhone || conversation.businessPhone || null,
       lastMessage: event.messageBody,
       lastMessageDirection: "inbound",
       lastMessageAt: FieldValue.serverTimestamp(),
-      ownerUnreadCount: FieldValue.increment(1),
-      ...(text(conversation.assignedEmployeeUid) ? { employeeUnreadCount: FieldValue.increment(1) } : {}),
+      ownerUnreadCount: keyword ? Number(conversation.ownerUnreadCount || 0) : FieldValue.increment(1),
+      ...(!keyword && text(conversation.assignedEmployeeUid) ? { employeeUnreadCount: FieldValue.increment(1) } : {}),
+      ...compliancePatch,
       updatedAt: FieldValue.serverTimestamp(),
-      ...(resolved.created ? { createdAt: FieldValue.serverTimestamp(), ownerUnreadCount: 1, employeeUnreadCount: text(conversation.assignedEmployeeUid) ? 1 : 0 } : {}),
+      ...(resolved.created ? { createdAt: FieldValue.serverTimestamp(), ownerUnreadCount: keyword ? 0 : 1, employeeUnreadCount: !keyword && text(conversation.assignedEmployeeUid) ? 1 : 0 } : {}),
     }, { merge: true });
+
+    if (keyword) {
+      const eventRef = db.collection("messagingComplianceEvents").doc();
+      const expectedResponse = keyword === "stop"
+        ? optOutConfirmationMessage(businessName)
+        : keyword === "start"
+          ? optInKeywordConfirmationMessage(businessName)
+          : helpConfirmationMessage();
+      batch.set(eventRef, {
+        clientId,
+        businessName,
+        conversationId: resolved.conversationId,
+        leadId: conversation.leadId || null,
+        leadName: conversation.leadName || null,
+        reporterPhone: event.fromPhone,
+        businessPhone: event.toPhone || null,
+        keyword,
+        originalMessage: event.messageBody,
+        expectedTelnyxAutoResponse: expectedResponse,
+        supportUrl: keyword === "help" ? ARK_SUPPORT_URL : null,
+        status: keyword === "help" ? "open" : "recorded",
+        source: "telnyx-keyword",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
     await batch.commit();
 
     let notification = { attempted: 0, sent: 0, failed: 0 };
-    try {
-      notification = await sendInboundMessageNotification({ db, clientId, conversationId: resolved.conversationId, conversation, messageBody: event.messageBody });
-    } catch (notificationError) {
-      console.error("Unable to notify account about inbound lead message", notificationError);
+    if (!keyword) {
+      try {
+        notification = await sendInboundMessageNotification({ db, clientId, conversationId: resolved.conversationId, conversation, messageBody: event.messageBody });
+      } catch (notificationError) {
+        console.error("Unable to notify account about inbound lead message", notificationError);
+      }
     }
-    return NextResponse.json({ ok: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, notification });
+
+    return NextResponse.json({ ok: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, keyword: keyword || null, supportUrl: keyword === "help" ? ARK_SUPPORT_URL : null, notification });
   } catch (error) {
     console.error("Unable to process Telnyx messaging webhook", error);
     return NextResponse.json({ error: "Could not process the messaging webhook." }, { status: 500 });
