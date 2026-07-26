@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 
-const VISIBILITY_LABELS = { name: "Lead name", phone: "Phone number", email: "Email address", address: "Job address", job: "Requested work", requestedTime: "Requested date and time", notes: "Additional notes" };
+const VISIBILITY_LABELS = { name: "Lead name", phone: "Phone number", address: "Job address", job: "Requested work", requestedTime: "Requested date and time", notes: "Additional notes" };
 
 async function employeeApi(user, options = {}) {
   const token = await user.getIdToken(true);
