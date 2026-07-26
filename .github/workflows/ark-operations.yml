@@ -85,13 +85,15 @@ jobs:
           python -m json.tool response-body >/dev/null
 
           AUTH_ARGS=()
+          SCHEDULER_EXPECTED_STATUS="401"
           if [ -n "$CRON_SECRET" ]; then
             AUTH_ARGS=(--header "Authorization: Bearer $CRON_SECRET")
+            SCHEDULER_EXPECTED_STATUS="200"
           fi
 
           wait_for_response \
             "Workflow scheduler API" \
-            "200" \
+            "$SCHEDULER_EXPECTED_STATUS" \
             --header "Accept: application/json" \
             "${AUTH_ARGS[@]}" \
             "$BASE_URL/api/cron/workflow"
@@ -140,15 +142,15 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          AUTH_ARGS=()
-          if [ -n "$CRON_SECRET" ]; then
-            AUTH_ARGS=(-H "Authorization: Bearer $CRON_SECRET")
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET is not configured. The protected scheduler check is skipped."
+            exit 0
           fi
           curl --fail-with-body --silent --show-error \
             --retry 3 \
             --retry-delay 10 \
             -H "Accept: application/json" \
-            "${AUTH_ARGS[@]}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
             https://ark-websites-ocm-xi.vercel.app/api/cron/workflow
 
   lead-reminders:
