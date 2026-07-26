@@ -151,7 +151,7 @@ export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
     return summary;
   }
 
-  const caller = text(row.Name || row.Phone || row.Email || "A new caller");
+  const caller = text(row.Name || row.Phone || "A new caller");
   const job = text(row.Job);
   const body = job
     ? `${caller} contacted you about ${job}. Tap to review the lead.`
@@ -258,16 +258,19 @@ export async function sendUnreadLeadReminders(db) {
         body: "You still have new contacts waiting in the Clients tab.",
       },
       data: {
-        type: "unread-lead-reminder",
+        type: "lead-reminder",
         route: "/review-my-clients?section=contacted",
         clientId: connectionDocument.id,
+        eventId: `lead-reminder-${connectionDocument.id}-${Date.now()}`,
       },
       android: {
         priority: "high",
+        ttl: 60 * 60 * 1000,
         notification: {
-          channelId: "lead-reminders",
+          channelId: "new-leads",
           sound: "default",
-          tag: `unread-leads-${connectionDocument.id}`,
+          tag: `lead-reminder-${connectionDocument.id}`,
+          defaultVibrateTimings: true,
         },
       },
     });
@@ -278,88 +281,22 @@ export async function sendUnreadLeadReminders(db) {
         sent += 1;
         batch.set(device.ref, {
           lastReminderSentAt: FieldValue.serverTimestamp(),
+          lastPushAt: FieldValue.serverTimestamp(),
+          lastPushError: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
       } else {
         failed += 1;
         if (isInvalidTarget(response.error)) batch.delete(device.ref);
-        else {
-          batch.set(device.ref, {
-            lastReminderError: text(response.error?.message || response.error?.code),
-            updatedAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
-        }
+        else batch.set(device.ref, {
+          lastReminderSentAt: FieldValue.serverTimestamp(),
+          lastPushError: text(response.error?.message || response.error?.code),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
       }
     });
     await batch.commit();
   }
 
   return { attempted, sent, failed };
-}
-
-export async function sendRequestStatusNotification({ db, clientId, requestId, subject, status, adminNote }) {
-  const devices = await notificationDevices(db, clientId);
-  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
-
-  const safeSubject = text(subject || "Your request");
-  const safeNote = text(adminNote).slice(0, 220);
-  const copy = status === "in-progress"
-    ? {
-        title: "Your request has started",
-        body: safeNote || `${safeSubject} is now being worked on.`,
-      }
-    : status === "completed"
-      ? {
-          title: "Your request is complete",
-          body: safeNote || `${safeSubject} has been completed.`,
-        }
-      : {
-          title: "Your request was denied",
-          body: safeNote || `${safeSubject} could not be approved. Open the app for details.`,
-        };
-
-  const results = await sendToDevices(devices, {
-    notification: copy,
-    data: {
-      type: "request-status",
-      route: "/messages",
-      clientId,
-      requestId: text(requestId),
-      status,
-    },
-    android: {
-      priority: "high",
-      notification: {
-        channelId: "request-updates",
-        sound: "default",
-        tag: `request-${text(requestId)}`,
-      },
-    },
-  });
-
-  const batch = db.batch();
-  let sent = 0;
-  let failed = 0;
-
-  results.forEach(({ device, response }) => {
-    if (response.success) {
-      sent += 1;
-      batch.set(device.ref, {
-        lastRequestPushAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    } else {
-      failed += 1;
-      if (isInvalidTarget(response.error)) batch.delete(device.ref);
-      else {
-        batch.set(device.ref, {
-          lastRequestPushError: text(response.error?.message || response.error?.code),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    }
-  });
-
-  await batch.commit();
-  return { attempted: devices.length, sent, failed };
 }
