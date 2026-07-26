@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -30,40 +31,12 @@ function authorized(request) {
   return secretMatches(expected, supplied);
 }
 
-function withoutCallerEmail(data = {}) {
-  const payload = { ...data };
-  [
-    "Email",
-    "email",
-    "EmailAddress",
-    "emailAddress",
-    "callerEmail",
-    "customerEmail",
-  ].forEach((field) => delete payload[field]);
-
-  const contactFields = [
-    "BestContactMethod",
-    "bestContactMethod",
-    "BestFormOfContact",
-    "bestFormOfContact",
-    "BestWayToContact",
-    "bestWayToContact",
-    "preferredContactMethod",
-    "contactMethod",
-  ];
-  contactFields.forEach((field) => {
-    if (/^e-?mail$/i.test(text(payload[field]))) payload[field] = "";
-  });
-
-  return payload;
-}
-
 export async function POST(request) {
   if (!authorized(request)) return Response.json({ ok: false, error: "Unauthorized." }, { status: 401 });
 
   let data = {};
   try {
-    data = await request.json();
+    data = stripLeadContactFields(await request.json());
   } catch {
     return Response.json({ ok: false, error: "Send a JSON lead payload." }, { status: 400 });
   }
@@ -94,7 +67,7 @@ export async function POST(request) {
   intakeUrl.searchParams.set("key", connectionKey);
   intakeUrl.searchParams.set("source", text(connection.sourceLabel || "AI receptionist"));
 
-  const payload = withoutCallerEmail(data);
+  const payload = stripLeadContactFields(data);
   delete payload.routingPhone;
   delete payload.receptionistPhone;
   delete payload.clientId;
