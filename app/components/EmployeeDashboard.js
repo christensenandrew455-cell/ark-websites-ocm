@@ -94,7 +94,6 @@ export default function EmployeeDashboard() {
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Detail label="Phone" value={lead.phone} />
-                  <Detail label="Email" value={lead.email} />
                   <Detail label="Address" value={lead.address} wide />
                   <Detail label="Requested work" value={lead.job} />
                   <Detail label="Requested date" value={lead.requestedDate} />
