@@ -10,7 +10,6 @@ export const ACCOUNT_TYPES = Object.freeze({
 export const DEFAULT_EMPLOYEE_VISIBILITY = Object.freeze({
   name: true,
   phone: false,
-  email: false,
   address: true,
   job: true,
   requestedTime: true,
