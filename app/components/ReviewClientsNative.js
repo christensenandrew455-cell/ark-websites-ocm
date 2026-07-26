@@ -2,9 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { collection, deleteDoc, doc, onSnapshot, serverTimestamp, setDoc, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+} from "firebase/firestore";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
+import {
+  leadContactFieldDeletionPatch,
+  stripLeadContactFields,
+} from "../lib/leadContactFields";
 
 const TIME_RANGES = [
   { key: "today", label: "Today" },
@@ -15,6 +28,7 @@ const TIME_RANGES = [
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
 }
+
 function toMillis(value) {
   if (!value) return 0;
   if (value?.toMillis) return value.toMillis();
@@ -22,7 +36,9 @@ function toMillis(value) {
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
 }
-function normalizeRow(id, data, collectionKey) {
+
+function normalizeRow(id, source, collectionKey) {
+  const data = stripLeadContactFields(source || {});
   const jobs = Array.isArray(data.Jobs) ? data.Jobs : [];
   const currentJob = jobs.at(-1) || {};
   return {
@@ -31,7 +47,6 @@ function normalizeRow(id, data, collectionKey) {
     collectionKey,
     Name: firstValue(data.Name, data.name, data.fullName),
     Phone: firstValue(data.Phone, data.phone, data.phoneNumber, data.contact),
-    Email: firstValue(data.Email, data.email),
     Address: firstValue(data.Address, data.address),
     Job: firstValue(data.Job, data.job, data.service, data.projectType, currentJob.type),
     Notes: firstValue(data.Notes, data.notes, data.message, currentJob.notes),
@@ -39,17 +54,22 @@ function normalizeRow(id, data, collectionKey) {
     EstimateTime: firstValue(data.EstimateTime, data.estimateTime, data.PreferredTime, data.preferredTime, currentJob.estimateTime),
   };
 }
+
 function rowTime(row) {
   return toMillis(row.updatedAt || row.acceptedAt || row.createdAt);
 }
+
 function insideRange(row, range) {
   if (range === "all") return true;
   const value = rowTime(row);
   if (!value) return false;
   const now = new Date();
-  const start = range === "today" ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const start = range === "today"
+    ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   return value >= start;
 }
+
 function displayDate(row) {
   const raw = firstValue(row.EstimateDate, row.EstimateTime);
   if (!raw) return "Not selected";
@@ -57,13 +77,16 @@ function displayDate(row) {
   if (Number.isNaN(date.getTime())) return [row.EstimateDate, row.EstimateTime].filter(Boolean).join(" · ");
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
+
 function calendarStamp(date) {
   const pad = (number) => String(number).padStart(2, "0");
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`;
 }
+
 function escapeCalendar(value) {
   return String(value || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
 }
+
 function downloadCalendar(row, businessName) {
   if (!row.EstimateDate) return false;
   const start = new Date(`${row.EstimateDate}T${row.EstimateTime || "09:00"}`);
@@ -94,26 +117,37 @@ function Modal({ title, children, onClose }) {
   }, [onClose]);
   return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}><button type="button" className="fixed inset-0" onClick={onClose} aria-label="Close" /><div className="relative mx-auto my-4 max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl">{children}</div></div>;
 }
+
 function Detail({ label, value, wide = false }) {
   return <div className={wide ? "col-span-2" : ""}><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium text-slate-900">{value || "—"}</p></div>;
 }
+
 function ViewModal({ row, messagesEnabled, onClose, onMessage, onDate }) {
-  return <Modal title="Client details" onClose={onClose}><div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Client details</p><h2 className="mt-1 text-2xl font-black">{row.Name || "Unnamed caller"}</h2></div><button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black">Close</button></div><div className="grid grid-cols-2 gap-4 p-5"><Detail label="Phone" value={row.Phone} /><Detail label="Email" value={row.Email} /><Detail label="Address" value={row.Address} wide /><Detail label="Job type" value={row.Job} /><Detail label="Requested date" value={displayDate(row)} /><Detail label="Notes" value={row.Notes} wide /></div><div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5">{messagesEnabled && <button type="button" onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">Message</button>}{row.collectionKey === "clients" && <button type="button" onClick={onDate} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Confirm Date</button>}</div></Modal>;
+  return <Modal title="Client details" onClose={onClose}><div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Client details</p><h2 className="mt-1 text-2xl font-black">{row.Name || "Unnamed caller"}</h2></div><button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black">Close</button></div><div className="grid grid-cols-2 gap-4 p-5"><Detail label="Phone" value={row.Phone} /><Detail label="Address" value={row.Address} wide /><Detail label="Job type" value={row.Job} /><Detail label="Requested date" value={displayDate(row)} /><Detail label="Notes" value={row.Notes} wide /></div><div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5">{messagesEnabled && <button type="button" onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">Message</button>}{row.collectionKey === "clients" && <button type="button" onClick={onDate} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Confirm Date</button>}</div></Modal>;
 }
+
 function EditModal({ row, clientId, onClose, onSaved }) {
-  const [form, setForm] = useState({ Name: row.Name || "", Phone: row.Phone || "", Email: row.Email || "", Address: row.Address || "", Job: row.Job || "", EstimateDate: /^\d{4}-\d{2}-\d{2}$/.test(String(row.EstimateDate || "")) ? row.EstimateDate : "", EstimateTime: row.EstimateTime || "", Notes: row.Notes || "" });
+  const [form, setForm] = useState({ Name: row.Name || "", Phone: row.Phone || "", Address: row.Address || "", Job: row.Job || "", EstimateDate: /^\d{4}-\d{2}-\d{2}$/.test(String(row.EstimateDate || "")) ? row.EstimateDate : "", EstimateTime: row.EstimateTime || "", Notes: row.Notes || "" });
   const [saving, setSaving] = useState(false);
+
   async function save(event) {
     event.preventDefault();
     setSaving(true);
     try {
-      await setDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id), { ...form, PreferredDate: form.EstimateDate, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id), {
+        ...form,
+        PreferredDate: form.EstimateDate,
+        ...leadContactFieldDeletionPatch(deleteField()),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
       onSaved();
     } finally {
       setSaving(false);
     }
   }
-  return <Modal title="Edit client" onClose={onClose}><form onSubmit={save}><div className="flex items-center justify-between border-b border-slate-200 p-5"><h2 className="text-2xl font-black">Edit client</h2><button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black">Close</button></div><div className="grid grid-cols-2 gap-3 p-5">{[["Name", "Name", "text"], ["Phone", "Phone", "tel"], ["Email", "Email", "email"], ["Address", "Address", "text"], ["Job", "Job type", "text"], ["EstimateDate", "Estimate date", "date"], ["EstimateTime", "Estimate time", "time"]].map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase text-slate-500">Notes</span><textarea rows={3} value={form.Notes} onChange={(event) => setForm((current) => ({ ...current, Notes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label></div><div className="flex justify-end border-t border-slate-200 p-5"><button disabled={saving} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></form></Modal>;
+
+  const fields = [["Name", "Name", "text"], ["Phone", "Phone", "tel"], ["Address", "Address", "text"], ["Job", "Job type", "text"], ["EstimateDate", "Estimate date", "date"], ["EstimateTime", "Estimate time", "time"]];
+  return <Modal title="Edit client" onClose={onClose}><form onSubmit={save}><div className="flex items-center justify-between border-b border-slate-200 p-5"><h2 className="text-2xl font-black">Edit client</h2><button type="button" onClick={onClose} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black">Close</button></div><div className="grid grid-cols-2 gap-3 p-5">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase text-slate-500">Notes</span><textarea rows={3} value={form.Notes} onChange={(event) => setForm((current) => ({ ...current, Notes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label></div><div className="flex justify-end border-t border-slate-200 p-5"><button disabled={saving} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></form></Modal>;
 }
 
 export default function ReviewClientsNative() {
@@ -152,9 +186,15 @@ export default function ReviewClientsNative() {
     if (busy) return;
     setBusy(`accept:${row.id}`);
     try {
-      const { id, collectionKey, ...data } = row;
+      const { id, collectionKey, ...data } = stripLeadContactFields(row);
       const batch = writeBatch(db);
-      batch.set(doc(db, "ocmClients", clientId, "clients", row.id), { ...data, currentStage: "clients", acceptedAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+      batch.set(doc(db, "ocmClients", clientId, "clients", row.id), {
+        ...data,
+        ...leadContactFieldDeletionPatch(deleteField()),
+        currentStage: "clients",
+        acceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
       batch.delete(doc(db, "ocmClients", clientId, "contactedMe", row.id));
       await batch.commit();
       setNotice(`${row.Name || "Lead"} was accepted.`);
