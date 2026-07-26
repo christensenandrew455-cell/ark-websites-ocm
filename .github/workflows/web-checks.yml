@@ -32,9 +32,15 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm install --silent
       - name: Build ARK Client Center OCM
-        run: npm run build
+        shell: bash
+        run: |
+          set +e
+          npm run build > web-build.log 2>&1
+          status=$?
+          tail -n 140 web-build.log
+          exit "$status"
       - name: Mark web checks successful
         if: success()
         uses: actions/github-script@v7
