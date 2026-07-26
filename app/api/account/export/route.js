@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { computeBillingState } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, serializeFirestoreValue } from "../../../lib/valueUtils";
 
@@ -11,6 +12,13 @@ function documents(snapshot) {
   return snapshot.docs.map((document) => ({
     id: document.id,
     ...serializeFirestoreValue(document.data()),
+  }));
+}
+
+function leadDocuments(snapshot) {
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...stripLeadContactFields(serializeFirestoreValue(document.data())),
   }));
 }
 
@@ -54,13 +62,13 @@ export async function GET(request) {
     }
 
     const payload = {
-      exportVersion: "1.0",
+      exportVersion: "1.1",
       exportedAt: new Date().toISOString(),
       clientId,
       account: accountSummary(business),
       settings: settingsSnapshot.exists ? accountSummary(settingsSnapshot.data()) : {},
-      contactedMe: documents(contactedSnapshot),
-      clients: documents(clientsSnapshot),
+      contactedMe: leadDocuments(contactedSnapshot),
+      clients: leadDocuments(clientsSnapshot),
       requests: documents(requestsSnapshot),
     };
     const date = new Date().toISOString().slice(0, 10);
