@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
 import { requireUser } from "../../../lib/userRequest";
 
@@ -29,7 +30,7 @@ function conversationId(clientId, collectionKey, leadId) {
   return createHash("sha256").update(`${clientId}:${collectionKey}:${leadId}`).digest("hex").slice(0, 48);
 }
 function normalizeLead(document, collectionKey) {
-  const data = document.data();
+  const data = stripLeadContactFields(document.data());
   const phone = text(data.Phone || data.phone || data.phoneNumber);
   return {
     id: document.id,
@@ -37,7 +38,6 @@ function normalizeLead(document, collectionKey) {
     name: text(data.Name || data.name || data.fullName) || "Unnamed lead",
     phone,
     phoneNormalized: normalizePhone(phone),
-    email: text(data.Email || data.email),
     job: text(data.Job || data.job || data.service || data.projectType),
     address: text(data.Address || data.address),
     assignedEmployeeUid: text(data.assignedEmployeeUid),
