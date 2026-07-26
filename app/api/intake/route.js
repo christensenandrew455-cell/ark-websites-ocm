@@ -1,6 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../lib/firebase-admin";
+import {
+  leadContactFieldDeletionPatch,
+  stripLeadContactFields,
+} from "../../lib/leadContactFields";
 import { sendNewLeadNotification } from "../../lib/notificationService";
 import {
   createJob,
@@ -48,14 +52,6 @@ function secretMatches(expected, provided) {
   return timingSafeEqual(expectedHash, providedHash);
 }
 
-function contactMethod(value) {
-  const normalized = text(value).toLowerCase();
-  if (["text", "sms", "message", "text message"].includes(normalized)) return "Text";
-  if (["call", "phone", "telephone"].includes(normalized)) return "Call";
-  if (["email", "e-mail"].includes(normalized)) return "Email";
-  return "";
-}
-
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -66,8 +62,9 @@ function corsHeaders() {
 
 function safeSubmission(data) {
   const blocked = new Set(["connectionKey", "key", "authToken", "apiKey", "secret"]);
+  const sanitized = stripLeadContactFields(data || {});
   return Object.fromEntries(
-    Object.entries(data || {}).filter(([field]) => !blocked.has(field))
+    Object.entries(sanitized).filter(([field]) => !blocked.has(field))
   );
 }
 
@@ -98,41 +95,33 @@ function addressFields(data) {
   return { StreetAddress, TownOrCity, Address };
 }
 
-function fallbackPropertyKey(address, phone, email) {
+function fallbackPropertyKey(address, phone) {
   const addressKey = normalizeAddressKey(address);
   if (addressKey) return addressKey;
   const phoneKey = String(phone || "").replace(/\D/g, "");
   if (phoneKey) return `phone-${phoneKey}`;
-  const emailKey = text(email).toLowerCase();
-  if (emailKey) return `email-${emailKey}`;
   return "";
 }
 
-function buildRow(data, source, channel) {
+function buildRow(input, source) {
+  const data = stripLeadContactFields(input || {});
   const { FirstName, LastName, Name } = nameFields(data);
   const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact || data.From || data.Caller);
-  const Email = text(data.Email || data.email).toLowerCase();
   const { StreetAddress, TownOrCity, Address } = addressFields(data);
-  const isPhoneChannel = channel === "phone" || data.From || data.Caller;
 
   return {
     FirstName,
     LastName,
     Name,
     Phone,
-    Email,
     StreetAddress,
     TownOrCity,
     Address,
-    PropertyKey: fallbackPropertyKey(Address, Phone, Email),
+    PropertyKey: fallbackPropertyKey(Address, Phone),
     ContactNames: uniqueTexts(Name),
     Phones: uniqueTexts(Phone),
-    Emails: uniqueTexts(Email),
     Job: text(
       data.Job || data.job || data.ServiceType || data.serviceType || data.service || data.projectType || data.requestedService
-    ),
-    BestContactMethod: contactMethod(
-      data.BestContactMethod || data.bestContactMethod || data.BestFormOfContact || data.bestFormOfContact || data.BestWayToContact || data.bestWayToContact || data.preferredContactMethod || data.contactMethod || (isPhoneChannel ? "Text" : "")
     ),
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay),
     PreferredTime: text(data.PreferredTime || data.estimateTime || data.preferredTime),
@@ -150,9 +139,9 @@ async function findPropertyMatches(db, clientId, propertyKey) {
   for (const stageKey of allowedSections) {
     const snapshot = await db.collection("ocmClients").doc(clientId).collection(stageKey).get();
     snapshot.docs.forEach((documentSnapshot) => {
-      const data = documentSnapshot.data();
+      const data = stripLeadContactFields(documentSnapshot.data());
       const existingAddress = data.Address || [data.StreetAddress, data.TownOrCity].filter(Boolean).join(", ");
-      const existingKey = data.PropertyKey || fallbackPropertyKey(existingAddress, data.Phone || data.phone, data.Email || data.email);
+      const existingKey = data.PropertyKey || fallbackPropertyKey(existingAddress, data.Phone || data.phone);
       if (existingKey === propertyKey) {
         matches.push({ stageKey, id: documentSnapshot.id, ref: documentSnapshot.ref, data });
       }
@@ -177,7 +166,7 @@ export async function GET() {
 export async function POST(request) {
   try {
     const url = new URL(request.url);
-    const data = await readRequestData(request);
+    const data = stripLeadContactFields(await readRequestData(request));
     const clientId = cleanClientId(data.clientId || url.searchParams.get("clientId"));
     const providedKey = text(
       request.headers.get("x-ark-connection-key") ||
@@ -229,18 +218,18 @@ export async function POST(request) {
     const source = text(connection.sourceLabel)
       ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
       : channel || "website";
-    const row = buildRow(data, source, channel);
+    const row = buildRow(data, source);
 
-    if (!row.Name && !row.Phone && !row.Email && !row.Notes) {
+    if (!row.Name && !row.Phone && !row.Notes) {
       return Response.json(
-        { ok: false, error: "Send at least a name, phone, email, or message." },
+        { ok: false, error: "Send at least a name, phone number, or message." },
         { status: 400, headers: corsHeaders() }
       );
     }
 
     if (!row.PropertyKey) {
       return Response.json(
-        { ok: false, error: "Send at least a property address, phone number, or email address." },
+        { ok: false, error: "Send at least a property address or phone number." },
         { status: 400, headers: corsHeaders() }
       );
     }
@@ -248,6 +237,7 @@ export async function POST(request) {
     const matches = await findPropertyMatches(db, clientId, row.PropertyKey);
     const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
     const primary = existingInTarget || matches[0] || null;
+    const primaryData = stripLeadContactFields(primary?.data || {});
     const targetCollection = db.collection("ocmClients").doc(clientId).collection(sectionKey);
     const targetRef = primary ? targetCollection.doc(primary.id) : targetCollection.doc();
 
@@ -265,34 +255,29 @@ export async function POST(request) {
       ...matches.map((match) => match.data.Phones || match.data.Phone),
       row.Phones
     );
-    const Emails = uniqueTexts(
-      ...matches.map((match) => match.data.Emails || match.data.Email),
-      row.Emails
-    );
 
     const batch = db.batch();
     batch.set(targetRef, {
-      ...(primary?.data || {}),
+      ...primaryData,
       ...row,
-      FirstName: row.FirstName || primary?.data.FirstName || "",
-      LastName: row.LastName || primary?.data.LastName || "",
-      Name: row.Name || ContactNames.at(-1) || primary?.data.Name || "",
-      Phone: row.Phone || Phones.at(-1) || primary?.data.Phone || "",
-      Email: row.Email || Emails.at(-1) || primary?.data.Email || "",
-      StreetAddress: row.StreetAddress || primary?.data.StreetAddress || "",
-      TownOrCity: row.TownOrCity || primary?.data.TownOrCity || "",
-      Address: row.Address || primary?.data.Address || "",
-      PropertyKey: row.PropertyKey || primary?.data.PropertyKey || "",
+      FirstName: row.FirstName || primaryData.FirstName || "",
+      LastName: row.LastName || primaryData.LastName || "",
+      Name: row.Name || ContactNames.at(-1) || primaryData.Name || "",
+      Phone: row.Phone || Phones.at(-1) || primaryData.Phone || "",
+      StreetAddress: row.StreetAddress || primaryData.StreetAddress || "",
+      TownOrCity: row.TownOrCity || primaryData.TownOrCity || "",
+      Address: row.Address || primaryData.Address || "",
+      PropertyKey: row.PropertyKey || primaryData.PropertyKey || "",
       ContactNames,
       Phones,
-      Emails,
       Jobs,
       TotalJobs: Jobs.length,
       RepeatJobs: Math.max(0, Jobs.length - 1),
       currentStage: sectionKey,
       connectionClientId: clientId,
-      createdAt: primary?.data.createdAt || FieldValue.serverTimestamp(),
+      createdAt: primaryData.createdAt || FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+      ...leadContactFieldDeletionPatch(FieldValue.delete()),
     }, { merge: true });
 
     matches.forEach((match) => {
