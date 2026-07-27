@@ -33,9 +33,7 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-slate-950 p-5">
       <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
-        <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Websites</p>
-        <h1 className="mt-3 text-3xl font-bold text-slate-950">Welcome to ARK OCM</h1>
-        <p className="mt-2 text-sm text-slate-600">Owners and employees use separate sign-in paths inside the same business account.</p>
+        <h1 className="text-3xl font-bold text-slate-950">Welcome to ARK Client Center</h1>
 
         <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
           {[["owner", "Owner"], ["employee", "Employee"]].map(([value, label]) => (
@@ -71,7 +69,6 @@ export default function LoginPage() {
           <Link href="/forgot-password" className="font-semibold text-slate-600 hover:text-slate-950">Forgot password?</Link>
           <Link href="/signup" className="font-bold text-slate-950 hover:underline">Make an account</Link>
         </div>
-        <p className="mt-5 text-center text-xs text-slate-400">Admin accounts may use their account email in the business-name field.</p>
       </div>
     </main>
   );
