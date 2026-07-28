@@ -1,4 +1,5 @@
-export const MESSAGE_RETENTION_OPTIONS = Object.freeze([0, 1, 7, 30]);
+export const MESSAGE_RETENTION_OPTIONS = Object.freeze([1, 7, 30]);
+export const DEFAULT_MESSAGE_RETENTION_DAYS = 30;
 
 function text(value) {
   return String(value || "").trim();
@@ -13,8 +14,8 @@ function toMillis(value) {
 }
 
 export function normalizeMessageRetentionDays(value) {
-  const days = Number(value || 0);
-  return MESSAGE_RETENTION_OPTIONS.includes(days) ? days : 0;
+  const days = Number(value);
+  return MESSAGE_RETENTION_OPTIONS.includes(days) ? days : DEFAULT_MESSAGE_RETENTION_DAYS;
 }
 
 async function deleteQuery(db, query) {
@@ -35,7 +36,6 @@ export async function deleteLeadConversation(db, root, conversationRef) {
 
 export async function cleanupExpiredConversations(db, clientId, retentionDays, now = Date.now()) {
   const days = normalizeMessageRetentionDays(retentionDays);
-  if (!days) return 0;
   const cutoff = now - days * 24 * 60 * 60 * 1000;
   const root = db.collection("ocmClients").doc(text(clientId));
   const snapshot = await root.collection("leadConversations").get();
