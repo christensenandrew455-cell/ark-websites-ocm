@@ -4,21 +4,26 @@ function text(value) {
 
 export const ARK_SUPPORT_URL = text(process.env.ARK_CLIENT_CENTER_SUPPORT_URL) || "https://arkwebsites.com/support";
 
-const STOP_KEYWORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"]);
-const START_KEYWORDS = new Set(["START", "UNSTOP", "SUBSCRIBE", "YES"]);
+const STOP_KEYWORDS = new Set(["STOP"]);
+const START_KEYWORDS = new Set(["START", "UNSTOP", "SUBSCRIBE"]);
 const HELP_KEYWORDS = new Set(["HELP", "INFO", "REPORT", "ABUSE"]);
+const CONFIRM_KEYWORDS = new Set(["YES", "CONFIRM"]);
+const CANCEL_KEYWORDS = new Set(["CANCEL", "NO"]);
 
 export function messagingKeyword(value) {
-  const normalized = text(value).toUpperCase().replace(/[^A-Z]/g, "");
+  const normalized = text(value).toUpperCase();
+  if (!/^[A-Z]+$/.test(normalized)) return "";
   if (STOP_KEYWORDS.has(normalized)) return "stop";
   if (START_KEYWORDS.has(normalized)) return "start";
   if (HELP_KEYWORDS.has(normalized)) return "help";
+  if (CONFIRM_KEYWORDS.has(normalized)) return "confirm";
+  if (CANCEL_KEYWORDS.has(normalized)) return "cancel";
   return "";
 }
 
 export function optInConfirmationMessage(businessName) {
   const brand = text(businessName) || "this business";
-  return `You agreed to receive text messages from ${brand} regarding your inquiry. Message frequency varies. Message and data rates may apply. Reply STOP to opt out. Reply HELP for support or to report a concern.`;
+  return `${brand}: Thanks for contacting us. Message frequency varies. Message and data rates may apply. Reply HELP for help. Reply STOP to opt out.`;
 }
 
 export function helpConfirmationMessage() {
@@ -28,6 +33,16 @@ export function helpConfirmationMessage() {
 export function optOutConfirmationMessage(businessName) {
   const brand = text(businessName) || "this business";
   return `${brand}: You are unsubscribed and will receive no further messages.`;
+}
+
+export function optOutRequestMessage(businessName) {
+  const brand = text(businessName) || "this business";
+  return `${brand}: You replied STOP. Reply YES to confirm or CANCEL to keep receiving messages.`;
+}
+
+export function optOutCanceledMessage(businessName) {
+  const brand = text(businessName) || "this business";
+  return `${brand}: Opt-out canceled. You can continue receiving messages.`;
 }
 
 export function optInKeywordConfirmationMessage(businessName) {
