@@ -5,7 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
 function WorkspaceCard({ href, value, title, description, disabled = false }) {
-  const className = disabled ? "rounded-3xl border border-slate-200 bg-slate-100 p-5 text-left shadow-sm sm:p-7" : "rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm active:scale-[0.99] sm:p-7";
+  const className = disabled
+    ? "rounded-3xl border border-slate-300 bg-slate-100 p-5 text-left shadow-sm sm:p-7"
+    : "rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99] sm:p-7";
   const content = <><p className="text-4xl font-black tracking-tight">{value}</p><h2 className="mt-2 text-sm font-black uppercase tracking-wide text-slate-700">{title}</h2><p className="mt-1 text-xs font-semibold text-slate-400">{description}</p></>;
   return disabled ? <div className={className}>{content}</div> : <Link href={href} className={className}>{content}</Link>;
 }
@@ -52,21 +54,16 @@ export default function EmployeeDashboard() {
             <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">My Work</h1>
             <p className="mt-2 text-sm font-semibold text-slate-500">Assigned to {data?.employeeName || profile?.employeeName || "you"}</p>
           </div>
-          <button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">Refresh</button>
+          <button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black shadow-sm">Refresh</button>
         </header>
 
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
 
-        <section className="mt-5 grid grid-cols-2 gap-3 sm:gap-4">
-          <WorkspaceCard href="/lead-messages" value={loading ? "…" : data?.conversationCount || 0} title="Messages" description={data?.employeeMessagingEnabled ? "Open assigned conversations" : "The owner has not enabled Messages"} disabled={!data?.employeeMessagingEnabled} />
-          <WorkspaceCard href="/employee/leads" value={loading ? "…" : data?.leadCount || 0} title="Leads" description="Open assigned leads and clients" />
-        </section>
-
-        <section className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Employee account</p>
-          <h2 className="mt-1 text-xl font-black sm:text-2xl">Company and Team</h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Open the settings gear to see the company owner, your coworkers, Dark Mode, Terms of Use, and Privacy Policy.</p>
-          <Link href="/employee/settings" className="mt-4 inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Open Employee Settings</Link>
+        <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <WorkspaceCard href="/lead-messages" value={loading ? "…" : data?.conversationCount || 0} title="Messages" description={data?.employeeMessagingEnabled ? "Open assigned conversations" : "The owner has not enabled Messages"} disabled={!data?.employeeMessagingEnabled} />
+            <WorkspaceCard href="/employee/leads" value={loading ? "…" : data?.leadCount || 0} title="Leads" description="Open assigned leads and clients" />
+          </div>
         </section>
       </div>
     </main>
