@@ -1,30 +1,34 @@
 export default function LeadMessagesLayout({ children }) {
   return (
-    <div className="messages-simple">
+    <div className="messages-balanced">
       <style>{`
-        .messages-simple main > div > div:first-child > button:first-child,
-        .messages-simple main > div > button:first-child {
-          width: 3rem;
-          height: 3rem;
-          padding: 0;
+        .messages-balanced main > div > header {
           display: grid;
-          place-items: center;
-          font-size: 0 !important;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: end;
+          gap: .75rem;
         }
-        .messages-simple main > div > div:first-child > button:first-child::before,
-        .messages-simple main > div > button:first-child::before {
-          content: "←";
-          font-size: 1.5rem;
-          line-height: 1;
+        .messages-balanced main > div > header > h1 {
+          grid-column: 1;
+          grid-row: 1;
         }
-        .messages-simple main > div > header > p:first-child { display: none; }
-        .messages-simple main > div > header > div > p {
-          border: 1px solid #cbd5e1;
-          border-radius: .75rem;
-          background: #f8fafc;
-          padding: .6rem .8rem;
+        .messages-balanced main > div > header > p {
+          display: none;
         }
-        .messages-simple main > div > section.rounded-3xl { display: none; }
+        .messages-balanced main > div > header > div {
+          grid-column: 2;
+          grid-row: 1;
+          justify-self: end;
+          margin-top: 0 !important;
+          padding: .7rem .9rem !important;
+          font-size: .75rem !important;
+        }
+        @media (max-width: 420px) {
+          .messages-balanced main > div > header > div {
+            gap: .45rem !important;
+            padding: .65rem .75rem !important;
+          }
+        }
       `}</style>
       {children}
     </div>
