@@ -2,13 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import BackButton from "../components/BackButton";
 import { useAuth } from "../components/AuthProvider";
-
-const RETENTION_OPTIONS = [
-  { value: 1, label: "Delete after 1 day" },
-  { value: 7, label: "Delete after 1 week" },
-  { value: 30, label: "Delete after 1 month" },
-];
 
 function TrashIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>;
@@ -56,11 +51,9 @@ export default function LeadMessagesPage() {
   const [selectedCollection, setSelectedCollection] = useState(requestedCollection);
   const [message, setMessage] = useState("");
   const [showContacts, setShowContacts] = useState(false);
-  const [retentionDays, setRetentionDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState("");
-  const [savingRetention, setSavingRetention] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -80,25 +73,11 @@ export default function LeadMessagesPage() {
     }
   }, [featureEnabled, selectedCollection, selectedLead, user]);
 
-  const loadRetention = useCallback(async () => {
-    if (!user || isEmployee || !featureEnabled) return;
-    try {
-      const token = await user.getIdToken(true);
-      const response = await fetch("/api/business/lead-messages/retention", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (response.ok) setRetentionDays(Number(result.retentionDays || 30));
-    } catch {}
-  }, [featureEnabled, isEmployee, user]);
-
   useEffect(() => {
     setSelectedLead(requestedLead);
     setSelectedCollection(requestedCollection);
     load(requestedLead, requestedCollection);
   }, [load, requestedCollection, requestedLead]);
-
-  useEffect(() => {
-    loadRetention();
-  }, [loadRetention]);
 
   useEffect(() => {
     if (!featureEnabled) return undefined;
@@ -187,36 +166,8 @@ export default function LeadMessagesPage() {
     }
   }
 
-  async function updateRetention(nextValue) {
-    if (!user || isEmployee || savingRetention) return;
-    const previous = retentionDays;
-    const next = Number(nextValue);
-    setRetentionDays(next);
-    setSavingRetention(true);
-    setNotice("");
-    setError("");
-    try {
-      const token = await user.getIdToken(true);
-      const response = await fetch("/api/business/lead-messages/retention", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ retentionDays: next }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Could not update message auto-delete settings.");
-      setRetentionDays(Number(result.retentionDays || 30));
-      setNotice(result.deleted ? `Auto-delete saved. ${result.deleted} expired conversation${result.deleted === 1 ? " was" : "s were"} deleted.` : "Message auto-delete setting saved.");
-      await load("", "contactedMe");
-    } catch (retentionError) {
-      setRetentionDays(previous);
-      setError(retentionError.message);
-    } finally {
-      setSavingRetention(false);
-    }
-  }
-
   if (!featureEnabled) {
-    return <main className="min-h-screen bg-slate-200 p-4"><div className="mx-auto max-w-xl"><button type="button" onClick={() => router.push("/")} className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-2 text-xs font-black">← Back to Dashboard</button><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
+    return <main className="min-h-screen bg-slate-200 p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
   }
 
   if (selectedLead) {
@@ -225,7 +176,7 @@ export default function LeadMessagesPage() {
       <main className="min-h-screen bg-slate-200 p-0 text-slate-950 sm:p-4">
         <div className="mx-auto flex min-h-screen max-w-4xl flex-col overflow-hidden bg-slate-50 shadow-sm sm:min-h-[calc(100vh-2rem)] sm:rounded-3xl sm:border sm:border-slate-300">
           <div className="flex items-center gap-3 border-b border-slate-300 bg-slate-100 px-3 py-3 sm:px-5">
-            <button type="button" onClick={closeConversation} className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-black">← Messages</button>
+            <BackButton onClick={closeConversation} className="bg-slate-50" label="Back to Messages" />
             <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h1 className="truncate text-base font-black sm:text-xl">{selected?.leadName || "Conversation"}</h1>{selected?.messagingOptedOut && <span className="rounded-full bg-red-100 px-2 py-1 text-[9px] font-black uppercase text-red-700">Opted out</span>}</div><p className="truncate text-[10px] font-bold text-slate-500 sm:text-xs">{selected?.leadPhone || "No phone number"}{selected?.assignedEmployeeName ? ` · Assigned to ${selected.assignedEmployeeName}` : ""}</p></div>
             {!isEmployee && selected && !selected.newConversation && <button type="button" aria-label="Delete conversation" title="Delete conversation" disabled={Boolean(deleting)} onClick={() => deleteConversationRecord(selectedLead, selectedCollection, selected.leadName)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-slate-50 text-red-700 disabled:opacity-50">{deleting === deleteKey ? <span className="text-[10px] font-black">...</span> : <TrashIcon />}</button>}
           </div>
@@ -247,13 +198,15 @@ export default function LeadMessagesPage() {
   return (
     <main className="min-h-screen bg-slate-200 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-4xl">
-        <div className="flex items-center justify-between gap-3"><button type="button" onClick={() => router.push("/")} className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-xs font-black">← Back to Dashboard</button><button type="button" onClick={() => setShowContacts(true)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">Contact Someone</button></div>
-        <header className="mt-6"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">{profile?.businessName || "ARK Client Center"}</p><div className="mt-1 flex flex-wrap items-end justify-between gap-3"><h1 className="text-4xl font-black tracking-tight">Messages</h1><p className="pb-1 text-xs font-black uppercase tracking-[0.12em] text-slate-600">{conversations.length.toLocaleString("en-US")} chats · {Number(data?.unreadCount || 0).toLocaleString("en-US")} unread</p></div></header>
+        <div className="flex items-center justify-between gap-3"><BackButton href="/" className="bg-slate-50" /><button type="button" onClick={() => setShowContacts(true)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">Contact Someone</button></div>
+        <header className="mt-5">
+          <h1 className="text-4xl font-black tracking-tight">Messages</h1>
+          <p className="mt-2 text-sm font-semibold text-slate-600">Text clients from your private number.</p>
+          <div className="mt-4 inline-flex items-center gap-3 rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-black text-slate-700 shadow-sm"><span>{conversations.length.toLocaleString("en-US")} chats</span><span className="text-slate-400">·</span><span>{Number(data?.unreadCount || 0).toLocaleString("en-US")} unread</span></div>
+        </header>
         {notice && <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {!data?.messagingConnected && !loading && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">This business does not have a connected Telnyx messaging number yet.</div>}
-
-        {!isEmployee && <section className="mt-5 rounded-3xl border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-4"><div className="rounded-2xl border border-slate-300 bg-slate-50 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-black">Message Auto-Delete</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Conversations always auto-delete. Choose whether they are kept for one day, one week, or one month.</p></div><select value={retentionDays} disabled={savingRetention} onChange={(event) => updateRetention(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-black outline-none focus:border-slate-950 disabled:opacity-50">{RETENTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>{savingRetention && <p className="mt-2 text-xs font-bold text-slate-500">Saving auto-delete setting…</p>}</div></section>}
 
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-4">
           <div className="overflow-hidden rounded-3xl border border-slate-300 bg-slate-100 shadow-sm">
