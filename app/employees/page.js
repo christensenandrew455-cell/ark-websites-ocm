@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import BackButton from "../components/BackButton";
 import { useAuth } from "../components/AuthProvider";
 
 async function employeeApi(user, options = {}) {
@@ -29,9 +29,9 @@ function formatPhone(value) {
 
 function SectionButton({ active, value, title, onClick }) {
   return (
-    <button type="button" onClick={onClick} className={active ? "min-h-32 w-full rounded-3xl border border-slate-900 bg-slate-900 p-5 text-left text-white shadow-sm transition active:scale-[0.99]" : "min-h-32 w-full rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]"}>
+    <button type="button" onClick={onClick} className={active ? "min-h-28 w-full rounded-3xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition active:scale-[0.99]" : "min-h-28 w-full rounded-3xl border border-slate-300 bg-white p-4 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]"}>
       <p className="text-3xl font-black">{value}</p>
-      <h2 className="mt-2 text-lg font-black">{title}</h2>
+      <h2 className="mt-1 text-2xl font-black tracking-tight">{title}</h2>
     </button>
   );
 }
@@ -97,7 +97,7 @@ export default function EmployeesPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-6xl">
-        <Link href="/" aria-label="Back" title="Back" className="grid h-12 w-12 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black shadow-sm">←</Link>
+        <BackButton href="/" />
         <header className="mt-5">
           <h1 className="text-4xl font-black tracking-tight">Employees</h1>
           <p className="mt-2 text-sm font-semibold text-slate-600">Manage your employees.</p>
