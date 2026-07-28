@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../components/AuthProvider";
 
 const RETENTION_OPTIONS = [
-  { value: 0, label: "Never auto-delete" },
   { value: 1, label: "Delete after 1 day" },
   { value: 7, label: "Delete after 1 week" },
   { value: 30, label: "Delete after 1 month" },
@@ -32,7 +31,15 @@ function failedStatus(value) {
 
 async function messageApi(user, query = "", options = {}) {
   const token = await user.getIdToken(true);
-  const response = await fetch(`/api/business/lead-messages${query}`, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) }, cache: "no-store" });
+  const response = await fetch(`/api/business/lead-messages${query}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+    cache: "no-store",
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Could not load messages.");
   return data;
@@ -49,7 +56,7 @@ export default function LeadMessagesPage() {
   const [selectedCollection, setSelectedCollection] = useState(requestedCollection);
   const [message, setMessage] = useState("");
   const [showContacts, setShowContacts] = useState(false);
-  const [retentionDays, setRetentionDays] = useState(0);
+  const [retentionDays, setRetentionDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [deleting, setDeleting] = useState("");
@@ -79,7 +86,7 @@ export default function LeadMessagesPage() {
       const token = await user.getIdToken(true);
       const response = await fetch("/api/business/lead-messages/retention", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
       const result = await response.json().catch(() => ({}));
-      if (response.ok) setRetentionDays(Number(result.retentionDays || 0));
+      if (response.ok) setRetentionDays(Number(result.retentionDays || 30));
     } catch {}
   }, [featureEnabled, isEmployee, user]);
 
@@ -89,14 +96,19 @@ export default function LeadMessagesPage() {
     load(requestedLead, requestedCollection);
   }, [load, requestedCollection, requestedLead]);
 
-  useEffect(() => { loadRetention(); }, [loadRetention]);
+  useEffect(() => {
+    loadRetention();
+  }, [loadRetention]);
 
   useEffect(() => {
     if (!featureEnabled) return undefined;
     const timer = window.setInterval(() => load(selectedLead, selectedCollection, true), 15000);
     const onVisibility = () => { if (document.visibilityState === "visible") load(selectedLead, selectedCollection, true); };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [featureEnabled, load, selectedCollection, selectedLead]);
 
   const conversations = data?.conversations || [];
@@ -153,7 +165,11 @@ export default function LeadMessagesPage() {
     setError("");
     try {
       const token = await user.getIdToken(true);
-      const response = await fetch("/api/business/lead-messages/delete", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ leadId, collectionKey }) });
+      const response = await fetch("/api/business/lead-messages/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ leadId, collectionKey }),
+      });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not delete the conversation.");
       if (selectedLead === leadId && selectedCollection === collectionKey) {
@@ -181,10 +197,14 @@ export default function LeadMessagesPage() {
     setError("");
     try {
       const token = await user.getIdToken(true);
-      const response = await fetch("/api/business/lead-messages/retention", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ retentionDays: next }) });
+      const response = await fetch("/api/business/lead-messages/retention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ retentionDays: next }),
+      });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not update message auto-delete settings.");
-      setRetentionDays(Number(result.retentionDays || 0));
+      setRetentionDays(Number(result.retentionDays || 30));
       setNotice(result.deleted ? `Auto-delete saved. ${result.deleted} expired conversation${result.deleted === 1 ? " was" : "s were"} deleted.` : "Message auto-delete setting saved.");
       await load("", "contactedMe");
     } catch (retentionError) {
@@ -195,7 +215,9 @@ export default function LeadMessagesPage() {
     }
   }
 
-  if (!featureEnabled) return <main className="min-h-screen bg-slate-200 p-4"><div className="mx-auto max-w-xl"><button type="button" onClick={() => router.push("/")} className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-2 text-xs font-black">← Back to Dashboard</button><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
+  if (!featureEnabled) {
+    return <main className="min-h-screen bg-slate-200 p-4"><div className="mx-auto max-w-xl"><button type="button" onClick={() => router.push("/")} className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-2 text-xs font-black">← Back to Dashboard</button><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
+  }
 
   if (selectedLead) {
     const deleteKey = `${selectedCollection}:${selectedLead}`;
@@ -231,7 +253,7 @@ export default function LeadMessagesPage() {
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {!data?.messagingConnected && !loading && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">This business does not have a connected Telnyx messaging number yet.</div>}
 
-        {!isEmployee && <section className="mt-5 rounded-3xl border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-4"><div className="rounded-2xl border border-slate-300 bg-slate-50 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-black">Message Auto-Delete</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Automatically and permanently delete entire conversations after the selected time.</p></div><select value={retentionDays} disabled={savingRetention} onChange={(event) => updateRetention(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-black outline-none focus:border-slate-950 disabled:opacity-50">{RETENTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>{savingRetention && <p className="mt-2 text-xs font-bold text-slate-500">Saving auto-delete setting…</p>}</div></section>}
+        {!isEmployee && <section className="mt-5 rounded-3xl border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-4"><div className="rounded-2xl border border-slate-300 bg-slate-50 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-base font-black">Message Auto-Delete</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Conversations always auto-delete. Choose whether they are kept for one day, one week, or one month.</p></div><select value={retentionDays} disabled={savingRetention} onChange={(event) => updateRetention(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-slate-100 px-3 text-sm font-black outline-none focus:border-slate-950 disabled:opacity-50">{RETENTION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>{savingRetention && <p className="mt-2 text-xs font-bold text-slate-500">Saving auto-delete setting…</p>}</div></section>}
 
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-4">
           <div className="overflow-hidden rounded-3xl border border-slate-300 bg-slate-100 shadow-sm">
