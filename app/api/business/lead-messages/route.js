@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
+import { smsPartCount } from "../../../lib/smsParts";
 import { requireUser } from "../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -202,6 +203,7 @@ function providerFailed(provider) {
 }
 
 function setMessageAndIndex({ batch, root, conversationRef, messageRef, body, provider, senderUid, senderName, senderRole, messageType, from, to, createdAt }) {
+  const smsParts = smsPartCount(body);
   batch.set(messageRef, {
     direction: "outbound",
     body,
@@ -209,6 +211,7 @@ function setMessageAndIndex({ batch, root, conversationRef, messageRef, body, pr
     senderName,
     senderRole,
     messageType,
+    smsParts,
     deliveryStatus: provider.status,
     providerMessageId: provider.providerMessageId || null,
     providerErrorCode: provider.providerErrorCode || null,
@@ -224,6 +227,7 @@ function setMessageAndIndex({ batch, root, conversationRef, messageRef, body, pr
       messageId: messageRef.id,
       fromPhone: from,
       toPhone: to,
+      smsParts,
       deliveryStatus: provider.status,
       providerErrorCode: provider.providerErrorCode || null,
       providerError: provider.providerError || null,
@@ -250,30 +254,25 @@ export async function POST(request) {
     const key = conversationId(access.clientId, collectionKey, leadId);
     const root = access.db.collection("ocmClients").doc(access.clientId);
     const conversationRef = root.collection("leadConversations").doc(key);
-    const billingRef = root.collection("billingConversationEvents").doc(key);
     const existingConversation = await conversationRef.get();
     const existingData = existingConversation.exists ? existingConversation.data() : {};
-    if (existingData.messagingOptedOut === true) {
-      return NextResponse.json({ error: "This customer opted out of text messages. Do not send another message unless they opt back in." }, { status: 409 });
-    }
+    if (existingData.messagingOptedOut === true) return NextResponse.json({ error: "This customer opted out of text messages. Do not send another message unless they opt back in." }, { status: 409 });
 
     let optInBody = "";
     let optInProvider = null;
     if (!existingConversation.exists) {
       optInBody = optInConfirmationMessage(access.businessName);
       optInProvider = await sendThroughTelnyx({ from: access.fromPhone, to: loaded.lead.phoneNormalized, message: optInBody });
-      if (providerFailed(optInProvider)) {
-        return NextResponse.json({ error: `The required opt-in confirmation could not be sent${optInProvider.providerErrorCode ? ` (${optInProvider.providerErrorCode})` : ""}: ${optInProvider.providerError || "Unknown Telnyx error."}` }, { status: 502 });
-      }
+      if (providerFailed(optInProvider)) return NextResponse.json({ error: `The required opt-in confirmation could not be sent${optInProvider.providerErrorCode ? ` (${optInProvider.providerErrorCode})` : ""}: ${optInProvider.providerError || "Unknown Telnyx error."}` }, { status: 502 });
     }
 
     const provider = await sendThroughTelnyx({ from: access.fromPhone, to: loaded.lead.phoneNormalized, message: messageBody });
     const messageRef = conversationRef.collection("messages").doc();
     const batch = access.db.batch();
     const now = Date.now();
+    let addedParts = smsPartCount(messageBody);
 
     if (!existingConversation.exists) {
-      batch.set(billingRef, { conversationId: key, leadId, collectionKey, startedAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, createdAt: FieldValue.serverTimestamp() }, { merge: true });
       const optInRef = conversationRef.collection("messages").doc();
       setMessageAndIndex({
         batch,
@@ -290,6 +289,7 @@ export async function POST(request) {
         to: loaded.lead.phoneNormalized,
         createdAt: Timestamp.fromMillis(now),
       });
+      addedParts += smsPartCount(optInBody);
     }
 
     setMessageAndIndex({
@@ -319,6 +319,7 @@ export async function POST(request) {
       assignedEmployeeUid: loaded.lead.assignedEmployeeUid || null,
       assignedEmployeeName: loaded.lead.assignedEmployeeName || null,
       messagingOptedOut: false,
+      smsParts: FieldValue.increment(addedParts),
       lastMessage: messageBody,
       lastMessageDirection: "outbound",
       lastMessageAt: FieldValue.serverTimestamp(),
