@@ -11,9 +11,9 @@ function destinationLabel(href) {
     if (url.pathname === "/employee/settings") return "Employee Settings";
     if (url.pathname === "/employee/leads") return "Leads";
     if (url.pathname === "/lead-messages") return "Messages";
-    return "the next page";
+    return "the previous page";
   } catch {
-    return "the next page";
+    return "the previous page";
   }
 }
 
@@ -81,6 +81,29 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
       window.removeEventListener("beforeunload", beforeUnload);
       document.removeEventListener("click", captureLink, true);
     };
+  }, [dirty, router]);
+
+  useEffect(() => {
+    const navigation = typeof window !== "undefined" ? window.navigation : null;
+    if (!dirty || !navigation?.addEventListener) return undefined;
+    const captureTraversal = (event) => {
+      if (event.navigationType !== "traverse" || event.canIntercept !== true || event.cancelable !== true) return;
+      try { event.preventDefault(); } catch { return; }
+      const destination = event.destination;
+      setPending({
+        label: destinationLabel(destination?.url || ""),
+        action: () => {
+          try {
+            if (destination?.key) navigation.traverseTo(destination.key);
+            else if (destination?.url) router.push(new URL(destination.url).pathname);
+          } catch {
+            if (destination?.url) router.push(new URL(destination.url).pathname);
+          }
+        },
+      });
+    };
+    navigation.addEventListener("navigate", captureTraversal);
+    return () => navigation.removeEventListener("navigate", captureTraversal);
   }, [dirty, router]);
 
   function releaseGuard() {
