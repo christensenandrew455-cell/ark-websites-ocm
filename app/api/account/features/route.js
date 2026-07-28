@@ -26,11 +26,27 @@ function flags(data = {}) {
   };
 }
 
+async function featureState(db, clientId, source = {}) {
+  const businessRef = db.collection("businesses").doc(clientId);
+  const root = db.collection("ocmClients").doc(clientId);
+  const [employeesSnapshot, conversationsSnapshot] = await Promise.all([
+    businessRef.collection("employees").get(),
+    root.collection("leadConversations").get(),
+  ]);
+  return {
+    ...flags(source),
+    employeeCount: employeesSnapshot.size,
+    conversationCount: conversationsSnapshot.size,
+    canDisableEmployees: employeesSnapshot.empty,
+    canDisableMessages: conversationsSnapshot.empty,
+  };
+}
+
 export async function GET(request) {
   const access = await authorizeOwner(request);
   if (access.response) return access.response;
   const businessSnapshot = await access.db.collection("businesses").doc(access.clientId).get();
-  return NextResponse.json({ ok: true, ...flags(businessSnapshot.exists ? businessSnapshot.data() : access.account) });
+  return NextResponse.json({ ok: true, ...(await featureState(access.db, access.clientId, businessSnapshot.exists ? businessSnapshot.data() : access.account)) });
 }
 
 export async function POST(request) {
@@ -40,14 +56,28 @@ export async function POST(request) {
     const body = await request.json();
     const messagesEnabled = body.messagesEnabled === true;
     const employeesEnabled = body.employeesEnabled === true;
+    const businessRef = access.db.collection("businesses").doc(access.clientId);
+    const root = access.db.collection("ocmClients").doc(access.clientId);
+    const [businessSnapshot, employeesSnapshot, conversationsSnapshot] = await Promise.all([
+      businessRef.get(),
+      businessRef.collection("employees").get(),
+      root.collection("leadConversations").get(),
+    ]);
+    const current = flags(businessSnapshot.exists ? businessSnapshot.data() : access.account);
+
+    if (current.employeesEnabled && !employeesEnabled && !employeesSnapshot.empty) {
+      return NextResponse.json({ error: `Delete all ${employeesSnapshot.size} employee account${employeesSnapshot.size === 1 ? "" : "s"} before turning Employees off.` }, { status: 409 });
+    }
+    if (current.messagesEnabled && !messagesEnabled && !conversationsSnapshot.empty) {
+      return NextResponse.json({ error: `Delete all ${conversationsSnapshot.size} conversation${conversationsSnapshot.size === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
+    }
+
     const employeeMessagingEnabled = body.employeeMessagingEnabled === true && messagesEnabled && employeesEnabled;
     const update = { messagesEnabled, employeesEnabled, employeeMessagingEnabled, updatedAt: FieldValue.serverTimestamp() };
-    const businessRef = access.db.collection("businesses").doc(access.clientId);
-    const employeesSnapshot = await businessRef.collection("employees").get();
     const batch = access.db.batch();
     batch.set(businessRef, update, { merge: true });
     batch.set(access.accountRef, update, { merge: true });
-    batch.set(access.db.collection("ocmClients").doc(access.clientId).collection("settings").doc("account"), {
+    batch.set(root.collection("settings").doc("account"), {
       MessagesEnabled: messagesEnabled,
       EmployeesEnabled: employeesEnabled,
       EmployeeMessagingEnabled: employeeMessagingEnabled,
@@ -71,7 +101,16 @@ export async function POST(request) {
       }
     }));
 
-    return NextResponse.json({ ok: true, messagesEnabled, employeesEnabled, employeeMessagingEnabled });
+    return NextResponse.json({
+      ok: true,
+      messagesEnabled,
+      employeesEnabled,
+      employeeMessagingEnabled,
+      employeeCount: employeesSnapshot.size,
+      conversationCount: conversationsSnapshot.size,
+      canDisableEmployees: employeesSnapshot.empty,
+      canDisableMessages: conversationsSnapshot.empty,
+    });
   } catch (error) {
     console.error("Unable to update account features", error);
     return NextResponse.json({ error: "Could not update account features." }, { status: 500 });
