@@ -41,7 +41,7 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
     const guard = {
       dirty,
       request(next) {
-        if (!dirty) {
+        if (!guard.dirty) {
           next.action?.();
           return;
         }
@@ -83,12 +83,17 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
     };
   }, [dirty, router]);
 
+  function releaseGuard() {
+    if (typeof window !== "undefined" && window.__arkUnsavedGuard) window.__arkUnsavedGuard.dirty = false;
+  }
+
   async function saveAndContinue() {
     if (saving) return;
     setSaving(true);
     try {
       const saved = await saveRef.current?.();
       if (saved !== false) {
+        releaseGuard();
         const action = pending?.action;
         setPending(null);
         action?.();
@@ -100,6 +105,7 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
 
   function discardAndContinue() {
     discardRef.current?.();
+    releaseGuard();
     const action = pending?.action;
     setPending(null);
     action?.();
