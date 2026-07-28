@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import BackButton from "../../components/BackButton";
 import { useAuth } from "../../components/AuthProvider";
 
 const THEME_KEY = "ark-theme-v1";
@@ -69,8 +70,8 @@ export default function EmployeeSettingsPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-4xl">
-        <Link href="/" className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black shadow-sm">← Dashboard</Link>
-        <header className="mt-6"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Employee account</p><h1 className="mt-1 text-4xl font-black tracking-tight">Settings</h1></header>
+        <BackButton href="/" />
+        <header className="mt-6"><h1 className="text-4xl font-black tracking-tight">Settings</h1></header>
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
 
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5">
