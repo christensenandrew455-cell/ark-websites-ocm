@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { dashBusinessName } from "../lib/valueUtils";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
@@ -124,24 +125,33 @@ function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeri
   );
 }
 
-function ListEditor({ items, onChange, placeholder, addLabel }) {
-  const [draft, setDraft] = useState("");
-  const values = Array.isArray(items) ? items : [];
-  function addItem() {
-    const value = draft.trim();
-    if (!value) return;
-    if (!values.some((item) => item.toLowerCase() === value.toLowerCase())) onChange([...values, value]);
-    setDraft("");
+function StackedListEditor({ items, onChange, placeholder, addLabel }) {
+  const initial = Array.isArray(items) && items.length ? items : [""];
+  const [rows, setRows] = useState(initial);
+
+  function apply(nextRows) {
+    setRows(nextRows);
+    onChange(nextRows.map((item) => String(item || "").trim()).filter(Boolean));
   }
+
+  function updateRow(index, value) {
+    apply(rows.map((row, rowIndex) => rowIndex === index ? value : row));
+  }
+
+  function removeRow(index) {
+    const next = rows.filter((_, rowIndex) => rowIndex !== index);
+    apply(next.length ? next : [""]);
+  }
+
   return (
-    <div>
-      <div className="flex gap-2">
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addItem(); } }} placeholder={placeholder} className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
-        <button type="button" onClick={addItem} className="rounded-xl bg-slate-950 px-4 text-xs font-black text-white">{addLabel}</button>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {values.map((item) => <span key={item} className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700">{item}<button type="button" onClick={() => onChange(values.filter((value) => value !== item))} aria-label={`Remove ${item}`} className="text-base leading-none text-slate-400 hover:text-red-600">×</button></span>)}
-      </div>
+    <div className="space-y-2">
+      {rows.map((item, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <input value={item} onChange={(event) => updateRow(index, event.target.value)} placeholder={placeholder} className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
+          <button type="button" onClick={() => removeRow(index)} aria-label={`Delete ${item || "empty item"}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-200 bg-white text-xl font-black text-red-600">×</button>
+        </div>
+      ))}
+      <button type="button" onClick={() => setRows((current) => [...current, ""])} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700">+ {addLabel}</button>
     </div>
   );
 }
@@ -152,7 +162,7 @@ function ServicesEditor({ services, onChange }) {
   function updateServices(nextNames) {
     onChange(Object.fromEntries(nextNames.map((name) => { const key = name.trim().toLowerCase(); return [key, key]; }).filter(([key]) => key)));
   }
-  return <ListEditor items={names} onChange={updateServices} placeholder="Snow plowing" addLabel="Add Service" />;
+  return <StackedListEditor items={names} onChange={updateServices} placeholder="Snow plowing" addLabel="Add Service" />;
 }
 
 export function prepareReceptionistProfile(profile = {}) {
@@ -210,7 +220,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
         <h3 className="text-lg font-black">Business Information</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Business name"><Input value={profile.businessName} onChange={(event) => update("businessName", event.target.value)} /></Field>
+          <Field label="Business name"><Input value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
           <Field label="Receptionist name"><Input value={profile.receptionistName} onChange={(event) => update("receptionistName", event.target.value)} /></Field>
           <Field label="Owner name"><Input value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
           <Field label="Business phone"><Input type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
@@ -222,9 +232,9 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
           <DayCheckboxes label="Days available for estimates" hint="Choose the days the receptionist may offer an estimate appointment." selected={profile.estimateWeekdays} onChange={(days) => update("estimateWeekdays", days)} />
           <HourPeriodPicker label="Earliest estimate time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
           <HourPeriodPicker label="Latest estimate time" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
-          <Field label="Service areas" hint="Add a city, county, state, the whole United States, or any other area the business serves." wide><ListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>
-          <Field label="About the business" hint="Add short facts the receptionist should know, one at a time." wide><ListEditor items={profile.about} onChange={(items) => update("about", items)} placeholder="Family-owned since 2018" addLabel="Add Fact" /></Field>
-          <Field label="Services" hint="Add each service the business provides." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
+          <Field label="Service areas" hint="Each area stays on its own line. Add as many as the business needs." wide><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>
+          <Field label="About the business" hint="Each fact stays on its own line." wide><StackedListEditor items={profile.about} onChange={(items) => update("about", items)} placeholder="Family-owned since 2018" addLabel="Add Fact" /></Field>
+          <Field label="Services" hint="Each service stays on its own line." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
         </div>
       </section>
     </div>
