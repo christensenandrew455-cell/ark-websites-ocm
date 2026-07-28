@@ -81,5 +81,12 @@ export default function SettingsPage() {
     return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening dashboard…</main>;
   }
 
-  return <><SettingsPanel /><SettingsBillingEstimate /></>;
+  return <div className="settings-layered"><style>{`
+    .settings-layered > main { background-color: #e2e8f0 !important; }
+    .settings-layered > main > div > .space-y-3 { border: 1px solid #cbd5e1; border-radius: 2rem; background: rgba(203, 213, 225, .72); padding: .75rem; box-shadow: inset 0 1px 2px rgba(15, 23, 42, .08); }
+    .settings-layered > main > div > .space-y-3 > button { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
+    .settings-layered > main section.bg-white { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
+    .settings-layered > main a.bg-white, .settings-layered > main button.bg-white { background-color: #f8fafc !important; }
+    @media (min-width: 640px) { .settings-layered > main > div > .space-y-3 { padding: 1.25rem; } }
+  `}</style><SettingsPanel /><SettingsBillingEstimate /></div>;
 }
