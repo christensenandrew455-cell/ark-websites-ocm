@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { dashBusinessName } from "../lib/valueUtils";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -126,8 +126,13 @@ function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeri
 }
 
 function StackedListEditor({ items, onChange, placeholder, addLabel }) {
-  const initial = Array.isArray(items) && items.length ? items : [""];
-  const [rows, setRows] = useState(initial);
+  const normalizedItems = Array.isArray(items) && items.length ? items : [""];
+  const itemKey = JSON.stringify(normalizedItems);
+  const [rows, setRows] = useState(() => normalizedItems);
+
+  useEffect(() => {
+    setRows(JSON.parse(itemKey));
+  }, [itemKey]);
 
   function apply(nextRows) {
     setRows(nextRows);
