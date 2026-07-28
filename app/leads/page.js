@@ -5,7 +5,10 @@ import ReviewClientsNative from "../components/ReviewClientsNative";
 
 export default function LeadsPage() {
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-950">
+    <div className="leads-simple min-h-screen bg-slate-100 text-slate-950">
+      <style>{`
+        .leads-simple > div:last-child section > div:first-child > button > p:last-child { display: none; }
+      `}</style>
       <div className="mx-auto max-w-6xl px-3 pt-5 sm:px-5 sm:pt-8 md:px-8">
         <Link href="/" aria-label="Back" title="Back" className="grid h-12 w-12 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black shadow-sm">←</Link>
         <header className="mt-5">
