@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 function destinationLabel(href) {
   try {
@@ -27,9 +27,12 @@ export function requestUnsavedNavigation(label, action) {
 }
 
 export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
+  const pathname = usePathname();
   const router = useRouter();
+  const autoSave = pathname === "/settings" || pathname.startsWith("/settings/");
   const [pending, setPending] = useState(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const saveRef = useRef(onSave);
   const discardRef = useRef(onDiscard);
 
@@ -40,26 +43,48 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
     if (typeof window === "undefined") return undefined;
     const guard = {
       dirty,
-      request(next) {
+      async request(next) {
         if (!guard.dirty) {
           next.action?.();
           return;
         }
-        setPending(next);
+        if (!autoSave) {
+          setPending(next);
+          return;
+        }
+        if (savingRef.current) return;
+        savingRef.current = true;
+        setSaving(true);
+        try {
+          const saved = await saveRef.current?.();
+          if (saved !== false) {
+            guard.dirty = false;
+            next.action?.();
+          }
+        } finally {
+          savingRef.current = false;
+          setSaving(false);
+        }
       },
     };
     window.__arkUnsavedGuard = guard;
     return () => {
       if (window.__arkUnsavedGuard === guard) delete window.__arkUnsavedGuard;
     };
-  }, [dirty]);
+  }, [autoSave, dirty]);
 
   useEffect(() => {
-    if (!dirty) return undefined;
+    if (!dirty || autoSave) return undefined;
     const beforeUnload = (event) => {
       event.preventDefault();
       event.returnValue = "";
     };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [autoSave, dirty]);
+
+  useEffect(() => {
+    if (!dirty) return undefined;
     const captureLink = (event) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const anchor = event.target.closest?.("a[href]");
@@ -70,17 +95,13 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
       if (url.origin !== window.location.origin) return;
       event.preventDefault();
       event.stopPropagation();
-      setPending({
+      window.__arkUnsavedGuard?.request({
         label: destinationLabel(href),
         action: () => router.push(`${url.pathname}${url.search}${url.hash}`),
       });
     };
-    window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", captureLink, true);
-    return () => {
-      window.removeEventListener("beforeunload", beforeUnload);
-      document.removeEventListener("click", captureLink, true);
-    };
+    return () => document.removeEventListener("click", captureLink, true);
   }, [dirty, router]);
 
   useEffect(() => {
@@ -90,7 +111,7 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
       if (event.navigationType !== "traverse" || event.canIntercept !== true || event.cancelable !== true) return;
       try { event.preventDefault(); } catch { return; }
       const destination = event.destination;
-      setPending({
+      window.__arkUnsavedGuard?.request({
         label: destinationLabel(destination?.url || ""),
         action: () => {
           try {
@@ -134,7 +155,7 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
     action?.();
   }
 
-  if (!pending) return null;
+  if (!pending || autoSave) return null;
 
   return (
     <div className="fixed inset-0 z-[200] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
