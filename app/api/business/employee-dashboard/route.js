@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ACCOUNT_TYPES, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
+import { ACCOUNT_TYPES, normalizeEmployeeDirectoryVisibility, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
 
@@ -50,6 +50,22 @@ function filteredLead(lead, visibility) {
   };
 }
 
+function employeeDirectory(employees, currentUid, visibility) {
+  return employees
+    .filter((employee) => text(employee.status) === "active")
+    .sort((first, second) => text(first.employeeName).localeCompare(text(second.employeeName)))
+    .map((employee, index) => {
+      const isCurrent = employee.uid === currentUid;
+      return {
+        uid: employee.uid,
+        isCurrent,
+        name: isCurrent || visibility.name ? text(employee.employeeName) || (isCurrent ? "You" : `Employee ${index + 1}`) : `Employee ${index + 1}`,
+        email: isCurrent || visibility.email ? text(employee.accountEmail) : "",
+        phone: isCurrent || visibility.phone ? text(employee.accountPhone) : "",
+      };
+    });
+}
+
 export async function GET(request) {
   const user = await requireUser(request);
   if (user.response) return user.response;
@@ -63,16 +79,18 @@ export async function GET(request) {
     const db = getAdminDb();
     const accountRef = db.collection("accounts").doc(decoded.uid);
     const businessRef = db.collection("businesses").doc(clientId);
-    const [accountSnapshot, businessSnapshot] = await Promise.all([accountRef.get(), businessRef.get()]);
+    const [accountSnapshot, businessSnapshot, employeesSnapshot] = await Promise.all([accountRef.get(), businessRef.get(), businessRef.collection("employees").get()]);
     if (!accountSnapshot.exists || !businessSnapshot.exists) {
       return NextResponse.json({ error: "The employee business account could not be found." }, { status: 404 });
     }
     const account = accountSnapshot.data();
+    const business = businessSnapshot.data();
     if (account.accountType !== ACCOUNT_TYPES.BUSINESS_EMPLOYEE || account.status !== "active" || text(account.clientId) !== clientId) {
       return NextResponse.json({ error: "The business owner has not approved this employee account." }, { status: 403 });
     }
 
-    const visibility = normalizeEmployeeVisibility(businessSnapshot.data().employeeVisibility);
+    const visibility = normalizeEmployeeVisibility(business.employeeVisibility);
+    const directoryVisibility = normalizeEmployeeDirectoryVisibility(business.employeeDirectoryVisibility);
     const root = db.collection("ocmClients").doc(clientId);
     const [contactedSnapshot, clientsSnapshot, conversationsSnapshot] = await Promise.all([
       root.collection("contactedMe").where("assignedEmployeeUid", "==", decoded.uid).get(),
@@ -86,13 +104,20 @@ export async function GET(request) {
       .sort((first, second) => String(second.updatedAt).localeCompare(String(first.updatedAt)))
       .map((lead) => filteredLead(lead, visibility));
 
+    const employees = employeesSnapshot.docs.map((document) => ({ uid: document.id, ...document.data() }));
+    const employeeMessagingEnabled = business.messagesEnabled === true && business.employeesEnabled === true && business.employeeMessagingEnabled === true;
+
     return NextResponse.json({
-      businessName: text(account.businessName || businessSnapshot.data().businessName),
+      businessName: text(account.businessName || business.businessName),
+      ownerName: text(business.ownerName || account.ownerName),
       employeeName: text(account.employeeName),
       visibility,
+      directoryVisibility,
+      employees: employeeDirectory(employees, decoded.uid, directoryVisibility),
+      employeeMessagingEnabled,
       leads,
       leadCount: leads.length,
-      conversationCount: conversationsSnapshot.size,
+      conversationCount: employeeMessagingEnabled ? conversationsSnapshot.size : 0,
     });
   } catch (error) {
     console.error("Unable to load employee dashboard", error);
