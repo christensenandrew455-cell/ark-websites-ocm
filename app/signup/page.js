@@ -9,6 +9,13 @@ import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
 import { dashBusinessName } from "../lib/valueUtils";
 
+function formatPhoneInput(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 function ChoiceButton({ selected, title, priceLabel, description, onClick }) {
   return (
     <button type="button" onClick={onClick} className={selected ? "rounded-2xl border-2 border-slate-950 bg-slate-950 p-5 text-left text-white shadow-lg" : "rounded-2xl border-2 border-slate-200 bg-white p-5 text-left text-slate-950 hover:border-slate-400"} aria-pressed={selected}>
@@ -33,13 +40,19 @@ export default function SignupPage() {
   const [submitting, setSubmitting] = useState(false);
 
   function updateField(event) {
-    const value = event.target.name === "businessName" ? dashBusinessName(event.target.value) : event.target.value;
-    setForm((current) => ({ ...current, [event.target.name]: value }));
+    const { name } = event.target;
+    const value = name === "businessName"
+      ? dashBusinessName(event.target.value)
+      : name === "accountPhone"
+        ? formatPhoneInput(event.target.value)
+        : event.target.value;
+    setForm((current) => ({ ...current, [name]: value }));
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    if (form.accountPhone.replace(/\D/g, "").length !== 10) return setError("Enter a 10-digit phone number.");
     if (form.password.length < 8) return setError("Use a password with at least 8 characters.");
     if (form.password !== form.confirmPassword) return setError("The two passwords do not match.");
     if (!acceptedLegal) return setError("You must agree to the Terms of Use and Privacy Policy before continuing.");
@@ -100,7 +113,7 @@ export default function SignupPage() {
           <label className="block md:col-span-2"><span className="text-sm font-semibold text-slate-700">Business name</span><input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} placeholder="Your business name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block md:col-span-2"><span className="text-sm font-semibold text-slate-700">{employeeSignup ? "Employee name" : "Owner name"}</span><input required name="personName" autoComplete="name" value={form.personName} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block"><span className="text-sm font-semibold text-slate-700">{employeeSignup ? "Employee email" : "Account email"}</span><input required type="email" name="accountEmail" autoComplete="email" value={form.accountEmail} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
-          <label className="block"><span className="text-sm font-semibold text-slate-700">{employeeSignup ? "Employee phone" : "Account phone"}</span><input required type="tel" name="accountPhone" autoComplete="tel" value={form.accountPhone} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
+          <label className="block"><span className="text-sm font-semibold text-slate-700">{employeeSignup ? "Employee phone" : "Account phone"}</span><input required type="tel" inputMode="numeric" maxLength={14} name="accountPhone" autoComplete="tel" value={form.accountPhone} onChange={updateField} placeholder="(555) 555-5555" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block"><span className="text-sm font-semibold text-slate-700">Password</span><input required minLength={8} type="password" name="password" autoComplete="new-password" value={form.password} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block"><span className="text-sm font-semibold text-slate-700">Confirm password</span><input required minLength={8} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
 
