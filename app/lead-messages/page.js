@@ -40,6 +40,7 @@ export default function LeadMessagesPage() {
   const [showContacts, setShowContacts] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -118,6 +119,30 @@ export default function LeadMessagesPage() {
     }
   }
 
+  async function deleteConversation() {
+    if (!user || isEmployee || !selectedLead || selected?.newConversation || deleting) return;
+    if (!window.confirm(`Permanently delete the conversation with ${selected?.leadName || "this lead"}? This cannot be undone.`)) return;
+    setDeleting(true);
+    setNotice("");
+    setError("");
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/business/lead-messages/delete", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ leadId: selectedLead, collectionKey: selectedCollection }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not delete the conversation.");
+      setSelectedLead("");
+      setSelectedCollection("contactedMe");
+      setMessage("");
+      router.replace("/lead-messages");
+      await load("", "contactedMe");
+      setNotice("Conversation deleted.");
+    } catch (deleteError) {
+      setError(deleteError.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!featureEnabled) return <main className="min-h-screen bg-slate-50 p-4"><div className="mx-auto max-w-xl"><button type="button" onClick={() => router.push("/")} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black">← Back to Dashboard</button><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
 
   if (selectedLead) {
@@ -127,6 +152,7 @@ export default function LeadMessagesPage() {
           <div className="flex items-center gap-3 border-b border-slate-200 px-3 py-3 sm:px-5">
             <button type="button" onClick={closeConversation} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black">← Messages</button>
             <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h1 className="truncate text-base font-black sm:text-xl">{selected?.leadName || "Conversation"}</h1>{selected?.messagingOptedOut && <span className="rounded-full bg-red-100 px-2 py-1 text-[9px] font-black uppercase text-red-700">Opted out</span>}</div><p className="truncate text-[10px] font-bold text-slate-500 sm:text-xs">{selected?.leadPhone || "No phone number"}{selected?.assignedEmployeeName ? ` · Assigned to ${selected.assignedEmployeeName}` : ""}</p></div>
+            {!isEmployee && selected && !selected.newConversation && <button type="button" disabled={deleting} onClick={deleteConversation} className="shrink-0 rounded-xl border border-red-300 px-3 py-2 text-xs font-black text-red-700 disabled:opacity-50">{deleting ? "Deleting…" : "Delete"}</button>}
           </div>
           {selected?.messagingOptedOut && <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-xs font-bold leading-5 text-red-700">This customer replied STOP. Sending is disabled until the customer texts START to opt back in.</div>}
           {notice && <div className="border-b border-green-200 bg-green-50 px-4 py-2 text-xs font-bold text-green-800">{notice}</div>}
@@ -148,6 +174,7 @@ export default function LeadMessagesPage() {
       <div className="mx-auto max-w-3xl">
         <div className="flex items-center justify-between gap-3"><button type="button" onClick={() => router.push("/")} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">← Back to Dashboard</button><button type="button" onClick={() => setShowContacts(true)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white">Contact Someone</button></div>
         <header className="mt-6"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{profile?.businessName || "ARK Client Center"}</p><div className="mt-1 flex flex-wrap items-end justify-between gap-3"><h1 className="text-4xl font-black tracking-tight">Messages</h1><p className="pb-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">{conversations.length.toLocaleString("en-US")} chats · {Number(data?.unreadCount || 0).toLocaleString("en-US")} unread</p></div></header>
+        {notice && <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {!data?.messagingConnected && !loading && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">This business does not have a connected Telnyx messaging number yet.</div>}
         <section className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
