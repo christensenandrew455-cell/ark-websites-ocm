@@ -69,6 +69,52 @@ function SettingsBillingEstimate() {
   );
 }
 
+function SettingsSimplifier() {
+  useEffect(() => {
+    const fieldLabels = new Map([
+      ["Time zone", "Business time zone"],
+      ["Business days", "Open business days"],
+      ["Business opens", "Business opening time"],
+      ["Business closes", "Business closing time"],
+      ["Service areas", "States and cities you service"],
+      ["AI voice", "AI receptionist voice"],
+      ["Speech speed", "AI receptionist speech speed"],
+      ["Silence before replying", "Silence before AI replies"],
+    ]);
+    const cardDescriptions = new Map([
+      ["Business Information", "Information the AI receptionist uses during calls."],
+      ["Customization", "Choose how the app works for your business."],
+    ]);
+
+    function apply() {
+      document.querySelectorAll(".settings-layered > main > div > .space-y-3 > button").forEach((button) => {
+        const title = button.querySelector("h2")?.textContent?.trim();
+        const description = button.querySelector("p");
+        if (description && cardDescriptions.has(title)) description.textContent = cardDescriptions.get(title);
+      });
+
+      document.querySelectorAll(".settings-layered span, .settings-layered p").forEach((node) => {
+        if (node.children.length > 0) return;
+        const text = node.textContent?.trim();
+        if (fieldLabels.has(text)) node.textContent = fieldLabels.get(text);
+      });
+
+      document.querySelectorAll(".settings-layered div").forEach((node) => {
+        const text = node.textContent?.trim();
+        if (text === "Business information saved." || text === "Customization saved.") node.style.display = "none";
+      });
+    }
+
+    apply();
+    const root = document.querySelector(".settings-layered");
+    if (!root) return undefined;
+    const observer = new MutationObserver(apply);
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+  return null;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const { isAdmin, isEmployee, loading } = useAuth();
@@ -87,6 +133,19 @@ export default function SettingsPage() {
     .settings-layered > main > div > .space-y-3 > button { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
     .settings-layered > main section.bg-white { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
     .settings-layered > main a.bg-white, .settings-layered > main button.bg-white { background-color: #f8fafc !important; }
+    .settings-layered > main > div > header > p { display: none !important; }
+    .settings-layered > main > div > div > :is(a, button) + h2 + p { display: none !important; }
+    .settings-layered .settings-business-form > div > section:nth-child(2) > h3,
+    .settings-layered .settings-business-form > div > section:nth-child(2) > p,
+    .settings-layered .settings-ai-form > div > section:first-child > h3,
+    .settings-layered .settings-ai-form > div > section:first-child > p { display: none !important; }
+    .settings-layered .settings-business-form label > span:last-child:not(:first-child),
+    .settings-layered .settings-ai-form label > span:last-child:not(:first-child),
+    .settings-layered .settings-business-form p + p,
+    .settings-layered .settings-ai-form p + p,
+    .settings-layered main form > section > p,
+    .settings-layered main form label > span > span { display: none !important; }
+    .settings-layered main form > button[type="submit"] { display: none !important; }
     @media (min-width: 640px) { .settings-layered > main > div > .space-y-3 { padding: 1.25rem; } }
-  `}</style><SettingsPanel /><SettingsBillingEstimate /></div>;
+  `}</style><SettingsPanel /><SettingsBillingEstimate /><SettingsSimplifier /></div>;
 }
