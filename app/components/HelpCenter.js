@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import BackButton from "./BackButton";
 import { useAuth } from "./AuthProvider";
 
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -37,13 +38,11 @@ export default function HelpCenter() {
       setHydrated(true);
       return;
     }
-
     try {
       const raw = localStorage.getItem(storageKey);
       const saved = raw ? JSON.parse(raw) : null;
-      if (!saved?.expiresAt || saved.expiresAt <= Date.now() || !Array.isArray(saved.messages)) {
-        localStorage.removeItem(storageKey);
-      } else {
+      if (!saved?.expiresAt || saved.expiresAt <= Date.now() || !Array.isArray(saved.messages)) localStorage.removeItem(storageKey);
+      else {
         setMessages(saved.messages);
         setExpiresAt(saved.expiresAt);
       }
@@ -60,7 +59,6 @@ export default function HelpCenter() {
       setExpiresAt(0);
       return;
     }
-
     const nextExpiry = Date.now() + CHAT_TTL_MS;
     setExpiresAt(nextExpiry);
     localStorage.setItem(storageKey, JSON.stringify({ messages, expiresAt: nextExpiry }));
@@ -74,7 +72,6 @@ export default function HelpCenter() {
       if (storageKey) localStorage.removeItem(storageKey);
       return undefined;
     }
-
     const timer = window.setTimeout(() => {
       setMessages([]);
       setExpiresAt(0);
@@ -95,25 +92,17 @@ export default function HelpCenter() {
     event.preventDefault();
     const question = input.trim();
     if (!question || sending || !user) return;
-
     const nextMessages = [...messages, makeMessage("user", question)];
     setMessages(nextMessages);
     setInput("");
     setError("");
     setSending(true);
-
     try {
       const token = await user.getIdToken();
       const response = await fetch("/api/help", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          currentPath: pathname,
-          messages: nextMessages.map((message) => ({ role: message.role, text: message.text })),
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPath: pathname, messages: nextMessages.map((message) => ({ role: message.role, text: message.text })) }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "AI help is unavailable right now.");
@@ -130,13 +119,11 @@ export default function HelpCenter() {
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-3xl">
-        <Link href="/settings" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm"><span aria-hidden="true">←</span>Back to Settings</Link>
+        <BackButton href="/settings" />
         <header className="mt-5">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Help</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Choose documentation, ask the in-app AI how to use the app, or send ARK a message about an issue or account request.</p>
         </header>
-
         <section className="mt-5 grid gap-3 sm:grid-cols-3">
           <Link href="/docs" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-400">
             <p className="text-lg font-black">Go to Docs</p>
@@ -148,11 +135,10 @@ export default function HelpCenter() {
           </button>
           <Link href="/messages" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-400">
             <p className="text-lg font-black">Send a Message</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Submit a problem, question, billing issue, or account-deletion request.</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Submit a problem, question, or billing issue.</p>
           </Link>
         </section>
       </div>
-
       {chatOpen && (
         <div className="fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}>
           <section className="flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl bg-slate-50 shadow-2xl sm:h-[min(720px,88vh)] sm:max-w-lg sm:rounded-3xl">
@@ -163,7 +149,6 @@ export default function HelpCenter() {
                 <button type="button" onClick={() => setChatOpen(false)} aria-label="Close help chat" className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white">×</button>
               </div>
             </header>
-
             <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-900">Ask where something is or how to use the app. AI can explain and provide links, but it cannot change your account or billing. This chat clears 24 hours after the last message.</div>
               <div className="mt-4 space-y-3">
@@ -179,7 +164,6 @@ export default function HelpCenter() {
               </div>
               {error && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold leading-5 text-red-700">{error}</p>}
             </div>
-
             <form onSubmit={submitQuestion} className="border-t border-slate-200 bg-white p-3 sm:p-4">
               <label className="sr-only" htmlFor="help-question">Ask for help</label>
               <div className="flex items-end gap-2">
