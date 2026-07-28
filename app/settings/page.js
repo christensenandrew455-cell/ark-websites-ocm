@@ -90,7 +90,8 @@ function SettingsSimplifier() {
       document.querySelectorAll(".settings-layered > main > div > .space-y-3 > button").forEach((button) => {
         const title = button.querySelector("h2")?.textContent?.trim();
         const description = button.querySelector("p");
-        if (description && cardDescriptions.has(title)) description.textContent = cardDescriptions.get(title);
+        const nextDescription = cardDescriptions.get(title);
+        if (description && nextDescription && description.textContent !== nextDescription) description.textContent = nextDescription;
       });
 
       document.querySelectorAll(".settings-layered span, .settings-layered p").forEach((node) => {
@@ -101,7 +102,7 @@ function SettingsSimplifier() {
 
       document.querySelectorAll(".settings-layered div").forEach((node) => {
         const text = node.textContent?.trim();
-        if (text === "Business information saved." || text === "Customization saved.") node.style.display = "none";
+        if ((text === "Business information saved." || text === "Customization saved.") && node.style.display !== "none") node.style.display = "none";
       });
     }
 
