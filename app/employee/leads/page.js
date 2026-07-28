@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import BackButton from "../../components/BackButton";
 import { useAuth } from "../../components/AuthProvider";
 
 function Detail({ label, value, wide = false }) {
@@ -81,7 +82,7 @@ export default function EmployeeLeadsPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between gap-3"><Link href="/" className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black shadow-sm">← Dashboard</Link><button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black shadow-sm">Refresh</button></div>
+        <div className="flex items-center justify-between gap-3"><BackButton href="/" /><button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black shadow-sm">Refresh</button></div>
         <header className="mt-6"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{data?.businessName || profile?.businessName || "Business"}</p><div className="mt-1 flex flex-wrap items-end justify-between gap-3"><h1 className="text-4xl font-black tracking-tight">Leads</h1><p className="pb-1 text-xs font-black uppercase tracking-[0.12em] text-slate-500">{leads.length.toLocaleString("en-US")} assigned</p></div></header>
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
 
