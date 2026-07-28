@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { normalizeEmployeeVisibility } from "../../../lib/accountTypes";
-import { getAdminDb } from "../../../lib/firebase-admin";
+import { normalizeEmployeeDirectoryVisibility, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
+import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
 import { PER_EMPLOYEE_CENTS } from "../../../lib/stripeUsageBilling";
 
@@ -50,10 +50,23 @@ async function loadWorkspace(db, clientId) {
     employees,
     activeEmployeeCount: employees.filter((employee) => employee.status === "active").length,
     perEmployeeCents: PER_EMPLOYEE_CENTS,
+    messagesEnabled: business.messagesEnabled === true,
     employeeMessagingEnabled: business.employeeMessagingEnabled === true && business.messagesEnabled === true,
     employeeVisibility: normalizeEmployeeVisibility(business.employeeVisibility),
+    employeeDirectoryVisibility: normalizeEmployeeDirectoryVisibility(business.employeeDirectoryVisibility),
     leads: [...contactedSnapshot.docs.map((document) => leadPayload(document, "contactedMe")), ...clientsSnapshot.docs.map((document) => leadPayload(document, "clients"))].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
   };
+}
+
+async function refreshEmployeeClaims(auth, employeeDocs, update) {
+  await Promise.all(employeeDocs.map(async (employee) => {
+    try {
+      const record = await auth.getUser(employee.id);
+      await auth.setCustomUserClaims(employee.id, { ...(record.customClaims || {}), ...update });
+    } catch (error) {
+      console.warn("Unable to refresh employee access claims", employee.id, error);
+    }
+  }));
 }
 
 export async function GET(request) {
@@ -70,11 +83,26 @@ export async function POST(request) {
     const body = await request.json();
     const action = text(body.action).toLowerCase();
     const businessRef = access.db.collection("businesses").doc(access.clientId);
-    if (action === "visibility") {
+    const root = access.db.collection("ocmClients").doc(access.clientId);
+
+    if (action === "access" || action === "visibility") {
       const visibility = normalizeEmployeeVisibility(body.visibility);
-      await Promise.all([businessRef.set({ employeeVisibility: visibility, updatedAt: FieldValue.serverTimestamp() }, { merge: true }), access.db.collection("accounts").doc(access.decoded.uid).set({ employeeVisibility: visibility, updatedAt: FieldValue.serverTimestamp() }, { merge: true })]);
-      return NextResponse.json({ ok: true, visibility });
+      const directoryVisibility = normalizeEmployeeDirectoryVisibility(body.directoryVisibility);
+      const employeeMessagingEnabled = body.employeeMessagingEnabled === true && access.business.messagesEnabled === true;
+      const update = { employeeVisibility: visibility, employeeDirectoryVisibility: directoryVisibility, employeeMessagingEnabled, updatedAt: FieldValue.serverTimestamp() };
+      const employeesSnapshot = await businessRef.collection("employees").get();
+      const batch = access.db.batch();
+      batch.set(businessRef, update, { merge: true });
+      batch.set(access.db.collection("accounts").doc(access.decoded.uid), update, { merge: true });
+      for (const employee of employeesSnapshot.docs) {
+        batch.set(employee.ref, { employeeMessagingEnabled, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        batch.set(access.db.collection("accounts").doc(employee.id), { employeeMessagingEnabled, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      }
+      await batch.commit();
+      await refreshEmployeeClaims(getAdminAuth(), employeesSnapshot.docs, { employeeMessagingEnabled });
+      return NextResponse.json({ ok: true, visibility, directoryVisibility, employeeMessagingEnabled });
     }
+
     if (["approve", "activate", "disable"].includes(action)) {
       const employeeUid = text(body.employeeUid);
       if (!employeeUid) return NextResponse.json({ error: "Choose an employee account." }, { status: 400 });
@@ -90,8 +118,41 @@ export async function POST(request) {
       const nameKey = text(employeeSnapshot.data().employeeNameKey);
       if (nameKey) batch.set(businessRef.collection("employeeHandles").doc(nameKey), { status: update.employeeStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await batch.commit();
+      try {
+        const auth = getAdminAuth();
+        const record = await auth.getUser(employeeUid);
+        await auth.setCustomUserClaims(employeeUid, { ...(record.customClaims || {}), messagesEnabled: update.messagesEnabled, employeesEnabled: true, employeeMessagingEnabled: update.employeeMessagingEnabled, accountStatus: nextStatus });
+      } catch (error) {
+        console.warn("Unable to refresh employee status claims", employeeUid, error);
+      }
       return NextResponse.json({ ok: true });
     }
+
+    if (action === "delete") {
+      const employeeUid = text(body.employeeUid);
+      if (!employeeUid) return NextResponse.json({ error: "Choose an employee account." }, { status: 400 });
+      const employeeRef = businessRef.collection("employees").doc(employeeUid);
+      const employeeSnapshot = await employeeRef.get();
+      if (!employeeSnapshot.exists) return NextResponse.json({ error: "That employee account could not be found." }, { status: 404 });
+      const [contactedSnapshot, clientsSnapshot, conversationsSnapshot] = await Promise.all([
+        root.collection("contactedMe").where("assignedEmployeeUid", "==", employeeUid).get(),
+        root.collection("clients").where("assignedEmployeeUid", "==", employeeUid).get(),
+        root.collection("leadConversations").where("assignedEmployeeUid", "==", employeeUid).get(),
+      ]);
+      const batch = access.db.batch();
+      const unassigned = { assignedEmployeeUid: null, assignedEmployeeName: null, assignedAt: null, updatedAt: FieldValue.serverTimestamp() };
+      contactedSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
+      clientsSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
+      conversationsSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
+      batch.delete(employeeRef);
+      batch.delete(access.db.collection("accounts").doc(employeeUid));
+      const nameKey = text(employeeSnapshot.data().employeeNameKey);
+      if (nameKey) batch.delete(businessRef.collection("employeeHandles").doc(nameKey));
+      await batch.commit();
+      await getAdminAuth().deleteUser(employeeUid).catch((error) => console.warn("Unable to delete employee authentication account", employeeUid, error));
+      return NextResponse.json({ ok: true });
+    }
+
     if (action === "assign") {
       const collectionKey = body.collectionKey === "clients" ? "clients" : "contactedMe";
       const recordId = text(body.recordId);
@@ -103,7 +164,6 @@ export async function POST(request) {
         if (!employeeSnapshot.exists || employeeSnapshot.data().status !== "active") return NextResponse.json({ error: "Choose an active employee." }, { status: 409 });
         employeeName = text(employeeSnapshot.data().employeeName);
       }
-      const root = access.db.collection("ocmClients").doc(access.clientId);
       const recordRef = root.collection(collectionKey).doc(recordId);
       if (!(await recordRef.get()).exists) return NextResponse.json({ error: "That lead or client no longer exists." }, { status: 404 });
       const assignment = { assignedEmployeeUid: employeeUid || null, assignedEmployeeName: employeeName || null, assignedAt: employeeUid ? FieldValue.serverTimestamp() : null, assignedBy: access.decoded.uid, updatedAt: FieldValue.serverTimestamp() };
