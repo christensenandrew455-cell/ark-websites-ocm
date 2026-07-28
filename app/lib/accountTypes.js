@@ -16,6 +16,12 @@ export const DEFAULT_EMPLOYEE_VISIBILITY = Object.freeze({
   notes: true,
 });
 
+export const DEFAULT_EMPLOYEE_DIRECTORY_VISIBILITY = Object.freeze({
+  name: true,
+  email: false,
+  phone: false,
+});
+
 export function normalizePersonKey(value) {
   return String(value || "")
     .trim()
@@ -30,6 +36,15 @@ export function normalizePersonKey(value) {
 export function normalizeEmployeeVisibility(value = {}) {
   return Object.fromEntries(
     Object.entries(DEFAULT_EMPLOYEE_VISIBILITY).map(([key, fallback]) => [
+      key,
+      typeof value?.[key] === "boolean" ? value[key] : fallback,
+    ])
+  );
+}
+
+export function normalizeEmployeeDirectoryVisibility(value = {}) {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_EMPLOYEE_DIRECTORY_VISIBILITY).map(([key, fallback]) => [
       key,
       typeof value?.[key] === "boolean" ? value[key] : fallback,
     ])
