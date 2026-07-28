@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   collection,
@@ -18,12 +18,6 @@ import {
   leadContactFieldDeletionPatch,
   stripLeadContactFields,
 } from "../lib/leadContactFields";
-
-const TIME_RANGES = [
-  { key: "today", label: "Today" },
-  { key: "month", label: "This Month" },
-  { key: "all", label: "All Time" },
-];
 
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
@@ -57,17 +51,6 @@ function normalizeRow(id, source, collectionKey) {
 
 function rowTime(row) {
   return toMillis(row.updatedAt || row.acceptedAt || row.createdAt);
-}
-
-function insideRange(row, range) {
-  if (range === "all") return true;
-  const value = rowTime(row);
-  if (!value) return false;
-  const now = new Date();
-  const start = range === "today"
-    ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-    : new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  return value >= start;
 }
 
 function displayDate(row) {
@@ -160,7 +143,6 @@ export default function ReviewClientsNative() {
   const [contacted, setContacted] = useState([]);
   const [clients, setClients] = useState([]);
   const [activeSection, setActiveSection] = useState(null);
-  const [range, setRange] = useState("all");
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [notice, setNotice] = useState("");
@@ -180,7 +162,6 @@ export default function ReviewClientsNative() {
   }, [searchParams]);
 
   const rows = activeSection === "contacted" ? contacted : activeSection === "clients" ? clients : [];
-  const filteredRows = useMemo(() => rows.filter((row) => insideRange(row, range)), [range, rows]);
 
   async function accept(row) {
     if (busy) return;
@@ -233,34 +214,38 @@ export default function ReviewClientsNative() {
     }
   }
 
+  const inactiveCard = "min-h-36 rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]";
+  const activeCard = "min-h-36 rounded-3xl border border-slate-900 bg-slate-900 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
+
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-5 pb-24 text-slate-950 sm:px-5 sm:py-8 md:px-8">
+    <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8">
       <div className="mx-auto max-w-6xl">
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
 
-        <section className="grid grid-cols-2 gap-3 sm:gap-5">
-          <button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? "min-h-36 rounded-3xl bg-slate-950 p-5 text-left text-white" : "min-h-36 rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm"}>
-            <p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-60">New receptionist leads</p>
-          </button>
-          <button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? "min-h-36 rounded-3xl bg-slate-950 p-5 text-left text-white" : "min-h-36 rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm"}>
-            <p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-60">Accepted people</p>
-          </button>
-        </section>
+        <section className="rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5">
+            <button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}>
+              <p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-60">New receptionist leads</p>
+            </button>
+            <button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}>
+              <p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-60">Accepted people</p>
+            </button>
+          </div>
 
-        {activeSection && (
-          <section className="mt-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <div className="flex items-center justify-between gap-3"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><button type="button" onClick={() => setActiveSection(null)} className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-black">Close</button></div>
-            <div className="mt-4 grid grid-cols-3 rounded-xl bg-slate-100 p-1">{TIME_RANGES.map((option) => <button key={option.key} type="button" onClick={() => setRange(option.key)} className={range === option.key ? "rounded-lg bg-white px-2 py-2 text-xs font-black shadow-sm" : "rounded-lg px-2 py-2 text-xs font-bold text-slate-500"}>{option.label}</button>)}</div>
-            <div className="mt-4 space-y-3">
-              {filteredRows.map((row) => <article key={row.id} className="rounded-2xl border border-slate-200 p-4"><button type="button" onClick={() => setViewing(row)} className="w-full text-left"><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p></button><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{activeSection === "contacted" && <button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button>}<button type="button" onClick={() => setViewing(row)} className="rounded-xl border border-slate-300 px-3 py-3 text-xs font-black">View</button>{messagesEnabled && <button type="button" onClick={() => openMessage(row)} className="rounded-xl bg-slate-950 px-3 py-3 text-xs font-black text-white">Message</button>}{activeSection === "clients" && <button type="button" onClick={() => setEditing(row)} className="rounded-xl border border-slate-300 px-3 py-3 text-xs font-black">Edit</button>}<button type="button" disabled={Boolean(busy)} onClick={() => remove(row)} className="rounded-xl border border-red-300 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div></article>)}
-              {filteredRows.length === 0 && <p className="rounded-2xl bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">Nothing here for this time range.</p>}
+          {activeSection && (
+            <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><button type="button" onClick={() => setActiveSection(null)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black">Close</button></div>
+              <div className="mt-4 space-y-3">
+                {rows.map((row) => <article key={row.id} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"><button type="button" onClick={() => setViewing(row)} className="w-full text-left"><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p></button><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{activeSection === "contacted" && <button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button>}<button type="button" onClick={() => setViewing(row)} className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-xs font-black">View</button>{messagesEnabled && <button type="button" onClick={() => openMessage(row)} className="rounded-xl bg-slate-950 px-3 py-3 text-xs font-black text-white">Message</button>}{activeSection === "clients" && <button type="button" onClick={() => setEditing(row)} className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-xs font-black">Edit</button>}<button type="button" disabled={Boolean(busy)} onClick={() => remove(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div></article>)}
+                {rows.length === 0 && <p className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-sm font-semibold text-slate-500">Nothing here yet.</p>}
+              </div>
             </div>
-          </section>
-        )}
+          )}
+        </section>
       </div>
       {viewing && <ViewModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onDate={() => confirmDate(viewing)} />}
       {editing && <EditModal row={editing} clientId={clientId} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setNotice("Client changes were saved."); }} />}
-    </main>
+    </div>
   );
 }
