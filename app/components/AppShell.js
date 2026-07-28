@@ -8,6 +8,7 @@ import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider
 import HelpCenter from "./HelpCenter";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
+import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
 const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/employee/pending", "/forgot-password", "/about", "/support", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
@@ -81,8 +82,9 @@ function PaymentNotice() {
 function WorkspaceHeader({ profile, pathname, isEmployee, logout }) {
   const businessName = profile?.businessName || "Your Business";
   const subtitle = isEmployee && profile?.employeeName ? `${businessName} · ${profile.employeeName}` : businessName;
-  const settingsActive = pathname.startsWith("/settings");
-  return <header className="border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-5 md:px-8 md:py-4"><div className="mx-auto flex max-w-6xl items-center justify-between gap-3"><div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{subtitle}</p></div><div className="flex shrink-0 items-center gap-2">{!isEmployee && <Link href="/settings" className={settingsActive ? "rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white sm:px-4 sm:py-2.5" : "rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5"}>Settings</Link>}<button type="button" onClick={logout} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5">Sign out</button></div></div></header>;
+  const settingsHref = isEmployee ? "/employee/settings" : "/settings";
+  const settingsActive = pathname.startsWith(settingsHref);
+  return <header className="border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-5 md:px-8 md:py-4"><div className="mx-auto flex max-w-6xl items-center justify-between gap-3"><div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{subtitle}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5">Sign out</button><Link href={settingsHref} aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link></div></div></header>;
 }
 
 function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout }) {
@@ -132,7 +134,7 @@ export default function AppShell({ children }) {
   if (!user) return <LoadingScreen />;
   if (isAuthPublic) return children;
 
-  const signOutButton = <button type="button" onClick={logout} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">Sign out</button>;
+  const signOutButton = <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">Sign out</button>;
 
   if (isAdmin) return <><header className="border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm md:px-8 md:py-4"><div className="mx-auto flex max-w-7xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"><div className="flex min-w-0 items-center justify-between gap-3"><div className="min-w-0 leading-tight"><p className="truncate text-base font-black tracking-tight text-slate-950 sm:text-xl">ARK Client Center</p><p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Admin</p></div><div className="sm:hidden">{signOutButton}</div></div><div className="flex min-w-0 items-center gap-2"><nav className="grid min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:flex sm:flex-none" style={{ gridTemplateColumns: `repeat(${ADMIN_NAV_ITEMS.length}, minmax(0, 1fr))` }}>{ADMIN_NAV_ITEMS.map((item) => { const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href); return <Link key={item.href} href={item.href} className={active ? "min-w-0 rounded-lg bg-white px-1 py-2 text-center text-[9px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm" : "min-w-0 rounded-lg px-1 py-2 text-center text-[9px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}><span className="sm:hidden">{item.mobileLabel}</span><span className="hidden sm:inline">{item.label}</span></Link>; })}</nav><div className="hidden sm:block">{signOutButton}</div></div></div></header>{children}</>;
 
