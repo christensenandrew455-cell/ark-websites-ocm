@@ -81,7 +81,7 @@ export async function POST(request) {
       return NextResponse.json({ error: `Delete all ${conversationCount} conversation${conversationCount === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
     }
 
-    const employeeMessagingEnabled = body.employeeMessagingEnabled === true && messagesEnabled && employeesEnabled;
+    const employeeMessagingEnabled = current.employeeMessagingEnabled && messagesEnabled && employeesEnabled;
     const update = { messagesEnabled, employeesEnabled, employeeMessagingEnabled, updatedAt: FieldValue.serverTimestamp() };
     const batch = access.db.batch();
     batch.set(businessRef, update, { merge: true });
