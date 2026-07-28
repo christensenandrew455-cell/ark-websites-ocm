@@ -1,0 +1,37 @@
+import { NextResponse } from "next/server";
+import { getAdminDb } from "../../../lib/firebase-admin";
+import { cleanupExpiredConversations, normalizeMessageRetentionDays } from "../../../lib/messageRetention";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+function text(value) { return String(value || "").trim(); }
+
+function authorized(request) {
+  const secret = text(process.env.CRON_SECRET);
+  const authorization = text(request.headers.get("authorization"));
+  if (secret) return authorization === `Bearer ${secret}`;
+  return text(request.headers.get("user-agent")).includes("vercel-cron/1.0");
+}
+
+export async function GET(request) {
+  if (!authorized(request)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const db = getAdminDb();
+  const businesses = await db.collection("businesses").where("status", "==", "active").get();
+  const results = [];
+
+  for (const business of businesses.docs) {
+    const retentionDays = normalizeMessageRetentionDays(business.data().messageRetentionDays);
+    if (!retentionDays) continue;
+    try {
+      const deleted = await cleanupExpiredConversations(db, business.id, retentionDays);
+      results.push({ clientId: business.id, retentionDays, deleted });
+    } catch (error) {
+      console.error(`Message retention cleanup failed for ${business.id}`, error);
+      results.push({ clientId: business.id, retentionDays, error: String(error?.message || "Cleanup failed.") });
+    }
+  }
+
+  return NextResponse.json({ ok: true, accounts: results.length, results });
+}
