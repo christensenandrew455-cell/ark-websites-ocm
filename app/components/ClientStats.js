@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
-function DashboardCard({ value, label, subtitle, onClick, disabled = false }) {
+function DashboardCard({ value, label, onClick, disabled = false }) {
   return (
     <button
       type="button"
@@ -16,14 +16,8 @@ function DashboardCard({ value, label, subtitle, onClick, disabled = false }) {
         : "min-h-40 w-full rounded-3xl border border-slate-300 bg-slate-50 p-5 text-left shadow-sm transition active:scale-[0.99] sm:min-h-48 sm:p-7"}
     >
       <div className="flex h-full items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{label}</h2>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 sm:text-sm">{subtitle}</p>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-5xl font-black tracking-tight text-slate-950 sm:text-7xl">{Number(value || 0).toLocaleString("en-US")}</p>
-          <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">New</p>
-        </div>
+        <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{label}</h2>
+        <p className="shrink-0 text-5xl font-black tracking-tight text-slate-950 sm:text-7xl">{Number(value || 0).toLocaleString("en-US")}</p>
       </div>
     </button>
   );
@@ -98,16 +92,15 @@ export default function ClientStats() {
     <section className="min-h-[calc(100vh-78px)] bg-slate-200 px-3 py-5 text-slate-950 sm:px-5 sm:py-8 md:px-8">
       <div className="mx-auto max-w-6xl">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">{profile?.businessName || "Your Business"}</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1>
-          <p className="mt-2 text-sm font-semibold text-slate-600">Open a workspace and see what needs your attention.</p>
+          <h1 className="text-4xl font-black tracking-tight sm:text-5xl">Dashboard</h1>
+          <p className="mt-2 text-sm font-semibold text-slate-600">Tap a workspace to see what needs your attention.</p>
         </div>
         {notice && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-800"><span>{notice}</span><button type="button" onClick={() => router.push("/settings")} className="shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-white">Settings</button></div>}
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5">
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-            <DashboardCard value={newLeads} label="Leads" subtitle="New people who contacted your business" onClick={() => router.push("/leads")} />
-            <DashboardCard value={unreadMessages} label="Messages" subtitle={profile?.messagesEnabled ? "Unread customer messages" : "Not turned on"} disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
-            <DashboardCard value={pendingEmployees} label="Employees" subtitle={profile?.employeesEnabled ? "Accounts waiting for approval" : "Not turned on"} disabled={profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", profile?.employeesEnabled === true, "/employees")} />
+            <DashboardCard value={newLeads} label="Leads" onClick={() => router.push("/leads")} />
+            <DashboardCard value={unreadMessages} label="Messages" disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
+            <DashboardCard value={pendingEmployees} label="Employees" disabled={profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", profile?.employeesEnabled === true, "/employees")} />
           </div>
         </section>
       </div>
