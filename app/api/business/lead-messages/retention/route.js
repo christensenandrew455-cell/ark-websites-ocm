@@ -35,9 +35,9 @@ export async function POST(request) {
   if (access.response) return access.response;
   try {
     const body = await request.json();
-    const requested = Number(body.retentionDays || 0);
+    const requested = Number(body.retentionDays);
     const retentionDays = normalizeMessageRetentionDays(requested);
-    if (retentionDays !== requested) return NextResponse.json({ error: "Choose Never, 1 day, 1 week, or 1 month." }, { status: 400 });
+    if (retentionDays !== requested) return NextResponse.json({ error: "Choose 1 day, 1 week, or 1 month." }, { status: 400 });
 
     const update = { messageRetentionDays: retentionDays, updatedAt: FieldValue.serverTimestamp() };
     await Promise.all([
