@@ -6,18 +6,21 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
 
-function DashboardCard({ value, label, onClick, disabled = false }) {
+function DashboardCard({ value, label, description, onClick, disabled = false }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={disabled
-        ? "min-h-32 w-full rounded-3xl border border-slate-300 bg-slate-200 p-4 text-left opacity-70 shadow-sm sm:min-h-40 sm:p-5"
-        : "min-h-32 w-full rounded-3xl border border-slate-300 bg-slate-50 p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-40 sm:p-5"}
+        ? "min-h-28 w-full rounded-2xl border border-slate-300 bg-slate-200 p-5 text-left opacity-70 shadow-sm sm:min-h-32 sm:rounded-3xl sm:p-6"
+        : "min-h-28 w-full rounded-2xl border border-slate-300 bg-slate-50 p-5 text-left shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6"}
     >
-      <div className="flex h-full items-end justify-between gap-4">
-        <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{label}</h2>
-        <p className="shrink-0 text-4xl font-black tracking-tight text-slate-950 sm:text-6xl">{Number(value || 0).toLocaleString("en-US")}</p>
+      <div className="flex h-full items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{label}</h2>
+          <p className="mt-2 text-sm font-semibold leading-5 text-slate-500">{description}</p>
+        </div>
+        <p className="shrink-0 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">{Number(value || 0).toLocaleString("en-US")}</p>
       </div>
     </button>
   );
@@ -98,9 +101,9 @@ export default function ClientStats() {
         {notice && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-800"><span>{notice}</span><button type="button" onClick={() => router.push("/settings")} className="shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-white">Settings</button></div>}
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5">
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-            <DashboardCard value={newLeads} label="Leads" onClick={() => router.push("/leads")} />
-            <DashboardCard value={unreadMessages} label="Messages" disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
-            <DashboardCard value={pendingEmployees} label="Employees" disabled={profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", profile?.employeesEnabled === true, "/employees")} />
+            <DashboardCard value={newLeads} label="Leads" description="Accept new leads and view your clients." onClick={() => router.push("/leads")} />
+            <DashboardCard value={unreadMessages} label="Messages" description="Text clients from your private number." disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
+            <DashboardCard value={pendingEmployees} label="Employees" description="Manage your employees." disabled={profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", profile?.employeesEnabled === true, "/employees")} />
           </div>
         </section>
       </div>
