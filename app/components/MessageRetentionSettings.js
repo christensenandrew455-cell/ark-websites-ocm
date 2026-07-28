@@ -13,7 +13,6 @@ export default function MessageRetentionSettings() {
   const { user } = useAuth();
   const [retentionDays, setRetentionDays] = useState(30);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -34,7 +33,6 @@ export default function MessageRetentionSettings() {
     const next = Number(value);
     setRetentionDays(next);
     setSaving(true);
-    setNotice("");
     setError("");
     try {
       const token = await user.getIdToken(true);
@@ -46,7 +44,6 @@ export default function MessageRetentionSettings() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not update message auto-delete.");
       setRetentionDays(Number(data.retentionDays || 30));
-      setNotice("Saved.");
     } catch (saveError) {
       setRetentionDays(previous);
       setError(saveError.message);
@@ -57,11 +54,10 @@ export default function MessageRetentionSettings() {
 
   return (
     <section className="mt-7 border-t border-slate-200 pt-7">
-      <h3 className="text-lg font-black">Message Auto-Delete</h3>
+      <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-black">Message Auto-Delete</h3>{saving && <span className="text-xs font-bold text-slate-400">Saving…</span>}</div>
       <select value={retentionDays} disabled={saving} onChange={(event) => updateRetention(event.target.value)} className="mt-4 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black outline-none focus:border-slate-950 disabled:opacity-50 sm:w-auto">
         {OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
-      {notice && <p className="mt-2 text-xs font-bold text-green-700">{notice}</p>}
       {error && <p className="mt-2 text-xs font-bold text-red-700">{error}</p>}
     </section>
   );
