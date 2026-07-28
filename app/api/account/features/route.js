@@ -26,6 +26,13 @@ function flags(data = {}) {
   };
 }
 
+function realConversationCount(snapshot) {
+  return snapshot.docs.filter((document) => {
+    const data = document.data();
+    return Boolean(String(data.leadId || "").trim() || String(data.lastMessage || "").trim() || data.lastMessageAt || data.createdAt);
+  }).length;
+}
+
 async function featureState(db, clientId, source = {}) {
   const businessRef = db.collection("businesses").doc(clientId);
   const root = db.collection("ocmClients").doc(clientId);
@@ -33,12 +40,13 @@ async function featureState(db, clientId, source = {}) {
     businessRef.collection("employees").get(),
     root.collection("leadConversations").get(),
   ]);
+  const conversationCount = realConversationCount(conversationsSnapshot);
   return {
     ...flags(source),
     employeeCount: employeesSnapshot.size,
-    conversationCount: conversationsSnapshot.size,
+    conversationCount,
     canDisableEmployees: employeesSnapshot.empty,
-    canDisableMessages: conversationsSnapshot.empty,
+    canDisableMessages: conversationCount === 0,
   };
 }
 
@@ -64,12 +72,13 @@ export async function POST(request) {
       root.collection("leadConversations").get(),
     ]);
     const current = flags(businessSnapshot.exists ? businessSnapshot.data() : access.account);
+    const conversationCount = realConversationCount(conversationsSnapshot);
 
     if (current.employeesEnabled && !employeesEnabled && !employeesSnapshot.empty) {
       return NextResponse.json({ error: `Delete all ${employeesSnapshot.size} employee account${employeesSnapshot.size === 1 ? "" : "s"} before turning Employees off.` }, { status: 409 });
     }
-    if (current.messagesEnabled && !messagesEnabled && !conversationsSnapshot.empty) {
-      return NextResponse.json({ error: `Delete all ${conversationsSnapshot.size} conversation${conversationsSnapshot.size === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
+    if (current.messagesEnabled && !messagesEnabled && conversationCount > 0) {
+      return NextResponse.json({ error: `Delete all ${conversationCount} conversation${conversationCount === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
     }
 
     const employeeMessagingEnabled = body.employeeMessagingEnabled === true && messagesEnabled && employeesEnabled;
@@ -107,9 +116,9 @@ export async function POST(request) {
       employeesEnabled,
       employeeMessagingEnabled,
       employeeCount: employeesSnapshot.size,
-      conversationCount: conversationsSnapshot.size,
+      conversationCount,
       canDisableEmployees: employeesSnapshot.empty,
-      canDisableMessages: conversationsSnapshot.empty,
+      canDisableMessages: conversationCount === 0,
     });
   } catch (error) {
     console.error("Unable to update account features", error);
