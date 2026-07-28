@@ -1,8 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { getAdminDb } from "../../../../../lib/firebase-admin";
-import { cleanupExpiredConversations, normalizeMessageRetentionDays } from "../../../../../lib/messageRetention";
-import { requireUser } from "../../../../../lib/userRequest";
+import { getAdminDb } from "../../../../lib/firebase-admin";
+import { cleanupExpiredConversations, normalizeMessageRetentionDays } from "../../../../lib/messageRetention";
+import { requireUser } from "../../../../lib/userRequest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
