@@ -13,6 +13,7 @@ const VISIBILITY_LABELS = {
   requestedTime: "Requested date and time",
   notes: "Additional notes",
 };
+
 const DIRECTORY_LABELS = {
   name: "Employee name",
   email: "Employee email",
@@ -37,6 +38,19 @@ async function employeeApi(user, options = {}) {
 
 function money(cents) {
   return `$${(Number(cents || 0) / 100).toFixed(2)}`;
+}
+
+function SectionButton({ active, value, title, description, onClick, wide = false }) {
+  const className = active
+    ? "rounded-3xl border border-slate-900 bg-slate-900 p-5 text-left text-white shadow-sm transition active:scale-[0.99]"
+    : "rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]";
+  return (
+    <button type="button" onClick={onClick} className={`${wide ? "min-h-28 w-full" : "min-h-32 w-full"} ${className}`}>
+      <p className={wide ? "text-2xl font-black" : "text-3xl font-black"}>{value}</p>
+      <h2 className="mt-2 text-sm font-black sm:text-lg">{title}</h2>
+      <p className="mt-1 text-[10px] font-semibold opacity-60 sm:text-xs">{description}</p>
+    </button>
+  );
 }
 
 export default function EmployeesPage() {
@@ -165,8 +179,6 @@ export default function EmployeesPage() {
   const leads = workspace?.leads || [];
   const assignedLeads = leads.filter((lead) => lead.assignedEmployeeUid);
   const unassignedLeads = leads.filter((lead) => !lead.assignedEmployeeUid);
-  const inactiveCard = "min-h-32 rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]";
-  const activeCard = "min-h-32 rounded-3xl border border-slate-900 bg-slate-900 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
@@ -176,16 +188,18 @@ export default function EmployeesPage() {
         <header className="mt-4 sm:mt-6">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Account workspace</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Employees</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Approve or delete employee accounts, control access, and review who is connected to each lead. Each active employee is {money(workspace?.perEmployeeCents || 500)} per billing period.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Approve or delete employee accounts, control employee access, and review who is connected to each lead. Each active employee is {money(workspace?.perEmployeeCents || 500)} per billing period.</p>
         </header>
         {notice && <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
 
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5">
-          <div className="grid grid-cols-3 gap-3 sm:gap-5">
-            <button type="button" onClick={() => toggleSection("accounts")} className={activeSection === "accounts" ? activeCard : inactiveCard}><p className="text-3xl font-black">{employees.length}</p><h2 className="mt-2 text-sm font-black sm:text-lg">Accounts</h2><p className="mt-1 text-[10px] font-semibold opacity-60 sm:text-xs">Approve and manage employees</p></button>
-            <button type="button" onClick={() => toggleSection("access")} className={activeSection === "access" ? activeCard : inactiveCard}><p className="text-3xl font-black">{employeeMessagingEnabled ? "On" : "Off"}</p><h2 className="mt-2 text-sm font-black sm:text-lg">Access</h2><p className="mt-1 text-[10px] font-semibold opacity-60 sm:text-xs">Messages and visibility</p></button>
-            <button type="button" onClick={() => toggleSection("connections")} className={activeSection === "connections" ? activeCard : inactiveCard}><p className="text-3xl font-black">{assignedLeads.length}</p><h2 className="mt-2 text-sm font-black sm:text-lg">Connections</h2><p className="mt-1 text-[10px] font-semibold opacity-60 sm:text-xs">Employees connected to work</p></button>
+          <div className="grid grid-cols-2 gap-3 sm:gap-5">
+            <SectionButton active={activeSection === "accounts"} value={employees.length} title="Accounts" description="Approve and manage employees" onClick={() => toggleSection("accounts")} />
+            <SectionButton active={activeSection === "connections"} value={assignedLeads.length} title="Connections" description="Employees connected to work" onClick={() => toggleSection("connections")} />
+          </div>
+          <div className="mt-3 sm:mt-5">
+            <SectionButton wide active={activeSection === "access"} value={employeeMessagingEnabled ? "Messages On" : "Messages Off"} title="Employee Access Settings" description="Messages, lead information, and coworker visibility" onClick={() => toggleSection("access")} />
           </div>
 
           {activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5">
