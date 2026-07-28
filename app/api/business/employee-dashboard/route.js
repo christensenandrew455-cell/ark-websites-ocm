@@ -79,7 +79,14 @@ export async function GET(request) {
     const db = getAdminDb();
     const accountRef = db.collection("accounts").doc(decoded.uid);
     const businessRef = db.collection("businesses").doc(clientId);
-    const [accountSnapshot, businessSnapshot, employeesSnapshot] = await Promise.all([accountRef.get(), businessRef.get(), businessRef.collection("employees").get()]);
+    const root = db.collection("ocmClients").doc(clientId);
+    const [accountSnapshot, businessSnapshot, employeesSnapshot, receptionistSnapshot, accountSettingsSnapshot] = await Promise.all([
+      accountRef.get(),
+      businessRef.get(),
+      businessRef.collection("employees").get(),
+      root.collection("settings").doc("receptionist").get(),
+      root.collection("settings").doc("account").get(),
+    ]);
     if (!accountSnapshot.exists || !businessSnapshot.exists) {
       return NextResponse.json({ error: "The employee business account could not be found." }, { status: 404 });
     }
@@ -89,9 +96,14 @@ export async function GET(request) {
       return NextResponse.json({ error: "The business owner has not approved this employee account." }, { status: 403 });
     }
 
+    const receptionist = receptionistSnapshot.exists ? receptionistSnapshot.data() : {};
+    const accountSettings = accountSettingsSnapshot.exists ? accountSettingsSnapshot.data() : {};
+    const ownerUid = text(business.ownerUid || business.uid);
+    const ownerSnapshot = ownerUid ? await db.collection("accounts").doc(ownerUid).get() : null;
+    const ownerAccount = ownerSnapshot?.exists ? ownerSnapshot.data() : {};
+
     const visibility = normalizeEmployeeVisibility(business.employeeVisibility);
     const directoryVisibility = normalizeEmployeeDirectoryVisibility(business.employeeDirectoryVisibility);
-    const root = db.collection("ocmClients").doc(clientId);
     const [contactedSnapshot, clientsSnapshot, conversationsSnapshot] = await Promise.all([
       root.collection("contactedMe").where("assignedEmployeeUid", "==", decoded.uid).get(),
       root.collection("clients").where("assignedEmployeeUid", "==", decoded.uid).get(),
@@ -106,10 +118,16 @@ export async function GET(request) {
 
     const employees = employeesSnapshot.docs.map((document) => ({ uid: document.id, ...document.data() }));
     const employeeMessagingEnabled = business.messagesEnabled === true && business.employeesEnabled === true && business.employeeMessagingEnabled === true;
+    const businessEmail = text(receptionist.businessEmail || accountSettings.AccountEmail || business.accountEmail);
+    const businessPhone = text(receptionist.businessPhone || accountSettings.AccountPhone || business.accountPhone);
 
     return NextResponse.json({
-      businessName: text(account.businessName || business.businessName),
-      ownerName: text(business.ownerName || account.ownerName),
+      businessName: text(receptionist.businessName || account.businessName || business.businessName),
+      ownerName: text(receptionist.ownerName || business.ownerName || ownerAccount.ownerName),
+      businessEmail,
+      businessPhone,
+      ownerEmail: text(ownerAccount.accountEmail || ownerAccount.email || business.ownerEmail || businessEmail),
+      ownerPhone: text(ownerAccount.accountPhone || ownerAccount.phone || business.ownerPhone || businessPhone),
       employeeName: text(account.employeeName),
       visibility,
       directoryVisibility,
