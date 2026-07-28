@@ -12,12 +12,12 @@ function DashboardCard({ value, label, onClick, disabled = false }) {
       type="button"
       onClick={onClick}
       className={disabled
-        ? "min-h-40 w-full rounded-3xl border border-slate-300 bg-slate-200 p-5 text-left opacity-70 shadow-sm sm:min-h-48 sm:p-7"
-        : "min-h-40 w-full rounded-3xl border border-slate-300 bg-slate-50 p-5 text-left shadow-sm transition active:scale-[0.99] sm:min-h-48 sm:p-7"}
+        ? "min-h-32 w-full rounded-3xl border border-slate-300 bg-slate-200 p-4 text-left opacity-70 shadow-sm sm:min-h-40 sm:p-5"
+        : "min-h-32 w-full rounded-3xl border border-slate-300 bg-slate-50 p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-40 sm:p-5"}
     >
       <div className="flex h-full items-end justify-between gap-4">
-        <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{label}</h2>
-        <p className="shrink-0 text-5xl font-black tracking-tight text-slate-950 sm:text-7xl">{Number(value || 0).toLocaleString("en-US")}</p>
+        <h2 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">{label}</h2>
+        <p className="shrink-0 text-4xl font-black tracking-tight text-slate-950 sm:text-6xl">{Number(value || 0).toLocaleString("en-US")}</p>
       </div>
     </button>
   );
@@ -92,7 +92,7 @@ export default function ClientStats() {
     <section className="min-h-[calc(100vh-78px)] bg-slate-200 px-3 py-5 text-slate-950 sm:px-5 sm:py-8 md:px-8">
       <div className="mx-auto max-w-6xl">
         <div>
-          <h1 className="text-4xl font-black tracking-tight sm:text-5xl">Dashboard</h1>
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1>
           <p className="mt-2 text-sm font-semibold text-slate-600">Tap a workspace to see what needs your attention.</p>
         </div>
         {notice && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-800"><span>{notice}</span><button type="button" onClick={() => router.push("/settings")} className="shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-white">Settings</button></div>}
