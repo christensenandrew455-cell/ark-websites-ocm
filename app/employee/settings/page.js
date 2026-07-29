@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import BackButton from "../../components/BackButton";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { useAuth } from "../../components/AuthProvider";
 
 const THEME_KEY = "ark-theme-v1";
@@ -10,7 +11,7 @@ const SECTIONS = [
   { key: "appearance", title: "Appearance", description: "Display preferences" },
   { key: "business", title: "Business Information", description: "Company details" },
   { key: "team", title: "Employees", description: "Coworker details" },
-  { key: "policies", title: "Policies", description: "Terms of Use and Privacy Policy" },
+  { key: "account", title: "Account", description: "Account details" },
 ];
 
 function EmployeeCard({ employee }) {
@@ -30,12 +31,14 @@ function InformationCard({ label, value, href }) {
 }
 
 export default function EmployeeSettingsPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, logout } = useAuth();
   const [data, setData] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [activeSection, setActiveSection] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -47,7 +50,7 @@ export default function EmployeeSettingsPage() {
       setData(body);
       setError("");
     } catch (loadError) {
-      setError(loadError.message || "Could not load employee settings.");
+      setError(navigator.onLine ? "Something went wrong." : "Check your internet connection.");
     } finally {
       setLoading(false);
     }
@@ -62,6 +65,24 @@ export default function EmployeeSettingsPage() {
     setDarkMode(checked);
     try { window.localStorage.setItem(THEME_KEY, checked ? "dark" : "light"); } catch {}
     document.documentElement.classList.toggle("ark-dark", checked);
+  }
+
+  async function deleteAccount() {
+    if (!user || deleting) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/account/employee-delete", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Could not delete your account.");
+      await logout().catch(() => null);
+      window.location.assign("/login");
+    } catch {
+      setDeleteOpen(false);
+      setError(navigator.onLine ? "Could not delete your account." : "Check your internet connection.");
+      setDeleting(false);
+    }
   }
 
   const inactiveCard = "min-h-28 rounded-3xl border border-slate-300 bg-white p-4 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99] sm:p-5";
@@ -96,11 +117,12 @@ export default function EmployeeSettingsPage() {
 
               {activeSection === "team" && <div className="mt-4 grid gap-3 sm:grid-cols-2">{loading && <p className="text-sm font-semibold text-slate-500 sm:col-span-2">Loading employees…</p>}{!loading && (data?.employees || []).map((employee) => <EmployeeCard key={employee.uid} employee={employee} />)}{!loading && (data?.employees || []).length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500 sm:col-span-2">No other active employees are listed.</p>}</div>}
 
-              {activeSection === "policies" && <div className="mt-4 grid grid-cols-2 gap-2"><Link href="/terms" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div>}
+              {activeSection === "account" && <div className="mt-4 space-y-2"><div className="grid grid-cols-2 gap-2"><Link href="/terms" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div><button type="button" onClick={() => setDeleteOpen(true)} className="w-full rounded-xl bg-red-700 px-4 py-3 text-sm font-black text-white">Delete My Account</button></div>}
             </section>
           </div>}
         </section>
       </div>
+      <ConfirmDialog open={deleteOpen} message="Are you sure you want to delete your account?" confirmLabel="Yes" busy={deleting} onCancel={() => setDeleteOpen(false)} onConfirm={deleteAccount} />
     </main>
   );
 }
