@@ -1,0 +1,43 @@
+:root {
+  --ark-visual-viewport-height: 100dvh;
+  --ark-visual-viewport-top: 0px;
+}
+
+@supports selector(body:has(*)) {
+  body:has(main textarea[placeholder="Message"]),
+  body:has(main textarea[placeholder="Customer opted out"]) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body:has(main textarea[placeholder="Message"]) header.sticky,
+  body:has(main textarea[placeholder="Customer opted out"]) header.sticky {
+    display: none !important;
+  }
+
+  body:has(main textarea[placeholder="Message"]) main,
+  body:has(main textarea[placeholder="Customer opted out"]) main {
+    position: fixed;
+    z-index: 50;
+    top: calc(var(--ark-visual-viewport-top) + env(safe-area-inset-top, 0px));
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: calc(var(--ark-visual-viewport-height) - env(safe-area-inset-top, 0px)) !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 0 !important;
+  }
+
+  html[data-keyboard-open] body:has(main textarea[placeholder="Message"]) main,
+  html[data-keyboard-open] body:has(main textarea[placeholder="Customer opted out"]) main {
+    top: var(--ark-visual-viewport-top);
+    height: var(--ark-visual-viewport-height) !important;
+  }
+
+  body:has(main textarea[placeholder="Message"]) main form,
+  body:has(main textarea[placeholder="Customer opted out"]) main form {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+}
