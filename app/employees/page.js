@@ -100,7 +100,6 @@ export default function EmployeesPage() {
         <BackButton href="/" />
         <header className="mt-5">
           <h1 className="text-4xl font-black tracking-tight">Employees</h1>
-          <p className="mt-2 text-sm font-semibold text-slate-600">Manage your employees.</p>
         </header>
         {notice && <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
@@ -112,7 +111,7 @@ export default function EmployeesPage() {
           </div>
 
           {activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5">
-            <div className="flex items-center justify-between gap-3"><h2 className="text-2xl font-black">{activeSection === "accounts" ? "Accounts" : "Connections"}</h2><button type="button" onClick={() => setActiveSection("")} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black">Close</button></div>
+            <h2 className="text-2xl font-black">{activeSection === "accounts" ? "Accounts" : "Connections"}</h2>
 
             {activeSection === "accounts" && <div className="mt-4 space-y-4">
               <section className="rounded-3xl border border-slate-300 bg-white p-4 shadow-sm sm:p-6">
