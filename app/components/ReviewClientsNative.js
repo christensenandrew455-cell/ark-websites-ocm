@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   collection,
@@ -66,16 +66,6 @@ function normalizeTimeForDate(value) {
   return `${String(hour).padStart(2, "0")}:${minute}`;
 }
 
-function displayDate(row) {
-  if (!row.EstimateDate) return "Not selected";
-  const time = normalizeTimeForDate(row.EstimateTime);
-  const date = new Date(`${row.EstimateDate}T${time || "12:00"}:00`);
-  if (Number.isNaN(date.getTime())) return [row.EstimateDate, row.EstimateTime].filter(Boolean).join(" · ");
-  const options = { month: "numeric", day: "numeric", year: "2-digit" };
-  if (time) Object.assign(options, { hour: "numeric", minute: "2-digit" });
-  return new Intl.DateTimeFormat("en-US", options).format(date);
-}
-
 function calendarStamp(date) {
   const pad = (number) => String(number).padStart(2, "0");
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`;
@@ -120,47 +110,50 @@ function Modal({ title, children, onClose }) {
   return <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-2 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={title}><button type="button" className="fixed inset-0" onClick={onClose} aria-label="Close" /><div className="relative flex max-h-[96vh] min-h-[78vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">{children}</div></div>;
 }
 
-function Detail({ label, value, wide = false }) {
-  return <div className={wide ? "col-span-2" : ""}><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm font-medium text-slate-900">{value || "—"}</p></div>;
-}
-
-function ViewModal({ row, messagesEnabled, employeesEnabled, activeEmployees, onClose, onMessage, onAddContact, onDate, onManageEmployee }) {
+function ClientModal({ row, clientId, messagesEnabled, employeesEnabled, activeEmployees, onClose, onMessage, onAddContact, onDate, onManageEmployee, onSaved }) {
   const canManageEmployees = employeesEnabled && activeEmployees.length > 0;
-  return <Modal title="Client details" onClose={onClose}>
-    <div className="border-b border-slate-200 p-5 sm:p-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Client details</p><h2 className="mt-1 text-3xl font-black">{row.Name || "Unnamed caller"}</h2></div>
-    <div className="grid flex-1 grid-cols-2 content-start gap-5 overflow-y-auto p-5 sm:p-7"><Detail label="Phone" value={row.Phone} /><Detail label="Assigned employee" value={row.assignedEmployeeName || "Not assigned"} /><Detail label="Address" value={row.Address} wide /><Detail label="Job type" value={row.Job} /><Detail label="Requested date" value={displayDate(row)} /><Detail label="Notes" value={row.Notes} wide /></div>
-    <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
-      <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>
-      <button type="button" onClick={onAddContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>
-      <button type="button" onClick={onDate} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Confirm Date</button>
-      <button type="button" disabled={!canManageEmployees} onClick={onManageEmployee} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:bg-slate-200 disabled:text-slate-400">Manage Employee</button>
-    </div>
-  </Modal>;
-}
+  const [form, setForm] = useState({
+    Name: row.Name || "",
+    Phone: row.Phone || "",
+    Address: row.Address || "",
+    Job: row.Job || "",
+    EstimateDate: /^\d{4}-\d{2}-\d{2}$/.test(String(row.EstimateDate || "")) ? row.EstimateDate : "",
+    EstimateTime: normalizeTimeForDate(row.EstimateTime),
+    Notes: row.Notes || "",
+  });
+  const initialForm = useRef(JSON.stringify(form));
+  const closing = useRef(false);
 
-function EditModal({ row, clientId, onClose, onSaved }) {
-  const [form, setForm] = useState({ Name: row.Name || "", Phone: row.Phone || "", Address: row.Address || "", Job: row.Job || "", EstimateDate: /^\d{4}-\d{2}-\d{2}$/.test(String(row.EstimateDate || "")) ? row.EstimateDate : "", EstimateTime: normalizeTimeForDate(row.EstimateTime), Notes: row.Notes || "" });
-  const [saving, setSaving] = useState(false);
-
-  async function save(event) {
-    event.preventDefault();
-    setSaving(true);
+  async function closeWithAutosave() {
+    if (closing.current) return;
+    closing.current = true;
     try {
-      await setDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id), {
-        ...form,
-        PreferredDate: form.EstimateDate,
-        PreferredTime: form.EstimateTime,
-        ...leadContactFieldDeletionPatch(deleteField()),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-      onSaved();
+      if (JSON.stringify(form) !== initialForm.current) {
+        await setDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id), {
+          ...form,
+          PreferredDate: form.EstimateDate,
+          PreferredTime: form.EstimateTime,
+          ...leadContactFieldDeletionPatch(deleteField()),
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        onSaved();
+      }
     } finally {
-      setSaving(false);
+      onClose();
     }
   }
 
   const fields = [["Name", "Name", "text"], ["Phone", "Phone", "tel"], ["Address", "Address", "text"], ["Job", "Job type", "text"], ["EstimateDate", "Estimate date", "date"], ["EstimateTime", "Estimate time", "time"]];
-  return <Modal title="Edit client" onClose={onClose}><form onSubmit={save} className="flex h-full flex-col"><div className="border-b border-slate-200 p-5"><h2 className="text-2xl font-black">Edit client</h2></div><div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto p-5">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase text-slate-500">Notes</span><textarea rows={4} value={form.Notes} onChange={(event) => setForm((current) => ({ ...current, Notes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label></div><div className="flex justify-end border-t border-slate-200 p-5"><button disabled={saving} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button></div></form></Modal>;
+  return <Modal title="Client details" onClose={closeWithAutosave}>
+    <div className="border-b border-slate-200 p-5 sm:p-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Client details</p><h2 className="mt-1 text-3xl font-black">{form.Name || "Unnamed caller"}</h2><p className="mt-2 text-xs font-semibold text-slate-500">Changes save automatically when you leave this screen.</p></div>
+    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Notes</span><textarea rows={5} value={form.Notes} onChange={(event) => setForm((current) => ({ ...current, Notes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
+    <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
+      <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>
+      <button type="button" onClick={onAddContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>
+      <button type="button" onClick={() => onDate({ ...row, ...form })} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Confirm Date</button>
+      <button type="button" disabled={!canManageEmployees} onClick={onManageEmployee} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:bg-slate-200 disabled:text-slate-400">Manage Employee</button>
+    </div>
+  </Modal>;
 }
 
 export default function ReviewClientsNative() {
@@ -177,7 +170,6 @@ export default function ReviewClientsNative() {
   const [activeSection, setActiveSection] = useState(null);
   const [openAssignment, setOpenAssignment] = useState("");
   const [viewing, setViewing] = useState(null);
-  const [editing, setEditing] = useState(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -248,11 +240,17 @@ export default function ReviewClientsNative() {
 
   function openMessage(row) { router.push(`/lead-messages?lead=${encodeURIComponent(row.id)}&collection=${row.collectionKey}`); }
   function addContact(row) { window.location.href = `tel:${String(row.Phone || "").replace(/[^+\d]/g, "")}`; }
-  function confirmDate(row) { if (!downloadCalendar(row, businessName)) { setViewing(null); setEditing(row); setNotice("Add an estimate date and time, then confirm it again."); } else setNotice("Calendar event created. Review it in your calendar app."); }
+  function confirmDate(row) {
+    if (!downloadCalendar(row, businessName)) {
+      setNotice("Add an estimate date before confirming it.");
+      return;
+    }
+    setNotice("Calendar event created. Review it in your calendar app.");
+  }
   function manageEmployee(row) { const key = `${row.collectionKey}:${row.id}`; setViewing(null); setOpenAssignment(key); }
 
   const inactiveCard = "min-h-36 rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]";
   const activeCard = "min-h-36 rounded-3xl border border-slate-900 bg-slate-900 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
 
-  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-60">New receptionist leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-60">Accepted people</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3">{rows.map((row) => { const assignmentKey = `${row.collectionKey}:${row.id}`; const assignmentBusy = busy === `assign:${assignmentKey}`; return <article key={row.id} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p></button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => remove(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button><button type="button" disabled={Boolean(busy)} onClick={() => remove(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div>}{activeSection === "clients" && openAssignment === assignmentKey && <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-100 p-3"><p className="text-xs font-black text-slate-700">Choose an employee</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{activeEmployees.map((employee) => <button key={employee.uid} type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, employee.uid)} className={row.assignedEmployeeUid === employee.uid ? "rounded-xl bg-slate-950 px-3 py-3 text-left text-xs font-black text-white" : "rounded-xl border border-slate-300 bg-white px-3 py-3 text-left text-xs font-black text-slate-800"}>{assignmentBusy ? "Saving…" : employee.name}</button>)}{row.assignedEmployeeUid && <button type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, "")} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-left text-xs font-black text-red-700 sm:col-span-2">Remove Employee Assignment</button>}</div></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-sm font-semibold text-slate-500">Nothing here yet.</p>}</div></div>}</section></div>{viewing && <ViewModal row={viewing} messagesEnabled={messagesEnabled} employeesEnabled={employeesEnabled} activeEmployees={activeEmployees} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={() => confirmDate(viewing)} onManageEmployee={() => manageEmployee(viewing)} />}{editing && <EditModal row={editing} clientId={clientId} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); setNotice("Client changes were saved."); }} />}</div>;
+  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-60">New receptionist leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-60">Accepted people</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3">{rows.map((row) => { const assignmentKey = `${row.collectionKey}:${row.id}`; const assignmentBusy = busy === `assign:${assignmentKey}`; return <article key={row.id} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p></button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => remove(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button><button type="button" disabled={Boolean(busy)} onClick={() => remove(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div>}{activeSection === "clients" && openAssignment === assignmentKey && <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-100 p-3"><p className="text-xs font-black text-slate-700">Choose an employee</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{activeEmployees.map((employee) => <button key={employee.uid} type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, employee.uid)} className={row.assignedEmployeeUid === employee.uid ? "rounded-xl bg-slate-950 px-3 py-3 text-left text-xs font-black text-white" : "rounded-xl border border-slate-300 bg-white px-3 py-3 text-left text-xs font-black text-slate-800"}>{assignmentBusy ? "Saving…" : employee.name}</button>)}{row.assignedEmployeeUid && <button type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, "")} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-left text-xs font-black text-red-700 sm:col-span-2">Remove Employee Assignment</button>}</div></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-sm font-semibold text-slate-500">Nothing here yet.</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} clientId={clientId} messagesEnabled={messagesEnabled} employeesEnabled={employeesEnabled} activeEmployees={activeEmployees} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onManageEmployee={() => manageEmployee(viewing)} onSaved={() => setNotice("Client changes were saved.")} />}</div>;
 }
