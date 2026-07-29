@@ -1,5 +1,6 @@
 import "./globals.css";
 import "./modal-overlays.css";
+import "./mobile-viewport.css";
 import SignupFlowShell from "./components/SignupFlowShell";
 import ViewportMetrics from "./components/ViewportMetrics";
 import { AuthProvider } from "./components/AuthProvider";
