@@ -33,6 +33,9 @@ function SectionHeader({ title, onBack }) {
 function SectionPanel({ children }) {
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-7">{children}</section>;
 }
+function FieldLabel({ children }) {
+  return <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{children}</span>;
+}
 function featureValues(data = {}) {
   return { messagesEnabled: data.messagesEnabled === true, employeesEnabled: data.employeesEnabled === true, employeeMessagingEnabled: data.employeeMessagingEnabled === true };
 }
@@ -245,13 +248,15 @@ export default function SettingsPanel({ setupMode = false }) {
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;
     const employeeBlocked = features.employeesEnabled && !featureState.canDisableEmployees;
-    return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-7">
-      <section><h3 className="text-lg font-black">Appearance</h3><label className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"><span className="text-sm font-black">Dark Mode</span><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label></section>
-      <section><h3 className="text-lg font-black">App Tools</h3><div className="mt-4 space-y-3"><label className={messageBlocked ? "flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4" : "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"}><span><strong className="block text-sm">Messages</strong><span className="text-xs text-slate-500">$1 per 50 inbound and outbound SMS parts.</span></span><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label><label className={employeeBlocked ? "flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4" : "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"}><span><strong className="block text-sm">Employees</strong><span className="text-xs text-slate-500">Employee accounts, assignments, and access controls.</span></span><input type="checkbox" disabled={employeeBlocked} checked={features.employeesEnabled} onChange={(event) => updateFeature("employeesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label></div></section>
+    const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
+    return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
+      <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
+      <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
+      <label className={`${controlClass}${employeeBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Employees</FieldLabel><input type="checkbox" disabled={employeeBlocked} checked={features.employeesEnabled} onChange={(event) => updateFeature("employeesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
       {features.messagesEnabled && <MessageRetentionSettings />}
       {features.employeesEnabled && <EmployeeAccessSettings embedded />}
-      <section><h3 className="text-lg font-black">AI Receptionist</h3><div className="settings-ai-form mt-4">{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading AI settings…</p> : <ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} />}</div></section>
-      <section id="account-data" className="border-t border-slate-200 pt-7"><h3 className="text-lg font-black">Client Data</h3><button type="button" onClick={downloadClientData} disabled={isDownloading} className="mt-4 w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></section>
+      <div className="settings-ai-form">{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading AI settings…</p> : <ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} />}</div>
+      <div id="account-data" className="border-t border-slate-200 pt-6"><FieldLabel>Client data</FieldLabel><button type="button" onClick={downloadClientData} disabled={isDownloading} className="w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></div>
     </div></SectionPanel></>;
   }
   function paymentSection() {
@@ -263,7 +268,7 @@ export default function SettingsPanel({ setupMode = false }) {
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
-      <style>{`.settings-business-form > div > section:first-child { display: none; } .settings-ai-form > div > section:nth-child(2) { display: none; }`}</style>
+      <style>{`.settings-business-form > div > section:first-child { display: none; } .settings-ai-form > div > section:nth-child(2) { display: none; } .settings-ai-form > div > section:first-child > h3, .settings-ai-form > div > section:first-child > p { display: none; } .settings-ai-form > div > section:first-child > div { margin-top: 0; } .settings-ai-form > div > section:first-child label > span:first-child { font-size: .625rem; line-height: 1rem; font-weight: 900; text-transform: uppercase; letter-spacing: .12em; color: #64748b; }`}</style>
       <div className="mx-auto max-w-4xl">
         {(setupMode || !activeSection) && <header className="mb-4 sm:mb-7">{!setupMode && <BackButton href="/" className="mb-4" />}{setupMode && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Final account step</p>}<h1 className="text-3xl font-black tracking-tight sm:text-4xl">{setupMode ? "Finish Account Setup" : "Settings"}</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
