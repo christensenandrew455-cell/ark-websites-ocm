@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import BackButton from "../components/BackButton";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../components/AuthProvider";
 
 async function employeeApi(user, options = {}) {
@@ -43,6 +44,7 @@ export default function EmployeesPage() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [employeeToDelete, setEmployeeToDelete] = useState(null);
 
   const load = useCallback(async () => {
     if (!user || !isOwner || profile?.employeesEnabled !== true) return;
@@ -74,9 +76,11 @@ export default function EmployeesPage() {
     }
   }
 
-  function deleteEmployee(employee) {
-    if (!window.confirm(`Permanently delete ${employee.name}'s employee account? Their assigned work will become unassigned.`)) return;
-    runAction({ action: "delete", employeeUid: employee.uid }, `${employee.name} was deleted.`);
+  async function confirmDeleteEmployee() {
+    if (!employeeToDelete || busy) return;
+    const employee = employeeToDelete;
+    await runAction({ action: "delete", employeeUid: employee.uid }, `${employee.name} was deleted.`);
+    setEmployeeToDelete(null);
   }
 
   if (loading || (isOwner && profile?.employeesEnabled && !workspace && !error)) {
@@ -93,6 +97,7 @@ export default function EmployeesPage() {
   const leads = workspace?.leads || [];
   const assignedLeads = leads.filter((lead) => lead.assignedEmployeeUid);
   const unassignedLeads = leads.filter((lead) => !lead.assignedEmployeeUid);
+  const deleteBusy = Boolean(employeeToDelete && busy === `delete:${employeeToDelete.uid}`);
 
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
@@ -117,7 +122,7 @@ export default function EmployeesPage() {
               <section className="rounded-3xl border border-slate-300 bg-white p-4 shadow-sm sm:p-6">
                 <h3 className="text-xl font-black">Employee Requests</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {pendingEmployees.map((employee) => <article key={employee.uid} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h4 className="font-black">{employee.name}</h4><p className="mt-1 text-xs font-semibold text-slate-600">{employee.email}</p><p className="mt-1 text-xs font-semibold text-slate-600">{formatPhone(employee.phone)}</p><div className="mt-4 grid grid-cols-2 gap-2"><button disabled={Boolean(busy)} onClick={() => runAction({ action: "approve", employeeUid: employee.uid }, `${employee.name} can now sign in.`)} className="rounded-xl bg-green-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">Approve</button><button disabled={Boolean(busy)} onClick={() => deleteEmployee(employee)} className="rounded-xl border border-red-300 bg-white px-3 py-2.5 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div></article>)}
+                  {pendingEmployees.map((employee) => <article key={employee.uid} className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h4 className="font-black">{employee.name}</h4><p className="mt-1 text-xs font-semibold text-slate-600">{employee.email}</p><p className="mt-1 text-xs font-semibold text-slate-600">{formatPhone(employee.phone)}</p><div className="mt-4 grid grid-cols-2 gap-2"><button disabled={Boolean(busy)} onClick={() => runAction({ action: "approve", employeeUid: employee.uid }, `${employee.name} can now sign in.`)} className="rounded-xl bg-green-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">Approve</button><button disabled={Boolean(busy)} onClick={() => setEmployeeToDelete(employee)} className="rounded-xl border border-red-300 bg-white px-3 py-2.5 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div></article>)}
                   {pendingEmployees.length === 0 && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500 sm:col-span-2">No employee requests.</p>}
                 </div>
               </section>
@@ -125,7 +130,7 @@ export default function EmployeesPage() {
               <section className="rounded-3xl border border-slate-300 bg-white p-4 shadow-sm sm:p-6">
                 <h3 className="text-xl font-black">Employees</h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {managedEmployees.map((employee) => <article key={employee.uid} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="truncate font-black">{employee.name}</h4><p className="mt-1 truncate text-xs font-semibold text-slate-500">{employee.email}</p><p className="mt-1 text-xs font-semibold text-slate-500">{formatPhone(employee.phone)}</p></div>{employee.status !== "active" && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{employee.status}</span>}</div><button disabled={Boolean(busy)} onClick={() => deleteEmployee(employee)} className="mt-4 w-full rounded-xl border border-red-300 bg-red-50 px-3 py-2.5 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></article>)}
+                  {managedEmployees.map((employee) => <article key={employee.uid} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h4 className="truncate font-black">{employee.name}</h4><p className="mt-1 truncate text-xs font-semibold text-slate-500">{employee.email}</p><p className="mt-1 text-xs font-semibold text-slate-500">{formatPhone(employee.phone)}</p></div>{employee.status !== "active" && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{employee.status}</span>}</div><button disabled={Boolean(busy)} onClick={() => setEmployeeToDelete(employee)} className="mt-4 w-full rounded-xl border border-red-300 bg-red-50 px-3 py-2.5 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></article>)}
                   {managedEmployees.length === 0 && <p className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500 sm:col-span-2">No employees.</p>}
                 </div>
               </section>
@@ -135,6 +140,14 @@ export default function EmployeesPage() {
           </div>}
         </section>
       </div>
+      <ConfirmDialog
+        open={Boolean(employeeToDelete)}
+        message={employeeToDelete ? `Permanently delete ${employeeToDelete.name}'s employee account? Their assigned work will become unassigned.` : ""}
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        onCancel={() => { if (!deleteBusy) setEmployeeToDelete(null); }}
+        onConfirm={confirmDeleteEmployee}
+      />
     </main>
   );
 }
