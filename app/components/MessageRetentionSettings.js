@@ -10,6 +10,8 @@ const OPTIONS = [
   { value: 30, label: "Delete after 1 month" },
 ];
 
+const FIELD_LABEL_CLASS = "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
+
 function RetentionSelect({ title, endpoint }) {
   const { user } = useAuth();
   const [retentionDays, setRetentionDays] = useState(0);
@@ -53,19 +55,19 @@ function RetentionSelect({ title, endpoint }) {
     }
   }
 
-  return <div className="rounded-xl border border-slate-200 p-4">
-    <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-black">{title}</h4>{saving && <span className="text-xs font-bold text-slate-400">Saving…</span>}</div>
+  return <label className="block rounded-xl border border-slate-200 p-4">
+    <span className="flex items-center justify-between gap-3"><span className={FIELD_LABEL_CLASS}>{title}</span>{saving && <span className="text-xs font-bold text-slate-400">Saving…</span>}</span>
     <select value={retentionDays} disabled={saving} onChange={(event) => updateRetention(event.target.value)} className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black outline-none focus:border-slate-950 disabled:opacity-50">
       {OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
-    {error && <p className="mt-2 text-xs font-bold text-red-700">{error}</p>}
-  </div>;
+    {error && <span className="mt-2 block text-xs font-bold text-red-700">{error}</span>}
+  </label>;
 }
 
 export default function MessageRetentionSettings() {
   return (
-    <section className="mt-7 border-t border-slate-200 pt-7">
-      <h3 className="text-lg font-black">Auto-Delete</h3>
+    <section className="border-t border-slate-200 pt-6">
+      <span className={FIELD_LABEL_CLASS}>Auto-delete</span>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <RetentionSelect title="Leads" endpoint="/api/business/leads/retention" />
         <RetentionSelect title="Messages" endpoint="/api/business/lead-messages/retention" />
