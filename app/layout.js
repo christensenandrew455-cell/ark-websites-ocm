@@ -1,6 +1,7 @@
 import "./globals.css";
 import "./modal-overlays.css";
 import SignupFlowShell from "./components/SignupFlowShell";
+import ViewportMetrics from "./components/ViewportMetrics";
 import { AuthProvider } from "./components/AuthProvider";
 
 export const metadata = {
@@ -17,6 +18,7 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#ffffff",
   colorScheme: "light dark",
 };
@@ -34,6 +36,7 @@ export default function RootLayout({ children }) {
     <html lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
+        <ViewportMetrics />
         <AuthProvider>
           <SignupFlowShell>{children}</SignupFlowShell>
         </AuthProvider>
