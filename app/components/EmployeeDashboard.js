@@ -13,7 +13,7 @@ function WorkspaceCard({ href, value, title, description, disabled = false }) {
 }
 
 export default function EmployeeDashboard() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -45,24 +45,22 @@ export default function EmployeeDashboard() {
     };
   }, [load]);
 
+  const clientCount = (data?.leads || []).filter((lead) => lead.collectionKey === "clients").length;
+
   return (
     <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-6xl">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{data?.businessName || profile?.businessName || "Business"}</p>
-            <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">My Work</h1>
-            <p className="mt-2 text-sm font-semibold text-slate-500">Assigned to {data?.employeeName || profile?.employeeName || "you"}</p>
-          </div>
-          <button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black shadow-sm">Refresh</button>
+        <header>
+          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1>
+          <p className="mt-2 text-sm font-semibold text-slate-500">Tap a workspace to manage your assigned work.</p>
         </header>
 
         {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
 
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5">
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <WorkspaceCard href="/lead-messages" value={loading ? "…" : data?.conversationCount || 0} title="Messages" description={data?.employeeMessagingEnabled ? "Open assigned conversations" : "The owner has not enabled Messages"} disabled={!data?.employeeMessagingEnabled} />
-            <WorkspaceCard href="/employee/leads" value={loading ? "…" : data?.leadCount || 0} title="Leads" description="Open assigned leads and clients" />
+            <WorkspaceCard href="/lead-messages" value={loading ? "…" : data?.conversationCount || 0} title="Messages" description={data?.employeeMessagingEnabled ? "Manage conversations" : "Messages are not enabled"} disabled={!data?.employeeMessagingEnabled} />
+            <WorkspaceCard href="/employee/leads" value={loading ? "…" : clientCount} title="Clients" description="Manage clients" />
           </div>
         </section>
       </div>
