@@ -2,13 +2,17 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { deleteLeadConversation } from "../../../../lib/messageRetention";
 import {
   ARK_SUPPORT_URL,
   helpConfirmationMessage,
   messagingKeyword,
   optInKeywordConfirmationMessage,
+  optOutCanceledMessage,
   optOutConfirmationMessage,
+  optOutRequestMessage,
 } from "../../../../lib/messagingCompliance";
+import { smsPartCount } from "../../../../lib/smsParts";
 import { sendInboundMessageNotification } from "../../../../lib/messageNotificationService";
 
 export const runtime = "nodejs";
@@ -158,12 +162,10 @@ async function resolveConversation(db, clientId, fromPhone, suppliedConversation
 export async function POST(request) {
   const rawBody = await request.text();
   if (!secretMatches(request) && !telnyxSignatureMatches(request, rawBody)) return NextResponse.json({ error: "Invalid messaging webhook credentials." }, { status: 401 });
-
   try {
     const body = JSON.parse(rawBody || "{}");
     const event = parsePayload(body);
     const db = getAdminDb();
-
     if (event.eventType === "message.sent" || event.eventType === "message.finalized") {
       const result = await recordDeliveryUpdate(db, event);
       return NextResponse.json({ ok: true, eventType: event.eventType, providerMessageId: event.providerMessageId, ...result });
@@ -176,25 +178,42 @@ export async function POST(request) {
     const resolved = await resolveConversation(db, clientId, event.fromPhone, event.providedConversationId);
     if (!resolved) return NextResponse.json({ error: "No lead in this business matches the incoming phone number." }, { status: 404 });
 
+    const root = db.collection("ocmClients").doc(clientId);
     const businessSnapshot = await db.collection("businesses").doc(clientId).get();
     const business = businessSnapshot.exists ? businessSnapshot.data() : {};
     const businessName = text(business.businessName || business.name) || "the business";
     const keyword = messagingKeyword(event.messageBody);
     const conversation = resolved.conversation;
-    const messageRef = resolved.ref.collection("messages").doc();
-    const batch = db.batch();
+    const pendingOptOut = conversation.messagingOptOutPending === true;
 
-    if (resolved.created) {
-      batch.set(db.collection("ocmClients").doc(clientId).collection("billingConversationEvents").doc(resolved.conversationId), {
+    if (keyword === "confirm" && pendingOptOut) {
+      const auditRef = db.collection("messagingComplianceEvents").doc();
+      await auditRef.set({
+        clientId,
+        businessName,
         conversationId: resolved.conversationId,
-        leadId: conversation.leadId,
-        collectionKey: conversation.collectionKey,
-        startedAt: FieldValue.serverTimestamp(),
-        startedByRole: "lead",
+        leadId: conversation.leadId || null,
+        leadName: conversation.leadName || null,
+        reporterPhone: event.fromPhone,
+        businessPhone: event.toPhone || null,
+        keyword: "confirm-stop",
+        originalMessage: event.messageBody,
+        expectedTelnyxAutoResponse: optOutConfirmationMessage(businessName),
+        status: "confirmed-and-deleted",
+        source: "telnyx-keyword",
         createdAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      const leadId = text(conversation.leadId);
+      const collectionKey = conversation.collectionKey === "clients" ? "clients" : "contactedMe";
+      if (leadId) await root.collection(collectionKey).doc(leadId).delete().catch(() => null);
+      await deleteLeadConversation(db, root, resolved.ref);
+      return NextResponse.json({ ok: true, clientId, conversationId: resolved.conversationId, keyword: "confirm", optedOut: true, deleted: true });
     }
 
+    const messageRef = resolved.ref.collection("messages").doc();
+    const batch = db.batch();
+    const parts = smsPartCount(event.messageBody);
     batch.set(messageRef, {
       direction: "inbound",
       body: event.messageBody,
@@ -202,6 +221,7 @@ export async function POST(request) {
       senderRole: "lead",
       messageType: keyword ? "compliance-keyword" : "conversation",
       complianceKeyword: keyword || null,
+      smsParts: parts,
       providerMessageId: event.providerMessageId || null,
       providerFrom: event.fromPhone,
       providerTo: event.toPhone || null,
@@ -210,16 +230,19 @@ export async function POST(request) {
     });
 
     const compliancePatch = keyword === "stop"
-      ? { messagingOptedOut: true, messagingOptedOutAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "STOP" }
+      ? { messagingOptOutPending: true, messagingOptOutRequestedAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "STOP" }
       : keyword === "start"
-        ? { messagingOptedOut: false, messagingOptedInAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "START" }
+        ? { messagingOptOutPending: false, messagingOptedOut: false, messagingOptedInAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "START" }
         : keyword === "help"
           ? { supportRequestedAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "HELP" }
-          : {};
+          : keyword === "cancel" && pendingOptOut
+            ? { messagingOptOutPending: false, lastComplianceKeyword: "CANCEL" }
+            : {};
 
     batch.set(resolved.ref, {
       ...conversation,
       businessPhone: event.toPhone || conversation.businessPhone || null,
+      smsParts: FieldValue.increment(parts),
       lastMessage: event.messageBody,
       lastMessageDirection: "inbound",
       lastMessageAt: FieldValue.serverTimestamp(),
@@ -233,10 +256,14 @@ export async function POST(request) {
     if (keyword) {
       const eventRef = db.collection("messagingComplianceEvents").doc();
       const expectedResponse = keyword === "stop"
-        ? optOutConfirmationMessage(businessName)
+        ? optOutRequestMessage(businessName)
         : keyword === "start"
           ? optInKeywordConfirmationMessage(businessName)
-          : helpConfirmationMessage();
+          : keyword === "cancel" && pendingOptOut
+            ? optOutCanceledMessage(businessName)
+            : keyword === "help"
+              ? helpConfirmationMessage()
+              : "";
       batch.set(eventRef, {
         clientId,
         businessName,
@@ -257,7 +284,6 @@ export async function POST(request) {
     }
 
     await batch.commit();
-
     let notification = { attempted: 0, sent: 0, failed: 0 };
     if (!keyword) {
       try {
@@ -266,7 +292,6 @@ export async function POST(request) {
         console.error("Unable to notify account about inbound lead message", notificationError);
       }
     }
-
     return NextResponse.json({ ok: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, keyword: keyword || null, supportUrl: keyword === "help" ? ARK_SUPPORT_URL : null, notification });
   } catch (error) {
     console.error("Unable to process Telnyx messaging webhook", error);
