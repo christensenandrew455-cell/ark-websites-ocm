@@ -144,8 +144,11 @@ function ClientModal({ row, clientId, messagesEnabled, employeesEnabled, activeE
   }
 
   const fields = [["Name", "Name", "text"], ["Phone", "Phone", "tel"], ["Address", "Address", "text"], ["Job", "Job type", "text"], ["EstimateDate", "Estimate date", "date"], ["EstimateTime", "Estimate time", "time"]];
-  return <Modal title="Client details" onClose={closeWithAutosave}>
-    <div className="border-b border-slate-200 p-5 sm:p-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Client details</p><h2 className="mt-1 text-3xl font-black">{form.Name || "Unnamed caller"}</h2><p className="mt-2 text-xs font-semibold text-slate-500">Changes save automatically when you leave this screen.</p></div>
+  return <Modal title={form.Name || "Client"} onClose={closeWithAutosave}>
+    <div className="flex items-center gap-3 border-b border-slate-200 p-4 sm:p-6">
+      <button type="button" onClick={closeWithAutosave} aria-label="Back" title="Back" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black text-slate-900 shadow-sm">←</button>
+      <h2 className="min-w-0 truncate text-2xl font-black sm:text-3xl">{form.Name || "Unnamed caller"}</h2>
+    </div>
     <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Notes</span><textarea rows={5} value={form.Notes} onChange={(event) => setForm((current) => ({ ...current, Notes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
     <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
       <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>
