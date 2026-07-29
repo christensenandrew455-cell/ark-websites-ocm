@@ -19,6 +19,8 @@ const DIRECTORY_LABELS = {
   phone: "Employee phone number",
 };
 
+const FIELD_LABEL_CLASS = "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
+
 async function employeeApi(user, options = {}) {
   const token = await user.getIdToken(true);
   const response = await fetch("/api/business/employees", {
@@ -120,23 +122,23 @@ export default function EmployeeAccessSettings({ onBack = () => {}, embedded = f
 
   const controls = <>
     <label className={workspace?.messagesEnabled ? "flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4" : "flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-100 p-4 opacity-60"}>
-      <span className="text-sm font-black">Messages for Employees</span>
+      <span className={FIELD_LABEL_CLASS}>Messages for employees</span>
       <input type="checkbox" disabled={!workspace?.messagesEnabled} checked={employeeMessagingEnabled} onChange={(event) => updateMessaging(event.target.checked)} className="h-5 w-5 accent-slate-950" />
     </label>
 
-    <h4 className="mt-6 text-lg font-black">Lead Information</h4>
+    <p className={`mt-6 ${FIELD_LABEL_CLASS}`}>Lead information</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      {Object.entries(VISIBILITY_LABELS).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3"><span className="text-sm font-bold text-slate-700">{label}</span><input type="checkbox" checked={visibility[key] === true} onChange={(event) => updateVisibility(key, event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>)}
+      {Object.entries(VISIBILITY_LABELS).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3"><span className={FIELD_LABEL_CLASS}>{label}</span><input type="checkbox" checked={visibility[key] === true} onChange={(event) => updateVisibility(key, event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>)}
     </div>
 
-    <h4 className="mt-6 text-lg font-black">Employee Directory</h4>
+    <p className={`mt-6 ${FIELD_LABEL_CLASS}`}>Employee directory</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-3">
-      {Object.entries(DIRECTORY_LABELS).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3"><span className="text-sm font-bold text-slate-700">{label}</span><input type="checkbox" checked={directoryVisibility[key] === true} onChange={(event) => updateDirectoryVisibility(key, event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>)}
+      {Object.entries(DIRECTORY_LABELS).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3"><span className={FIELD_LABEL_CLASS}>{label}</span><input type="checkbox" checked={directoryVisibility[key] === true} onChange={(event) => updateDirectoryVisibility(key, event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>)}
     </div>
   </>;
 
   if (embedded) {
-    return <section className="mt-7 border-t border-slate-200 pt-7"><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-black">Employees</h3>{saving && <span className="text-xs font-bold text-slate-400">Saving…</span>}</div>{error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}<div className="mt-4">{controls}</div></section>;
+    return <section className="border-t border-slate-200 pt-6"><div className="flex items-center justify-between gap-3"><span className={FIELD_LABEL_CLASS}>Employee access</span>{saving && <span className="text-xs font-bold text-slate-400">Saving…</span>}</div>{error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}<div className="mt-4">{controls}</div></section>;
   }
 
   return (
