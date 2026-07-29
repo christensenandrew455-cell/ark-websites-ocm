@@ -92,7 +92,7 @@ async function sendToDevices(devices, message) {
   return results;
 }
 
-async function notificationDevices(db, clientId) {
+async function notificationDevices(db, clientId, { ownerOnly = false } = {}) {
   const snapshot = await db
     .collection("ocmClients")
     .doc(clientId)
@@ -101,7 +101,8 @@ async function notificationDevices(db, clientId) {
 
   return snapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
-    .filter((device) => device.notificationsEnabled !== false && text(device.token));
+    .filter((device) => device.notificationsEnabled !== false && text(device.token))
+    .filter((device) => !ownerOnly || text(device.role) === "customer");
 }
 
 async function recordLeadDelivery(db, clientId, leadId, summary) {
@@ -144,9 +145,9 @@ async function recordLeadDelivery(db, clientId, leadId, summary) {
 }
 
 export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
-  const devices = await notificationDevices(db, clientId);
+  const devices = await notificationDevices(db, clientId, { ownerOnly: true });
   if (!devices.length) {
-    const summary = { attempted: 0, sent: 0, failed: 0, errorMessage: "No registered notification devices." };
+    const summary = { attempted: 0, sent: 0, failed: 0, errorMessage: "No registered owner notification devices." };
     await recordLeadDelivery(db, clientId, leadId, summary);
     return summary;
   }
@@ -243,6 +244,7 @@ export async function sendUnreadLeadReminders(db) {
     const devices = devicesSnapshot.docs
       .map((document) => ({ ref: document.ref, ...document.data() }))
       .filter((device) => {
+        if (text(device.role) !== "customer") return false;
         if (device.notificationsEnabled === false || !text(device.token)) return false;
         if (Number(device.unreadLeadCount || 0) <= 0) return false;
         if (asMillis(device.lastViewedLeadsAt) >= lastLeadAt) return false;
