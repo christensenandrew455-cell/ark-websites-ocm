@@ -7,9 +7,9 @@ import { useAuth } from "../../components/AuthProvider";
 
 const THEME_KEY = "ark-theme-v1";
 const SECTIONS = [
-  { key: "appearance", title: "Appearance", description: "Dark Mode and display preferences" },
-  { key: "business", title: "Business Information", description: "Company and owner contact details" },
-  { key: "team", title: "Employees", description: "Coworkers and shared contact details" },
+  { key: "appearance", title: "Appearance", description: "Display preferences" },
+  { key: "business", title: "Business Information", description: "Company details" },
+  { key: "team", title: "Employees", description: "Coworker details" },
   { key: "policies", title: "Policies", description: "Terms of Use and Privacy Policy" },
 ];
 
@@ -81,9 +81,9 @@ export default function EmployeeSettingsPage() {
 
           {activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5">
             <section className="rounded-3xl border border-slate-300 bg-white p-5 shadow-sm sm:p-7">
-              <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-black sm:text-2xl">{SECTIONS.find((section) => section.key === activeSection)?.title}</h2><button type="button" onClick={() => setActiveSection("")} className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-black">Close</button></div>
+              <h2 className="text-xl font-black sm:text-2xl">{SECTIONS.find((section) => section.key === activeSection)?.title}</h2>
 
-              {activeSection === "appearance" && <label className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"><span><strong className="block text-sm">Dark Mode</strong><span className="text-xs text-slate-500">Use darker backgrounds and lighter text throughout the app.</span></span><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
+              {activeSection === "appearance" && <label className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"><strong className="block text-sm">Dark Mode</strong><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
 
               {activeSection === "business" && (loading ? <p className="mt-4 text-sm font-semibold text-slate-500">Loading business information…</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <InformationCard label="Business" value={data?.businessName || profile?.businessName || "Business"} />
@@ -94,7 +94,7 @@ export default function EmployeeSettingsPage() {
                 <InformationCard label="Owner phone" value={data?.ownerPhone} href={data?.ownerPhone ? `tel:${data.ownerPhone}` : ""} />
               </div>)}
 
-              {activeSection === "team" && <><p className="mt-2 text-xs font-semibold leading-5 text-slate-500">The business owner decides whether coworker names, email addresses, and phone numbers are visible.</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{loading && <p className="text-sm font-semibold text-slate-500 sm:col-span-2">Loading employees…</p>}{!loading && (data?.employees || []).map((employee) => <EmployeeCard key={employee.uid} employee={employee} />)}{!loading && (data?.employees || []).length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500 sm:col-span-2">No other active employees are listed.</p>}</div></>}
+              {activeSection === "team" && <div className="mt-4 grid gap-3 sm:grid-cols-2">{loading && <p className="text-sm font-semibold text-slate-500 sm:col-span-2">Loading employees…</p>}{!loading && (data?.employees || []).map((employee) => <EmployeeCard key={employee.uid} employee={employee} />)}{!loading && (data?.employees || []).length === 0 && <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500 sm:col-span-2">No other active employees are listed.</p>}</div>}
 
               {activeSection === "policies" && <div className="mt-4 grid grid-cols-2 gap-2"><Link href="/terms" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div>}
             </section>
