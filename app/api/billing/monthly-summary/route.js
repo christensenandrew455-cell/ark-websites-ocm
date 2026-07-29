@@ -4,16 +4,18 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { smsBundleCount } from "../../../lib/smsParts";
 import {
   BILLING_VERSION,
+  MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
   PER_EMPLOYEE_CENTS,
-  PER_MESSAGE_CONVERSATION_CENTS,
+  PER_MESSAGE_BUNDLE_CENTS,
   ensureCustomerBillingSubscription,
-  reportBillableConversation,
   reportBillableEmployee,
   reportBillableLead,
+  reportBillableMessageBundles,
 } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
@@ -83,25 +85,33 @@ async function loadMonthlyCalls(db, clientId, startMs, endMs) {
   }
   return [...unique.values()].sort((a, b) => a.occurredAt - b.occurredAt);
 }
-async function loadMonthlyConversations(db, clientId, startMs, endMs) {
-  const snapshot = await db.collection("ocmClients").doc(clientId).collection("billingConversationEvents").get();
-  const unique = new Map();
-  for (const document of snapshot.docs) {
-    const data = document.data();
-    addUsage(unique, text(data.conversationId || data.leadId || document.id), toMillis(data.startedAt || data.occurredAt || data.createdAt), startMs, endMs);
+async function loadMonthlyMessageParts(db, clientId, startMs, endMs) {
+  const root = db.collection("ocmClients").doc(clientId);
+  const conversations = await root.collection("leadConversations").get();
+  let parts = 0;
+  let messages = 0;
+  for (const conversation of conversations.docs) {
+    const snapshot = await conversation.ref.collection("messages").get();
+    for (const document of snapshot.docs) {
+      const data = document.data();
+      const occurredAt = toMillis(data.createdAt || data.updatedAt);
+      if (!occurredAt || occurredAt < startMs || occurredAt >= endMs) continue;
+      parts += Math.max(0, Number(data.smsParts || 0));
+      messages += 1;
+    }
   }
-  return [...unique.values()].sort((a, b) => a.occurredAt - b.occurredAt);
+  return { parts, messages, bundles: smsBundleCount(parts, MESSAGE_PARTS_PER_BUNDLE) };
 }
 async function loadActiveEmployees(db, clientId) {
   const snapshot = await db.collection("businesses").doc(clientId).collection("employees").where("status", "==", "active").get();
   return snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
 }
-async function reconcileStripe({ db, auth, business, account, window, calls, conversations, employees, messagesEnabled, employeesEnabled }) {
-  if (!process.env.STRIPE_SECRET_KEY) return { status: "not-configured", callsSynced: 0, conversationsSynced: 0, employeesSynced: 0 };
+async function reconcileStripe({ db, auth, business, account, window, calls, messageUsage, employees, messagesEnabled, employeesEnabled }) {
+  if (!process.env.STRIPE_SECRET_KEY) return { status: "not-configured", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
   const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
   const paymentMethodId = text(business.stripePaymentMethodId || account.stripePaymentMethodId);
-  if (!customerId || !paymentMethodId) return { status: "payment-method-required", callsSynced: 0, conversationsSynced: 0, employeesSynced: 0 };
-  if (account.termsAccepted !== true) return { status: "terms-required", callsSynced: 0, conversationsSynced: 0, employeesSynced: 0 };
+  if (!customerId || !paymentMethodId) return { status: "payment-method-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+  if (account.termsAccepted !== true) return { status: "terms-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const subscription = await ensureCustomerBillingSubscription({ stripe, db, clientId: auth.clientId, customerId, paymentMethodId, businessName: text(business.businessName || account.businessName || auth.clientId), uid: auth.decodedToken.uid, existingSubscriptionId: text(business.stripeSubscriptionId || account.stripeSubscriptionId) });
@@ -115,18 +125,20 @@ async function reconcileStripe({ db, auth, business, account, window, calls, con
     await recordRef.set({ leadId: call.id, occurredAt: new Date(call.occurredAt), stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
     callsSynced += 1;
   }
-  let conversationsSynced = 0;
-  if (messagesEnabled) {
-    for (const conversation of conversations) {
-      const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingConversationEvents").doc(usageKey(auth.clientId, conversation.id));
-      const record = await recordRef.get();
-      const data = record.exists ? record.data() : {};
-      if (data.stripeReported === true && text(data.stripePricingVersion) === BILLING_VERSION) continue;
-      await reportBillableConversation({ stripe, customerId, clientId: auth.clientId, conversationId: conversation.id, occurredAt: conversation.occurredAt });
-      await recordRef.set({ conversationId: conversation.id, startedAt: new Date(conversation.occurredAt), stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
-      conversationsSynced += 1;
+
+  let messageBundlesSynced = 0;
+  if (messagesEnabled && messageUsage.bundles > 0) {
+    const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingMessageBundleEvents").doc(usageKey(auth.clientId, window.monthKey));
+    const record = await recordRef.get();
+    const data = record.exists ? record.data() : {};
+    const alreadyReported = data.stripeReported === true && text(data.stripePricingVersion) === BILLING_VERSION;
+    if (!alreadyReported) {
+      await reportBillableMessageBundles({ stripe, customerId, clientId: auth.clientId, billingPeriodKey: window.monthKey, bundleCount: messageUsage.bundles, occurredAt: window.startMs });
+      await recordRef.set({ billingPeriodKey: window.monthKey, smsParts: messageUsage.parts, bundleCount: messageUsage.bundles, stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
+      messageBundlesSynced = messageUsage.bundles;
     }
   }
+
   let employeesSynced = 0;
   if (employeesEnabled) {
     for (const employee of employees) {
@@ -140,7 +152,7 @@ async function reconcileStripe({ db, auth, business, account, window, calls, con
       employeesSynced += 1;
     }
   }
-  return { status: subscription.status, callsSynced, conversationsSynced, employeesSynced };
+  return { status: subscription.status, callsSynced, messageBundlesSynced, employeesSynced };
 }
 
 export async function GET(request) {
@@ -160,23 +172,23 @@ export async function GET(request) {
     const employeeMessagingEnabled = messagesEnabled && employeesEnabled && (business.employeeMessagingEnabled === true || account.employeeMessagingEnabled === true);
     const timeZone = text(receptionistSnapshot.exists ? receptionistSnapshot.data().timeZone : "") || "America/New_York";
     const window = await resolveBillingWindow({ business, account, timeZone });
-    const [calls, conversations, employees] = await Promise.all([
+    const [calls, messageUsage, employees] = await Promise.all([
       loadMonthlyCalls(db, auth.clientId, window.startMs, window.endMs),
-      messagesEnabled ? loadMonthlyConversations(db, auth.clientId, window.startMs, window.endMs) : Promise.resolve([]),
+      messagesEnabled ? loadMonthlyMessageParts(db, auth.clientId, window.startMs, window.endMs) : Promise.resolve({ parts: 0, messages: 0, bundles: 0 }),
       employeesEnabled ? loadActiveEmployees(db, auth.clientId) : Promise.resolve([]),
     ]);
     const callUsageCents = calls.length * PER_CALL_CENTS;
-    const messageUsageCents = conversations.length * PER_MESSAGE_CONVERSATION_CENTS;
+    const messageUsageCents = messageUsage.bundles * PER_MESSAGE_BUNDLE_CENTS;
     const employeeUsageCents = employees.length * PER_EMPLOYEE_CENTS;
     const usageCents = callUsageCents + messageUsageCents + employeeUsageCents;
     const amountDue = MONTHLY_BASE_CENTS + usageCents;
 
-    let stripe = { status: "not-synced", callsSynced: 0, conversationsSynced: 0, employeesSynced: 0 };
+    let stripe = { status: "not-synced", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
     try {
-      stripe = await reconcileStripe({ db, auth, business, account, window, calls, conversations, employees, messagesEnabled, employeesEnabled });
+      stripe = await reconcileStripe({ db, auth, business, account, window, calls, messageUsage, employees, messagesEnabled, employeesEnabled });
     } catch (stripeError) {
       console.error("Unable to reconcile monthly Stripe billing", stripeError);
-      stripe = { status: "sync-error", callsSynced: 0, conversationsSynced: 0, employeesSynced: 0 };
+      stripe = { status: "sync-error", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
     }
 
     const summaryUpdate = {
@@ -185,7 +197,9 @@ export async function GET(request) {
       billingVersion: BILLING_VERSION,
       currentBillingMonth: window.monthKey,
       currentMonthLeadCount: calls.length,
-      currentMonthConversationCount: conversations.length,
+      currentMonthMessageCount: messageUsage.messages,
+      currentMonthMessagePartCount: messageUsage.parts,
+      currentMonthMessageBundleCount: messageUsage.bundles,
       currentMonthEmployeeCount: employees.length,
       currentMonthCallUsageCents: callUsageCents,
       currentMonthMessageUsageCents: messageUsageCents,
@@ -216,11 +230,12 @@ export async function GET(request) {
       perCallCents: PER_CALL_CENTS,
       perOverageCents: PER_CALL_CENTS,
       callUsageCents,
-      messageCount: conversations.length,
-      conversationCount: conversations.length,
-      perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+      messageCount: messageUsage.messages,
+      messagePartCount: messageUsage.parts,
+      messageBundleCount: messageUsage.bundles,
+      messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
+      perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
       messageUsageCents,
-      conversationOverageCents: messageUsageCents,
       employeeCount: employees.length,
       perEmployeeCents: PER_EMPLOYEE_CENTS,
       perEmployeeOverageCents: PER_EMPLOYEE_CENTS,
@@ -233,11 +248,11 @@ export async function GET(request) {
       freeConversationsRemaining: 0,
       freeEmployeesRemaining: 0,
       leadOverageCount: calls.length,
-      conversationOverageCount: conversations.length,
+      conversationOverageCount: messageUsage.bundles,
       employeeOverageCount: employees.length,
       stripeStatus: stripe.status,
       stripeLeadsSynced: stripe.callsSynced,
-      stripeConversationsSynced: stripe.conversationsSynced,
+      stripeMessageBundlesSynced: stripe.messageBundlesSynced,
       stripeEmployeesSynced: stripe.employeesSynced,
     });
   } catch (error) {
