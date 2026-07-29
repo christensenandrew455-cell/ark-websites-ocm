@@ -1,0 +1,4 @@
+/* Keep app chrome from sitting above modal and dialog surfaces. */
+body:has([role="dialog"][aria-modal="true"]) header.sticky {
+  display: none !important;
+}
