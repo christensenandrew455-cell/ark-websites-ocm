@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./modal-overlays.css";
 import SignupFlowShell from "./components/SignupFlowShell";
 import { AuthProvider } from "./components/AuthProvider";
 
