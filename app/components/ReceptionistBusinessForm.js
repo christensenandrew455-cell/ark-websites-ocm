@@ -214,7 +214,6 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
         <h3 className="text-lg font-black">AI Voice and Timing</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Choose how the receptionist sounds and how long it waits after a caller stops speaking.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {adminMode && <Field label="AI model" hint="The model is managed by ARK."><Input value="GPT Realtime Mini" readOnly /></Field>}
           <Field label="AI voice" hint={voice.description}><Select value={profile.aiVoice || "alloy"} onChange={(event) => update("aiVoice", event.target.value)}>{VOICES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
           <Field label="Speech speed" hint={`Controls how quickly the receptionist speaks. ${speed.description}`}><Select value={Number(profile.aiSpeechSpeed || 0.94)} onChange={(event) => update("aiSpeechSpeed", Number(event.target.value))}>{SPEEDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
           <Field label="Silence before replying" hint="How long the receptionist waits after the caller becomes quiet."><Select value={Number(profile.aiSilenceSeconds || 1.2)} onChange={(event) => update("aiSilenceSeconds", Number(event.target.value))}>{SILENCE_SECONDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
