@@ -7,8 +7,6 @@ import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DEFAULT_OPENING = "Hi, this is {{receptionist_name}} with {{business_name}}. Can I set you up with an estimate today?";
-const DEFAULT_CLOSING = "{{owner_first_name}} will follow up with you shortly. Thanks for calling {{business_name}}. Goodbye.";
 const DEFAULT_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 const ALLOWED_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]);
 
@@ -70,10 +68,7 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     serviceAreas: list(settings.serviceAreas),
     services: servicesObject(settings.services),
     about: list(settings.about),
-    openingLine: text(settings.openingLine || DEFAULT_OPENING),
-    closingLine: text(settings.closingLine || DEFAULT_CLOSING),
     extraInformation: text(settings.extraInformation),
-    aiModel: "gpt-realtime-mini",
     aiVoice: ALLOWED_VOICES.has(text(settings.aiVoice)) ? text(settings.aiVoice) : "alloy",
     aiSpeechSpeed: numberInRange(settings.aiSpeechSpeed, 0.94, 0.25, 1.5),
     aiSilenceMs: Math.round(numberInRange(settings.aiSilenceMs, 1200, 300, 3000)),
@@ -200,8 +195,6 @@ export async function POST(request) {
     serviceAreas: list(body.serviceAreas ?? current.serviceAreas),
     services: servicesObject(body.services ?? current.services),
     about: list(body.about ?? current.about),
-    openingLine: text(body.openingLine ?? current.openingLine) || DEFAULT_OPENING,
-    closingLine: text(body.closingLine ?? current.closingLine) || DEFAULT_CLOSING,
     extraInformation: text(body.extraInformation ?? current.extraInformation),
     aiVoice: ALLOWED_VOICES.has(requestedVoice) ? requestedVoice : current.aiVoice,
     aiSpeechSpeed: numberInRange(body.aiSpeechSpeed, current.aiSpeechSpeed, 0.25, 1.5),
@@ -241,12 +234,13 @@ export async function POST(request) {
     serviceAreas: profile.serviceAreas,
     services: profile.services,
     about: profile.about,
-    openingLine: profile.openingLine,
-    closingLine: profile.closingLine,
     extraInformation: profile.extraInformation,
     aiVoice: profile.aiVoice,
     aiSpeechSpeed: profile.aiSpeechSpeed,
     aiSilenceMs: profile.aiSilenceMs,
+    aiModel: FieldValue.delete(),
+    openingLine: FieldValue.delete(),
+    closingLine: FieldValue.delete(),
     updatedBy: access.user.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
     ...(loaded.configured ? {} : { createdAt: FieldValue.serverTimestamp() }),
