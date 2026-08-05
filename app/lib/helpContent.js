@@ -119,7 +119,7 @@ export const HELP_SECTIONS = [
     summary: "Settings opens to four compact blocks and shows only one full section after a block is tapped.",
     points: [
       "Business Information contains only business details, hours, services, service areas, and estimate availability.",
-      "Customization contains Dark Mode, Messages, Employees, Messages for Employees, AI voice and timing, and Download Client Data.",
+      "Customization contains Dark Mode, Messages, Employees, Messages for Employees, AI timing, and Download Client Data.",
       "Payment contains one estimated total for the current month and Manage Payment Method. It does not show a usage breakdown or workspace shortcut buttons.",
       "Help & Account contains Help, Documentation, Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.",
       "Use Back to Settings inside a section to return to the four-block menu.",

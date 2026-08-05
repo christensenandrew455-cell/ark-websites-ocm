@@ -6,7 +6,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
-const ALLOWED_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]);
 const SIGNATURE_MAX_AGE_SECONDS = 300;
 
 function text(value) {
@@ -103,12 +102,10 @@ function buildProfile(clientId, business, account, settings, connection) {
   const services = servicesObject(settings.services);
   const businessBase = text(settings.businessBase) || serviceAreas[0] || "the local service area";
   const normalizedServiceAreas = serviceAreas.length ? serviceAreas : [businessBase];
-  const requestedVoice = text(settings.aiVoice);
 
   return {
     clientId,
     businessName: text(settings.businessName || account.BusinessName || business.businessName || clientId),
-    receptionistName: text(settings.receptionistName || "Alex"),
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
     businessPhone: text(settings.businessPhone || account.AccountPhone || business.accountPhone || connection.businessPhone),
     businessEmail: text(settings.businessEmail || account.AccountEmail || business.accountEmail || connection.notificationEmail).toLowerCase(),
@@ -125,7 +122,6 @@ function buildProfile(clientId, business, account, settings, connection) {
     services,
     about: list(settings.about),
     extraInformation: text(settings.extraInformation),
-    aiVoice: ALLOWED_VOICES.has(requestedVoice) ? requestedVoice : "alloy",
     aiSpeechSpeed: numberInRange(settings.aiSpeechSpeed, 0.94, 0.25, 1.5),
     aiSilenceMs: Math.round(numberInRange(settings.aiSilenceMs, 1200, 300, 3000)),
   };

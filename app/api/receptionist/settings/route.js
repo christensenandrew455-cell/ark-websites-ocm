@@ -8,7 +8,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
-const ALLOWED_VOICES = new Set(["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]);
 
 function text(value) {
   return trimmedText(value);
@@ -54,7 +53,6 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     receptionistPhone: text(settings.receptionistPhone || connection.receptionistPhone),
     receptionistPhoneNormalized: text(settings.receptionistPhoneNormalized || connection.receptionistPhoneNormalized),
     businessName: text(settings.businessName || account.BusinessName || business.businessName || clientId),
-    receptionistName: text(settings.receptionistName || "Alex"),
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
     businessPhone: text(settings.businessPhone || account.AccountPhone || business.accountPhone),
     businessEmail: text(settings.businessEmail || account.AccountEmail || business.accountEmail).toLowerCase(),
@@ -69,7 +67,6 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     services: servicesObject(settings.services),
     about: list(settings.about),
     extraInformation: text(settings.extraInformation),
-    aiVoice: ALLOWED_VOICES.has(text(settings.aiVoice)) ? text(settings.aiVoice) : "alloy",
     aiSpeechSpeed: numberInRange(settings.aiSpeechSpeed, 0.94, 0.25, 1.5),
     aiSilenceMs: Math.round(numberInRange(settings.aiSilenceMs, 1200, 300, 3000)),
   };
@@ -177,11 +174,9 @@ export async function POST(request) {
   }
 
   const current = profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.connection, loaded.configured);
-  const requestedVoice = text(body.aiVoice ?? current.aiVoice);
   const profile = {
     ...current,
     businessName: text(body.businessName ?? current.businessName),
-    receptionistName: text(body.receptionistName ?? current.receptionistName) || "Alex",
     ownerName: text(body.ownerName ?? current.ownerName),
     businessPhone: text(body.businessPhone ?? current.businessPhone),
     businessEmail: text(body.businessEmail ?? current.businessEmail).toLowerCase(),
@@ -196,7 +191,6 @@ export async function POST(request) {
     services: servicesObject(body.services ?? current.services),
     about: list(body.about ?? current.about),
     extraInformation: text(body.extraInformation ?? current.extraInformation),
-    aiVoice: ALLOWED_VOICES.has(requestedVoice) ? requestedVoice : current.aiVoice,
     aiSpeechSpeed: numberInRange(body.aiSpeechSpeed, current.aiSpeechSpeed, 0.25, 1.5),
     aiSilenceMs: Math.round(numberInRange(body.aiSilenceMs, current.aiSilenceMs, 300, 3000)),
   };
@@ -220,7 +214,7 @@ export async function POST(request) {
     receptionistPhone: profile.receptionistPhone,
     receptionistPhoneNormalized: profile.receptionistPhoneNormalized,
     businessName: profile.businessName,
-    receptionistName: profile.receptionistName,
+    receptionistName: FieldValue.delete(),
     ownerName: profile.ownerName,
     businessPhone: profile.businessPhone,
     businessEmail: profile.businessEmail,
@@ -235,7 +229,7 @@ export async function POST(request) {
     services: profile.services,
     about: profile.about,
     extraInformation: profile.extraInformation,
-    aiVoice: profile.aiVoice,
+    aiVoice: FieldValue.delete(),
     aiSpeechSpeed: profile.aiSpeechSpeed,
     aiSilenceMs: profile.aiSilenceMs,
     aiModel: FieldValue.delete(),
