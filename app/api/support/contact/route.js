@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ export async function POST(request) {
     }
 
     const db = getAdminDb();
+    const rateLimit = await checkRequestRateLimit({ db, request, scope: "public-support", limit: 5, windowMs: 10 * 60 * 1000 });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
     const ref = db.collection("supportRequests").doc();
     await ref.set({
       clientId: "public-support",

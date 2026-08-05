@@ -52,7 +52,7 @@ jobs:
           node-version: 22
 
       - name: Install JavaScript dependencies
-        run: npm install
+        run: npm ci
 
       - name: Generate, sync, and vendor Capacitor iOS
         run: |

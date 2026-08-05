@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "mobile:android:setup": "node scripts/setup-android.mjs",
     "mobile:android:add": "npm run mobile:android:setup",
     "mobile:android:sync": "npm run mobile:android:setup",
@@ -22,18 +22,18 @@
     "@capacitor/ios": "8.4.2",
     "@capacitor/push-notifications": "8.1.2",
     "@ebarooni/capacitor-calendar": "8.2.0",
-    "@tailwindcss/postcss": "latest",
-    "firebase": "latest",
+    "@tailwindcss/postcss": "4.3.3",
+    "firebase": "12.16.0",
     "firebase-admin": "13.6.0",
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "stripe": "latest",
-    "tailwindcss": "latest"
+    "next": "16.3.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "stripe": "22.3.2",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@capacitor/cli": "8.4.2",
-    "eslint": "latest",
-    "eslint-config-next": "latest"
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.0"
   }
 }

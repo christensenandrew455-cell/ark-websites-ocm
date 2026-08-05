@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { TERMS_VERSION } from "../../../lib/legal";
 import { smsBundleCount } from "../../../lib/smsParts";
 import {
   BILLING_VERSION,
@@ -65,7 +66,6 @@ async function resolveBillingWindow({ business, account, timeZone }) {
     return fallback;
   }
 }
-function leadTimestamp(data) { return toMillis(data.createdAt || data.contactedAt || data.acceptedAt || data.occurredAt || data.updatedAt); }
 function usageKey(clientId, sourceId) { return createHash("sha256").update(`${clientId}:${sourceId}`).digest("hex").slice(0, 48); }
 function addUsage(unique, id, occurredAt, startMs, endMs) {
   const cleanId = text(id);
@@ -75,15 +75,21 @@ function addUsage(unique, id, occurredAt, startMs, endMs) {
 }
 async function loadMonthlyCalls(db, clientId, startMs, endMs) {
   const root = db.collection("ocmClients").doc(clientId);
-  const [contactedSnapshot, clientsSnapshot, statsSnapshot] = await Promise.all([root.collection("contactedMe").get(), root.collection("clients").get(), root.collection("statsEvents").get()]);
+  const callsSnapshot = await root.collection("receptionistCalls").get();
   const unique = new Map();
-  for (const document of [...contactedSnapshot.docs, ...clientsSnapshot.docs]) addUsage(unique, document.id, leadTimestamp(document.data()), startMs, endMs);
-  for (const document of statsSnapshot.docs) {
+  for (const document of callsSnapshot.docs) {
     const data = document.data();
-    if (text(data.eventType).toLowerCase() !== "contacted") continue;
-    addUsage(unique, text(data.sourceId) || document.id.replace(/^contacted:/, ""), leadTimestamp(data), startMs, endMs);
+    const occurredAt = toMillis(data.startedAt || data.endedAt || data.createdAt);
+    addUsage(unique, document.id, occurredAt, startMs, endMs);
   }
   return [...unique.values()].sort((a, b) => a.occurredAt - b.occurredAt);
+}
+function isBillableMessage(data) {
+  const direction = text(data.direction).toLowerCase();
+  const status = text(data.deliveryStatus).toLowerCase();
+  if (direction === "inbound") return status === "received";
+  if (direction !== "outbound" || !text(data.providerMessageId)) return false;
+  return !["provider-error", "provider-not-configured"].includes(status);
 }
 async function loadMonthlyMessageParts(db, clientId, startMs, endMs) {
   const root = db.collection("ocmClients").doc(clientId);
@@ -95,7 +101,7 @@ async function loadMonthlyMessageParts(db, clientId, startMs, endMs) {
     for (const document of snapshot.docs) {
       const data = document.data();
       const occurredAt = toMillis(data.createdAt || data.updatedAt);
-      if (!occurredAt || occurredAt < startMs || occurredAt >= endMs) continue;
+      if (!occurredAt || occurredAt < startMs || occurredAt >= endMs || !isBillableMessage(data)) continue;
       parts += Math.max(0, Number(data.smsParts || 0));
       messages += 1;
     }
@@ -111,18 +117,18 @@ async function reconcileStripe({ db, auth, business, account, window, calls, mes
   const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
   const paymentMethodId = text(business.stripePaymentMethodId || account.stripePaymentMethodId);
   if (!customerId || !paymentMethodId) return { status: "payment-method-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
-  if (account.termsAccepted !== true) return { status: "terms-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+  if (account.termsAccepted !== true || text(account.termsVersion) !== TERMS_VERSION) return { status: "terms-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
 
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const subscription = await ensureCustomerBillingSubscription({ stripe, db, clientId: auth.clientId, customerId, paymentMethodId, businessName: text(business.businessName || account.businessName || auth.clientId), uid: auth.decodedToken.uid, existingSubscriptionId: text(business.stripeSubscriptionId || account.stripeSubscriptionId) });
   let callsSynced = 0;
   for (const call of calls) {
-    const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingLeadEvents").doc(usageKey(auth.clientId, call.id));
+    const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingCallEvents").doc(usageKey(auth.clientId, call.id));
     const record = await recordRef.get();
     const data = record.exists ? record.data() : {};
-    if (data.stripeReported === true && text(data.stripePricingVersion) === BILLING_VERSION) continue;
+    if (data.stripeReported === true) continue;
     await reportBillableLead({ stripe, customerId, clientId: auth.clientId, leadId: call.id, occurredAt: call.occurredAt });
-    await recordRef.set({ leadId: call.id, occurredAt: new Date(call.occurredAt), stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
+    await recordRef.set({ callId: call.id, occurredAt: new Date(call.occurredAt), stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
     callsSynced += 1;
   }
 
@@ -131,11 +137,14 @@ async function reconcileStripe({ db, auth, business, account, window, calls, mes
     const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingMessageBundleEvents").doc(usageKey(auth.clientId, window.monthKey));
     const record = await recordRef.get();
     const data = record.exists ? record.data() : {};
-    const alreadyReported = data.stripeReported === true && text(data.stripePricingVersion) === BILLING_VERSION;
-    if (!alreadyReported) {
-      await reportBillableMessageBundles({ stripe, customerId, clientId: auth.clientId, billingPeriodKey: window.monthKey, bundleCount: messageUsage.bundles, occurredAt: window.startMs });
-      await recordRef.set({ billingPeriodKey: window.monthKey, smsParts: messageUsage.parts, bundleCount: messageUsage.bundles, stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
-      messageBundlesSynced = messageUsage.bundles;
+    const reportedBundles = data.stripeReported === true
+      ? Math.max(0, Number(data.reportedBundleCount ?? data.bundleCount ?? 0))
+      : 0;
+    const additionalBundles = Math.max(0, messageUsage.bundles - reportedBundles);
+    if (additionalBundles > 0) {
+      await reportBillableMessageBundles({ stripe, customerId, clientId: auth.clientId, billingPeriodKey: `${window.monthKey}:${messageUsage.bundles}`, bundleCount: additionalBundles, occurredAt: Date.now() });
+      await recordRef.set({ billingPeriodKey: window.monthKey, smsParts: messageUsage.parts, bundleCount: messageUsage.bundles, reportedBundleCount: messageUsage.bundles, stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
+      messageBundlesSynced = additionalBundles;
     }
   }
 
@@ -146,7 +155,7 @@ async function reconcileStripe({ db, auth, business, account, window, calls, mes
       const recordRef = db.collection("ocmClients").doc(auth.clientId).collection("billingEmployeeEvents").doc(usageKey(auth.clientId, eventKey));
       const record = await recordRef.get();
       const data = record.exists ? record.data() : {};
-      if (data.stripeReported === true && text(data.stripePricingVersion) === BILLING_VERSION) continue;
+      if (data.stripeReported === true) continue;
       await reportBillableEmployee({ stripe, customerId, clientId: auth.clientId, employeeId: employee.id, billingPeriodKey: window.monthKey, occurredAt: Date.now() });
       await recordRef.set({ employeeUid: employee.id, billingPeriodKey: window.monthKey, stripeReported: true, stripePricingVersion: BILLING_VERSION, stripeCustomerId: customerId, stripeSubscriptionId: subscription.id, reportedAt: FieldValue.serverTimestamp() }, { merge: true });
       employeesSynced += 1;
@@ -196,6 +205,7 @@ export async function GET(request) {
       billingPlanName: "ARK AI Receptionist",
       billingVersion: BILLING_VERSION,
       currentBillingMonth: window.monthKey,
+      currentMonthCallCount: calls.length,
       currentMonthLeadCount: calls.length,
       currentMonthMessageCount: messageUsage.messages,
       currentMonthMessagePartCount: messageUsage.parts,
@@ -251,6 +261,7 @@ export async function GET(request) {
       conversationOverageCount: messageUsage.bundles,
       employeeOverageCount: employees.length,
       stripeStatus: stripe.status,
+      stripeCallsSynced: stripe.callsSynced,
       stripeLeadsSynced: stripe.callsSynced,
       stripeMessageBundlesSynced: stripe.messageBundlesSynced,
       stripeEmployeesSynced: stripe.employeesSynced,

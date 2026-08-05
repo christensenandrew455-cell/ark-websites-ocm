@@ -11,8 +11,7 @@ function text(value) { return String(value || "").trim(); }
 function authorized(request) {
   const secret = text(process.env.CRON_SECRET);
   const authorization = text(request.headers.get("authorization"));
-  if (secret) return authorization === `Bearer ${secret}`;
-  return text(request.headers.get("user-agent")).includes("vercel-cron/1.0");
+  return Boolean(secret) && authorization === `Bearer ${secret}`;
 }
 
 export async function GET(request) {

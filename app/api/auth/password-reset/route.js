@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 function cleanClientId(value) {
   return String(value || "")
@@ -18,10 +19,14 @@ export async function POST(request) {
       return NextResponse.json({ error: "Enter your business name." }, { status: 400 });
     }
 
+    const db = getAdminDb();
+    const rateLimit = await checkRequestRateLimit({ db, request, scope: "password-reset", limit: 5, windowMs: 15 * 60 * 1000 });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
+
     let email = normalizedIdentifier.toLowerCase();
     if (!email.includes("@")) {
       const clientId = cleanClientId(normalizedIdentifier);
-      const businessSnapshot = await getAdminDb().collection("businesses").doc(clientId).get();
+      const businessSnapshot = await db.collection("businesses").doc(clientId).get();
       if (!businessSnapshot.exists) {
         return NextResponse.json({ ok: true });
       }

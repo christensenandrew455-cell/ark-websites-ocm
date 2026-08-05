@@ -9,8 +9,7 @@ const LEGACY_CLIENT_ID = "tabor-painting";
 
 function authorized(request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true;
-  return request.headers.get("authorization") === `Bearer ${secret}`;
+  return Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 function missingFirebaseAdminVariables() {
