@@ -8,16 +8,6 @@ const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "Am
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const PERIODS = ["AM", "PM"];
 const DEFAULT_BUSINESS_DAYS = WEEKDAYS.slice(0, 5);
-const VOICES = [
-  { value: "alloy", label: "Alloy", description: "Balanced and neutral." },
-  { value: "ash", label: "Ash", description: "Warm and direct." },
-  { value: "ballad", label: "Ballad", description: "Expressive and friendly." },
-  { value: "coral", label: "Coral", description: "Clear and upbeat." },
-  { value: "echo", label: "Echo", description: "Calm and measured." },
-  { value: "sage", label: "Sage", description: "Steady and professional." },
-  { value: "shimmer", label: "Shimmer", description: "Bright and welcoming." },
-  { value: "verse", label: "Verse", description: "Natural and conversational." },
-];
 const SPEEDS = [
   { value: 0.85, label: "Slow", description: "More deliberate pacing." },
   { value: 0.94, label: "Normal", description: "Recommended everyday pace." },
@@ -193,8 +183,11 @@ export function prepareReceptionistProfile(profile = {}) {
 }
 
 export function receptionistRequestPayload(profile = {}) {
+  const editableProfile = Object.fromEntries(
+    Object.entries(profile).filter(([key]) => !["receptionistName", "aiVoice"].includes(key)),
+  );
   return {
-    ...profile,
+    ...editableProfile,
     extraInformation: "",
     businessHours: businessHoursSummary(profile),
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
@@ -205,16 +198,14 @@ export function receptionistRequestPayload(profile = {}) {
 
 export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false }) {
   if (!profile) return null;
-  const voice = VOICES.find((item) => item.value === profile.aiVoice) || VOICES[0];
   const speed = SPEEDS.find((item) => item.value === Number(profile.aiSpeechSpeed)) || SPEEDS[1];
   function update(field, value) { onChange({ ...profile, [field]: value }); }
   return (
     <div className="space-y-7">
       <section>
-        <h3 className="text-lg font-black">AI Voice and Timing</h3>
-        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Choose how the receptionist sounds and how long it waits after a caller stops speaking.</p>
+        <h3 className="text-lg font-black">AI Timing</h3>
+        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Choose how quickly the receptionist speaks and how long it waits after a caller stops speaking.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="AI voice" hint={voice.description}><Select value={profile.aiVoice || "alloy"} onChange={(event) => update("aiVoice", event.target.value)}>{VOICES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
           <Field label="Speech speed" hint={`Controls how quickly the receptionist speaks. ${speed.description}`}><Select value={Number(profile.aiSpeechSpeed || 0.94)} onChange={(event) => update("aiSpeechSpeed", Number(event.target.value))}>{SPEEDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
           <Field label="Silence before replying" hint="How long the receptionist waits after the caller becomes quiet."><Select value={Number(profile.aiSilenceSeconds || 1.2)} onChange={(event) => update("aiSilenceSeconds", Number(event.target.value))}>{SILENCE_SECONDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
           {adminMode && <label className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black md:self-end">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label>}
@@ -225,7 +216,6 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <Field label="Business name"><Input value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
-          <Field label="Receptionist name"><Input value={profile.receptionistName} onChange={(event) => update("receptionistName", event.target.value)} /></Field>
           <Field label="Owner name"><Input value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
           <Field label="Business phone"><Input type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
           <Field label="Business email"><Input type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>

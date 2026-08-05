@@ -77,7 +77,6 @@ function SettingsSimplifier() {
       ["Business opens", "Business opening time"],
       ["Business closes", "Business closing time"],
       ["Service areas", "States and cities you service"],
-      ["AI voice", "AI receptionist voice"],
       ["Speech speed", "AI receptionist speech speed"],
       ["Silence before replying", "Silence before AI replies"],
     ]);

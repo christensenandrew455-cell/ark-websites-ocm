@@ -97,13 +97,11 @@ export async function GET(request) {
     intakeUrl: intakeUrl.toString(),
     source: text(connection.sourceLabel || settings.businessName || businessAccount.businessName || "AI receptionist"),
     ai: {
-      voice: text(settings.aiVoice || "alloy"),
       speechSpeed: Number(settings.aiSpeechSpeed || 0.94),
       silenceMs: Number(settings.aiSilenceMs || 1200),
     },
     business: {
       name: text(settings.businessName || businessAccount.businessName || clientId),
-      receptionist: text(settings.receptionistName || "Alex"),
       owner: text(settings.ownerName || businessAccount.ownerName),
       phone: text(settings.businessPhone || businessAccount.accountPhone),
       email: text(settings.businessEmail || businessAccount.accountEmail).toLowerCase(),
