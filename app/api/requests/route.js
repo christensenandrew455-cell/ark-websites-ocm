@@ -50,6 +50,8 @@ function requestPayload(document) {
     message: trimmedText(data.message),
     status: ALLOWED_STATUSES.has(data.status) ? data.status : "new",
     adminNote: trimmedText(data.adminNote),
+    adminReply: trimmedText(data.adminReply),
+    repliedAt: toIsoString(data.repliedAt),
     createdAt: toIsoString(data.createdAt),
     updatedAt: toIsoString(data.updatedAt),
     closedAt: toIsoString(data.closedAt),
@@ -107,13 +109,18 @@ export async function POST(request) {
   const clientId = normalizeClientId(user.decodedToken.clientId);
 
   if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
+  if (body.selfHelpConfirmed !== true) {
+    return NextResponse.json({ error: "Check the Docs or ask AI first, then confirm that you still need ARK support." }, { status: 400 });
+  }
+  if (subject.length < 4) return NextResponse.json({ error: "Add a short subject so ARK can identify the problem." }, { status: 400 });
   if (message.length < 10) return NextResponse.json({ error: "Describe what you need help with in at least 10 characters." }, { status: 400 });
   if (message.length > 4000) return NextResponse.json({ error: "Keep the help request under 4,000 characters." }, { status: 400 });
 
   const db = getAdminDb();
-  const [businessSnapshot, accountSnapshot] = await Promise.all([
+  const [businessSnapshot, accountSnapshot, existingRequests] = await Promise.all([
     db.collection("businesses").doc(clientId).get(),
     db.collection("accounts").doc(user.decodedToken.uid).get(),
+    db.collection("supportRequests").where("clientId", "==", clientId).get(),
   ]);
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   const account = accountSnapshot.exists ? accountSnapshot.data() : {};
@@ -125,12 +132,23 @@ export async function POST(request) {
     );
   }
 
+  const alreadyOpen = existingRequests.docs.some((document) => {
+    const data = document.data();
+    return data.type === "help"
+      && trimmedText(data.createdByUid) === user.decodedToken.uid
+      && OPEN_STATUSES.has(ALLOWED_STATUSES.has(data.status) ? data.status : "new");
+  });
+  if (alreadyOpen) {
+    return NextResponse.json({ error: "You already have an open help request. Check Help History for its status or ARK's reply." }, { status: 409 });
+  }
+
   const ref = db.collection("supportRequests").doc();
   await ref.set({
     clientId,
     businessName: trimmedText(business.businessName || account.businessName || clientId),
     ownerName: trimmedText(account.ownerName || business.ownerName || user.decodedToken.name),
     accountEmail: trimmedText(account.accountEmail || user.decodedToken.email).toLowerCase(),
+    contactPhone: trimmedText(account.accountPhone || business.accountPhone),
     type: "help",
     subject: subject || "Help request",
     message,
@@ -153,10 +171,15 @@ export async function PATCH(request) {
 
   const body = await request.json();
   const id = trimmedText(body.id);
+  const action = body.action === "reply" ? "reply" : "status";
   const status = ALLOWED_STATUSES.has(body.status) ? body.status : "";
   const adminNote = trimmedText(body.adminNote);
+  const adminReply = trimmedText(body.adminReply);
 
-  if (!id || !status) return NextResponse.json({ error: "Choose a request and status." }, { status: 400 });
+  if (!id) return NextResponse.json({ error: "Choose a help request." }, { status: 400 });
+  if (action === "reply" && adminReply.length < 2) return NextResponse.json({ error: "Write a reply before sending it." }, { status: 400 });
+  if (adminReply.length > 2000) return NextResponse.json({ error: "Keep the reply under 2,000 characters." }, { status: 400 });
+  if (action === "status" && !status) return NextResponse.json({ error: "Choose a request status." }, { status: 400 });
   if (status === "denied" && !adminNote) {
     return NextResponse.json({ error: "Add a short reason before denying the request." }, { status: 400 });
   }
@@ -167,6 +190,33 @@ export async function PATCH(request) {
   if (!snapshot.exists) return NextResponse.json({ error: "That request no longer exists." }, { status: 404 });
 
   const current = snapshot.data();
+  const isWebsiteRequest = current.type === "website" || trimmedText(current.source) === "public-website";
+  if (action === "reply") {
+    if (isWebsiteRequest) {
+      return NextResponse.json({ error: "Use the visitor's email or phone number to answer a website request." }, { status: 400 });
+    }
+    await ref.set({
+      adminReply,
+      repliedBy: user.decodedToken.uid,
+      repliedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    try {
+      await sendRequestStatusNotification({
+        db,
+        clientId: normalizeClientId(current.clientId),
+        requestId: id,
+        subject: trimmedText(current.subject),
+        status: "reply",
+        adminNote: adminReply,
+        recipientUid: trimmedText(current.createdByUid),
+      });
+    } catch (notificationError) {
+      console.error("Help reply saved but customer notification failed", notificationError);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   const currentStatus = ALLOWED_STATUSES.has(current.status) ? current.status : "new";
   if (!STATUS_TRANSITIONS[currentStatus]?.has(status)) {
     return NextResponse.json(
@@ -185,7 +235,6 @@ export async function PATCH(request) {
     ...(status === "denied" ? { deniedAt: FieldValue.serverTimestamp(), closedAt: FieldValue.serverTimestamp() } : {}),
   }, { merge: true });
 
-  const isWebsiteRequest = current.type === "website" || trimmedText(current.source) === "public-website";
   if (!isWebsiteRequest) {
     try {
       await sendRequestStatusNotification({
@@ -195,6 +244,7 @@ export async function PATCH(request) {
         subject: trimmedText(current.subject),
         status,
         adminNote,
+        recipientUid: trimmedText(current.createdByUid),
       });
     } catch (notificationError) {
       console.error("Help request status saved but customer notification failed", notificationError);
