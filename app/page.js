@@ -79,7 +79,7 @@ function AdminDashboard({ user }) {
           <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">{REVENUE_RANGES.map((range) => <button key={range.key} type="button" onClick={() => setRevenueRange(range.key)} className={revenueRange === range.key ? "rounded-lg bg-white px-2 py-2.5 text-[11px] font-black text-slate-950 shadow-sm sm:text-sm" : "rounded-lg px-2 py-2.5 text-[11px] font-bold text-slate-500 sm:text-sm"}>{range.label}</button>)}</div>
           <div className="mt-5"><p className="text-4xl font-black tracking-tight sm:text-5xl">{formatMoney(selectedRevenue.amount, selectedRevenue.currency)}</p><h2 className="mt-1 text-sm font-black uppercase tracking-wide text-slate-700">{selectedRange.title}</h2><p className="mt-1 text-[10px] font-semibold text-slate-400 sm:text-xs">{revenueDetail}</p></div>
         </section>
-        <section className="mt-3 grid grid-cols-3 gap-3 sm:mt-4 sm:gap-4"><SummaryCard label="Accounts" value={counts.customers || 0} href="/connections" /><SummaryCard label="Messages" value={counts.openRequests || 0} href="/messages" /><SummaryCard label="Needs Payment" value={counts.needsPayment || 0} href="/payment" /></section>
+        <section className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:grid-cols-4 sm:gap-4"><SummaryCard label="Accounts" value={counts.customers || 0} href="/connections" /><SummaryCard label="App Help" value={counts.openRequests || 0} href="/messages" /><SummaryCard label="Website" value={counts.websiteRequests || 0} href="/website-requests" /><SummaryCard label="Needs Payment" value={counts.needsPayment || 0} href="/payment" /></section>
       </div>
     </main>
   );

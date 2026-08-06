@@ -51,7 +51,7 @@ export function normalizeJobs(data = {}, stageKey = "contactedMe") {
       estimateTime: text(job.estimateTime || job.EstimateTime),
       startDate: text(job.startDate || job.WorkStartDate),
       completeDate: text(job.completeDate || job.WorkCompleteDate),
-      notes: text(job.notes || job.Notes),
+      notes: text(job.notes || job.ClientNotes || job.Notes),
       source: text(job.source || data.source),
       createdAt: text(job.createdAt),
       updatedAt: text(job.updatedAt),
@@ -64,7 +64,7 @@ export function normalizeJobs(data = {}, stageKey = "contactedMe") {
     text(data.WorkStartDate) ||
     text(data.WorkCompleteDate) ||
     text(data.EstimateDate) ||
-    text(data.Notes)
+    text(data.ClientNotes || data.Notes)
   );
 
   if (!hasLegacyJob) return [];
@@ -78,7 +78,7 @@ export function normalizeJobs(data = {}, stageKey = "contactedMe") {
     estimateTime: text(data.EstimateTime),
     startDate: text(data.WorkStartDate),
     completeDate: text(data.WorkCompleteDate),
-    notes: text(data.Notes),
+    notes: text(data.ClientNotes || data.Notes),
     source: text(data.source),
     createdAt: "",
     updatedAt: "",
@@ -97,7 +97,7 @@ export function createJob(data = {}, number = 1, stageKey = "contactedMe") {
     estimateTime: text(data.EstimateTime),
     startDate: text(data.WorkStartDate),
     completeDate: text(data.WorkCompleteDate),
-    notes: text(data.Notes || data.notes || data.message || data.summary),
+    notes: text(data.ClientNotes || data.clientNotes || data.Notes || data.notes || data.message || data.summary),
     source: text(data.source || "website"),
     createdAt: now,
     updatedAt: now,

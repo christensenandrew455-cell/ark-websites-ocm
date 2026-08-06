@@ -2,6 +2,7 @@ import { cert, getApp, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+import { getStorage } from "firebase-admin/storage";
 
 function getAdminApp() {
   if (getApps().length) return getApp();
@@ -16,8 +17,10 @@ function getAdminApp() {
     );
   }
 
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   return initializeApp({
     credential: cert({ projectId, clientEmail, privateKey }),
+    ...(storageBucket ? { storageBucket } : {}),
   });
 }
 
@@ -31,6 +34,11 @@ export function getAdminDb() {
 
 export function getAdminMessaging() {
   return getMessaging(getAdminApp());
+}
+
+export function getAdminBucket() {
+  const bucketName = process.env.FIREBASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  return getStorage(getAdminApp()).bucket(bucketName || undefined);
 }
 
 export function getAdminEmails() {

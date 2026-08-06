@@ -10,7 +10,7 @@ const VISIBILITY_LABELS = {
   address: "Job address",
   job: "Requested work",
   requestedTime: "Requested date and time",
-  notes: "Additional notes",
+  notes: "Client and business notes",
 };
 
 const DIRECTORY_LABELS = {

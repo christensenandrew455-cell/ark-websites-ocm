@@ -8,16 +8,16 @@ const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "Am
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const PERIODS = ["AM", "PM"];
 const DEFAULT_BUSINESS_DAYS = WEEKDAYS.slice(0, 5);
-const SPEEDS = [
-  { value: 0.85, label: "Slow", description: "More deliberate pacing." },
-  { value: 0.94, label: "Normal", description: "Recommended everyday pace." },
-  { value: 1.08, label: "Fast", description: "Quicker, more energetic delivery." },
-];
-const SILENCE_SECONDS = [
-  { value: 0.7, label: "0.7 seconds — Quick" },
-  { value: 1.2, label: "1.2 seconds — Natural" },
-  { value: 1.8, label: "1.8 seconds — Patient" },
-];
+const RAILWAY_OWNED_FIELDS = new Set([
+  "receptionistName",
+  "aiVoice",
+  "aiModel",
+  "aiSpeechSpeed",
+  "aiSilenceMs",
+  "aiSilenceSeconds",
+  "openingLine",
+  "closingLine",
+]);
 
 function titleCase(value) {
   const text = String(value || "");
@@ -164,12 +164,14 @@ export function prepareReceptionistProfile(profile = {}) {
   const hours = parseBusinessHours(profile.businessHours);
   const estimateStart = parseTime(profile.earliestEstimateStart, 9, "AM");
   const estimateEnd = parseTime(profile.latestEstimateStart, 5, "PM");
+  const editableProfile = Object.fromEntries(
+    Object.entries(profile).filter(([key]) => !RAILWAY_OWNED_FIELDS.has(key)),
+  );
   return {
-    ...profile,
+    ...editableProfile,
     serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
     about: Array.isArray(profile.about) ? profile.about : [],
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
-    aiSilenceSeconds: Number(profile.aiSilenceMs || 1200) / 1000,
     businessWeekdays: Array.isArray(profile.businessWeekdays) ? profile.businessWeekdays : hours.days,
     businessStartHour: Number(profile.businessStartHour || hours.start.hour),
     businessStartPeriod: profile.businessStartPeriod || hours.start.period,
@@ -184,7 +186,7 @@ export function prepareReceptionistProfile(profile = {}) {
 
 export function receptionistRequestPayload(profile = {}) {
   const editableProfile = Object.fromEntries(
-    Object.entries(profile).filter(([key]) => !["receptionistName", "aiVoice"].includes(key)),
+    Object.entries(profile).filter(([key]) => !RAILWAY_OWNED_FIELDS.has(key)),
   );
   return {
     ...editableProfile,
@@ -192,25 +194,15 @@ export function receptionistRequestPayload(profile = {}) {
     businessHours: businessHoursSummary(profile),
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
     latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
-    aiSilenceMs: Math.round(Number(profile.aiSilenceSeconds || 1.2) * 1000),
   };
 }
 
 export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false }) {
   if (!profile) return null;
-  const speed = SPEEDS.find((item) => item.value === Number(profile.aiSpeechSpeed)) || SPEEDS[1];
   function update(field, value) { onChange({ ...profile, [field]: value }); }
   return (
     <div className="space-y-7">
-      <section>
-        <h3 className="text-lg font-black">AI Timing</h3>
-        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Choose how quickly the receptionist speaks and how long it waits after a caller stops speaking.</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Speech speed" hint={`Controls how quickly the receptionist speaks. ${speed.description}`}><Select value={Number(profile.aiSpeechSpeed || 0.94)} onChange={(event) => update("aiSpeechSpeed", Number(event.target.value))}>{SPEEDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
-          <Field label="Silence before replying" hint="How long the receptionist waits after the caller becomes quiet."><Select value={Number(profile.aiSilenceSeconds || 1.2)} onChange={(event) => update("aiSilenceSeconds", Number(event.target.value))}>{SILENCE_SECONDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select></Field>
-          {adminMode && <label className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black md:self-end">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label>}
-        </div>
-      </section>
+      {adminMode && <section><h3 className="text-lg font-black">Receptionist Access</h3><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Railway owns the model, voice, timing, and call controls. This switch only controls whether this business may receive receptionist calls.</p><label className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label></section>}
       <section>
         <h3 className="text-lg font-black">Business Information</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>

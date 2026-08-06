@@ -6,34 +6,22 @@ ARK Client Center stores one receptionist profile per client at:
 ocmClients/{clientId}/settings/receptionist
 ```
 
-The administrator edits the same business and AI information customers see through the Accounts workspace. The connected receptionist number is stored privately on the client connection record and can be removed to stop call routing without deleting the customer account.
+The administrator edits the same business information customers see through the Accounts workspace. The connected receptionist number is stored privately on the client connection record and can be removed to stop call routing without deleting the customer account.
 
-A shared Railway receptionist service can request the correct client profile from:
-
-```text
-GET /api/receptionist/config?phone=<destination-number>&connectionId=<optional-telnyx-connection-id>
-```
-
-The request must include the server-only secret as either:
+A shared Railway receptionist service forwards the original signed Telnyx call event to:
 
 ```text
-Authorization: Bearer <RECEPTIONIST_CONFIG_SECRET>
+POST /api/receptionist/runtime
 ```
 
-or:
+OCM verifies the Telnyx signature and timestamp using `TELNYX_PUBLIC_KEY`, matches the destination phone number to one business, and returns that business's profile plus its private intake and call-usage URLs. Railway should use:
 
 ```text
-x-ark-receptionist-key: <RECEPTIONIST_CONFIG_SECRET>
+ARC_RUNTIME_URL=https://<ocm-host>/api/receptionist/runtime
 ```
 
-## Vercel variable
+No receptionist configuration secret is required. The removed `/api/receptionist/config` and `/api/receptionist/intake` compatibility routes must not be used.
 
-```text
-RECEPTIONIST_CONFIG_SECRET=<long random value shared only with Railway>
-```
+The business profile includes the business name, owner, phone, email, hours, time zone, estimate availability, service areas, services, and business facts. AI runtime controls do not come from OCM.
 
-Do not prefix this value with `NEXT_PUBLIC_`.
-
-The route matches the normalized destination phone number, checks that the account and receptionist are enabled, verifies the optional Telnyx connection ID when one is stored, and returns the client-specific intake URL plus the saved business and AI profile.
-
-The AI model and provider credentials remain on Railway. Vercel is only the control panel and Firestore-backed profile store and does not need `AI_MODEL`, `OPENAI_API_KEY`, or other AI runtime credentials.
+The model, voice, turn timing, output limits, context limits, response ceiling, call-duration ceiling, and provider credentials remain on Railway. OCM is only the business-information control panel, connection router, intake destination, and Firestore-backed lead store.

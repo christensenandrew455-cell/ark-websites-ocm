@@ -9,7 +9,7 @@ import { normalizeClientId, toIsoString, trimmedText } from "../../lib/valueUtil
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const HISTORICAL_TYPES = new Set(["help", "change"]);
+const HISTORICAL_TYPES = new Set(["help", "change", "website"]);
 const ALLOWED_STATUSES = new Set(["new", "in-progress", "completed", "denied"]);
 const OPEN_STATUSES = new Set(["new", "in-progress"]);
 const STATUS_TRANSITIONS = {
@@ -21,13 +21,31 @@ const STATUS_TRANSITIONS = {
 
 function requestPayload(document) {
   const data = document.data();
+  const source = trimmedText(data.source);
+  const isWebsiteRequest = data.type === "website" || source === "public-website";
+  const attachment = data.attachment && typeof data.attachment === "object"
+    ? {
+        fileName: trimmedText(data.attachment.fileName),
+        contentType: trimmedText(data.attachment.contentType),
+        size: Math.max(0, Number(data.attachment.size || 0)),
+        downloadUrl: `/api/admin/website-requests/${encodeURIComponent(document.id)}/attachment`,
+      }
+    : null;
   return {
     id: document.id,
     clientId: trimmedText(data.clientId),
     businessName: trimmedText(data.businessName),
     ownerName: trimmedText(data.ownerName),
     accountEmail: trimmedText(data.accountEmail),
-    type: HISTORICAL_TYPES.has(data.type) ? data.type : "help",
+    type: isWebsiteRequest ? "website" : HISTORICAL_TYPES.has(data.type) ? data.type : "help",
+    source,
+    category: trimmedText(data.category),
+    categoryLabel: trimmedText(data.categoryLabel),
+    contactEmail: trimmedText(data.contactEmail || data.accountEmail).toLowerCase(),
+    contactPhone: trimmedText(data.contactPhone),
+    senderNumber: trimmedText(data.senderNumber),
+    contactConsent: data.contactConsent === true,
+    attachment,
     subject: trimmedText(data.subject),
     message: trimmedText(data.message),
     status: ALLOWED_STATUSES.has(data.status) ? data.status : "new",
@@ -48,6 +66,7 @@ export async function GET(request) {
   const url = new URL(request.url);
   const requestedClientId = normalizeClientId(url.searchParams.get("clientId"));
   const includeClosed = url.searchParams.get("includeClosed") === "1";
+  const sourceFilter = trimmedText(url.searchParams.get("source"));
 
   let snapshot;
   if (isAdmin) {
@@ -60,6 +79,11 @@ export async function GET(request) {
   }
 
   let requests = snapshot.docs.map(requestPayload);
+  if (isAdmin && sourceFilter === "public-website") {
+    requests = requests.filter((item) => item.source === "public-website" || item.type === "website");
+  } else if (isAdmin && sourceFilter !== "all" && !requestedClientId) {
+    requests = requests.filter((item) => item.source !== "public-website" && item.type !== "website");
+  }
   if (isAdmin && !includeClosed) requests = requests.filter((item) => OPEN_STATUSES.has(item.status));
   requests.sort((a, b) => {
     const first = new Date(a.createdAt || 0).getTime();
@@ -161,17 +185,20 @@ export async function PATCH(request) {
     ...(status === "denied" ? { deniedAt: FieldValue.serverTimestamp(), closedAt: FieldValue.serverTimestamp() } : {}),
   }, { merge: true });
 
-  try {
-    await sendRequestStatusNotification({
-      db,
-      clientId: normalizeClientId(current.clientId),
-      requestId: id,
-      subject: trimmedText(current.subject),
-      status,
-      adminNote,
-    });
-  } catch (notificationError) {
-    console.error("Help request status saved but customer notification failed", notificationError);
+  const isWebsiteRequest = current.type === "website" || trimmedText(current.source) === "public-website";
+  if (!isWebsiteRequest) {
+    try {
+      await sendRequestStatusNotification({
+        db,
+        clientId: normalizeClientId(current.clientId),
+        requestId: id,
+        subject: trimmedText(current.subject),
+        status,
+        adminNote,
+      });
+    } catch (notificationError) {
+      console.error("Help request status saved but customer notification failed", notificationError);
+    }
   }
 
   return NextResponse.json({ ok: true });

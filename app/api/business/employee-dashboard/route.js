@@ -29,7 +29,8 @@ function rawLead(document, collectionKey) {
     job: text(data.Job || data.job || data.service || data.projectType),
     requestedDate: text(data.EstimateDate || data.PreferredDate || data.RequestedWeekday),
     requestedTime: text(data.EstimateTime || data.PreferredTime),
-    notes: text(data.Notes || data.notes || data.message),
+    clientNotes: text(data.ClientNotes || data.clientNotes || data.Notes || data.notes || data.message),
+    businessNotes: text(data.BusinessNotes || data.businessNotes),
     assignedEmployeeUid: text(data.assignedEmployeeUid),
     updatedAt: iso(data.updatedAt || data.acceptedAt || data.createdAt),
   };
@@ -45,7 +46,8 @@ function filteredLead(lead, visibility) {
     job: visibility.job ? lead.job : "Assigned work",
     requestedDate: visibility.requestedTime ? lead.requestedDate : "",
     requestedTime: visibility.requestedTime ? lead.requestedTime : "",
-    notes: visibility.notes ? lead.notes : "",
+    clientNotes: visibility.notes ? lead.clientNotes : "",
+    businessNotes: visibility.notes ? lead.businessNotes : "",
     updatedAt: lead.updatedAt,
   };
 }
