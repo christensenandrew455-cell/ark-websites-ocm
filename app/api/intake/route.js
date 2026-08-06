@@ -109,6 +109,7 @@ function buildRow(input, source) {
   const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact || data.From || data.Caller);
   const { StreetAddress, TownOrCity, Address } = addressFields(data);
 
+  const ClientNotes = text(data.ClientNotes || data.clientNotes || data.Notes || data.notes || data.message || data.summary || data.Body || data.TranscriptionText || data.CallStatus);
   return {
     FirstName,
     LastName,
@@ -125,7 +126,8 @@ function buildRow(input, source) {
     ),
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate),
     PreferredTime: text(data.PreferredTime || data.preferredTime || data.EstimateTime || data.estimateTime),
-    Notes: text(data.Notes || data.notes || data.message || data.summary || data.Body || data.TranscriptionText || data.CallStatus),
+    ClientNotes,
+    Notes: ClientNotes,
     source,
     rawSubmission: safeSubmission(data),
     updatedAt: FieldValue.serverTimestamp(),

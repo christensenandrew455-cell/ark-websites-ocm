@@ -64,7 +64,7 @@ jobs:
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install JavaScript dependencies
-        run: npm install
+        run: npm ci
 
       - name: Generate and verify Capacitor Android project
         run: npm run mobile:android:setup

@@ -1,5 +1,6 @@
 "use client";
 
+import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -35,15 +36,20 @@ function normalizeRow(id, source, collectionKey) {
   const data = stripLeadContactFields(source || {});
   const jobs = Array.isArray(data.Jobs) ? data.Jobs : [];
   const currentJob = jobs.at(-1) || {};
+  const ClientNotes = firstValue(data.ClientNotes, data.clientNotes, data.Notes, data.notes, data.message, currentJob.notes);
+  const BusinessNotes = firstValue(data.BusinessNotes, data.businessNotes);
   return {
     ...data,
     id,
     collectionKey,
     Name: firstValue(data.Name, data.name, data.fullName),
     Phone: firstValue(data.Phone, data.phone, data.phoneNumber, data.contact),
+    Email: firstValue(data.Email, data.email),
     Address: firstValue(data.Address, data.address),
     Job: firstValue(data.Job, data.job, data.service, data.projectType, currentJob.type),
-    Notes: firstValue(data.Notes, data.notes, data.message, currentJob.notes),
+    ClientNotes,
+    BusinessNotes,
+    Notes: ClientNotes,
     EstimateDate: firstValue(data.EstimateDate, data.estimateDate, data.PreferredDate, data.preferredDate, data.PreferredDay, data.preferredDay, data.estimateDay, currentJob.estimateDate),
     EstimateTime: firstValue(data.EstimateTime, data.estimateTime, data.PreferredTime, data.preferredTime, currentJob.estimateTime),
   };
@@ -75,26 +81,132 @@ function escapeCalendar(value) {
   return String(value || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
 }
 
-function downloadCalendar(row, businessName) {
-  if (!row.EstimateDate) return false;
-  const start = new Date(`${row.EstimateDate}T${normalizeTimeForDate(row.EstimateTime) || "09:00"}:00`);
-  if (Number.isNaN(start.getTime())) return false;
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
-  const contents = [
-    "BEGIN:VCALENDAR", "VERSION:2.0", `PRODID:-//${escapeCalendar(businessName)}//ARK Client Center//EN`, "CALSCALE:GREGORIAN", "BEGIN:VEVENT",
-    `UID:${row.id}-${Date.now()}@ark-ocm`, `DTSTAMP:${calendarStamp(new Date())}`, `DTSTART:${calendarStamp(start)}`, `DTEND:${calendarStamp(end)}`,
-    `SUMMARY:${escapeCalendar(`Estimate - ${row.Name || row.Address || "Client"}`)}`,
-    `DESCRIPTION:${escapeCalendar([row.Job && `Job: ${row.Job}`, row.Phone && `Phone: ${row.Phone}`, row.Notes && `Notes: ${row.Notes}`].filter(Boolean).join("\n"))}`,
-    `LOCATION:${escapeCalendar(row.Address)}`, "END:VEVENT", "END:VCALENDAR",
-  ].join("\r\n");
-  const blob = new Blob([contents], { type: "text/calendar;charset=utf-8" });
+function safeFileName(value) {
+  return String(value || "client").trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "client";
+}
+
+function downloadFile(fileName, contents, type) {
+  const blob = new Blob([contents], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${String(row.Name || "client").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-estimate.ics`;
+  link.download = fileName;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function calendarDate(row) {
+  const rawDate = String(row.EstimateDate || "").trim();
+  if (!rawDate) return null;
+  let start;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+    const [year, month, day] = rawDate.split("-").map(Number);
+    start = new Date(year, month - 1, day);
+  } else {
+    start = new Date(rawDate);
+  }
+  if (Number.isNaN(start.getTime())) return null;
+  const normalizedTime = normalizeTimeForDate(row.EstimateTime) || "09:00";
+  const [hour, minute] = normalizedTime.split(":").map(Number);
+  start.setHours(hour, minute, 0, 0);
+  return start;
+}
+
+function calendarDescription(row) {
+  return [
+    row.Job && `Job: ${row.Job}`,
+    row.Phone && `Phone: ${row.Phone}`,
+    row.Email && `Email: ${row.Email}`,
+    row.ClientNotes && `Client notes: ${row.ClientNotes}`,
+    row.BusinessNotes && `Business notes: ${row.BusinessNotes}`,
+  ].filter(Boolean).join("\n");
+}
+
+function downloadCalendar(row, clientId, businessName, start) {
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const contents = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", `PRODID:-//${escapeCalendar(businessName)}//ARK Client Center//EN`, "CALSCALE:GREGORIAN", "BEGIN:VEVENT",
+    `UID:${row.id}-${Date.now()}@${safeFileName(clientId)}-ocm`, `DTSTAMP:${calendarStamp(new Date())}`, `DTSTART:${calendarStamp(start)}`, `DTEND:${calendarStamp(end)}`,
+    `SUMMARY:${escapeCalendar(`Estimate - ${row.Name || row.Address || "Client"}`)}`,
+    `DESCRIPTION:${escapeCalendar(calendarDescription(row))}`,
+    `LOCATION:${escapeCalendar(row.Address)}`, "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+  downloadFile(`${safeFileName(row.Name)}-estimate.ics`, contents, "text/calendar;charset=utf-8");
+}
+
+async function addCalendar(row, clientId, businessName) {
+  const start = calendarDate(row);
+  if (!start) return { ok: false, reason: "missing-date" };
+  if (!Capacitor.isNativePlatform()) {
+    downloadCalendar(row, clientId, businessName, start);
+    return { ok: true, native: false };
+  }
+  try {
+    const { CapacitorCalendar } = await import("@ebarooni/capacitor-calendar");
+    const permission = await CapacitorCalendar.requestWriteOnlyCalendarAccess();
+    if (permission.result !== "granted") return { ok: false, reason: "calendar-permission" };
+    await CapacitorCalendar.createEvent({
+      title: `Estimate - ${row.Name || row.Address || "New client"}`,
+      location: row.Address || "",
+      startDate: start.getTime(),
+      endDate: start.getTime() + 60 * 60 * 1000,
+      description: calendarDescription(row),
+    });
+    return { ok: true, native: true };
+  } catch (error) {
+    console.error("Unable to add calendar event", error);
+    return { ok: false, reason: "calendar-error" };
+  }
+}
+
+function splitName(value) {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { given: parts[0] || "Client", family: "" };
+  return { given: parts.shift(), family: parts.join(" ") };
+}
+
+function downloadContact(row, businessName) {
+  if (!row.Name && !row.Phone && !row.Email) return false;
+  const name = row.Name || row.Address || `${businessName} Client`;
+  const contents = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${name}`,
+    row.Phone ? `TEL;TYPE=CELL:${row.Phone}` : "",
+    row.Email ? `EMAIL:${row.Email}` : "",
+    row.Address ? `ADR;TYPE=WORK:;;${row.Address};;;;` : "",
+    row.Job ? `NOTE:Requested service: ${row.Job}` : "",
+    "END:VCARD",
+  ].filter(Boolean).join("\r\n");
+  downloadFile(`${safeFileName(name)}.vcf`, contents, "text/vcard;charset=utf-8");
   return true;
+}
+
+async function saveContact(row, businessName) {
+  if (!row.Name && !row.Phone && !row.Email) return { ok: false, reason: "missing-contact" };
+  if (!Capacitor.isNativePlatform()) return { ok: downloadContact(row, businessName), native: false };
+  try {
+    const { Contacts } = await import("@capacitor-community/contacts");
+    let permission = await Contacts.checkPermissions();
+    if (permission.contacts === "prompt" || permission.contacts === "prompt-with-rationale") permission = await Contacts.requestPermissions();
+    if (permission.contacts !== "granted") return { ok: false, reason: "contacts-permission" };
+    await Contacts.createContact({
+      contact: {
+        name: splitName(row.Name || row.Address || `${businessName} Client`),
+        organization: { company: businessName, jobTitle: "Client" },
+        note: [row.Job && `Requested service: ${row.Job}`, row.ClientNotes && `Client notes: ${row.ClientNotes}`, row.BusinessNotes && `Business notes: ${row.BusinessNotes}`].filter(Boolean).join("\n") || null,
+        phones: row.Phone ? [{ type: "mobile", number: row.Phone, isPrimary: true }] : [],
+        emails: row.Email ? [{ type: "work", address: row.Email, isPrimary: true }] : [],
+        postalAddresses: row.Address ? [{ type: "work", street: row.Address, isPrimary: true }] : [],
+      },
+    });
+    return { ok: true, native: true };
+  } catch (error) {
+    console.error("Unable to add contact", error);
+    return { ok: false, reason: "contacts-error" };
+  }
 }
 
 function TrashIcon() {
@@ -136,7 +248,8 @@ function ClientModal({ row, clientId, messagesEnabled, employeesEnabled, activeE
     Job: row.Job || "",
     EstimateDate: /^\d{4}-\d{2}-\d{2}$/.test(String(row.EstimateDate || "")) ? row.EstimateDate : "",
     EstimateTime: normalizeTimeForDate(row.EstimateTime),
-    Notes: row.Notes || "",
+    ClientNotes: row.ClientNotes || row.Notes || "",
+    BusinessNotes: row.BusinessNotes || "",
   });
   const initialForm = useRef(JSON.stringify(form));
   const closing = useRef(false);
@@ -148,6 +261,7 @@ function ClientModal({ row, clientId, messagesEnabled, employeesEnabled, activeE
       if (JSON.stringify(form) !== initialForm.current) {
         await setDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id), {
           ...form,
+          Notes: form.ClientNotes,
           PreferredDate: form.EstimateDate,
           PreferredTime: form.EstimateTime,
           ...leadContactFieldDeletionPatch(deleteField()),
@@ -166,11 +280,11 @@ function ClientModal({ row, clientId, messagesEnabled, employeesEnabled, activeE
       <button type="button" onClick={closeWithAutosave} aria-label="Back" title="Back" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black text-slate-900 shadow-sm">←</button>
       <h2 className="min-w-0 truncate text-2xl font-black sm:text-3xl">{form.Name || "Unnamed caller"}</h2>
     </div>
-    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Notes</span><textarea rows={5} value={form.Notes} onChange={(event) => setForm((current) => ({ ...current, Notes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
+    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span><textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label><label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span><textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
     <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
       <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>
       <button type="button" onClick={onAddContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>
-      <button type="button" onClick={() => onDate({ ...row, ...form })} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Confirm Date</button>
+      <button type="button" onClick={() => onDate({ ...row, ...form })} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add to Calendar</button>
       <button type="button" disabled={!canManageEmployees} onClick={onManageEmployee} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:bg-slate-200 disabled:text-slate-400">Manage Employee</button>
     </div>
   </Modal>;
@@ -261,13 +375,23 @@ export default function ReviewClientsNative() {
   }
 
   function openMessage(row) { router.push(`/lead-messages?lead=${encodeURIComponent(row.id)}&collection=${row.collectionKey}`); }
-  function addContact(row) { window.location.href = `tel:${String(row.Phone || "").replace(/[^+\d]/g, "")}`; }
-  function confirmDate(row) {
-    if (!downloadCalendar(row, businessName)) {
-      setNotice("Add an estimate date before confirming it.");
+  async function addContact(row) {
+    setError("");
+    const result = await saveContact(row, businessName);
+    if (!result.ok) {
+      setError(result.reason === "contacts-permission" ? "Allow contact access to save this client." : "Add a name or phone number before saving a contact.");
       return;
     }
-    setNotice("Calendar event created. Review it in your calendar app.");
+    setNotice(result.native ? "Contact added." : "Contact file downloaded. Open it to save the contact.");
+  }
+  async function confirmDate(row) {
+    setError("");
+    const result = await addCalendar(row, clientId, businessName);
+    if (!result.ok) {
+      setError(result.reason === "calendar-permission" ? "Allow calendar access to add this estimate." : "Add a valid estimate date before adding it to your calendar.");
+      return;
+    }
+    setNotice(result.native ? "Estimate added to your calendar." : "Calendar file downloaded. Open it to add the estimate.");
   }
   function manageEmployee(row) { const key = `${row.collectionKey}:${row.id}`; setViewing(null); setOpenAssignment(key); }
 

@@ -77,8 +77,6 @@ function SettingsSimplifier() {
       ["Business opens", "Business opening time"],
       ["Business closes", "Business closing time"],
       ["Service areas", "States and cities you service"],
-      ["Speech speed", "AI receptionist speech speed"],
-      ["Silence before replying", "Silence before AI replies"],
     ]);
     const cardDescriptions = new Map([
       ["Business Information", "Information the AI receptionist uses during calls."],
@@ -135,14 +133,10 @@ export default function SettingsPage() {
     .settings-layered > main a.bg-white, .settings-layered > main button.bg-white { background-color: #f8fafc !important; }
     .settings-layered > main > div > header > p { display: none !important; }
     .settings-layered > main > div > div > :is(a, button) + h2 + p { display: none !important; }
-    .settings-layered .settings-business-form > div > section:nth-child(2) > h3,
-    .settings-layered .settings-business-form > div > section:nth-child(2) > p,
-    .settings-layered .settings-ai-form > div > section:first-child > h3,
-    .settings-layered .settings-ai-form > div > section:first-child > p { display: none !important; }
+    .settings-layered .settings-business-form > div > section:first-child > h3,
+    .settings-layered .settings-business-form > div > section:first-child > p { display: none !important; }
     .settings-layered .settings-business-form label > span:last-child:not(:first-child),
-    .settings-layered .settings-ai-form label > span:last-child:not(:first-child),
     .settings-layered .settings-business-form p + p,
-    .settings-layered .settings-ai-form p + p,
     .settings-layered main form > section > p,
     .settings-layered main form label > span > span { display: none !important; }
     .settings-layered main form > button[type="submit"] { display: none !important; }

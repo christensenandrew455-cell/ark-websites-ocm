@@ -39,12 +39,6 @@ function servicesObject(value) {
   }).filter(([name]) => name));
 }
 
-function numberInRange(value, fallback, minimum, maximum) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(maximum, Math.max(minimum, number));
-}
-
 function profilePayload(clientId, business = {}, account = {}, settings = {}, connection = {}, configured = false) {
   return {
     configured,
@@ -67,8 +61,6 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     services: servicesObject(settings.services),
     about: list(settings.about),
     extraInformation: text(settings.extraInformation),
-    aiSpeechSpeed: numberInRange(settings.aiSpeechSpeed, 0.94, 0.25, 1.5),
-    aiSilenceMs: Math.round(numberInRange(settings.aiSilenceMs, 1200, 300, 3000)),
   };
 }
 
@@ -191,8 +183,6 @@ export async function POST(request) {
     services: servicesObject(body.services ?? current.services),
     about: list(body.about ?? current.about),
     extraInformation: text(body.extraInformation ?? current.extraInformation),
-    aiSpeechSpeed: numberInRange(body.aiSpeechSpeed, current.aiSpeechSpeed, 0.25, 1.5),
-    aiSilenceMs: Math.round(numberInRange(body.aiSilenceMs, current.aiSilenceMs, 300, 3000)),
   };
   if (access.isAdmin) {
     profile.enabled = body.enabled !== false;
@@ -230,8 +220,8 @@ export async function POST(request) {
     about: profile.about,
     extraInformation: profile.extraInformation,
     aiVoice: FieldValue.delete(),
-    aiSpeechSpeed: profile.aiSpeechSpeed,
-    aiSilenceMs: profile.aiSilenceMs,
+    aiSpeechSpeed: FieldValue.delete(),
+    aiSilenceMs: FieldValue.delete(),
     aiModel: FieldValue.delete(),
     openingLine: FieldValue.delete(),
     closingLine: FieldValue.delete(),

@@ -163,7 +163,7 @@ export async function GET(request) {
       ...document.data(),
     }));
 
-    const openRequests = requestSnapshot.docs
+    const unresolvedRequests = requestSnapshot.docs
       .map((document) => ({ id: document.id, ...document.data() }))
       .filter((item) => item.status === "new" || item.status === "in-progress")
       .map((item) => ({
@@ -171,13 +171,16 @@ export async function GET(request) {
         clientId: text(item.clientId),
         businessName: text(item.businessName || item.clientId),
         ownerName: text(item.ownerName || item.accountEmail),
-        type: item.type === "help" ? "help" : "change",
+        type: item.type === "website" || text(item.source) === "public-website" ? "website" : item.type === "help" ? "help" : "change",
+        source: text(item.source),
         subject: text(item.subject),
         message: text(item.message),
         status: text(item.status || "new"),
         createdAt: iso(item.createdAt),
       }))
       .sort((a, b) => timestamp(a.createdAt) - timestamp(b.createdAt));
+    const websiteRequests = unresolvedRequests.filter((item) => item.type === "website" || item.source === "public-website");
+    const openRequests = unresolvedRequests.filter((item) => item.type !== "website" && item.source !== "public-website");
 
     const pendingAccounts = accountSnapshot.docs
       .map((document) => ({ id: document.id, ...document.data() }))
@@ -219,6 +222,7 @@ export async function GET(request) {
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       openRequests,
+      websiteRequests,
       pendingAccounts,
       paymentIssues,
       deletionReview: paymentIssues.filter((item) => item.phase === "deletion-review"),
@@ -226,6 +230,7 @@ export async function GET(request) {
       counts: {
         customers: businesses.length,
         openRequests: openRequests.length,
+        websiteRequests: websiteRequests.length,
         pendingAccounts: pendingAccounts.length,
         needsPayment: paymentIssues.length,
         deletionReview: paymentIssues.filter((item) => item.phase === "deletion-review").length,

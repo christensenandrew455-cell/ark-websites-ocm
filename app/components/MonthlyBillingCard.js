@@ -65,12 +65,12 @@ export default function MonthlyBillingCard() {
         </div>
 
         <div className={`mt-4 grid gap-3 ${cardCount === 3 ? "sm:grid-cols-3" : cardCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-1"}`}>
-          <UsageCard href="/?section=contacted" label="Contacted You" count={summary?.callCount ?? 0} unitCents={summary?.perCallCents ?? 200} totalCents={summary?.callUsageCents ?? 0} detail="AI receptionist calls and new leads" loading={loading} />
-          {summary?.messagesEnabled && <UsageCard href="/lead-messages" label="Messages" count={summary?.messageCount ?? 0} unitCents={summary?.perMessageConversationCents ?? 100} totalCents={summary?.messageUsageCents ?? 0} detail="new lead conversations" loading={loading} />}
+          <UsageCard href="/?section=contacted" label="Receptionist Calls" count={summary?.callCount ?? 0} unitCents={summary?.perCallCents ?? 200} totalCents={summary?.callUsageCents ?? 0} detail="AI receptionist calls" loading={loading} />
+          {summary?.messagesEnabled && <UsageCard href="/lead-messages" label="SMS Bundles" count={summary?.messageBundleCount ?? 0} unitCents={summary?.perMessageBundleCents ?? 100} totalCents={summary?.messageUsageCents ?? 0} detail={`${summary?.messagePartCount ?? 0} message parts · 50 per bundle`} loading={loading} />}
           {summary?.employeesEnabled && <UsageCard href="/employees" label="Employees" count={summary?.employeeCount ?? 0} unitCents={summary?.perEmployeeCents ?? 500} totalCents={summary?.employeeUsageCents ?? 0} detail="active employee accounts" loading={loading} />}
         </div>
 
-        {!loading && <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">Your account is $50 per month, plus $2 for each AI receptionist call or lead. Messages are $1 per new lead conversation, and active employees are $5 each when those features are enabled.</p>}
+        {!loading && <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">Your account is $50 per month, plus $2 per AI receptionist call, $1 per 50 SMS message parts, and $5 per active approved employee account.</p>}
         {error && <p className="mt-3 text-xs font-bold text-red-700">{error}</p>}
       </div>
     </section>

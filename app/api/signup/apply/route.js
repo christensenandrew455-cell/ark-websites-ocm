@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
+import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import {
   BILLING_VERSION,
   MONTHLY_BASE_CENTS,
@@ -54,6 +55,8 @@ export async function POST(request) {
 
     const auth = getAdminAuth();
     const db = getAdminDb();
+    const rateLimit = await checkRequestRateLimit({ db, request, scope: "owner-signup", limit: 5, windowMs: 60 * 60 * 1000 });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
     const businessRef = db.collection("businesses").doc(clientId);
     const registryRef = db.collection("businessNameRegistry").doc(clientId);
     const [existingBusiness, existingRegistry, existingUser] = await Promise.all([

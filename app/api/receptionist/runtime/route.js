@@ -35,12 +35,6 @@ function servicesObject(value) {
   }).filter(([name]) => name));
 }
 
-function numberInRange(value, fallback, minimum, maximum) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(maximum, Math.max(minimum, parsed));
-}
-
 function telnyxSignatureMatches(request, rawBody) {
   const configuredKey = text(process.env.TELNYX_PUBLIC_KEY);
   const signature = text(request.headers.get("telnyx-signature-ed25519"));
@@ -122,8 +116,6 @@ function buildProfile(clientId, business, account, settings, connection) {
     services,
     about: list(settings.about),
     extraInformation: text(settings.extraInformation),
-    aiSpeechSpeed: numberInRange(settings.aiSpeechSpeed, 0.94, 0.25, 1.5),
-    aiSilenceMs: Math.round(numberInRange(settings.aiSilenceMs, 1200, 300, 3000)),
   };
 }
 

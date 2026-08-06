@@ -2,15 +2,12 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
-import { deleteLeadConversation } from "../../../../lib/messageRetention";
 import {
   ARK_SUPPORT_URL,
   helpConfirmationMessage,
   messagingKeyword,
   optInKeywordConfirmationMessage,
-  optOutCanceledMessage,
   optOutConfirmationMessage,
-  optOutRequestMessage,
 } from "../../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../../lib/smsParts";
 import { sendInboundMessageNotification } from "../../../../lib/messageNotificationService";
@@ -31,6 +28,9 @@ function normalizePhone(value) {
 function conversationId(clientId, collectionKey, leadId) {
   return createHash("sha256").update(`${clientId}:${collectionKey}:${leadId}`).digest("hex").slice(0, 48);
 }
+function inboundEventId(clientId, providerMessageId) {
+  return createHash("sha256").update(`${clientId}:${providerMessageId}`).digest("hex").slice(0, 48);
+}
 function secretMatches(request) {
   const expected = text(process.env.ARK_MESSAGING_INBOUND_SECRET);
   if (!expected) return false;
@@ -44,6 +44,8 @@ function telnyxSignatureMatches(request, rawBody) {
   const timestamp = text(request.headers.get("telnyx-timestamp"));
   if (!configuredKey || !signature || !timestamp) return false;
   try {
+    const timestampSeconds = Number(timestamp);
+    if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300) return false;
     const key = configuredKey.includes("BEGIN PUBLIC KEY")
       ? createPublicKey(configuredKey.replaceAll("\\n", "\n"))
       : createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(configuredKey, "base64")]), format: "der", type: "spki" });
@@ -184,37 +186,11 @@ export async function POST(request) {
     const businessName = text(business.businessName || business.name) || "the business";
     const keyword = messagingKeyword(event.messageBody);
     const conversation = resolved.conversation;
-    const pendingOptOut = conversation.messagingOptOutPending === true;
-
-    if (keyword === "confirm" && pendingOptOut) {
-      const auditRef = db.collection("messagingComplianceEvents").doc();
-      await auditRef.set({
-        clientId,
-        businessName,
-        conversationId: resolved.conversationId,
-        leadId: conversation.leadId || null,
-        leadName: conversation.leadName || null,
-        reporterPhone: event.fromPhone,
-        businessPhone: event.toPhone || null,
-        keyword: "confirm-stop",
-        originalMessage: event.messageBody,
-        expectedTelnyxAutoResponse: optOutConfirmationMessage(businessName),
-        status: "confirmed-and-deleted",
-        source: "telnyx-keyword",
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      const leadId = text(conversation.leadId);
-      const collectionKey = conversation.collectionKey === "clients" ? "clients" : "contactedMe";
-      if (leadId) await root.collection(collectionKey).doc(leadId).delete().catch(() => null);
-      await deleteLeadConversation(db, root, resolved.ref);
-      return NextResponse.json({ ok: true, clientId, conversationId: resolved.conversationId, keyword: "confirm", optedOut: true, deleted: true });
-    }
-
-    const messageRef = resolved.ref.collection("messages").doc();
-    const batch = db.batch();
+    const eventKey = event.providerMessageId ? inboundEventId(clientId, event.providerMessageId) : "";
+    const inboundIndexRef = eventKey ? root.collection("telnyxInboundMessageIndex").doc(eventKey) : null;
+    const messageRef = eventKey ? resolved.ref.collection("messages").doc(`inbound-${eventKey}`) : resolved.ref.collection("messages").doc();
     const parts = smsPartCount(event.messageBody);
-    batch.set(messageRef, {
+    const messageData = {
       direction: "inbound",
       body: event.messageBody,
       senderName: event.senderName || conversation.leadName || event.fromPhone,
@@ -227,44 +203,41 @@ export async function POST(request) {
       providerTo: event.toPhone || null,
       deliveryStatus: "received",
       createdAt: FieldValue.serverTimestamp(),
-    });
+    };
 
     const compliancePatch = keyword === "stop"
-      ? { messagingOptOutPending: true, messagingOptOutRequestedAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "STOP" }
+      ? { messagingOptOutPending: false, messagingOptedOut: true, messagingOptedOutAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "STOP" }
       : keyword === "start"
         ? { messagingOptOutPending: false, messagingOptedOut: false, messagingOptedInAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "START" }
         : keyword === "help"
           ? { supportRequestedAt: FieldValue.serverTimestamp(), lastComplianceKeyword: "HELP" }
-          : keyword === "cancel" && pendingOptOut
-            ? { messagingOptOutPending: false, lastComplianceKeyword: "CANCEL" }
-            : {};
+          : {};
 
-    batch.set(resolved.ref, {
+    const conversationUpdate = {
       ...conversation,
       businessPhone: event.toPhone || conversation.businessPhone || null,
       smsParts: FieldValue.increment(parts),
       lastMessage: event.messageBody,
       lastMessageDirection: "inbound",
       lastMessageAt: FieldValue.serverTimestamp(),
-      ownerUnreadCount: keyword ? Number(conversation.ownerUnreadCount || 0) : FieldValue.increment(1),
-      ...(!keyword && text(conversation.assignedEmployeeUid) ? { employeeUnreadCount: FieldValue.increment(1) } : {}),
       ...compliancePatch,
       updatedAt: FieldValue.serverTimestamp(),
-      ...(resolved.created ? { createdAt: FieldValue.serverTimestamp(), ownerUnreadCount: keyword ? 0 : 1, employeeUnreadCount: !keyword && text(conversation.assignedEmployeeUid) ? 1 : 0 } : {}),
-    }, { merge: true });
+    };
 
+    let complianceEventRef = null;
+    let complianceEventData = null;
     if (keyword) {
-      const eventRef = db.collection("messagingComplianceEvents").doc();
+      complianceEventRef = eventKey
+        ? db.collection("messagingComplianceEvents").doc(eventKey)
+        : db.collection("messagingComplianceEvents").doc();
       const expectedResponse = keyword === "stop"
-        ? optOutRequestMessage(businessName)
+        ? optOutConfirmationMessage(businessName)
         : keyword === "start"
           ? optInKeywordConfirmationMessage(businessName)
-          : keyword === "cancel" && pendingOptOut
-            ? optOutCanceledMessage(businessName)
-            : keyword === "help"
+          : keyword === "help"
               ? helpConfirmationMessage()
               : "";
-      batch.set(eventRef, {
+      complianceEventData = {
         clientId,
         businessName,
         conversationId: resolved.conversationId,
@@ -276,14 +249,44 @@ export async function POST(request) {
         originalMessage: event.messageBody,
         expectedTelnyxAutoResponse: expectedResponse,
         supportUrl: keyword === "help" ? ARK_SUPPORT_URL : null,
-        status: keyword === "help" ? "open" : "recorded",
+        status: keyword === "help" ? "open" : keyword === "stop" ? "opted-out" : "recorded",
         source: "telnyx-keyword",
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
     }
 
-    await batch.commit();
+    const duplicate = await db.runTransaction(async (transaction) => {
+      const [latestConversation, existingEvent] = await Promise.all([
+        transaction.get(resolved.ref),
+        inboundIndexRef ? transaction.get(inboundIndexRef) : Promise.resolve(null),
+      ]);
+      if (existingEvent?.exists) return true;
+      const latestData = latestConversation.exists ? latestConversation.data() : {};
+      const assignedEmployeeUid = text(latestData.assignedEmployeeUid || conversation.assignedEmployeeUid);
+      transaction.set(messageRef, messageData);
+      transaction.set(resolved.ref, {
+        ...conversationUpdate,
+        ...(!keyword ? { ownerUnreadCount: Number(latestData.ownerUnreadCount || 0) + 1 } : {}),
+        ...(!keyword && assignedEmployeeUid ? { employeeUnreadCount: Number(latestData.employeeUnreadCount || 0) + 1 } : {}),
+        ...(!latestConversation.exists ? {
+          createdAt: FieldValue.serverTimestamp(),
+          ownerUnreadCount: keyword ? 0 : 1,
+          employeeUnreadCount: !keyword && assignedEmployeeUid ? 1 : 0,
+        } : {}),
+      }, { merge: true });
+      if (complianceEventRef && complianceEventData) transaction.set(complianceEventRef, complianceEventData);
+      if (inboundIndexRef) {
+        transaction.set(inboundIndexRef, {
+          providerMessageId: event.providerMessageId,
+          conversationId: resolved.conversationId,
+          messageId: messageRef.id,
+          receivedAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return false;
+    });
+    if (duplicate) return NextResponse.json({ ok: true, duplicate: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, keyword: keyword || null });
     let notification = { attempted: 0, sent: 0, failed: 0 };
     if (!keyword) {
       try {

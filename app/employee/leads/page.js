@@ -25,7 +25,8 @@ function ClientCard({ client, messagingEnabled }) {
         <Detail label="Requested work" value={client.job} />
         <Detail label="Requested date" value={client.requestedDate} />
         <Detail label="Requested time" value={client.requestedTime} />
-        <Detail label="Notes" value={client.notes} wide />
+        <Detail label="Client Notes" value={client.clientNotes} wide />
+        <Detail label="Business Notes" value={client.businessNotes} wide />
       </div>
     </article>
   );

@@ -102,7 +102,7 @@ export default function ClientStats() {
         <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5">
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
             <DashboardCard value={newLeads} label="Leads" description="Accept new leads and view your clients." onClick={() => router.push("/leads")} />
-            <DashboardCard value={unreadMessages} label="Messages" description="Text clients from your private number." disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
+            <DashboardCard value={unreadMessages} label="Messages" description="Text clients from your dedicated business number." disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
             <DashboardCard value={pendingEmployees} label="Employees" description="Manage your employees." disabled={profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", profile?.employeesEnabled === true, "/employees")} />
           </div>
         </section>

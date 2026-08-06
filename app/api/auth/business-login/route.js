@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
+import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
 const OWNER_STATUSES = new Set(["approved_pending_payment", "active", "disabled"]);
@@ -23,6 +24,8 @@ export async function POST(request) {
     if (!normalizedIdentifier || !password) return NextResponse.json({ error: "Enter the required sign-in information." }, { status: 400 });
 
     const db = getAdminDb();
+    const rateLimit = await checkRequestRateLimit({ db, request, scope: "business-login", limit: 20, windowMs: 10 * 60 * 1000 });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
     let email = normalizedIdentifier.toLowerCase();
     let resolvedBusiness = null;
     if (!email.includes("@")) {

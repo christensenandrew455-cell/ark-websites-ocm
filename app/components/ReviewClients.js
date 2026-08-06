@@ -21,6 +21,7 @@ function firstValue(...values) {
 }
 
 function normalizeRow(id, data, collectionKey) {
+  const ClientNotes = firstValue(data.ClientNotes, data.clientNotes, data.Notes, data.notes, data.message);
   return {
     ...data,
     id,
@@ -30,7 +31,9 @@ function normalizeRow(id, data, collectionKey) {
     Email: firstValue(data.Email, data.email),
     Address: firstValue(data.Address, data.address),
     Job: firstValue(data.Job, data.job, data.service, data.projectType),
-    Notes: firstValue(data.Notes, data.notes, data.message),
+    ClientNotes,
+    BusinessNotes: firstValue(data.BusinessNotes, data.businessNotes),
+    Notes: ClientNotes,
     EstimateDate: firstValue(data.EstimateDate, data.estimateDate, data.PreferredDay, data.preferredDay, data.estimateDay),
     EstimateTime: firstValue(data.EstimateTime, data.estimateTime, data.PreferredTime, data.preferredTime),
   };
@@ -102,7 +105,8 @@ function calendarDescription(row) {
     row.Job && `Job: ${row.Job}`,
     row.Phone && `Phone: ${row.Phone}`,
     row.Email && `Email: ${row.Email}`,
-    row.Notes && `Notes: ${row.Notes}`,
+    row.ClientNotes && `Client notes: ${row.ClientNotes}`,
+    row.BusinessNotes && `Business notes: ${row.BusinessNotes}`,
   ].filter(Boolean).join("\n");
 }
 
@@ -206,7 +210,7 @@ async function addContact(row, businessName) {
           company: businessName,
           jobTitle: "Client",
         },
-        note: [row.Job && `Requested service: ${row.Job}`, row.Notes].filter(Boolean).join("\n") || null,
+        note: [row.Job && `Requested service: ${row.Job}`, row.ClientNotes && `Client notes: ${row.ClientNotes}`, row.BusinessNotes && `Business notes: ${row.BusinessNotes}`].filter(Boolean).join("\n") || null,
         phones: row.Phone ? [{ type: "mobile", number: row.Phone, isPrimary: true }] : [],
         emails: row.Email ? [{ type: "work", address: row.Email, isPrimary: true }] : [],
         postalAddresses: row.Address ? [{ type: "work", street: row.Address, isPrimary: true }] : [],
@@ -283,7 +287,8 @@ function ViewModal({ row, onClose }) {
         <Detail label="Job type" value={row.Job} />
         <Detail label="Estimate date" value={row.EstimateDate} />
         <Detail label="Estimate time" value={row.EstimateTime} />
-        <Detail label="Notes" value={row.Notes} wide />
+        <Detail label="Client Notes" value={row.ClientNotes} wide />
+        <Detail label="Business Notes" value={row.BusinessNotes} wide />
       </div>
     </Modal>
   );
@@ -298,7 +303,8 @@ function EditModal({ row, clientId, onClose, onSaved }) {
     Job: row.Job || "",
     EstimateDate: row.EstimateDate || "",
     EstimateTime: row.EstimateTime || "",
-    Notes: row.Notes || "",
+    ClientNotes: row.ClientNotes || row.Notes || "",
+    BusinessNotes: row.BusinessNotes || "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -314,6 +320,7 @@ function EditModal({ row, clientId, onClose, onSaved }) {
     try {
       await setDoc(doc(db, "ocmClients", clientId, row.collectionKey || "clients", row.id), {
         ...form,
+        Notes: form.ClientNotes,
         updatedAt: serverTimestamp(),
       }, { merge: true });
       onSaved();
@@ -353,8 +360,12 @@ function EditModal({ row, clientId, onClose, onSaved }) {
             </label>
           ))}
           <label className="col-span-2">
-            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Notes</span>
-            <textarea rows={3} value={form.Notes} onChange={(event) => update("Notes", event.target.value)} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" />
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Client Notes</span>
+            <textarea rows={3} value={form.ClientNotes} onChange={(event) => update("ClientNotes", event.target.value)} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" />
+          </label>
+          <label className="col-span-2">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Business Notes</span>
+            <textarea rows={3} value={form.BusinessNotes} onChange={(event) => update("BusinessNotes", event.target.value)} className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" />
           </label>
           {error && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         </div>

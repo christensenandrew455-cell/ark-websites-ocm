@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
+import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -31,6 +32,8 @@ export async function POST(request) {
 
     const auth = getAdminAuth();
     const db = getAdminDb();
+    const rateLimit = await checkRequestRateLimit({ db, request, scope: "employee-signup", limit: 8, windowMs: 60 * 60 * 1000 });
+    if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
     const registrySnapshot = await db.collection("businessNameRegistry").doc(requestedBusinessKey).get();
     const clientId = normalizeClientId(registrySnapshot.exists ? registrySnapshot.data().clientId : requestedBusinessKey);
     const businessRef = db.collection("businesses").doc(clientId);
