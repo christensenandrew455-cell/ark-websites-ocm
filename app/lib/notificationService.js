@@ -92,7 +92,7 @@ async function sendToDevices(devices, message) {
   return results;
 }
 
-async function notificationDevices(db, clientId, { ownerOnly = false } = {}) {
+async function notificationDevices(db, clientId, { ownerOnly = false, uid = "" } = {}) {
   const snapshot = await db
     .collection("ocmClients")
     .doc(clientId)
@@ -102,7 +102,8 @@ async function notificationDevices(db, clientId, { ownerOnly = false } = {}) {
   return snapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token))
-    .filter((device) => !ownerOnly || text(device.role) === "customer");
+    .filter((device) => !ownerOnly || text(device.role) === "customer")
+    .filter((device) => !uid || text(device.uid) === uid);
 }
 
 async function recordLeadDelivery(db, clientId, leadId, summary) {
@@ -299,26 +300,31 @@ export async function sendUnreadLeadReminders(db) {
   return { attempted, sent, failed };
 }
 
-export async function sendRequestStatusNotification({ db, clientId, requestId, subject, status, adminNote }) {
-  const devices = await notificationDevices(db, clientId);
+export async function sendRequestStatusNotification({ db, clientId, requestId, subject, status, adminNote, recipientUid = "" }) {
+  const devices = await notificationDevices(db, clientId, { uid: recipientUid });
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
   const safeSubject = text(subject || "Your request");
   const safeNote = text(adminNote).slice(0, 220);
-  const copy = status === "in-progress"
+  const copy = status === "reply"
     ? {
+        title: "ARK replied to your help request",
+        body: safeNote || `ARK replied to ${safeSubject}. Open the app to read it.`,
+      }
+    : status === "in-progress"
+      ? {
         title: "Your request has started",
         body: safeNote || `${safeSubject} is now being worked on.`,
-      }
-    : status === "completed"
-      ? {
+        }
+      : status === "completed"
+        ? {
           title: "Your request is complete",
           body: safeNote || `${safeSubject} has been completed.`,
-        }
-      : {
+          }
+        : {
           title: "Your request was denied",
           body: safeNote || `${safeSubject} could not be approved. Open the app for details.`,
-        };
+          };
 
   const results = await sendToDevices(devices, {
     notification: copy,

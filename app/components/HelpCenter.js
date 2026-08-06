@@ -22,6 +22,7 @@ export default function HelpCenter() {
   const pathname = usePathname();
   const { user } = useAuth();
   const storageKey = useMemo(() => user?.uid ? `ark-help-chat:${user.uid}` : "", [user?.uid]);
+  const selfHelpKey = useMemo(() => user?.uid ? `ark-help-self-service:${user.uid}` : "", [user?.uid]);
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [expiresAt, setExpiresAt] = useState(0);
@@ -107,6 +108,7 @@ export default function HelpCenter() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "AI help is unavailable right now.");
       setMessages((current) => [...current, makeMessage("assistant", data.answer, data.links || [])]);
+      if (selfHelpKey) localStorage.setItem(selfHelpKey, String(Date.now()));
     } catch (requestError) {
       setError(requestError.message || "AI help is unavailable right now.");
     } finally {
@@ -133,9 +135,9 @@ export default function HelpCenter() {
             <p className="text-lg font-black">Ask AI</p>
             <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Ask how to use ARK Client Center and receive direct page links.</p>
           </button>
-          <Link href="/messages" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-400">
-            <p className="text-lg font-black">Send a Message</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Submit a problem, question, or billing issue.</p>
+          <Link href="/messages" className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm hover:border-amber-500">
+            <p className="text-lg font-black">Contact Support</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-amber-900">For billing, account, or technical problems that Docs and Ask AI did not solve.</p>
           </Link>
         </section>
       </div>

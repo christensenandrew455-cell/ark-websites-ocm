@@ -185,6 +185,8 @@ export default function WebsiteRequestsPage() {
                   {item.senderNumber && <div className="sm:col-span-2"><dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">Number reported</dt><dd className="mt-1"><ContactLink href={`tel:${item.senderNumber}`}>{item.senderNumber}</ContactLink></dd></div>}
                 </dl>
 
+                {(item.contactEmail || item.contactPhone) && <div className="mt-3 grid gap-2 sm:grid-cols-2">{item.contactEmail && <a href={`mailto:${item.contactEmail}?subject=${encodeURIComponent(`ARK support: ${item.subject}`)}`} className="rounded-xl bg-slate-950 px-4 py-3 text-center text-xs font-black text-white">Email Visitor</a>}{item.contactPhone && <a href={`sms:${item.contactPhone}`} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-center text-xs font-black text-slate-800">Text Visitor</a>}</div>}
+
                 <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Request</p><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{item.message}</p></div>
 
                 {item.attachment && <button type="button" disabled={attachmentBusy === item.id} onClick={() => downloadAttachment(item)} className="mt-4 flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white p-3 text-left text-sm font-black text-slate-800 disabled:opacity-50"><span className="min-w-0 truncate">{attachmentBusy === item.id ? "Opening screenshot…" : `Download screenshot · ${item.attachment.fileName}`}</span><span className="shrink-0 text-xs text-slate-400">{formatBytes(item.attachment.size)}</span></button>}
