@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   collection,
-  deleteDoc,
   deleteField,
   doc,
   onSnapshot,
@@ -349,14 +348,44 @@ export default function ReviewClientsNative() {
   }
 
   async function remove(row) {
-    if (!row || busy) return;
+    if (!row || !user || busy) return;
     setBusy(`delete:${row.id}`);
+    setNotice("");
+    setError("");
     try {
-      await deleteDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id));
-      setNotice(`${row.Name || "Record"} was deleted.`);
+      const token = await user.getIdToken(true);
+      let declineResult = null;
+
+      if (row.collectionKey === "contactedMe") {
+        const declineResponse = await fetch("/api/business/leads/client-decline-notice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ leadId: row.id, name: row.Name, phone: row.Phone }),
+        });
+        declineResult = await declineResponse.json().catch(() => ({}));
+        if (!declineResponse.ok) throw new Error(declineResult.error || "Could not send the client decline notice.");
+      }
+
+      const deleteResponse = await fetch("/api/business/clients/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ leadId: row.id, collectionKey: row.collectionKey }),
+      });
+      const deleteResult = await deleteResponse.json().catch(() => ({}));
+      if (!deleteResponse.ok) throw new Error(deleteResult.error || "Could not delete this record.");
+
+      if (row.collectionKey === "contactedMe" && declineResult?.sent === false && !declineResult?.skipped && !declineResult?.duplicate) {
+        setNotice(`${row.Name || "Record"} was deleted, but the decline text could not be sent.`);
+      } else {
+        setNotice(`${row.Name || "Record"} was deleted.`);
+      }
       if (viewing?.id === row.id) setViewing(null);
       setPendingDelete(null);
-    } catch { setError("Something went wrong."); } finally { setBusy(""); }
+    } catch (removeError) {
+      setError(removeError.message || "Something went wrong.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function assignEmployee(row, employeeUid) {
