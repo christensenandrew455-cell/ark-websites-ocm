@@ -11,12 +11,14 @@ export async function sendInboundMessageNotification({ db, clientId, conversatio
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   if (business.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };
 
-  const recipients = new Set([text(business.ownerUid)].filter(Boolean));
   const assignedEmployeeUid = text(conversation.assignedEmployeeUid);
-  if (business.employeesEnabled === true && business.employeeMessagingEnabled === true && assignedEmployeeUid) recipients.add(assignedEmployeeUid);
+  const notifyAssignedEmployee = business.employeesEnabled === true && business.employeeMessagingEnabled === true && assignedEmployeeUid;
 
   const devicesSnapshot = await db.collection("ocmClients").doc(clientId).collection("notificationDevices").get();
-  const devices = devicesSnapshot.docs.map((document) => ({ ref: document.ref, ...document.data() })).filter((device) => device.notificationsEnabled !== false && text(device.token) && recipients.has(text(device.uid)));
+  const devices = devicesSnapshot.docs
+    .map((document) => ({ ref: document.ref, ...document.data() }))
+    .filter((device) => device.notificationsEnabled !== false && text(device.token))
+    .filter((device) => text(device.role) === "customer" || (notifyAssignedEmployee && text(device.uid) === assignedEmployeeUid));
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
   const leadName = text(conversation.leadName) || "A customer";
