@@ -4,7 +4,6 @@ import { Capacitor } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import {
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   serverTimestamp,
@@ -520,22 +519,36 @@ export default function ReviewClients() {
 
   async function removeRow(row) {
     const label = row.Name || row.Address || "this record";
-    if (!window.confirm(`Delete ${label}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete ${label}? This removes the client, assigned employee connection, conversation, and messages. This cannot be undone.`)) return;
 
     const key = `delete:${row.collectionKey}:${row.id}`;
-    if (!clientId || busy.has(key)) return;
+    if (!clientId || !user || busy.has(key)) return;
     markBusy(key, true);
     setNotice("");
     setError("");
 
     try {
-      await deleteDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id));
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/business/clients/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          leadId: row.id,
+          collectionKey: row.collectionKey,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Could not delete ${label}.`);
+
       if (viewing?.id === row.id) setViewing(null);
       if (editing?.id === row.id) setEditing(null);
-      setNotice(`${label} was deleted.`);
+      setNotice(`${label} and its connected messages were deleted.`);
     } catch (deleteError) {
       console.error(deleteError);
-      setError(`Could not delete ${label}.`);
+      setError(deleteError.message || `Could not delete ${label}.`);
     } finally {
       markBusy(key, false);
     }
@@ -591,7 +604,7 @@ export default function ReviewClients() {
                       <button type="button" disabled={accepting} onClick={() => acceptLead(row, false)} className="rounded-lg bg-slate-950 px-2 py-2 text-[11px] font-black text-white disabled:opacity-50">Accept</button>
                       <button type="button" disabled={accepting} onClick={() => acceptLead(row, true)} className="rounded-lg bg-green-700 px-2 py-2 text-[11px] font-black text-white disabled:opacity-50">Accept + Contact</button>
                       <button type="button" onClick={() => setViewing(row)} className="rounded-lg border border-slate-300 px-2 py-2 text-[11px] font-black">View</button>
-                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">Delete</button>
+                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">{deleting ? "Deleting…" : "Delete"}</button>
                     </div>
                   </article>
                 );
@@ -624,7 +637,7 @@ export default function ReviewClients() {
                     <div className="flex shrink-0 gap-1.5">
                       <button type="button" onClick={() => setViewing(row)} className="rounded-lg border border-slate-300 px-2.5 py-2 text-[11px] font-black">View</button>
                       <button type="button" onClick={() => setEditing(row)} className="rounded-lg bg-slate-950 px-2.5 py-2 text-[11px] font-black text-white">Edit</button>
-                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2.5 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">Delete</button>
+                      <button type="button" disabled={deleting} onClick={() => removeRow(row)} className="rounded-lg border border-red-300 px-2.5 py-2 text-[11px] font-black text-red-700 disabled:opacity-50">{deleting ? "Deleting…" : "Delete"}</button>
                     </div>
                   </article>
                 );
