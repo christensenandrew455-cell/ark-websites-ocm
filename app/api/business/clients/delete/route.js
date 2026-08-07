@@ -35,6 +35,15 @@ async function deleteConversation(db, root, clientId, collectionKey, leadId) {
   await conversationRef.delete();
 }
 
+async function deleteLeadConversations(db, root, leadId) {
+  const snapshot = await root.collection("leadConversations").where("leadId", "==", leadId).get();
+  for (const document of snapshot.docs) {
+    await deleteQuery(db, document.ref.collection("messages"));
+    await deleteQuery(db, root.collection("telnyxMessageIndex").where("conversationId", "==", document.id));
+    await document.ref.delete();
+  }
+}
+
 export async function POST(request) {
   const user = await requireUser(request);
   if (user.response) return user.response;
@@ -72,6 +81,8 @@ export async function POST(request) {
     if (!recordSnapshot.exists) {
       return NextResponse.json({ error: "That client no longer exists." }, { status: 404 });
     }
+
+    await deleteLeadConversations(db, root, leadId);
 
     const conversationCollections = collectionKey === "contactedMe"
       ? ["contactedMe"]
