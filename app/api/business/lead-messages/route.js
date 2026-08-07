@@ -93,6 +93,39 @@ async function loadAvailableLeads(access) {
   return snapshots.flatMap((snapshot, index) => snapshot.docs.map((document) => normalizeLead(document, collections[index]))).sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)));
 }
 
+async function deleteQuery(db, query) {
+  while (true) {
+    const snapshot = await query.limit(400).get();
+    if (snapshot.empty) return;
+    const batch = db.batch();
+    snapshot.docs.forEach((document) => batch.delete(document.ref));
+    await batch.commit();
+  }
+}
+
+async function purgeOrphanConversations(access) {
+  const root = access.db.collection("ocmClients").doc(access.clientId);
+  const [contactedSnapshot, clientSnapshot, conversationSnapshot] = await Promise.all([
+    root.collection("contactedMe").get(),
+    root.collection("clients").get(),
+    root.collection("leadConversations").get(),
+  ]);
+  const activeLeadIds = new Set([
+    ...contactedSnapshot.docs.map((document) => document.id),
+    ...clientSnapshot.docs.map((document) => document.id),
+  ]);
+  const orphaned = conversationSnapshot.docs.filter((document) => {
+    const leadId = text(document.data().leadId);
+    return !leadId || !activeLeadIds.has(leadId);
+  });
+  for (const document of orphaned) {
+    await deleteQuery(access.db, document.ref.collection("messages"));
+    await deleteQuery(access.db, root.collection("telnyxMessageIndex").where("conversationId", "==", document.id));
+    await document.ref.delete();
+  }
+  return orphaned.length;
+}
+
 async function loadConversations(access) {
   const ref = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations");
   const snapshot = access.isEmployee ? await ref.where("assignedEmployeeUid", "==", access.decoded.uid).get() : await ref.get();
@@ -142,6 +175,7 @@ export async function GET(request) {
     const url = new URL(request.url);
     const selectedLeadId = text(url.searchParams.get("lead"));
     const selectedCollection = url.searchParams.get("collection") === "clients" ? "clients" : "contactedMe";
+    if (!access.isEmployee) await purgeOrphanConversations(access);
     const [availableLeads, conversations] = await Promise.all([loadAvailableLeads(access), loadConversations(access)]);
     let selectedConversation = null;
     let messages = [];
