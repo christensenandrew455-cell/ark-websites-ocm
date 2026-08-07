@@ -126,7 +126,7 @@ export default function EmployeeAccessSettings({ onBack = () => {}, embedded = f
       <input type="checkbox" disabled={!workspace?.messagesEnabled} checked={employeeMessagingEnabled} onChange={(event) => updateMessaging(event.target.checked)} className="h-5 w-5 accent-slate-950" />
     </label>
 
-    <p className={`mt-6 ${FIELD_LABEL_CLASS}`}>Lead information</p>
+    <p className={`mt-6 ${FIELD_LABEL_CLASS}`}>Shown information for employees</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       {Object.entries(VISIBILITY_LABELS).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3"><span className={FIELD_LABEL_CLASS}>{label}</span><input type="checkbox" checked={visibility[key] === true} onChange={(event) => updateVisibility(key, event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>)}
     </div>
