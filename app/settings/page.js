@@ -3,6 +3,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import ClientDeclineNoticeSettings from "../components/ClientDeclineNoticeSettings";
 import SettingsPanel from "../components/SettingsPanel";
 import { useAuth } from "../components/AuthProvider";
 
@@ -141,5 +142,5 @@ export default function SettingsPage() {
     .settings-layered main form label > span > span { display: none !important; }
     .settings-layered main form > button[type="submit"] { display: none !important; }
     @media (min-width: 640px) { .settings-layered > main > div > .space-y-3 { padding: 1.25rem; } }
-  `}</style><SettingsPanel /><SettingsBillingEstimate /><SettingsSimplifier /></div>;
+  `}</style><SettingsPanel /><SettingsBillingEstimate /><ClientDeclineNoticeSettings /><SettingsSimplifier /></div>;
 }
