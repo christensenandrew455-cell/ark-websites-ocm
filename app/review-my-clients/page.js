@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useBillingStatus } from "../components/BillingStatusProvider";
+import ClientDeclineNoticeWatcher from "../components/ClientDeclineNoticeWatcher";
 import ReviewClientsNative from "../components/ReviewClientsNative";
 
 export default function ReviewMyClientsPage() {
@@ -20,6 +21,7 @@ export default function ReviewMyClientsPage() {
   return (
     <div className="review-clients-shell">
       <style>{`.review-clients-shell > main > div > nav:first-child { display: none; }`}</style>
+      <ClientDeclineNoticeWatcher />
       <ReviewClientsNative />
     </div>
   );
