@@ -22,6 +22,16 @@ body {
 }
 
 /*
+ * Pull-to-refresh clips horizontal overflow without becoming a vertical
+ * scroll container. Using overflow-x:hidden here causes the workspace
+ * header's position:sticky to attach to the wrapper instead of the page in
+ * mobile WebViews, which lets the header scroll away.
+ */
+.relative.min-h-screen.overflow-x-hidden {
+  overflow-x: clip !important;
+}
+
+/*
  * Keep the iPhone status-bar and Dynamic Island safe area a solid color.
  * Page content starts below it and can never scroll behind the camera area.
  * On devices without a top safe area, the inset is zero and this changes nothing.
