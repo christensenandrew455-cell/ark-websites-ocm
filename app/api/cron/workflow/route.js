@@ -1,11 +1,25 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessNow, isDateDue } from "../../../lib/businessTime";
+import { sendEstimateRequestStatusNotice } from "../../../lib/estimateRequestStatusNotice";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const LEGACY_CLIENT_ID = "tabor-painting";
+const ESTIMATE_REQUEST_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+
+function text(value) {
+  return String(value || "").trim();
+}
+
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (Number.isFinite(value.seconds)) return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 function authorized(request) {
   const secret = process.env.CRON_SECRET;
@@ -28,9 +42,45 @@ function safeWorkflowError(error) {
   return "Workflow check failed. Review the Vercel function logs for /api/cron/workflow.";
 }
 
-async function listActiveClientIds(db) {
+async function listActiveBusinesses(db) {
   const snapshot = await db.collection("businesses").where("status", "==", "active").get();
-  return [...new Set([LEGACY_CLIENT_ID, ...snapshot.docs.map((documentSnapshot) => documentSnapshot.id)])];
+  const businesses = new Map(snapshot.docs.map((documentSnapshot) => [documentSnapshot.id, documentSnapshot.data()]));
+  if (!businesses.has(LEGACY_CLIENT_ID)) {
+    const legacy = await db.collection("businesses").doc(LEGACY_CLIENT_ID).get();
+    if (legacy.exists) businesses.set(LEGACY_CLIENT_ID, legacy.data());
+  }
+  return businesses;
+}
+
+async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
+  const contactedRef = db.collection("ocmClients").doc(clientId).collection("contactedMe");
+  const snapshot = await contactedRef.get();
+  let autoDeclined = 0;
+  let declineNoticesFailed = 0;
+
+  for (const documentSnapshot of snapshot.docs) {
+    const lead = documentSnapshot.data();
+    const createdAt = toMillis(lead.createdAt || lead.contactedAt || lead.updatedAt);
+    if (!createdAt || now.getTime() - createdAt < ESTIMATE_REQUEST_LIFETIME_MS) continue;
+
+    if (business?.clientDeclineNoticeEnabled !== false) {
+      const notice = await sendEstimateRequestStatusNotice({
+        db,
+        clientId,
+        businessName: text(business?.businessName || business?.name) || "the business",
+        leadId: documentSnapshot.id,
+        leadName: text(lead.Name || lead.name || lead.fullName),
+        phone: text(lead.Phone || lead.phone || lead.phoneNumber),
+        status: "declined",
+      });
+      if (notice.sent === false && !notice.skipped && !notice.duplicate) declineNoticesFailed += 1;
+    }
+
+    await documentSnapshot.ref.delete();
+    autoDeclined += 1;
+  }
+
+  return { autoDeclined, declineNoticesFailed };
 }
 
 async function markEstimateFollowUps(db, clientId, now) {
@@ -121,13 +171,14 @@ async function runWorkflow(request) {
   try {
     const now = new Date();
     const db = getAdminDb();
-    const clientIds = await listActiveClientIds(db);
+    const activeBusinesses = await listActiveBusinesses(db);
     const businesses = [];
 
-    for (const clientId of clientIds) {
+    for (const [clientId, business] of activeBusinesses) {
+      const expired = await autoDeclineExpiredEstimateRequests(db, clientId, business, now);
       const workflow = await markEstimateFollowUps(db, clientId, now);
       const dailyReviewCreated = await createDailyReviewNotification(db, clientId, now);
-      businesses.push({ clientId, ...workflow, dailyReviewCreated });
+      businesses.push({ clientId, ...expired, ...workflow, dailyReviewCreated });
     }
 
     return Response.json({
