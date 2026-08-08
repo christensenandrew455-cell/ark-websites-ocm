@@ -91,7 +91,7 @@ async function findConnection(db, calledPhone) {
   return raw.empty ? null : raw.docs[0];
 }
 
-function buildProfile(clientId, business, account, settings, connection) {
+function buildProfile(clientId, business, account, settings) {
   const serviceAreas = list(settings.serviceAreas);
   const services = servicesObject(settings.services);
   const businessBase = text(settings.businessBase) || serviceAreas[0] || "the local service area";
@@ -101,8 +101,6 @@ function buildProfile(clientId, business, account, settings, connection) {
     clientId,
     businessName: text(settings.businessName || account.BusinessName || business.businessName || clientId),
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
-    businessPhone: text(settings.businessPhone || account.AccountPhone || business.accountPhone || connection.businessPhone),
-    businessEmail: text(settings.businessEmail || account.AccountEmail || business.accountEmail || connection.notificationEmail).toLowerCase(),
     businessHours: text(settings.businessHours || "Monday through Friday, 9:00 AM to 5:00 PM"),
     timeZone: text(settings.timeZone || "America/New_York"),
     estimateDays: text(settings.estimateDays || "Monday through Friday"),
@@ -114,16 +112,12 @@ function buildProfile(clientId, business, account, settings, connection) {
     businessBase,
     serviceAreas: normalizedServiceAreas,
     services,
-    about: list(settings.about),
-    extraInformation: text(settings.extraInformation),
   };
 }
 
 function validateProfile(profile) {
   if (!profile.businessName) return "The matched account has no business name.";
   if (!profile.ownerName) return "The matched account has no owner name.";
-  if (!profile.businessPhone) return "The matched account has no business phone number.";
-  if (!profile.businessEmail) return "The matched account has no business email.";
   if (!Object.keys(profile.services).length) return "The matched account has no receptionist services configured.";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format();
@@ -191,7 +185,6 @@ export async function POST(request) {
       businessSnapshot.data(),
       accountSnapshot.exists ? accountSnapshot.data() : {},
       settings,
-      connection
     );
     const profileError = validateProfile(profile);
     if (profileError) {
