@@ -160,17 +160,20 @@ function ServicesEditor({ services, onChange }) {
   return <StackedListEditor items={names} onChange={updateServices} placeholder="Snow plowing" addLabel="Add Service" />;
 }
 
+function editableProfileWithoutRemovedFields(profile = {}) {
+  return Object.fromEntries(
+    Object.entries(profile).filter(([key]) => !RAILWAY_OWNED_FIELDS.has(key) && key !== "about"),
+  );
+}
+
 export function prepareReceptionistProfile(profile = {}) {
   const hours = parseBusinessHours(profile.businessHours);
   const estimateStart = parseTime(profile.earliestEstimateStart, 9, "AM");
   const estimateEnd = parseTime(profile.latestEstimateStart, 5, "PM");
-  const editableProfile = Object.fromEntries(
-    Object.entries(profile).filter(([key]) => !RAILWAY_OWNED_FIELDS.has(key)),
-  );
+  const editableProfile = editableProfileWithoutRemovedFields(profile);
   return {
     ...editableProfile,
     serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
-    about: Array.isArray(profile.about) ? profile.about : [],
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
     businessWeekdays: Array.isArray(profile.businessWeekdays) ? profile.businessWeekdays : hours.days,
     businessStartHour: Number(profile.businessStartHour || hours.start.hour),
@@ -185,9 +188,7 @@ export function prepareReceptionistProfile(profile = {}) {
 }
 
 export function receptionistRequestPayload(profile = {}) {
-  const editableProfile = Object.fromEntries(
-    Object.entries(profile).filter(([key]) => !RAILWAY_OWNED_FIELDS.has(key)),
-  );
+  const editableProfile = editableProfileWithoutRemovedFields(profile);
   return {
     ...editableProfile,
     extraInformation: "",
@@ -219,7 +220,6 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
           <HourPeriodPicker label="Earliest estimate time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
           <HourPeriodPicker label="Latest estimate time" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
           <Field label="Service areas" hint="Each area stays on its own line. Add as many as the business needs." wide><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>
-          <Field label="About the business" hint="Each fact stays on its own line." wide><StackedListEditor items={profile.about} onChange={(items) => update("about", items)} placeholder="Family-owned since 2018" addLabel="Add Fact" /></Field>
           <Field label="Services" hint="Each service stays on its own line." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
         </div>
       </section>
