@@ -26,6 +26,13 @@ function DashboardCard({ value, label, description, onClick, disabled = false })
   );
 }
 
+function displayPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  const local = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (local.length !== 10) return String(value || "").trim();
+  return `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+}
+
 export default function ClientStats() {
   const router = useRouter();
   const { user, profile } = useAuth();
@@ -33,6 +40,7 @@ export default function ClientStats() {
   const [newLeads, setNewLeads] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [pendingEmployees, setPendingEmployees] = useState(0);
+  const [receptionistPhone, setReceptionistPhone] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
@@ -48,7 +56,12 @@ export default function ClientStats() {
     if (!user) return;
     try {
       const token = await user.getIdToken(true);
-      const requests = [];
+      const requests = [
+        fetch("/api/receptionist/settings", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+          .then(async (response) => response.ok ? response.json() : {})
+          .then((data) => setReceptionistPhone(String(data?.profile?.receptionistPhone || data?.profile?.receptionistPhoneNormalized || "").trim()))
+          .catch(() => setReceptionistPhone("")),
+      ];
       if (profile?.messagesEnabled === true) {
         requests.push(fetch("/api/business/lead-messages", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
           .then(async (response) => response.ok ? response.json() : {})
@@ -69,6 +82,7 @@ export default function ClientStats() {
     } catch {
       setUnreadMessages(0);
       setPendingEmployees(0);
+      setReceptionistPhone("");
     }
   }, [profile?.employeesEnabled, profile?.messagesEnabled, user]);
 
@@ -99,7 +113,11 @@ export default function ClientStats() {
           <p className="mt-2 text-sm font-semibold text-slate-600">Tap a workspace to see what needs your attention.</p>
         </div>
         {notice && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-800"><span>{notice}</span><button type="button" onClick={() => router.push("/settings")} className="shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-white">Settings</button></div>}
-        <section className="mt-5 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5">
+        <section className="mt-5 rounded-2xl border border-slate-300 bg-slate-50 p-4 shadow-sm sm:rounded-3xl sm:p-5">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Your receptionist number</p>
+          <p className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{receptionistPhone ? displayPhone(receptionistPhone) : "Not assigned yet"}</p>
+        </section>
+        <section className="mt-3 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:mt-5 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
             <DashboardCard value={newLeads} label="Leads" description="Accept new leads and view your clients." onClick={() => router.push("/leads")} />
             <DashboardCard value={unreadMessages} label="Messages" description="Text clients from your dedicated business number." disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
