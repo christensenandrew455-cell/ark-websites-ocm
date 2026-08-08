@@ -10,7 +10,6 @@ import {
   onSnapshot,
   serverTimestamp,
   setDoc,
-  writeBatch,
 } from "firebase/firestore";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
@@ -18,6 +17,10 @@ import {
   leadContactFieldDeletionPatch,
   stripLeadContactFields,
 } from "../lib/leadContactFields";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FINAL_DAY_MS = 6 * DAY_MS;
+const EXPIRES_MS = 7 * DAY_MS;
 
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
@@ -55,7 +58,15 @@ function normalizeRow(id, source, collectionKey) {
 }
 
 function rowTime(row) {
-  return toMillis(row.updatedAt || row.acceptedAt || row.createdAt);
+  return toMillis(row.createdAt || row.contactedAt || row.acceptedAt || row.movedAt || row.updatedAt);
+}
+
+function isEstimateRequestFinalDay(row) {
+  if (row.collectionKey !== "contactedMe") return false;
+  const createdAt = toMillis(row.createdAt || row.contactedAt || row.updatedAt);
+  if (!createdAt) return false;
+  const age = Date.now() - createdAt;
+  return age >= FINAL_DAY_MS && age < EXPIRES_MS;
 }
 
 function normalizeTimeForDate(value) {
@@ -223,16 +234,17 @@ function Modal({ title, children, onClose }) {
 
 function ConfirmDialog({ row, busy, onCancel, onConfirm }) {
   if (!row) return null;
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Confirm deletion">
-    <button type="button" className="fixed inset-0" onClick={onCancel} aria-label="Cancel deletion" />
+  const declining = row.collectionKey === "contactedMe";
+  return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={declining ? "Confirm decline" : "Confirm deletion"}>
+    <button type="button" className="fixed inset-0" onClick={onCancel} aria-label={declining ? "Cancel decline" : "Cancel deletion"} />
     <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
       <div className="px-6 py-10 text-center">
-        <h2 className="text-xl font-black text-slate-950">Delete {row.Name || "this record"}?</h2>
+        <h2 className="text-xl font-black text-slate-950">{declining ? "Decline" : "Delete"} {row.Name || "this record"}?</h2>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">This cannot be undone.</p>
       </div>
       <div className="grid grid-cols-2 gap-3 border-t border-slate-200 p-4">
         <button type="button" disabled={busy} onClick={onCancel} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50">Cancel</button>
-        <button type="button" disabled={busy} onClick={onConfirm} className="rounded-2xl bg-red-700 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? "Deleting…" : "Delete"}</button>
+        <button type="button" disabled={busy} onClick={onConfirm} className="rounded-2xl bg-red-700 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? (declining ? "Declining…" : "Deleting…") : (declining ? "Decline" : "Delete")}</button>
       </div>
     </div>
   </div>;
@@ -310,8 +322,8 @@ export default function ReviewClientsNative() {
 
   useEffect(() => {
     if (!clientId) return undefined;
-    const unsubContacted = onSnapshot(collection(db, "ocmClients", clientId, "contactedMe"), (snapshot) => setContacted(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "contactedMe")).sort((a, b) => rowTime(b) - rowTime(a))), () => setError("Something went wrong."));
-    const unsubClients = onSnapshot(collection(db, "ocmClients", clientId, "clients"), (snapshot) => setClients(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "clients")).sort((a, b) => rowTime(b) - rowTime(a))), () => setError("Something went wrong."));
+    const unsubContacted = onSnapshot(collection(db, "ocmClients", clientId, "contactedMe"), (snapshot) => setContacted(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "contactedMe")).sort((a, b) => rowTime(a) - rowTime(b))), () => setError("Something went wrong."));
+    const unsubClients = onSnapshot(collection(db, "ocmClients", clientId, "clients"), (snapshot) => setClients(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "clients")).sort((a, b) => rowTime(a) - rowTime(b))), () => setError("Something went wrong."));
     return () => { unsubContacted(); unsubClients(); };
   }, [clientId]);
 
@@ -335,16 +347,29 @@ export default function ReviewClientsNative() {
   const activeEmployees = (employeeWorkspace?.employees || []).filter((employee) => employee.status === "active");
 
   async function accept(row) {
-    if (busy) return;
+    if (!user || busy) return;
     setBusy(`accept:${row.id}`);
+    setNotice("");
+    setError("");
     try {
-      const { id, collectionKey, ...data } = stripLeadContactFields(row);
-      const batch = writeBatch(db);
-      batch.set(doc(db, "ocmClients", clientId, "clients", row.id), { ...data, ...leadContactFieldDeletionPatch(deleteField()), currentStage: "clients", acceptedAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
-      batch.delete(doc(db, "ocmClients", clientId, "contactedMe", row.id));
-      await batch.commit();
-      setNotice(`${row.Name || "Lead"} was accepted.`);
-    } catch { setError("Something went wrong."); } finally { setBusy(""); }
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/business/leads/accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ leadId: row.id }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not accept this estimate request.");
+      if (result.noticeError) {
+        setNotice(`${row.Name || "Lead"} was accepted, but the acceptance text could not be sent.`);
+      } else {
+        setNotice(`${row.Name || "Lead"} was accepted.`);
+      }
+    } catch (acceptError) {
+      setError(acceptError.message || "Something went wrong.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function remove(row) {
@@ -375,7 +400,9 @@ export default function ReviewClientsNative() {
       if (!deleteResponse.ok) throw new Error(deleteResult.error || "Could not delete this record.");
 
       if (row.collectionKey === "contactedMe" && declineResult?.sent === false && !declineResult?.skipped && !declineResult?.duplicate) {
-        setNotice(`${row.Name || "Record"} was deleted, but the decline text could not be sent.`);
+        setNotice(`${row.Name || "Record"} was declined and removed, but the decline text could not be sent.`);
+      } else if (row.collectionKey === "contactedMe") {
+        setNotice(`${row.Name || "Record"} was declined and removed.`);
       } else {
         setNotice(`${row.Name || "Record"} was deleted.`);
       }
@@ -427,5 +454,5 @@ export default function ReviewClientsNative() {
   const inactiveCard = "min-h-36 rounded-3xl border border-slate-300 bg-white p-5 text-left shadow-sm transition hover:bg-slate-50 active:scale-[0.99]";
   const activeCard = "min-h-36 rounded-3xl border border-slate-900 bg-slate-900 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
 
-  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-60">New receptionist leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-60">Accepted people</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3">{rows.map((row) => { const assignmentKey = `${row.collectionKey}:${row.id}`; const assignmentBusy = busy === `assign:${assignmentKey}`; return <article key={row.id} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p></button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Delete</button></div>}{activeSection === "clients" && openAssignment === assignmentKey && <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-100 p-3"><p className="text-xs font-black text-slate-700">Choose an employee</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{activeEmployees.map((employee) => <button key={employee.uid} type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, employee.uid)} className={row.assignedEmployeeUid === employee.uid ? "rounded-xl bg-slate-950 px-3 py-3 text-left text-xs font-black text-white" : "rounded-xl border border-slate-300 bg-white px-3 py-3 text-left text-xs font-black text-slate-800"}>{assignmentBusy ? "Saving…" : employee.name}</button>)}{row.assignedEmployeeUid && <button type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, "")} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-left text-xs font-black text-red-700 sm:col-span-2">Remove Employee Assignment</button>}</div></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-sm font-semibold text-slate-500">Nothing here yet.</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} clientId={clientId} messagesEnabled={messagesEnabled} employeesEnabled={employeesEnabled} activeEmployees={activeEmployees} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onManageEmployee={() => manageEmployee(viewing)} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /></div>;
+  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-[2rem] border border-slate-300 bg-slate-200/80 p-3 shadow-inner sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-60">New receptionist leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-60">Accepted people</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3">{rows.map((row) => { const assignmentKey = `${row.collectionKey}:${row.id}`; const assignmentBusy = busy === `assign:${assignmentKey}`; const expiring = activeSection === "contacted" && isEstimateRequestFinalDay(row); return <article key={row.id} className={expiring ? "rounded-2xl border border-red-300 bg-red-50/70 p-4 shadow-sm" : "rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"}><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p></button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline</button></div>}{activeSection === "clients" && openAssignment === assignmentKey && <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-100 p-3"><p className="text-xs font-black text-slate-700">Choose an employee</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{activeEmployees.map((employee) => <button key={employee.uid} type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, employee.uid)} className={row.assignedEmployeeUid === employee.uid ? "rounded-xl bg-slate-950 px-3 py-3 text-left text-xs font-black text-white" : "rounded-xl border border-slate-300 bg-white px-3 py-3 text-left text-xs font-black text-slate-800"}>{assignmentBusy ? "Saving…" : employee.name}</button>)}{row.assignedEmployeeUid && <button type="button" disabled={Boolean(busy)} onClick={() => assignEmployee(row, "")} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-left text-xs font-black text-red-700 sm:col-span-2">Remove Employee Assignment</button>}</div></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-sm font-semibold text-slate-500">Nothing here yet.</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} clientId={clientId} messagesEnabled={messagesEnabled} employeesEnabled={employeesEnabled} activeEmployees={activeEmployees} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onManageEmployee={() => manageEmployee(viewing)} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /></div>;
 }

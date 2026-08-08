@@ -134,30 +134,6 @@ async function resolveConversation(db, clientId, fromPhone, suppliedConversation
     const existing = conversations.docs.find((document) => normalizePhone(document.data().leadPhone) === fromPhone);
     if (existing) return { ref: existing.ref, snapshot: existing, conversationId: existing.id, conversation: existing.data(), created: false };
   }
-  for (const collectionKey of ["contactedMe", "clients"]) {
-    const leads = await root.collection(collectionKey).get();
-    const leadDocument = leads.docs.find((document) => normalizePhone(document.data().Phone || document.data().phone || document.data().phoneNumber) === fromPhone);
-    if (!leadDocument) continue;
-    const lead = leadDocument.data();
-    const id = conversationId(clientId, collectionKey, leadDocument.id);
-    const ref = root.collection("leadConversations").doc(id);
-    return {
-      ref,
-      snapshot: null,
-      conversationId: id,
-      created: true,
-      conversation: {
-        conversationId: id,
-        leadId: leadDocument.id,
-        collectionKey,
-        leadName: text(lead.Name || lead.name || lead.fullName) || "Unnamed lead",
-        leadPhone: text(lead.Phone || lead.phone || lead.phoneNumber),
-        leadPhoneNormalized: fromPhone,
-        assignedEmployeeUid: text(lead.assignedEmployeeUid) || null,
-        assignedEmployeeName: text(lead.assignedEmployeeName) || null,
-      },
-    };
-  }
   return null;
 }
 
@@ -178,7 +154,7 @@ export async function POST(request) {
     const clientId = await resolveClientId(db, event.clientId, event.toPhone);
     if (!clientId) return NextResponse.json({ error: "No ARK business is assigned to that Telnyx number." }, { status: 404 });
     const resolved = await resolveConversation(db, clientId, event.fromPhone, event.providedConversationId);
-    if (!resolved) return NextResponse.json({ error: "No lead in this business matches the incoming phone number." }, { status: 404 });
+    if (!resolved) return NextResponse.json({ ok: true, ignored: true, reason: "conversation-not-started" });
 
     const root = db.collection("ocmClients").doc(clientId);
     const businessSnapshot = await db.collection("businesses").doc(clientId).get();

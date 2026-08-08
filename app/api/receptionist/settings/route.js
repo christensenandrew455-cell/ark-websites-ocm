@@ -59,7 +59,6 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     businessBase: text(settings.businessBase),
     serviceAreas: list(settings.serviceAreas),
     services: servicesObject(settings.services),
-    about: list(settings.about),
     extraInformation: text(settings.extraInformation),
   };
 }
@@ -181,7 +180,6 @@ export async function POST(request) {
     businessBase: text(body.businessBase ?? current.businessBase),
     serviceAreas: list(body.serviceAreas ?? current.serviceAreas),
     services: servicesObject(body.services ?? current.services),
-    about: list(body.about ?? current.about),
     extraInformation: text(body.extraInformation ?? current.extraInformation),
   };
   if (access.isAdmin) {
@@ -217,7 +215,7 @@ export async function POST(request) {
     businessBase: profile.businessBase,
     serviceAreas: profile.serviceAreas,
     services: profile.services,
-    about: profile.about,
+    about: FieldValue.delete(),
     extraInformation: profile.extraInformation,
     aiVoice: FieldValue.delete(),
     aiSpeechSpeed: FieldValue.delete(),
