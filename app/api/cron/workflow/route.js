@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const LEGACY_CLIENT_ID = "tabor-painting";
-const ESTIMATE_REQUEST_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const ESTIMATE_REQUEST_AUTO_DECLINE_AGE_MS = 6 * 24 * 60 * 60 * 1000;
 
 function text(value) {
   return String(value || "").trim();
@@ -61,7 +61,7 @@ async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
   for (const documentSnapshot of snapshot.docs) {
     const lead = documentSnapshot.data();
     const createdAt = toMillis(lead.createdAt || lead.contactedAt || lead.updatedAt);
-    if (!createdAt || now.getTime() - createdAt < ESTIMATE_REQUEST_LIFETIME_MS) continue;
+    if (!createdAt || now.getTime() - createdAt < ESTIMATE_REQUEST_AUTO_DECLINE_AGE_MS) continue;
 
     if (business?.clientDeclineNoticeEnabled !== false) {
       const notice = await sendEstimateRequestStatusNotice({
