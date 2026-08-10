@@ -54,10 +54,10 @@ export default function LegalAcceptanceGate() {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-950/75 p-3 backdrop-blur-sm">
-      <section className="mx-auto my-4 w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl sm:my-10 sm:p-8">
+    <div className="ark-modal-overlay z-[200]" role="dialog" aria-modal="true" aria-labelledby="legal-acceptance-title">
+      <section className="ark-modal-surface ark-modal-scroll max-w-lg p-5 sm:p-8">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Required before continuing</p>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Review the current policies</h1>
+        <h1 id="legal-acceptance-title" className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Review the current policies</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           The Terms of Use or Privacy Policy has not been accepted for this account, or a newer version is available. You must accept both current policies before using the app.
         </p>

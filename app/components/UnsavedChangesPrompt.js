@@ -158,8 +158,8 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
   if (!pending || autoSave) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 text-slate-950 shadow-2xl sm:p-7">
+    <div className="ark-modal-overlay z-[200]" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
+      <div className="ark-modal-surface max-w-md p-6 text-slate-950 sm:p-7">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">Unsaved changes</p>
         <h2 id="unsaved-title" className="mt-2 text-2xl font-black tracking-tight">You have unsaved changes</h2>
         <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Save what you changed, or continue to {pending.label || "the next page"} without saving.</p>

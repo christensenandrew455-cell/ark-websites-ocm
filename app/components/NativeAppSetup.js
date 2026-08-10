@@ -349,7 +349,7 @@ export default function NativeAppSetup() {
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">New notification</p>
               <h2 className="mt-1 text-sm font-black text-slate-950">{foregroundNotification.title}</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-600">{foregroundNotification.body}</p>
+              {foregroundNotification.body && <p className="mt-1 text-xs leading-5 text-slate-600">{foregroundNotification.body}</p>}
             </div>
             <span className="shrink-0 rounded-full bg-blue-100 px-2 py-1 text-[9px] font-black uppercase text-blue-800">Open</span>
           </div>
@@ -357,8 +357,8 @@ export default function NativeAppSetup() {
       )}
 
       {showPrompt && (
-        <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm">
-          <section className="relative mx-auto my-4 w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl sm:my-10 sm:p-7">
+        <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="phone-setup-title">
+          <section className="ark-modal-surface ark-modal-scroll max-w-md p-5 sm:p-7">
             <button
               type="button"
               onClick={dismissSetup}
@@ -368,7 +368,7 @@ export default function NativeAppSetup() {
               ×
             </button>
             <p className="pr-12 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
-            <h2 className="mt-2 pr-12 text-2xl font-black tracking-tight">Finish phone setup</h2>
+            <h2 id="phone-setup-title" className="mt-2 pr-12 text-2xl font-black tracking-tight">Finish phone setup</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               This setup is offered once after account creation. Enable any phone access you want to use.
             </p>

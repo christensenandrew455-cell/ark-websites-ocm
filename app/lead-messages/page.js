@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../components/BackButton";
 import { useAuth } from "../components/AuthProvider";
+import { requestAppConfirmation } from "../lib/appConfirmation";
 
 function TrashIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>;
@@ -88,7 +89,12 @@ export default function LeadMessagesPage() {
 
   async function deleteConversationRecord(leadId, collectionKey, leadName) {
     if (!user || isEmployee || !leadId || deleting) return;
-    if (!window.confirm(`Permanently delete the conversation with ${leadName || "this lead"}? This cannot be undone.`)) return;
+    const confirmed = await requestAppConfirmation({
+      title: `Delete the conversation with ${leadName || "this lead"}?`,
+      message: "This cannot be undone. Billing usage already recorded for the chat and its parts will remain.",
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
     const key = `${collectionKey}:${leadId}`;
     setDeleting(key); setNotice(""); setError("");
     try {

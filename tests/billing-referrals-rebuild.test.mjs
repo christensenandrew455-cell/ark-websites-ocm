@@ -10,6 +10,8 @@ import {
   billingMessageEventData,
   billingMessageEventId,
 } from "../app/lib/billingMessageUsage.js";
+import { billingCallEventId } from "../app/lib/billingCallUsage.js";
+import { billingConversationEventId, isBillableConversationData } from "../app/lib/billingConversationUsage.js";
 import { billingEmployeeActivationId } from "../app/lib/billingEmployeeUsage.js";
 import {
   ensureCustomerBillingSubscription,
@@ -17,20 +19,23 @@ import {
 } from "../app/lib/stripeUsageBilling.js";
 import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
 
-test("billing uses exact base, call, SMS bundle, and employee prices", () => {
+test("billing uses exact base, call, chat, SMS-part, and employee prices", () => {
   const summary = calculateBillingSummary({
     callCount: 4,
+    chatCount: 3,
     messagePartCount: 51,
     messageCount: 7,
     employeeCount: 3,
   });
   assert.equal(summary.monthlyBaseCents, 5000);
   assert.equal(summary.callUsageCents, 800);
+  assert.equal(summary.chatUsageCents, 300);
   assert.equal(summary.messageBundleCount, 2);
-  assert.equal(summary.messageUsageCents, 200);
+  assert.equal(summary.messagePartUsageCents, 200);
+  assert.equal(summary.messageUsageCents, 500);
   assert.equal(summary.employeeUsageCents, 1500);
-  assert.equal(summary.subtotalCents, 7500);
-  assert.equal(summary.amountDue, 7500);
+  assert.equal(summary.subtotalCents, 7800);
+  assert.equal(summary.amountDue, 7800);
 });
 
 test("SMS billing rounds up once for each group of 50 parts", () => {
@@ -59,6 +64,12 @@ test("durable billing ledger IDs are deterministic and do not expose source valu
   assert.equal(messageId.includes("provider-secret-id"), false);
   const employeeId = billingEmployeeActivationId("sample-business", "employee-user", "activation-1");
   assert.equal(employeeId.length, 48);
+  const callId = billingCallEventId("sample-business", "call-1");
+  assert.equal(callId, billingCallEventId("sample-business", "call-1"));
+  assert.equal(callId.length, 48);
+  const chatId = billingConversationEventId("sample-business", "chat-1");
+  assert.equal(chatId, billingConversationEventId("sample-business", "chat-1"));
+  assert.equal(chatId.length, 48);
   assert.equal(referralDocumentId("one", "two"), referralDocumentId("one", "two"));
   assert.notEqual(referralPeriodDocumentId("one", "period-a"), referralPeriodDocumentId("one", "period-b"));
 });
@@ -77,6 +88,12 @@ test("message billing records retain counts without message bodies or phone numb
   assert.equal(Object.hasOwn(data, "phone"), false);
 });
 
+test("employee assignment placeholders are not billed as chats", () => {
+  assert.equal(isBillableConversationData({ assignedEmployeeUid: "employee", updatedAt: new Date() }), false);
+  assert.equal(isBillableConversationData({ createdAt: new Date() }), true);
+  assert.equal(isBillableConversationData({ billingConversationSourceId: "chat:event" }), true);
+});
+
 test("only confirmed Stripe missing-resource responses are treated as missing", () => {
   assert.equal(missingStripeResource({ statusCode: 404 }), true);
   assert.equal(missingStripeResource({ code: "resource_missing" }), true);
@@ -91,6 +108,9 @@ test("a transient subscription lookup failure cannot create a duplicate subscrip
     callProductId: "prod_call",
     callMeterId: "meter_call",
     callPriceId: "price_call",
+    chatProductId: "prod_chat",
+    chatMeterId: "meter_chat",
+    chatPriceId: "price_chat",
     messageProductId: "prod_message",
     messageMeterId: "meter_message",
     messagePriceId: "price_message",

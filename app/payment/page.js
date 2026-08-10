@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
+import { requestAppConfirmation } from "../lib/appConfirmation";
 
 function formatMoney(amount = 0, currency = "usd") {
   try {
@@ -155,9 +156,14 @@ export default function PaymentPage() {
   }
 
   async function deletePermanently(item) {
-    if (!window.confirm(`Permanently delete ${item.businessName}? The account and active data cannot be recovered.`)) return;
-    const confirmation = window.prompt(`Type ${item.clientId} to permanently delete this account.`) || "";
-    if (confirmation !== item.clientId) return;
+    const confirmed = await requestAppConfirmation({
+      title: `Permanently delete ${item.businessName}?`,
+      message: "The account and its active data cannot be recovered.",
+      requiredText: item.clientId,
+      confirmLabel: "Delete Permanently",
+    });
+    if (!confirmed) return;
+    const confirmation = item.clientId;
 
     setBusyId(item.clientId);
     setNotice("");

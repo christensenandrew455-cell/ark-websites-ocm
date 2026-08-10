@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "../components/ReceptionistBusinessForm";
+import { requestAppConfirmation } from "../lib/appConfirmation";
 import { normalizeClientId } from "../lib/valueUtils";
 
 const EMPTY_ACCOUNT = {
@@ -290,14 +291,19 @@ export default function ConnectionsPage() {
 
   async function lifecycleAction(action) {
     if (!selectedId || lifecycleBusy) return;
-    if (action === "disable" && !window.confirm("Disable this customer now? Their login and AI receptionist will stop working.")) return;
-    if (action === "restore" && !window.confirm("Restore this customer account?")) return;
+    if (action === "disable" && !await requestAppConfirmation({ title: "Disable this customer?", message: "Their login and AI receptionist will stop working.", confirmLabel: "Disable" })) return;
+    if (action === "restore" && !await requestAppConfirmation({ title: "Restore this customer account?", confirmLabel: "Restore" })) return;
     let confirmation = "";
     let confirmPermanent = false;
     if (action === "delete-now") {
-      if (!window.confirm("Permanently delete this account and its active data?")) return;
-      confirmation = window.prompt(`Type ${selectedId} to permanently delete this customer.`) || "";
-      if (confirmation !== selectedId) return;
+      const confirmed = await requestAppConfirmation({
+        title: "Permanently delete this account?",
+        message: "The account and its active data cannot be recovered.",
+        requiredText: selectedId,
+        confirmLabel: "Delete Permanently",
+      });
+      if (!confirmed) return;
+      confirmation = selectedId;
       confirmPermanent = true;
     }
     setLifecycleBusy(true);

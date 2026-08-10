@@ -1,4 +1,90 @@
-/* Keep app chrome from sitting above modal and dialog surfaces. */
-body:has([role="dialog"][aria-modal="true"]) header.sticky {
-  display: none !important;
+/* One centered, layered treatment for every app popup. */
+html:has(.ark-modal-overlay),
+body:has(.ark-modal-overlay) {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+/* The compact message-contact picker is kept inline in its page component. */
+html:has(.fixed.inset-0 > button[aria-label="Close"]),
+body:has(.fixed.inset-0 > button[aria-label="Close"]) {
+  overflow: hidden !important;
+}
+
+.fixed.inset-0.z-50.overflow-y-auto:has(> button[aria-label="Close"]) {
+  display: grid !important;
+  place-items: center !important;
+  padding: max(1rem, env(safe-area-inset-top, 0px)) !important;
+  background: rgba(15, 23, 42, 0.66) !important;
+  backdrop-filter: blur(8px);
+}
+
+.fixed.inset-0.z-50.overflow-y-auto:has(> button[aria-label="Close"]) > div.relative {
+  width: 100%;
+  max-height: calc(100dvh - 2rem);
+  margin: 0 !important;
+  overflow-y: auto;
+  border: 1px solid rgb(148 163 184);
+  background: rgb(248 250 252) !important;
+  box-shadow:
+    0 0 0 0.5rem rgba(203, 213, 225, 0.92),
+    0 1.5rem 4rem rgba(2, 6, 23, 0.38);
+}
+
+.ark-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: max(1rem, env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
+  background: rgba(15, 23, 42, 0.66);
+  backdrop-filter: blur(8px);
+}
+
+.ark-modal-overlay > button[aria-label^="Close"],
+.ark-modal-overlay > button[aria-label^="Cancel"] {
+  position: fixed;
+  inset: 0;
+}
+
+.ark-modal-surface {
+  position: relative;
+  width: 100%;
+  max-height: calc(100dvh - max(2rem, calc(env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))));
+  overflow: hidden;
+  border: 1px solid rgb(148 163 184);
+  border-radius: 1.75rem;
+  background: rgb(248 250 252);
+  box-shadow:
+    0 0 0 0.5rem rgba(203, 213, 225, 0.92),
+    0 1.5rem 4rem rgba(2, 6, 23, 0.38);
+}
+
+.ark-modal-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+body:has(.ark-modal-overlay) .ark-workspace-header,
+body:has(.ark-modal-overlay) .ark-admin-header,
+body:has(.ark-modal-overlay) header.sticky {
+  pointer-events: none;
+}
+
+html.ark-dark .ark-modal-surface {
+  border-color: rgb(71 85 105);
+  background: rgb(15 23 42);
+  box-shadow:
+    0 0 0 0.5rem rgba(51, 65, 85, 0.96),
+    0 1.5rem 4rem rgba(0, 0, 0, 0.55);
+}
+
+html.ark-dark .fixed.inset-0.z-50.overflow-y-auto:has(> button[aria-label="Close"]) > div.relative {
+  border-color: rgb(71 85 105);
+  background: rgb(15 23 42) !important;
+  box-shadow:
+    0 0 0 0.5rem rgba(51, 65, 85, 0.96),
+    0 1.5rem 4rem rgba(0, 0, 0, 0.55);
 }

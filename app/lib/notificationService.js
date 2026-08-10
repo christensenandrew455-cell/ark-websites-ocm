@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminMessaging } from "./firebase-admin";
+import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
 
 const MAX_MULTICAST_TARGETS = 500;
 const REMINDER_COOLDOWN_MS = 50 * 60 * 1000;
@@ -145,7 +146,7 @@ async function recordLeadDelivery(db, clientId, leadId, summary) {
   await batch.commit();
 }
 
-export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
+export async function sendNewLeadNotification({ db, clientId, leadId }) {
   const devices = await notificationDevices(db, clientId, { ownerOnly: true });
   if (!devices.length) {
     const summary = { attempted: 0, sent: 0, failed: 0, errorMessage: "No registered owner notification devices." };
@@ -153,17 +154,8 @@ export async function sendNewLeadNotification({ db, clientId, row, leadId }) {
     return summary;
   }
 
-  const caller = text(row.Name || row.Phone || "A new caller");
-  const job = text(row.Job);
-  const body = job
-    ? `${caller} contacted you about ${job}. Tap to review the lead.`
-    : `${caller} contacted your business. Tap to review the lead.`;
-
   const results = await sendToDevices(devices, {
-    notification: {
-      title: "New lead received",
-      body,
-    },
+    notification: PUSH_NOTIFICATION_COPY.lead,
     data: {
       type: "new-lead",
       route: "/review-my-clients?section=contacted",
@@ -256,10 +248,7 @@ export async function sendUnreadLeadReminders(db) {
     attempted += devices.length;
 
     const results = await sendToDevices(devices, {
-      notification: {
-        title: "New clients are waiting",
-        body: "You still have new contacts waiting in the Clients tab.",
-      },
+      notification: PUSH_NOTIFICATION_COPY.lead,
       data: {
         type: "unread-lead-reminder",
         route: "/review-my-clients?section=contacted",
@@ -300,34 +289,12 @@ export async function sendUnreadLeadReminders(db) {
   return { attempted, sent, failed };
 }
 
-export async function sendRequestStatusNotification({ db, clientId, requestId, subject, status, adminNote, recipientUid = "" }) {
+export async function sendRequestStatusNotification({ db, clientId, requestId, status, recipientUid = "" }) {
   const devices = await notificationDevices(db, clientId, { uid: recipientUid });
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
-  const safeSubject = text(subject || "Your request");
-  const safeNote = text(adminNote).slice(0, 220);
-  const copy = status === "reply"
-    ? {
-        title: "ARK replied to your help request",
-        body: safeNote || `ARK replied to ${safeSubject}. Open the app to read it.`,
-      }
-    : status === "in-progress"
-      ? {
-        title: "Your request has started",
-        body: safeNote || `${safeSubject} is now being worked on.`,
-        }
-      : status === "completed"
-        ? {
-          title: "Your request is complete",
-          body: safeNote || `${safeSubject} has been completed.`,
-          }
-        : {
-          title: "Your request was denied",
-          body: safeNote || `${safeSubject} could not be approved. Open the app for details.`,
-          };
-
   const results = await sendToDevices(devices, {
-    notification: copy,
+    notification: PUSH_NOTIFICATION_COPY.helpUpdate,
     data: {
       type: "request-status",
       route: "/messages",

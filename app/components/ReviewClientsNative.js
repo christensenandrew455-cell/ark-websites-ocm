@@ -226,15 +226,15 @@ function Modal({ title, children, onClose }) {
     document.addEventListener("keydown", listener);
     return () => document.removeEventListener("keydown", listener);
   }, [onClose]);
-  return <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-2 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label={title}><button type="button" className="fixed inset-0" onClick={onClose} aria-label="Close" /><div className="relative flex max-h-[96vh] min-h-[78vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">{children}</div></div>;
+  return <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-label={title}><button type="button" onClick={onClose} aria-label="Close" /><div className="ark-modal-surface flex min-h-[78vh] max-w-5xl flex-col">{children}</div></div>;
 }
 
 function ConfirmDialog({ row, busy, onCancel, onConfirm }) {
   if (!row) return null;
   const declining = row.collectionKey === "contactedMe";
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-5 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={declining ? "Confirm decline" : "Confirm deletion"}>
-    <button type="button" className="fixed inset-0" onClick={onCancel} aria-label={declining ? "Cancel decline" : "Cancel deletion"} />
-    <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+  return <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-label={declining ? "Confirm decline" : "Confirm deletion"}>
+    <button type="button" onClick={onCancel} aria-label={declining ? "Cancel decline" : "Cancel deletion"} />
+    <div className="ark-modal-surface max-w-sm">
       <div className="px-6 py-10 text-center">
         <h2 className="text-xl font-black text-slate-950">{declining ? "Decline" : "Delete"} {row.Name || "this record"}?</h2>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">This cannot be undone.</p>

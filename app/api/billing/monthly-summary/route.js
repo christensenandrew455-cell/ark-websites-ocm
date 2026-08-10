@@ -2,6 +2,8 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { loadBillingCalls } from "../../../lib/billingCallUsage";
+import { loadBillingConversationUsage } from "../../../lib/billingConversationUsage";
 import { loadBillingEmployeeUsage } from "../../../lib/billingEmployeeUsage";
 import { loadBillingMessageUsage } from "../../../lib/billingMessageUsage";
 import {
@@ -23,28 +25,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function text(value) { return String(value || "").trim(); }
-function toMillis(value) {
-  if (!value) return 0;
-  if (typeof value.toMillis === "function") return value.toMillis();
-  if (Number.isFinite(value.seconds)) return value.seconds * 1000;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-async function loadMonthlyCalls(db, clientId, startMs, endMs) {
-  const snapshot = await db.collection("ocmClients").doc(clientId)
-    .collection("receptionistCalls").get();
-  const unique = new Map();
-  for (const document of snapshot.docs) {
-    const data = document.data();
-    const occurredAt = toMillis(data.startedAt || data.endedAt || data.createdAt);
-    if (!occurredAt || occurredAt < startMs || occurredAt >= endMs) continue;
-    const existing = unique.get(document.id);
-    if (!existing || occurredAt < existing.occurredAt) unique.set(document.id, { id: document.id, occurredAt });
-  }
-  return [...unique.values()].sort((a, b) => a.occurredAt - b.occurredAt);
-}
-
 async function loadActiveEmployees(db, clientId) {
   const snapshot = await db.collection("businesses").doc(clientId)
     .collection("employees").where("status", "==", "active").get();
@@ -61,9 +41,12 @@ function storedSummary(summary, window) {
     currentBillingPeriodEnd: new Date(window.endMs),
     currentMonthCallCount: summary.callCount,
     currentMonthLeadCount: summary.callCount,
+    currentMonthChatCount: summary.chatCount,
+    currentMonthChatUsageCents: summary.chatUsageCents,
     currentMonthMessageCount: summary.messageCount,
     currentMonthMessagePartCount: summary.messagePartCount,
     currentMonthMessageBundleCount: summary.messageBundleCount,
+    currentMonthMessagePartUsageCents: summary.messagePartUsageCents,
     currentMonthEmployeeCount: summary.employeeCount,
     currentMonthCallUsageCents: summary.callUsageCents,
     currentMonthMessageUsageCents: summary.messageUsageCents,
@@ -79,16 +62,16 @@ function storedSummary(summary, window) {
   };
 }
 
-async function reconcileStripe({ db, auth, business, account, window, calls, messageUsage, employeeUsage }) {
+async function reconcileStripe({ db, auth, business, account, window, calls, conversationUsage, messageUsage, employeeUsage }) {
   if (!process.env.STRIPE_SECRET_KEY) {
-    return { status: "not-configured", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+    return { status: "not-configured", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
   if (!customerId) {
-    return { status: "payment-method-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+    return { status: "payment-method-required", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   if (account.termsAccepted !== true || text(account.termsVersion) !== TERMS_VERSION) {
-    return { status: "terms-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+    return { status: "terms-required", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const subscriptionId = text(business.stripeSubscriptionId || account.stripeSubscriptionId);
@@ -102,7 +85,7 @@ async function reconcileStripe({ db, auth, business, account, window, calls, mes
     fallbackPaymentMethodId: text(business.stripePaymentMethodId || account.stripePaymentMethodId),
   });
   if (!refreshed.paymentMethodId) {
-    return { status: "payment-method-required", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+    return { status: "payment-method-required", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   const subscription = await ensureCustomerBillingSubscription({
     stripe,
@@ -122,6 +105,7 @@ async function reconcileStripe({ db, auth, business, account, window, calls, mes
     subscription,
     window,
     calls,
+    conversations: conversationUsage.conversations,
     messageUsage,
     employeeIds: employeeUsage.employeeIds,
   });
@@ -154,9 +138,10 @@ export async function GET(request) {
       subscriptionId: text(business.stripeSubscriptionId || account.stripeSubscriptionId),
       timeZone,
     });
-    const [calls, activeEmployees, messageUsage, referralCount] = await Promise.all([
-      loadMonthlyCalls(db, auth.clientId, window.startMs, window.endMs),
+    const [calls, activeEmployees, conversationUsage, messageUsage, referralCount] = await Promise.all([
+      loadBillingCalls({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
       loadActiveEmployees(db, auth.clientId),
+      loadBillingConversationUsage({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
       loadBillingMessageUsage({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
       referralCountForPeriod({ db, clientId: auth.clientId, billingPeriodKey: window.monthKey }),
     ]);
@@ -168,18 +153,19 @@ export async function GET(request) {
     });
     const summary = calculateBillingSummary({
       callCount: calls.length,
+      chatCount: conversationUsage.count,
       messagePartCount: messageUsage.parts,
       messageCount: messageUsage.messages,
       employeeCount: employeeUsage.count,
       referralCount,
     });
 
-    let stripeSync = { status: "not-synced", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+    let stripeSync = { status: "not-synced", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
     try {
-      stripeSync = await reconcileStripe({ db, auth, business, account, window, calls, messageUsage, employeeUsage });
+      stripeSync = await reconcileStripe({ db, auth, business, account, window, calls, conversationUsage, messageUsage, employeeUsage });
     } catch (stripeError) {
       console.error("Unable to reconcile monthly Stripe billing", stripeError);
-      stripeSync = { status: "sync-error", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+      stripeSync = { status: "sync-error", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
     }
 
     await Promise.all([
@@ -203,7 +189,7 @@ export async function GET(request) {
       perEmployeeOverageCents: summary.perEmployeeCents,
       employeeOverageCents: summary.employeeUsageCents,
       leadOverageCount: summary.callCount,
-      conversationOverageCount: summary.messageBundleCount,
+      conversationOverageCount: summary.chatCount,
       employeeOverageCount: summary.employeeCount,
       includedLeads: 0,
       includedConversations: 0,
@@ -214,7 +200,8 @@ export async function GET(request) {
       stripeStatus: stripeSync.status,
       stripeCallsSynced: stripeSync.callsSynced,
       stripeLeadsSynced: stripeSync.callsSynced,
-      stripeMessageBundlesSynced: stripeSync.messageBundlesSynced,
+      stripeChatsSynced: stripeSync.chatsSynced,
+      stripeMessagePartsSynced: stripeSync.messagePartsSynced,
       stripeEmployeesSynced: stripeSync.employeesSynced,
     });
   } catch (error) {

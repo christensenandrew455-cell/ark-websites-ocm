@@ -4,6 +4,7 @@ import "./mobile-viewport.css";
 import SignupFlowShell from "./components/SignupFlowShell";
 import ViewportMetrics from "./components/ViewportMetrics";
 import { AuthProvider } from "./components/AuthProvider";
+import GlobalConfirmDialog from "./components/GlobalConfirmDialog";
 
 export const metadata = {
   title: "ARK Client Center",
@@ -39,6 +40,7 @@ export default function RootLayout({ children }) {
       <body>
         <ViewportMetrics />
         <AuthProvider>
+          <GlobalConfirmDialog />
           <SignupFlowShell>{children}</SignupFlowShell>
         </AuthProvider>
       </body>

@@ -106,7 +106,7 @@ export default function ClientStats() {
   }
 
   return (
-    <section className="min-h-[calc(100vh-78px)] bg-slate-200 px-3 py-5 text-slate-950 sm:px-5 sm:py-8 md:px-8">
+    <section className="ark-dashboard-page min-h-[calc(100vh-78px)] bg-slate-200 px-3 py-4 text-slate-950 sm:px-5 sm:py-8 md:px-8">
       <div className="mx-auto max-w-6xl">
         <div>
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1>
