@@ -142,10 +142,10 @@ export default function HelpCenter() {
         </section>
       </div>
       {chatOpen && (
-        <div className="fixed inset-0 z-[80] flex items-end bg-slate-950/50 sm:items-center sm:justify-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}>
-          <section className="flex h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl bg-slate-50 shadow-2xl sm:h-[min(720px,88vh)] sm:max-w-lg sm:rounded-3xl">
+        <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="help-chat-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}>
+          <section className="ark-modal-surface flex h-[min(720px,88vh)] max-w-lg flex-col">
             <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
-              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p><h2 className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">Ask AI</h2></div>
+              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p><h2 id="help-chat-title" className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">Ask AI</h2></div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={clearChat} className="rounded-xl border border-slate-300 px-3 py-2 text-[11px] font-black text-slate-700">Delete Chat</button>
                 <button type="button" onClick={() => setChatOpen(false)} aria-label="Close help chat" className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white">×</button>

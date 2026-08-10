@@ -26,7 +26,7 @@ function money(cents = 0) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(cents || 0) / 100);
 }
 function SettingsBlock({ title, description, onClick }) {
-  return <button type="button" onClick={onClick} className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-7"><h2 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">{description}</p></button>;
+  return <button type="button" onClick={onClick} className="min-h-32 w-full rounded-2xl border border-slate-300 bg-slate-50 p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-36 sm:rounded-3xl sm:p-6"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-2 max-w-2xl text-xs font-semibold leading-5 text-slate-500 sm:text-sm sm:leading-6">{description}</p></button>;
 }
 function SectionHeader({ title, onBack }) {
   return <div className="mb-4 sm:mb-6"><BackButton onClick={onBack} /><h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">{title}</h2></div>;
@@ -78,6 +78,13 @@ export default function SettingsPanel({ setupMode = false }) {
       setSavedDarkMode(false);
     }
   }, []);
+
+  useEffect(() => {
+    const stiffSettingsMenu = !setupMode && !activeSection;
+    if (stiffSettingsMenu) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.classList.toggle("ark-stiff-settings", stiffSettingsMenu);
+    return () => document.documentElement.classList.remove("ark-stiff-settings");
+  }, [activeSection, setupMode]);
 
   useEffect(() => {
     if (!clientId) { setError("This account does not have a business assigned yet."); setIsLoading(false); return undefined; }
@@ -292,7 +299,8 @@ export default function SettingsPanel({ setupMode = false }) {
       <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 sm:px-5">
         <div className={rowClass}><span className="text-sm font-bold text-slate-700">Monthly account</span><strong>{billingSummary ? money(billingSummary.monthlyBaseCents) : "—"}</strong></div>
         <div className={rowClass}><span className="text-sm font-bold text-slate-700">Connected calls <small className="block font-semibold text-slate-500">{Number(billingSummary?.callCount || 0)} × {money(billingSummary?.perCallCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.callUsageCents) : "—"}</strong></div>
-        <div className={rowClass}><span className="text-sm font-bold text-slate-700">SMS parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} parts · {Number(billingSummary?.messageBundleCount || 0)} bundles</small></span><strong>{billingSummary ? money(billingSummary.messageUsageCents) : "—"}</strong></div>
+        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Chats <small className="block font-semibold text-slate-500">{Number(billingSummary?.chatCount || 0)} × {money(billingSummary?.perChatCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.chatUsageCents) : "—"}</strong></div>
+        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} parts · {money(billingSummary?.perMessagePartBlockCents || billingSummary?.perMessageBundleCents || 0)} per 50 parts</small></span><strong>{billingSummary ? money(billingSummary.messagePartUsageCents) : "—"}</strong></div>
         <div className={rowClass}><span className="text-sm font-bold text-slate-700">Employees <small className="block font-semibold text-slate-500">{Number(billingSummary?.employeeCount || 0)} × {money(billingSummary?.perEmployeeCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.employeeUsageCents) : "—"}</strong></div>
         <div className={rowClass}><span className="text-sm font-black text-slate-950">Subtotal</span><strong>{billingSummary ? money(subtotal) : "—"}</strong></div>
         {savings > 0 && <div className={rowClass}><span className="text-sm font-black text-green-700">Referral savings ({discount}%)</span><strong className="text-green-700">−{money(savings)}</strong></div>}
@@ -307,13 +315,13 @@ export default function SettingsPanel({ setupMode = false }) {
   }
 
   return (
-    <main className="min-h-screen bg-transparent px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
+    <main className="ark-settings-page min-h-screen bg-transparent px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-4xl">
         {(setupMode || !activeSection) && <header className="mb-4 sm:mb-7">{!setupMode && <BackButton href="/" className="mb-4" />}{setupMode && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Final account step</p>}<h1 className="text-3xl font-black tracking-tight sm:text-4xl">{setupMode ? "Finish Account Setup" : "Settings"}</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         {downloadNotice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700">{downloadNotice}</div>}
         {setupMode ? <SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading setup…</p> : <form onSubmit={async (event) => { event.preventDefault(); if (await saveBusinessInformation()) router.replace("/"); }}><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} /><button type="submit" disabled={isSaving} className="mt-7 w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">{isSaving ? "Saving…" : "Save and Open Client Center"}</button></form>}</SectionPanel>
-          : isOwner && !activeSection ? <div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} onClick={() => setActiveSection(block.key)} />)}</div>
+          : isOwner && !activeSection ? <div className="rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} onClick={() => setActiveSection(block.key)} />)}</div></div>
             : isOwner && activeSection === "business" ? businessSection()
               : isOwner && activeSection === "customization" ? customizationSection()
                 : isOwner && activeSection === "payment" ? paymentSection()

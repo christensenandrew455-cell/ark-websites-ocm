@@ -1,6 +1,8 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { loadBillingCalls } from "../../../lib/billingCallUsage";
+import { loadBillingConversationUsage } from "../../../lib/billingConversationUsage";
 import { loadBillingEmployeeUsage } from "../../../lib/billingEmployeeUsage";
 import { loadBillingMessageUsage } from "../../../lib/billingMessageUsage";
 import { BILLING_PLAN_NAME, BILLING_VERSION, calculateBillingSummary } from "../../../lib/billingPricing";
@@ -23,24 +25,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function text(value) { return String(value || "").trim(); }
-function toMillis(value) {
-  if (!value) return 0;
-  if (typeof value.toMillis === "function") return value.toMillis();
-  if (Number.isFinite(value.seconds)) return value.seconds * 1000;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
 function authorized(request) {
   const secret = text(process.env.CRON_SECRET);
   return Boolean(secret) && text(request.headers.get("authorization")) === `Bearer ${secret}`;
-}
-async function monthlyCalls(db, clientId, startMs, endMs) {
-  const snapshot = await db.collection("ocmClients").doc(clientId).collection("receptionistCalls").get();
-  return snapshot.docs.map((document) => {
-    const data = document.data();
-    return { id: document.id, occurredAt: toMillis(data.startedAt || data.endedAt || data.createdAt) };
-  }).filter((call) => call.occurredAt >= startMs && call.occurredAt < endMs)
-    .sort((a, b) => a.occurredAt - b.occurredAt);
 }
 async function activeEmployees(db, clientId) {
   const snapshot = await db.collection("businesses").doc(clientId).collection("employees")
@@ -57,9 +44,12 @@ function storedSummary(summary, window) {
     currentBillingPeriodEnd: new Date(window.endMs),
     currentMonthCallCount: summary.callCount,
     currentMonthLeadCount: summary.callCount,
+    currentMonthChatCount: summary.chatCount,
+    currentMonthChatUsageCents: summary.chatUsageCents,
     currentMonthMessageCount: summary.messageCount,
     currentMonthMessagePartCount: summary.messagePartCount,
     currentMonthMessageBundleCount: summary.messageBundleCount,
+    currentMonthMessagePartUsageCents: summary.messagePartUsageCents,
     currentMonthEmployeeCount: summary.employeeCount,
     currentMonthCallUsageCents: summary.callUsageCents,
     currentMonthMessageUsageCents: summary.messageUsageCents,
@@ -101,9 +91,10 @@ async function handle(request) {
         || "America/New_York";
       const subscriptionId = text(business.stripeSubscriptionId || account.stripeSubscriptionId);
       const window = await resolveBillingWindow({ stripe, subscriptionId, timeZone });
-      const [calls, currentActiveEmployees, messageUsage, referralCount] = await Promise.all([
-        monthlyCalls(db, clientId, window.startMs, window.endMs),
+      const [calls, currentActiveEmployees, conversationUsage, messageUsage, referralCount] = await Promise.all([
+        loadBillingCalls({ db, clientId, startMs: window.startMs, endMs: window.endMs }),
         activeEmployees(db, clientId),
+        loadBillingConversationUsage({ db, clientId, startMs: window.startMs, endMs: window.endMs }),
         loadBillingMessageUsage({ db, clientId, startMs: window.startMs, endMs: window.endMs }),
         referralCountForPeriod({ db, clientId, billingPeriodKey: window.monthKey }),
       ]);
@@ -112,6 +103,7 @@ async function handle(request) {
       });
       const summary = calculateBillingSummary({
         callCount: calls.length,
+        chatCount: conversationUsage.count,
         messageCount: messageUsage.messages,
         messagePartCount: messageUsage.parts,
         employeeCount: employeeUsage.count,
@@ -124,7 +116,7 @@ async function handle(request) {
         accountRef ? accountRef.set(storedSummary(summary, window), { merge: true }) : Promise.resolve(),
       ]);
 
-      let sync = { status: stripe ? "not-synced" : "not-configured", callsSynced: 0, messageBundlesSynced: 0, employeesSynced: 0 };
+      let sync = { status: stripe ? "not-synced" : "not-configured", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
       const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
       const acceptedCurrentTerms = account.termsAccepted === true && text(account.termsVersion) === TERMS_VERSION;
       if (stripe && customerId && acceptedCurrentTerms) {
@@ -147,7 +139,8 @@ async function handle(request) {
             sync = {
               status: subscription.status,
               ...(await syncStripeUsage({
-                db, stripe, clientId, customerId, subscription, window, calls, messageUsage,
+                db, stripe, clientId, customerId, subscription, window, calls,
+                conversations: conversationUsage.conversations, messageUsage,
                 employeeIds: employeeUsage.employeeIds,
               })),
             };
@@ -163,7 +156,8 @@ async function handle(request) {
       results.push({
         clientId,
         calls: summary.callCount,
-        messageBundles: summary.messageBundleCount,
+        chats: summary.chatCount,
+        messageParts: summary.messagePartCount,
         employees: summary.employeeCount,
         referralDiscountPercent: summary.referralDiscountPercent,
         amountDue: summary.amountDue,

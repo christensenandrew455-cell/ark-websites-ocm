@@ -125,6 +125,15 @@ export async function POST(request) {
           sourceType: action === "approve" ? "owner-approval" : "owner-activation",
           occurredAt: activatedAt,
         });
+      } else if (nextStatus === "disabled" && text(employeeSnapshot.data().status) === "active") {
+        const disabledAt = Date.now();
+        addEmployeeActivationToBatch(batch, access.db, {
+          clientId: access.clientId,
+          employeeUid,
+          sourceId: `active-period-exit:${disabledAt}`,
+          sourceType: "active-period-exit",
+          occurredAt: disabledAt,
+        });
       }
       const nameKey = text(employeeSnapshot.data().employeeNameKey);
       if (nameKey) batch.set(businessRef.collection("employeeHandles").doc(nameKey), { status: update.employeeStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -155,6 +164,16 @@ export async function POST(request) {
       contactedSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
       clientsSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
       conversationsSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
+      if (text(employeeSnapshot.data().status) === "active") {
+        const deletedAt = Date.now();
+        addEmployeeActivationToBatch(batch, access.db, {
+          clientId: access.clientId,
+          employeeUid,
+          sourceId: `active-employee-deleted:${deletedAt}`,
+          sourceType: "active-employee-deleted",
+          occurredAt: deletedAt,
+        });
+      }
       batch.delete(employeeRef);
       batch.delete(access.db.collection("accounts").doc(employeeUid));
       const nameKey = text(employeeSnapshot.data().employeeNameKey);

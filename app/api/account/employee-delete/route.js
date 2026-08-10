@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { addEmployeeActivationToBatch } from "../../../lib/billingEmployeeUsage";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
 
@@ -35,6 +36,16 @@ export async function POST(request) {
     contactedSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
     clientsSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
     conversationsSnapshot.docs.forEach((document) => batch.set(document.ref, unassigned, { merge: true }));
+    if (employeeSnapshot.exists && text(employeeSnapshot.data().status) === "active") {
+      const deletedAt = Date.now();
+      addEmployeeActivationToBatch(batch, db, {
+        clientId,
+        employeeUid: decoded.uid,
+        sourceId: `active-employee-self-deleted:${deletedAt}`,
+        sourceType: "active-employee-self-deleted",
+        occurredAt: deletedAt,
+      });
+    }
     batch.delete(accountRef);
     batch.delete(employeeRef);
     const nameKey = text(employeeSnapshot.exists ? employeeSnapshot.data().employeeNameKey : "");

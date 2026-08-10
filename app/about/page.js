@@ -26,7 +26,7 @@ export default async function AboutPage({ searchParams }) {
         <h2 className="mt-2 text-2xl font-black">$50 per month, then pay for usage</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl bg-slate-950 p-5 text-white"><h3 className="text-xl font-black">Calls · $2 each</h3><p className="mt-2 text-sm leading-6 text-slate-300">Each connected AI receptionist call is counted once. A lead saved from that same call is not a second charge.</p></div>
-          <div className="rounded-2xl bg-indigo-950 p-5 text-white"><h3 className="text-xl font-black">SMS · $1 per 50 parts</h3><p className="mt-2 text-sm leading-6 text-indigo-100">Inbound and outbound SMS parts are combined during the billing period.</p></div>
+          <div className="rounded-2xl bg-indigo-950 p-5 text-white"><h3 className="text-xl font-black">Chats · $1 each, then $1 per 50 parts</h3><p className="mt-2 text-sm leading-6 text-indigo-100">A chat is charged when it is created. Inbound and outbound SMS parts are then combined during the billing period.</p></div>
           <div className="rounded-2xl bg-amber-50 p-5"><h3 className="text-xl font-black">Employees · $5 each</h3><p className="mt-2 text-sm leading-6 text-slate-600">Each approved active employee used during the billing period.</p></div>
         </div>
         <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.</p>

@@ -1,12 +1,13 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminMessaging } from "./firebase-admin";
+import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
 
 function text(value) { return String(value || "").trim(); }
 function invalidToken(error) {
   return ["messaging/invalid-registration-token", "messaging/registration-token-not-registered", "messaging/invalid-argument"].includes(String(error?.code || ""));
 }
 
-export async function sendInboundMessageNotification({ db, clientId, conversationId, conversation, messageBody }) {
+export async function sendInboundMessageNotification({ db, clientId, conversationId, conversation }) {
   const businessSnapshot = await db.collection("businesses").doc(clientId).get();
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   if (business.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };
@@ -21,14 +22,13 @@ export async function sendInboundMessageNotification({ db, clientId, conversatio
     .filter((device) => text(device.role) === "customer" || (notifyAssignedEmployee && text(device.uid) === assignedEmployeeUid));
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
-  const leadName = text(conversation.leadName) || "A customer";
   const collectionKey = text(conversation.collectionKey) === "clients" ? "clients" : "contactedMe";
   const leadId = text(conversation.leadId);
   const route = `/lead-messages?lead=${encodeURIComponent(leadId)}&collection=${collectionKey}`;
   const messaging = getAdminMessaging();
   const response = await messaging.sendEachForMulticast({
     tokens: devices.map((device) => device.token),
-    notification: { title: `New message from ${leadName}`, body: text(messageBody).slice(0, 180) || "Open ARK to read the reply." },
+    notification: PUSH_NOTIFICATION_COPY.message,
     data: { type: "lead-message", route, clientId, conversationId, leadId, collectionKey },
     android: { priority: "high", notification: { channelId: "new-leads", sound: "default", tag: `message-${conversationId}`, defaultVibrateTimings: true } },
   });

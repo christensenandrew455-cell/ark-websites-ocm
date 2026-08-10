@@ -1,8 +1,9 @@
-export const BILLING_VERSION = "one-account-usage-v5";
+export const BILLING_VERSION = "one-account-usage-v6";
 export const BILLING_PLAN_KEY = "standard";
 export const BILLING_PLAN_NAME = "ARK AI Receptionist";
 export const MONTHLY_BASE_CENTS = 5000;
 export const PER_CALL_CENTS = 200;
+export const PER_CHAT_CENTS = 100;
 export const PER_MESSAGE_BUNDLE_CENTS = 100;
 export const MESSAGE_PARTS_PER_BUNDLE = 50;
 export const PER_EMPLOYEE_CENTS = 500;
@@ -29,19 +30,23 @@ export function referralDiscountPercent(referralCount) {
 
 export function calculateBillingSummary({
   callCount = 0,
+  chatCount = 0,
   messagePartCount = 0,
   messageCount = 0,
   employeeCount = 0,
   referralCount = 0,
 } = {}) {
   const calls = wholeNumber(callCount);
+  const chats = wholeNumber(chatCount);
   const parts = wholeNumber(messagePartCount);
   const messages = wholeNumber(messageCount);
   const employees = wholeNumber(employeeCount);
   const referrals = Math.min(MAX_MONTHLY_REFERRALS, wholeNumber(referralCount));
   const bundles = messageBundleCount(parts);
   const callUsageCents = calls * PER_CALL_CENTS;
-  const messageUsageCents = bundles * PER_MESSAGE_BUNDLE_CENTS;
+  const chatUsageCents = chats * PER_CHAT_CENTS;
+  const messagePartUsageCents = bundles * PER_MESSAGE_BUNDLE_CENTS;
+  const messageUsageCents = chatUsageCents + messagePartUsageCents;
   const employeeUsageCents = employees * PER_EMPLOYEE_CENTS;
   const usageCents = callUsageCents + messageUsageCents + employeeUsageCents;
   const subtotalCents = MONTHLY_BASE_CENTS + usageCents;
@@ -54,11 +59,17 @@ export function calculateBillingSummary({
     callCount: calls,
     perCallCents: PER_CALL_CENTS,
     callUsageCents,
+    chatCount: chats,
+    perChatCents: PER_CHAT_CENTS,
+    chatUsageCents,
     messageCount: messages,
     messagePartCount: parts,
     messageBundleCount: bundles,
     messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
     perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+    perMessagePartBlockCents: PER_MESSAGE_BUNDLE_CENTS,
+    messagePartBlockCount: bundles,
+    messagePartUsageCents,
     messageUsageCents,
     employeeCount: employees,
     perEmployeeCents: PER_EMPLOYEE_CENTS,

@@ -7,6 +7,7 @@ import {
   MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
+  PER_CHAT_CENTS,
   PER_EMPLOYEE_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
 } from "./billingPricing.js";
@@ -17,6 +18,7 @@ export {
   MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
+  PER_CHAT_CENTS,
   PER_EMPLOYEE_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
 };
@@ -30,11 +32,11 @@ export const BUSINESS_INCLUDED_EMPLOYEES = 0;
 export const PER_OVERAGE_CENTS = PER_CALL_CENTS;
 export const PER_EMPLOYEE_OVERAGE_CENTS = PER_EMPLOYEE_CENTS;
 export const PER_LEAD_CENTS = PER_CALL_CENTS;
-export const PER_MESSAGE_CONVERSATION_CENTS = PER_MESSAGE_BUNDLE_CENTS;
+export const PER_MESSAGE_CONVERSATION_CENTS = PER_CHAT_CENTS;
 
 export const LEAD_METER_EVENT = "ark_account_call_v5";
 export const MESSAGE_BUNDLE_METER_EVENT = "ark_account_message_bundle_v5";
-export const CONVERSATION_METER_EVENT = MESSAGE_BUNDLE_METER_EVENT;
+export const CONVERSATION_METER_EVENT = "ark_account_chat_v6";
 export const EMPLOYEE_METER_EVENT = "ark_account_employee_v5";
 export const BILLABLE_LEAD_EVENT = LEAD_METER_EVENT;
 
@@ -145,20 +147,23 @@ export async function ensureStripeBillingCatalog({ stripe, db }) {
   const saved = snapshot.exists ? snapshot.data() : {};
   let plansProductId = text(saved.plansProductId);
   let callProductId = text(saved.callProductId);
+  let chatProductId = text(saved.chatProductId);
   let messageProductId = text(saved.messageProductId);
   let employeeProductId = text(saved.employeeProductId);
   let callMeterId = text(saved.callMeterId);
+  let chatMeterId = text(saved.chatMeterId);
   let messageMeterId = text(saved.messageMeterId);
   let employeeMeterId = text(saved.employeeMeterId);
   let basePriceId = configuredPrice("STRIPE_ACCOUNT_BASE_PRICE_ID") || text(saved.basePriceId);
   let callPriceId = configuredPrice("STRIPE_ACCOUNT_CALL_PRICE_ID") || text(saved.callPriceId);
+  let chatPriceId = configuredPrice("STRIPE_ACCOUNT_CHAT_PRICE_ID") || text(saved.chatPriceId);
   let messagePriceId = configuredPrice("STRIPE_ACCOUNT_MESSAGE_PRICE_ID") || text(saved.messagePriceId);
   let employeePriceId = configuredPrice("STRIPE_ACCOUNT_EMPLOYEE_PRICE_ID") || text(saved.employeePriceId);
 
   if (!plansProductId) {
     plansProductId = (await stripe.products.create({
       name: BILLING_PLAN_NAME,
-      description: "$50 monthly account with usage-based calls, SMS parts, and employees.",
+      description: "$50 monthly account with usage-based calls, chats, SMS parts, and employees.",
       metadata: { ark_billing_component: "account", ark_billing_version: BILLING_VERSION },
     })).id;
   }
@@ -173,13 +178,16 @@ export async function ensureStripeBillingCatalog({ stripe, db }) {
     })).id;
   }
   if (!callMeterId) callMeterId = (await createMeter(stripe, "ARK connected receptionist calls", LEAD_METER_EVENT)).id;
-  if (!messageMeterId) messageMeterId = (await createMeter(stripe, "ARK SMS 50-part bundles", MESSAGE_BUNDLE_METER_EVENT)).id;
+  if (!chatMeterId) chatMeterId = (await createMeter(stripe, "ARK chats", CONVERSATION_METER_EVENT)).id;
+  if (!messageMeterId) messageMeterId = (await createMeter(stripe, "ARK SMS parts", MESSAGE_BUNDLE_METER_EVENT)).id;
   if (!employeeMeterId) employeeMeterId = (await createMeter(stripe, "ARK employee activations", EMPLOYEE_METER_EVENT)).id;
   if (!callProductId) callProductId = (await stripe.products.create({ name: "ARK connected AI receptionist calls", description: "$2 for each connected AI receptionist call.", metadata: { ark_billing_component: "call_usage", ark_billing_version: BILLING_VERSION } })).id;
+  if (!chatProductId) chatProductId = (await stripe.products.create({ name: "ARK chats", description: "$1 when each new customer chat is created.", metadata: { ark_billing_component: "chat_usage", ark_billing_version: BILLING_VERSION } })).id;
   if (!messageProductId) messageProductId = (await stripe.products.create({ name: "ARK SMS usage", description: "$1 for each 50 inbound and outbound SMS parts.", metadata: { ark_billing_component: "message_usage", ark_billing_version: BILLING_VERSION } })).id;
   if (!employeeProductId) employeeProductId = (await stripe.products.create({ name: "ARK employee accounts", description: "$5 for each employee active during a billing period.", metadata: { ark_billing_component: "employee_usage", ark_billing_version: BILLING_VERSION } })).id;
   if (!callPriceId) callPriceId = (await createMeteredPrice({ stripe, productId: callProductId, meterId: callMeterId, nickname: "ARK calls at $2 each", component: "call_usage", unitAmount: PER_CALL_CENTS })).id;
-  if (!messagePriceId) messagePriceId = (await createMeteredPrice({ stripe, productId: messageProductId, meterId: messageMeterId, nickname: "ARK SMS bundles at $1 per 50 parts", component: "message_usage", unitAmount: PER_MESSAGE_BUNDLE_CENTS })).id;
+  if (!chatPriceId) chatPriceId = (await createMeteredPrice({ stripe, productId: chatProductId, meterId: chatMeterId, nickname: "ARK chats at $1 each", component: "chat_usage", unitAmount: PER_CHAT_CENTS })).id;
+  if (!messagePriceId) messagePriceId = (await createMeteredPrice({ stripe, productId: messageProductId, meterId: messageMeterId, nickname: "ARK SMS parts at $1 per 50 parts", component: "message_usage", unitAmount: PER_MESSAGE_BUNDLE_CENTS })).id;
   if (!employeePriceId) employeePriceId = (await createMeteredPrice({ stripe, productId: employeeProductId, meterId: employeeMeterId, nickname: "ARK employees at $5 each", component: "employee_usage", unitAmount: PER_EMPLOYEE_CENTS })).id;
 
   await configRef.set({
@@ -190,6 +198,10 @@ export async function ensureStripeBillingCatalog({ stripe, db }) {
     callMeterId,
     callEventName: LEAD_METER_EVENT,
     callPriceId,
+    chatProductId,
+    chatMeterId,
+    chatEventName: CONVERSATION_METER_EVENT,
+    chatPriceId,
     messageProductId,
     messageMeterId,
     messageEventName: MESSAGE_BUNDLE_METER_EVENT,
@@ -200,16 +212,17 @@ export async function ensureStripeBillingCatalog({ stripe, db }) {
     employeePriceId,
     monthlyBaseCents: MONTHLY_BASE_CENTS,
     perCallCents: PER_CALL_CENTS,
+    perChatCents: PER_CHAT_CENTS,
     perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
     messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
     perEmployeeCents: PER_EMPLOYEE_CENTS,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  return { basePriceId, callPriceId, messagePriceId, employeePriceId };
+  return { basePriceId, callPriceId, chatPriceId, messagePriceId, employeePriceId };
 }
 
 function expectedPriceIds(catalog) {
-  return [catalog.basePriceId, catalog.callPriceId, catalog.messagePriceId, catalog.employeePriceId];
+  return [catalog.basePriceId, catalog.callPriceId, catalog.chatPriceId, catalog.messagePriceId, catalog.employeePriceId];
 }
 
 function subscriptionHasPrices(subscription, priceIds) {
@@ -282,6 +295,7 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
     includedConversations: 0,
     includedEmployees: 0,
     perCallCents: PER_CALL_CENTS,
+    perChatCents: PER_CHAT_CENTS,
     perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
     messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
     perEmployeeCents: PER_EMPLOYEE_CENTS,
@@ -289,6 +303,7 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
     stripeSubscriptionStatus: subscription.status,
     stripeBasePriceId: catalog.basePriceId,
     stripeLeadPriceId: catalog.callPriceId,
+    stripeChatPriceId: catalog.chatPriceId,
     stripeMessagePriceId: catalog.messagePriceId,
     stripeEmployeePriceId: catalog.employeePriceId,
     updatedAt: FieldValue.serverTimestamp(),
@@ -305,6 +320,7 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
       IncludedConversations: 0,
       IncludedEmployees: 0,
       PerCallCents: PER_CALL_CENTS,
+      PerChatCents: PER_CHAT_CENTS,
       PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
       MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
       PerEmployeeCents: PER_EMPLOYEE_CENTS,
@@ -401,7 +417,7 @@ export async function reportBillableMessageBundles({ stripe, customerId, clientI
 }
 
 export async function reportBillableConversation({ stripe, customerId, clientId, conversationId, occurredAt }) {
-  return reportBillableMessageBundles({ stripe, customerId, clientId, billingPeriodKey: conversationId, bundleCount: 1, occurredAt });
+  return reportMeterEvent({ stripe, eventName: CONVERSATION_METER_EVENT, identifier: usageIdentifier("ark-v6-chat", clientId, conversationId), customerId, occurredAt });
 }
 
 export async function reportBillableEmployee({ stripe, customerId, clientId, employeeId, billingPeriodKey, occurredAt }) {
@@ -420,6 +436,7 @@ export async function syncStripeUsage({
   subscription,
   window,
   calls,
+  conversations = [],
   messageUsage,
   employeeIds,
 }) {
@@ -427,7 +444,7 @@ export async function syncStripeUsage({
   let callsSynced = 0;
   for (const call of calls) {
     const recordRef = root.collection("billingCallEvents")
-      .doc(billingUsageRecordId(clientId, call.id));
+      .doc(text(call.eventId) || billingUsageRecordId(clientId, call.id));
     const record = await recordRef.get();
     if (record.exists && record.data().stripeReported === true) continue;
     await reportBillableLead({ stripe, customerId, clientId, leadId: call.id, occurredAt: call.occurredAt });
@@ -443,7 +460,31 @@ export async function syncStripeUsage({
     callsSynced += 1;
   }
 
-  let messageBundlesSynced = 0;
+  let chatsSynced = 0;
+  for (const conversation of conversations) {
+    const recordRef = root.collection("billingConversationEvents").doc(conversation.id);
+    const record = await recordRef.get();
+    if (record.exists && record.data().stripeReported === true) continue;
+    await reportBillableConversation({
+      stripe,
+      customerId,
+      clientId,
+      conversationId: conversation.id,
+      occurredAt: conversation.occurredAt,
+    });
+    await recordRef.set({
+      conversationId: conversation.conversationId,
+      occurredAt: new Date(conversation.occurredAt),
+      stripeReported: true,
+      stripePricingVersion: BILLING_VERSION,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscription.id,
+      reportedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    chatsSynced += 1;
+  }
+
+  let messagePartsSynced = 0;
   if (messageUsage.bundles > 0) {
     const recordRef = root.collection("billingMessageBundleEvents")
       .doc(billingUsageRecordId(clientId, window.monthKey));
@@ -473,7 +514,7 @@ export async function syncStripeUsage({
         stripeSubscriptionId: subscription.id,
         reportedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
-      messageBundlesSynced = additionalBundles;
+      messagePartsSynced = additionalBundles;
     }
   }
 
@@ -503,5 +544,5 @@ export async function syncStripeUsage({
     }, { merge: true });
     employeesSynced += 1;
   }
-  return { callsSynced, messageBundlesSynced, employeesSynced };
+  return { callsSynced, chatsSynced, messagePartsSynced, employeesSynced };
 }

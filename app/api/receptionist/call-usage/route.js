@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { addBillingCallEventToTransaction } from "../../../lib/billingCallUsage";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
@@ -163,6 +164,12 @@ export async function POST(request) {
         startedAt: Timestamp.fromMillis(startedAtMs),
         endedAt: Timestamp.fromMillis(endedAtMs),
         createdAt: FieldValue.serverTimestamp(),
+      });
+
+      addBillingCallEventToTransaction(transaction, db, {
+        clientId,
+        callId: callDocumentId,
+        occurredAt: startedAtMs,
       });
 
       transaction.set(currentUsageRef, {

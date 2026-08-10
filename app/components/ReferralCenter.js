@@ -52,9 +52,9 @@ export default function ReferralCenter({ clientId = "" }) {
       <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-white/75 text-xl shadow-sm">★</span>
       <span className="pr-1 leading-tight"><span className="block text-[9px] font-black uppercase tracking-[0.14em]">Refer & save</span><span className="block text-sm font-black">Up to 50% off</span></span>
     </button>
-    {open && <div className="fixed inset-0 z-[90] grid place-items-end bg-slate-950/55 p-3 backdrop-blur-sm sm:place-items-center" role="dialog" aria-modal="true" aria-labelledby="referral-title">
+    {open && <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="referral-title">
       <button type="button" className="absolute inset-0" onClick={() => setOpen(false)} aria-label="Close referral savings" />
-      <section className="relative w-full max-w-lg rounded-[2rem] border border-amber-200 bg-white p-6 shadow-2xl sm:p-8">
+      <section className="ark-modal-surface ark-modal-scroll max-w-lg p-6 sm:p-8">
         <button type="button" onClick={() => setOpen(false)} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-lg font-black text-slate-700" aria-label="Close">×</button>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">Referral savings</p>
         <h2 id="referral-title" className="mt-2 pr-10 text-3xl font-black tracking-tight text-slate-950">Save up to 50%</h2>

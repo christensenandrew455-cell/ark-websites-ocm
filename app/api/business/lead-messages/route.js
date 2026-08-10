@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { addBillingConversationEventToBatch, isBillableConversationData } from "../../../lib/billingConversationUsage";
 import { addBillingMessageEventToBatch } from "../../../lib/billingMessageUsage";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
@@ -291,11 +292,12 @@ export async function POST(request) {
     const conversationRef = root.collection("leadConversations").doc(key);
     const existingConversation = await conversationRef.get();
     const existingData = existingConversation.exists ? existingConversation.data() : {};
+    const isNewConversation = !isBillableConversationData(existingData);
     if (existingData.messagingOptedOut === true) return NextResponse.json({ error: "This customer opted out of text messages. Do not send another message unless they opt back in." }, { status: 409 });
 
     let optInBody = "";
     let optInProvider = null;
-    if (!existingConversation.exists) {
+    if (isNewConversation) {
       optInBody = optInConfirmationMessage(access.businessName);
       optInProvider = await sendThroughTelnyx({ from: access.fromPhone, to: loaded.lead.phoneNormalized, message: optInBody });
       if (providerFailed(optInProvider)) return NextResponse.json({ error: `The required opt-in confirmation could not be sent${optInProvider.providerErrorCode ? ` (${optInProvider.providerErrorCode})` : ""}: ${optInProvider.providerError || "Unknown Telnyx error."}` }, { status: 502 });
@@ -306,8 +308,11 @@ export async function POST(request) {
     const batch = access.db.batch();
     const now = Date.now();
     let addedParts = smsPartCount(messageBody);
+    const billingConversationSourceId = isNewConversation
+      ? `chat:${provider.providerMessageId || messageRef.id}`
+      : text(existingData.billingConversationSourceId);
 
-    if (!existingConversation.exists) {
+    if (isNewConversation) {
       const optInRef = conversationRef.collection("messages").doc();
       setMessageAndIndex({
         batch,
@@ -350,7 +355,7 @@ export async function POST(request) {
       messageType: "conversation",
       from: access.fromPhone,
       to: loaded.lead.phoneNormalized,
-      createdAt: Timestamp.fromMillis(now + (!existingConversation.exists ? 1 : 0)),
+      createdAt: Timestamp.fromMillis(now + (isNewConversation ? 1 : 0)),
     });
     if (provider.providerMessageId) {
       addBillingMessageEventToBatch(batch, access.db, {
@@ -359,7 +364,16 @@ export async function POST(request) {
         sourceId: provider.providerMessageId,
         sourceType: "conversation",
         smsParts: smsPartCount(messageBody),
-        occurredAt: now + (!existingConversation.exists ? 1 : 0),
+        occurredAt: now + (isNewConversation ? 1 : 0),
+      });
+    }
+
+    if (isNewConversation) {
+      addBillingConversationEventToBatch(batch, access.db, {
+        clientId: access.clientId,
+        conversationId: key,
+        sourceId: billingConversationSourceId,
+        occurredAt: now,
       });
     }
 
@@ -379,7 +393,7 @@ export async function POST(request) {
       lastMessageDirection: "outbound",
       lastMessageAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      ...(!existingConversation.exists ? { optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: access.isEmployee ? "employee" : "owner", ownerUnreadCount: 0, employeeUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
+      ...(isNewConversation ? { billingConversationSourceId, optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: access.isEmployee ? "employee" : "owner", ownerUnreadCount: 0, employeeUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
     }, { merge: true });
     await batch.commit();
 
@@ -387,10 +401,10 @@ export async function POST(request) {
       ? "The message was saved, but this business number is not configured for Telnyx messaging."
       : provider.status === "provider-error"
         ? `Telnyx rejected the message${provider.providerErrorCode ? ` (${provider.providerErrorCode})` : ""}: ${provider.providerError || "Unknown error."}`
-        : !existingConversation.exists
+        : isNewConversation
           ? `Consent notice sent. Message ${provider.status || "queued"}.`
           : `Message ${provider.status || "queued"}.`;
-    return NextResponse.json({ ok: true, conversationId: key, newConversation: !existingConversation.exists, optInSent: !existingConversation.exists, deliveryStatus: provider.status, providerErrorCode: provider.providerErrorCode, providerError: provider.providerError, notice });
+    return NextResponse.json({ ok: true, conversationId: key, newConversation: isNewConversation, optInSent: isNewConversation, deliveryStatus: provider.status, providerErrorCode: provider.providerErrorCode, providerError: provider.providerError, notice });
   } catch (error) {
     console.error("Unable to send lead message", error);
     return NextResponse.json({ error: "Could not send this message." }, { status: 500 });

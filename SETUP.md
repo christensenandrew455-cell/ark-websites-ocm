@@ -77,7 +77,7 @@ After the rules are published:
 
 If Stripe is canceled, the saved owner account returns to payment setup instead of being discarded.
 
-The standard billing model is $50 per monthly period, $2 per connected AI receptionist call, $1 per 50 SMS parts, and $5 per active employee used during the period. A lead saved from a counted call is not another charge. Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.
+The standard billing model is $50 per monthly period, $2 per connected AI receptionist call, $1 per new chat plus $1 per 50 SMS parts, and $5 per active employee used at any time during the period. Deleting usage records does not reduce recorded billing. A lead saved from a counted call is not another charge. Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.
 
 ## 7. Password reset
 
