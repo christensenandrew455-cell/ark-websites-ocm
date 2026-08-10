@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { addBillingMessageEventToBatch } from "../../../lib/billingMessageUsage";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../lib/smsParts";
@@ -323,6 +324,16 @@ export async function POST(request) {
         to: loaded.lead.phoneNormalized,
         createdAt: Timestamp.fromMillis(now),
       });
+      if (optInProvider.providerMessageId) {
+        addBillingMessageEventToBatch(batch, access.db, {
+          clientId: access.clientId,
+          direction: "outbound",
+          sourceId: optInProvider.providerMessageId,
+          sourceType: "opt-in-confirmation",
+          smsParts: smsPartCount(optInBody),
+          occurredAt: now,
+        });
+      }
       addedParts += smsPartCount(optInBody);
     }
 
@@ -341,6 +352,16 @@ export async function POST(request) {
       to: loaded.lead.phoneNormalized,
       createdAt: Timestamp.fromMillis(now + (!existingConversation.exists ? 1 : 0)),
     });
+    if (provider.providerMessageId) {
+      addBillingMessageEventToBatch(batch, access.db, {
+        clientId: access.clientId,
+        direction: "outbound",
+        sourceId: provider.providerMessageId,
+        sourceType: "conversation",
+        smsParts: smsPartCount(messageBody),
+        occurredAt: now + (!existingConversation.exists ? 1 : 0),
+      });
+    }
 
     batch.set(conversationRef, {
       conversationId: key,

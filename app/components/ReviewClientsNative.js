@@ -17,10 +17,10 @@ import {
   leadContactFieldDeletionPatch,
   stripLeadContactFields,
 } from "../lib/leadContactFields";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const FINAL_DAY_MS = 6 * DAY_MS;
-const EXPIRES_MS = 7 * DAY_MS;
+import {
+  estimateRequestCreatedAt,
+  estimateRequestLifecycle,
+} from "../lib/estimateRequestLifecycle";
 
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
@@ -63,10 +63,7 @@ function rowTime(row) {
 
 function isEstimateRequestFinalDay(row) {
   if (row.collectionKey !== "contactedMe") return false;
-  const createdAt = toMillis(row.createdAt || row.contactedAt || row.updatedAt);
-  if (!createdAt) return false;
-  const age = Date.now() - createdAt;
-  return age >= FINAL_DAY_MS && age < EXPIRES_MS;
+  return estimateRequestLifecycle(estimateRequestCreatedAt(row)).finalDay;
 }
 
 function normalizeTimeForDate(value) {

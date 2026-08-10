@@ -5,15 +5,16 @@ import { computeBillingState } from "../../../lib/billingDelinquency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 function authorized(request) {
-  const expected = String(process.env.BILLING_WORKFLOW_SECRET || process.env.OCM_REMINDER_SECRET || "").trim();
+  const expected = String(process.env.CRON_SECRET || "").trim();
   const authorization = String(request.headers.get("authorization") || "");
   const provided = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   return Boolean(expected && provided && provided === expected);
 }
 
-export async function POST(request) {
+async function runEnforcement(request) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Workflow authorization failed." }, { status: 401 });
   }
@@ -69,4 +70,12 @@ export async function POST(request) {
     console.error("Unable to run billing enforcement", error);
     return NextResponse.json({ error: "Billing enforcement failed." }, { status: 500 });
   }
+}
+
+export async function GET(request) {
+  return runEnforcement(request);
+}
+
+export async function POST(request) {
+  return runEnforcement(request);
 }

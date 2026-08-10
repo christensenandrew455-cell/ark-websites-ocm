@@ -1,118 +1,9 @@
 "use client";
 
-import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import ClientDeclineNoticeSettings from "../components/ClientDeclineNoticeSettings";
 import SettingsPanel from "../components/SettingsPanel";
 import { useAuth } from "../components/AuthProvider";
-
-function money(cents = 0, currency = "usd") {
-  try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: String(currency || "usd").toUpperCase() }).format(Number(cents || 0) / 100);
-  } catch {
-    return `$${(Number(cents || 0) / 100).toFixed(2)}`;
-  }
-}
-
-function SettingsBillingEstimate() {
-  const { user } = useAuth();
-  const [mountNode, setMountNode] = useState(null);
-  const [summary, setSummary] = useState(null);
-
-  useEffect(() => {
-    let observer;
-    let slot;
-    function attach() {
-      const billing = document.querySelector("#billing");
-      if (!billing) return false;
-      slot = billing.querySelector(".settings-billing-estimate-slot");
-      if (!slot) {
-        slot = document.createElement("div");
-        slot.className = "settings-billing-estimate-slot";
-        const headingRow = billing.firstElementChild;
-        if (headingRow?.nextSibling) billing.insertBefore(slot, headingRow.nextSibling);
-        else billing.appendChild(slot);
-      }
-      setMountNode(slot);
-      return true;
-    }
-    if (!attach()) {
-      observer = new MutationObserver(() => { if (attach()) observer.disconnect(); });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-    return () => {
-      observer?.disconnect();
-      if (slot?.parentNode) slot.parentNode.removeChild(slot);
-      setMountNode(null);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    let active = true;
-    user.getIdToken(true)
-      .then((token) => fetch("/api/billing/monthly-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }))
-      .then(async (response) => ({ response, data: await response.json().catch(() => ({})) }))
-      .then(({ response, data }) => { if (active && response.ok) setSummary(data); })
-      .catch(() => null);
-    return () => { active = false; };
-  }, [user]);
-
-  if (!mountNode) return null;
-  return createPortal(
-    <div className="mt-4 rounded-2xl bg-slate-950 p-5 text-white">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">Current billing period</p>
-      <p className="mt-2 text-4xl font-black tracking-tight">{summary ? money(summary.amountDue, summary.currency) : "—"}</p>
-      <p className="mt-1 text-xs font-bold text-slate-300">Estimated monthly total</p>
-    </div>,
-    mountNode
-  );
-}
-
-function SettingsSimplifier() {
-  useEffect(() => {
-    const fieldLabels = new Map([
-      ["Time zone", "Business time zone"],
-      ["Business days", "Open business days"],
-      ["Business opens", "Business opening time"],
-      ["Business closes", "Business closing time"],
-      ["Service areas", "States and cities you service"],
-    ]);
-    const cardDescriptions = new Map([
-      ["Business Information", "Information the AI receptionist uses during calls."],
-      ["Customization", "Choose how the app works for your business."],
-    ]);
-
-    function apply() {
-      document.querySelectorAll(".settings-layered > main > div > .space-y-3 > button").forEach((button) => {
-        const title = button.querySelector("h2")?.textContent?.trim();
-        const description = button.querySelector("p");
-        const nextDescription = cardDescriptions.get(title);
-        if (description && nextDescription && description.textContent !== nextDescription) description.textContent = nextDescription;
-      });
-
-      document.querySelectorAll(".settings-layered span, .settings-layered p").forEach((node) => {
-        if (node.children.length > 0) return;
-        const text = node.textContent?.trim();
-        if (fieldLabels.has(text)) node.textContent = fieldLabels.get(text);
-      });
-
-      document.querySelectorAll(".settings-layered div").forEach((node) => {
-        const text = node.textContent?.trim();
-        if ((text === "Business information saved." || text === "Customization saved.") && node.style.display !== "none") node.style.display = "none";
-      });
-    }
-
-    apply();
-    const root = document.querySelector(".settings-layered");
-    if (!root) return undefined;
-    const observer = new MutationObserver(apply);
-    observer.observe(root, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
-  return null;
-}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -126,21 +17,5 @@ export default function SettingsPage() {
     return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening dashboard…</main>;
   }
 
-  return <div className="settings-layered"><style>{`
-    .settings-layered > main { background-color: #e2e8f0 !important; }
-    .settings-layered > main > div > .space-y-3 { border: 1px solid #cbd5e1; border-radius: 2rem; background: rgba(203, 213, 225, .72); padding: .75rem; box-shadow: inset 0 1px 2px rgba(15, 23, 42, .08); }
-    .settings-layered > main > div > .space-y-3 > button { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
-    .settings-layered > main section.bg-white { background-color: #f8fafc !important; border-color: #cbd5e1 !important; }
-    .settings-layered > main a.bg-white, .settings-layered > main button.bg-white { background-color: #f8fafc !important; }
-    .settings-layered > main > div > header > p { display: none !important; }
-    .settings-layered > main > div > div > :is(a, button) + h2 + p { display: none !important; }
-    .settings-layered .settings-business-form > div > section:first-child > h3,
-    .settings-layered .settings-business-form > div > section:first-child > p { display: none !important; }
-    .settings-layered .settings-business-form label > span:last-child:not(:first-child),
-    .settings-layered .settings-business-form p + p,
-    .settings-layered main form > section > p,
-    .settings-layered main form label > span > span { display: none !important; }
-    .settings-layered main form > button[type="submit"] { display: none !important; }
-    @media (min-width: 640px) { .settings-layered > main > div > .space-y-3 { padding: 1.25rem; } }
-  `}</style><SettingsPanel /><SettingsBillingEstimate /><ClientDeclineNoticeSettings /><SettingsSimplifier /></div>;
+  return <SettingsPanel />;
 }

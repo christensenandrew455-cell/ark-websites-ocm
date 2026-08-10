@@ -5,12 +5,14 @@ import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import {
   BILLING_VERSION,
+  MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
   PER_EMPLOYEE_CENTS,
-  PER_MESSAGE_CONVERSATION_CENTS,
+  PER_MESSAGE_BUNDLE_CENTS,
   ensureCustomerBillingSubscription,
 } from "../../../lib/stripeUsageBilling";
+import { qualifyReferralAfterActivation } from "../../../lib/referrals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,7 +102,8 @@ export async function POST(request) {
       includedConversations: 0,
       includedEmployees: 0,
       perCallCents: PER_CALL_CENTS,
-      perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+      perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+      messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
       perEmployeeCents: PER_EMPLOYEE_CENTS,
       messagesEnabled,
       employeesEnabled,
@@ -137,7 +140,8 @@ export async function POST(request) {
       includedConversations: 0,
       includedEmployees: 0,
       perCallCents: PER_CALL_CENTS,
-      perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+      perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+      messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
       perEmployeeCents: PER_EMPLOYEE_CENTS,
       messagesEnabled,
       employeesEnabled,
@@ -167,7 +171,8 @@ export async function POST(request) {
       IncludedConversations: 0,
       IncludedEmployees: 0,
       PerCallCents: PER_CALL_CENTS,
-      PerMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+      PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+      MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
       PerEmployeeCents: PER_EMPLOYEE_CENTS,
       MessagesEnabled: messagesEnabled,
       EmployeesEnabled: employeesEnabled,
@@ -238,7 +243,16 @@ export async function POST(request) {
       privacyVersion: text(account.privacyVersion),
     });
     if (customerId) await stripe.customers.update(customerId, { metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan: "standard", accountType: ACCOUNT_TYPES.OWNER } }).catch((stripeError) => console.error("Unable to update Stripe customer metadata", stripeError));
-    return NextResponse.json({ email: accountEmail, clientId, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", completed: true });
+    const referral = await qualifyReferralAfterActivation({
+      db,
+      stripe,
+      referredClientId: clientId,
+      referredUid: authorization.decoded.uid,
+    }).catch((referralError) => {
+      console.error("Unable to qualify signup referral; daily billing sync will retry", referralError);
+      return { status: "pending_activation" };
+    });
+    return NextResponse.json({ email: accountEmail, clientId, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", completed: true, referralStatus: referral.status });
   } catch (error) {
     console.error("Unable to complete owner signup", error);
     return NextResponse.json({ error: safeSignupError(error) }, { status: 500 });

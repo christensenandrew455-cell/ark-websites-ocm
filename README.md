@@ -12,7 +12,7 @@ app/
     auth/              Authentication endpoints
     billing/           Stripe billing and webhook endpoints
     notifications/     Device and notification endpoints
-    public/            Public support endpoints
+    support/           Public support endpoint
     signup/            Account application and setup endpoints
   components/          Reusable client-side UI and providers
   lib/                 Shared client/server utilities and service modules
@@ -24,7 +24,6 @@ app/
   privacy/             Public privacy policy
   settings/            Customer account settings
   signup/              Account application flow
-  support/             Public support form
   terms/               Public terms of use
 android/                Generated Capacitor Android project
   app/src/main/         Native Android app resources and source
@@ -45,7 +44,7 @@ scripts/                 Cross-platform mobile setup and asset generators
 - Keep Firebase Admin code server-only. Do not import `firebase-admin` modules into client components.
 - Use `normalizeClientId` from `app/lib/valueUtils.js` whenever a business or client identifier becomes a Firestore document ID.
 - Use `toIsoString` or `serializeFirestoreValue` from `app/lib/valueUtils.js` when returning Firestore timestamps through an API.
-- Keep Terms, Privacy, Docs, About, and Support publicly accessible for customers and app-store review.
+- Keep Terms, Privacy, Docs, and About publicly accessible for customers and app-store review. Public support is hosted at `https://arkwebsites.com/support`.
 - Do not commit secrets, Firebase private keys, Stripe secrets, signing keys, or production environment files.
 
 ## Messaging compliance flow
@@ -53,7 +52,7 @@ scripts/                 Cross-platform mobile setup and asset generators
 - The receptionist records verbal contact consent before a lead is saved.
 - The first outbound chat sends an automatic consent confirmation before the employee or owner message.
 - Telnyx profile keyword responses provide the configured STOP, START, and HELP confirmations.
-- The inbound webhook mirrors those keywords into Firestore so STOP locks the OCM composer, START restores it, and HELP/REPORT creates a platform compliance event.
+- The inbound webhook mirrors those keywords into Firestore so STOP locks the ARK Client Center composer, START restores it, and HELP/REPORT creates a platform compliance event.
 - The public reporting path is configured with `ARK_CLIENT_CENTER_SUPPORT_URL` and defaults to `https://arkwebsites.com/support`.
 - Do not add a second application-level STOP or HELP autoresponse while Telnyx Advanced Opt-Out is enabled, because that would send duplicate replies.
 

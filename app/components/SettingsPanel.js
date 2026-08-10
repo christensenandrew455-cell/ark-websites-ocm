@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import BackButton from "./BackButton";
+import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
 import EmployeeAccessSettings from "./EmployeeAccessSettings";
 import MessageRetentionSettings from "./MessageRetentionSettings";
 import { useAuth } from "./AuthProvider";
@@ -59,6 +60,7 @@ export default function SettingsPanel({ setupMode = false }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingCustomization, setIsSavingCustomization] = useState(false);
   const [isOpeningBilling, setIsOpeningBilling] = useState(false);
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -86,14 +88,12 @@ export default function SettingsPanel({ setupMode = false }) {
     if (!user || !clientId || isAdmin) { setIsLoading(false); return undefined; }
     let active = true;
     user.getIdToken(true).then(async (token) => {
-      const [receptionistResponse, featureResponse, billingResponse] = await Promise.all([
+      const [receptionistResponse, featureResponse] = await Promise.all([
         fetch("/api/receptionist/settings", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
         fetch("/api/account/features", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
-        fetch("/api/billing/monthly-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
       ]);
       const receptionistData = await receptionistResponse.json().catch(() => ({}));
       const featureData = await featureResponse.json().catch(() => ({}));
-      const billingData = await billingResponse.json().catch(() => ({}));
       if (!receptionistResponse.ok) throw new Error(receptionistData.error || "Could not load AI receptionist information.");
       if (!featureResponse.ok) throw new Error(featureData.error || "Could not load account features.");
       if (active) {
@@ -109,11 +109,34 @@ export default function SettingsPanel({ setupMode = false }) {
           canDisableEmployees: featureData.canDisableEmployees !== false,
           canDisableMessages: featureData.canDisableMessages !== false,
         });
-        if (billingResponse.ok) setBillingSummary(billingData);
       }
     }).catch((loadError) => active && setError(loadError.message)).finally(() => active && setIsLoading(false));
     return () => { active = false; };
   }, [clientId, isAdmin, user]);
+
+  const refreshBillingSummary = useCallback(async () => {
+    if (!user || isAdmin) return;
+    setIsLoadingBilling(true);
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/billing/monthly-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not refresh this month's billing estimate.");
+      setBillingSummary(data);
+      setError("");
+    } catch (billingError) {
+      setError(billingError.message || "Could not refresh this month's billing estimate.");
+    } finally {
+      setIsLoadingBilling(false);
+    }
+  }, [isAdmin, user]);
+
+  useEffect(() => {
+    if (activeSection !== "payment") return undefined;
+    refreshBillingSummary();
+    const interval = window.setInterval(refreshBillingSummary, 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [activeSection, refreshBillingSummary]);
 
   const businessDirty = useMemo(() => Boolean(receptionist && savedReceptionist && profileKey(receptionist) !== profileKey(savedReceptionist)), [receptionist, savedReceptionist]);
   const customizationDirty = useMemo(() => businessDirty || Boolean(savedFeatures && JSON.stringify(features) !== JSON.stringify(savedFeatures)) || darkMode !== savedDarkMode, [businessDirty, darkMode, features, savedDarkMode, savedFeatures]);
@@ -254,19 +277,37 @@ export default function SettingsPanel({ setupMode = false }) {
       <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
       <label className={`${controlClass}${employeeBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Employees</FieldLabel><input type="checkbox" disabled={employeeBlocked} checked={features.employeesEnabled} onChange={(event) => updateFeature("employeesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
       {features.messagesEnabled && <MessageRetentionSettings />}
+      <ClientDeclineNoticeSettings />
       {features.employeesEnabled && <EmployeeAccessSettings embedded />}
       <div id="account-data" className="border-t border-slate-200 pt-6"><FieldLabel>Client data</FieldLabel><button type="button" onClick={downloadClientData} disabled={isDownloading} className="w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></div>
     </div></SectionPanel></>;
   }
   function paymentSection() {
-    return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel><div className="rounded-2xl bg-slate-50 p-5 sm:p-7"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Estimated total cost this month</p><p className="mt-2 text-right text-4xl font-black tracking-tight sm:text-6xl">{money(billingSummary?.amountDue || 0)}</p></div><div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div><button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button></SectionPanel></>;
+    const subtotal = Number(billingSummary?.subtotalCents ?? (Number(billingSummary?.monthlyBaseCents || 0) + Number(billingSummary?.usageCents || 0)));
+    const savings = Number(billingSummary?.referralSavingsCents || 0);
+    const discount = Number(billingSummary?.referralDiscountPercent || 0);
+    const rowClass = "flex items-center justify-between gap-4 border-b border-slate-200 py-3 last:border-0";
+    return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current billing period</p><p className="mt-1 text-sm font-bold text-slate-700">Live usage estimate</p></div><button type="button" onClick={refreshBillingSummary} disabled={isLoadingBilling} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 sm:px-5">
+        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Monthly account</span><strong>{billingSummary ? money(billingSummary.monthlyBaseCents) : "—"}</strong></div>
+        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Connected calls <small className="block font-semibold text-slate-500">{Number(billingSummary?.callCount || 0)} × {money(billingSummary?.perCallCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.callUsageCents) : "—"}</strong></div>
+        <div className={rowClass}><span className="text-sm font-bold text-slate-700">SMS parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} parts · {Number(billingSummary?.messageBundleCount || 0)} bundles</small></span><strong>{billingSummary ? money(billingSummary.messageUsageCents) : "—"}</strong></div>
+        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Employees <small className="block font-semibold text-slate-500">{Number(billingSummary?.employeeCount || 0)} × {money(billingSummary?.perEmployeeCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.employeeUsageCents) : "—"}</strong></div>
+        <div className={rowClass}><span className="text-sm font-black text-slate-950">Subtotal</span><strong>{billingSummary ? money(subtotal) : "—"}</strong></div>
+        {savings > 0 && <div className={rowClass}><span className="text-sm font-black text-green-700">Referral savings ({discount}%)</span><strong className="text-green-700">−{money(savings)}</strong></div>}
+      </div>
+      <div className="mt-4 rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white sm:p-7"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Estimated total this period</p><p className="mt-2 text-right text-4xl font-black tracking-tight sm:text-6xl">{billingSummary ? money(billingSummary.amountDue) : "—"}</p></div>
+      <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
+      <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
+    </SectionPanel></>;
   }
   function accountSection() {
     return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-2 sm:grid-cols-2"><Link href="/help" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Open Help</Link><Link href="/docs" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Documentation</Link><Link href="/terms" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">This cancels the subscription and permanently deletes the owner account, employees, leads, clients, assignments, and conversations. Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-4xl">
         {(setupMode || !activeSection) && <header className="mb-4 sm:mb-7">{!setupMode && <BackButton href="/" className="mb-4" />}{setupMode && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Final account step</p>}<h1 className="text-3xl font-black tracking-tight sm:text-4xl">{setupMode ? "Finish Account Setup" : "Settings"}</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}

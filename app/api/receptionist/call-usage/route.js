@@ -5,7 +5,6 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const INCLUDED_MINUTES = 1500;
 const ALLOWED_OUTCOMES = new Set([
   "lead-saved",
   "max-duration-no-lead",
@@ -169,7 +168,6 @@ export async function POST(request) {
       transaction.set(currentUsageRef, {
         monthKey: usageMonth,
         timeZone,
-        includedMinutes: INCLUDED_MINUTES,
         totalSeconds: nextCurrentSeconds,
         totalCalls: nextCurrentCalls,
         updatedAt: FieldValue.serverTimestamp(),
@@ -178,7 +176,6 @@ export async function POST(request) {
       transaction.set(monthUsageRef, {
         monthKey: usageMonth,
         timeZone,
-        includedMinutes: INCLUDED_MINUTES,
         totalSeconds: nextMonthSeconds,
         totalCalls: nextMonthCalls,
         updatedAt: FieldValue.serverTimestamp(),
@@ -191,7 +188,6 @@ export async function POST(request) {
       ok: true,
       duplicate,
       monthKey: usageMonth,
-      includedMinutes: INCLUDED_MINUTES,
     });
   } catch (error) {
     console.error("Unable to process receptionist call usage", error);

@@ -5,12 +5,24 @@ function text(value) {
   return String(value || "").trim();
 }
 
-function toMillis(value) {
+export function messageTimestampMillis(value) {
   if (!value) return 0;
   if (typeof value.toMillis === "function") return value.toMillis();
   if (Number.isFinite(value.seconds)) return value.seconds * 1000;
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export function messageRetentionCutoff(retentionDays, now = Date.now()) {
+  const days = normalizeMessageRetentionDays(retentionDays);
+  const current = now instanceof Date ? now.getTime() : Number(now);
+  return days && Number.isFinite(current) ? current - days * 24 * 60 * 60 * 1000 : 0;
+}
+
+export function isConversationPastRetention(data = {}, retentionDays, now = Date.now()) {
+  const activityAt = messageTimestampMillis(data.lastMessageAt || data.updatedAt || data.createdAt);
+  const cutoff = messageRetentionCutoff(retentionDays, now);
+  return Boolean(activityAt && cutoff && activityAt <= cutoff);
 }
 
 export function normalizeMessageRetentionDays(value) {
@@ -37,15 +49,12 @@ export async function deleteLeadConversation(db, root, conversationRef) {
 export async function cleanupExpiredConversations(db, clientId, retentionDays, now = Date.now()) {
   const days = normalizeMessageRetentionDays(retentionDays);
   if (days === 0) return 0;
-  const cutoff = now - days * 24 * 60 * 60 * 1000;
   const root = db.collection("ocmClients").doc(text(clientId));
   const snapshot = await root.collection("leadConversations").get();
   let deleted = 0;
 
   for (const conversation of snapshot.docs) {
-    const data = conversation.data();
-    const activityAt = toMillis(data.lastMessageAt || data.updatedAt || data.createdAt);
-    if (!activityAt || activityAt >= cutoff) continue;
+    if (!isConversationPastRetention(conversation.data(), days, now)) continue;
     await deleteLeadConversation(db, root, conversation.ref);
     deleted += 1;
   }

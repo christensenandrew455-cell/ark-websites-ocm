@@ -16,7 +16,7 @@ export default function SignupFlowShell({ children }) {
   const signupPage = routeMatches(pathname, ["/signup/status", "/signup/complete"]);
   const employeePendingPage = routeMatches(pathname, ["/employee/pending"]);
   const setupPage = routeMatches(pathname, ["/setup/business"]);
-  const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/support", "/docs"]);
+  const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/docs"]);
   const employeePending = Boolean(user && isEmployee && profile?.status !== "active");
   const ownerUnfinished = Boolean(user && !isAdmin && !isEmployee && profile?.status !== "active");
   const needsBusinessSetup = Boolean(user && !isAdmin && !isEmployee && profile?.status === "active" && profile?.businessSetupComplete === false);

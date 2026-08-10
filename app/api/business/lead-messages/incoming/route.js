@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { addBillingMessageEventToTransaction } from "../../../../lib/billingMessageUsage";
 import {
   ARK_SUPPORT_URL,
   helpConfirmationMessage,
@@ -241,6 +242,13 @@ export async function POST(request) {
       const latestData = latestConversation.exists ? latestConversation.data() : {};
       const assignedEmployeeUid = text(latestData.assignedEmployeeUid || conversation.assignedEmployeeUid);
       transaction.set(messageRef, messageData);
+      addBillingMessageEventToTransaction(transaction, db, {
+        clientId,
+        direction: "inbound",
+        sourceId: event.providerMessageId || messageRef.id,
+        sourceType: keyword ? "compliance-keyword" : "conversation",
+        smsParts: parts,
+      });
       transaction.set(resolved.ref, {
         ...conversationUpdate,
         ...(!keyword ? { ownerUnreadCount: Number(latestData.ownerUnreadCount || 0) + 1 } : {}),

@@ -6,7 +6,7 @@ Two account-level configurations are still required before push notifications an
 
 ## 1. Connect the Android app to Firebase Cloud Messaging
 
-1. Open the Firebase project used by ARK OCM.
+1. Open the Firebase project used by ARK Client Center.
 2. Add an Android app with package name:
 
    `com.arkwebsites.clientcenter`

@@ -70,9 +70,9 @@ function AdminDashboard({ user }) {
   const revenueDetail = revenueRange === "all" && data?.stripe?.truncated ? "First 10,000 live Stripe payments" : "Live Stripe payments only";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-7xl">
-        <header className="mb-4 flex items-end justify-between gap-3 sm:mb-7"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK OCM Admin</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1></div><button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">Refresh</button></header>
+        <header className="mb-4 flex items-end justify-between gap-3 sm:mb-7"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center Admin</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1></div><button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">Refresh</button></header>
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {data?.stripe?.error && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">{data.stripe.error}</div>}
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">

@@ -17,7 +17,10 @@ html {
 body {
   min-height: 100dvh;
   padding-top: env(safe-area-inset-top, 0px);
-  background: #f8fafc;
+  background:
+    radial-gradient(circle at 8% 2%, rgba(99, 102, 241, 0.09), transparent 28rem),
+    radial-gradient(circle at 92% 16%, rgba(245, 158, 11, 0.08), transparent 24rem),
+    #f8fafc;
   color: #020617;
 }
 
@@ -29,6 +32,31 @@ body {
  */
 .relative.min-h-screen.overflow-x-hidden {
   overflow-x: clip !important;
+}
+
+.ark-workspace-header,
+.ark-admin-header {
+  top: env(safe-area-inset-top, 0px);
+}
+
+.ark-workspace-header-spacer {
+  height: 65px;
+}
+
+.ark-admin-header-spacer {
+  height: 104px;
+}
+
+.ark-referral-button {
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .ark-workspace-header-spacer,
+  .ark-admin-header-spacer {
+    height: 73px;
+  }
 }
 
 /*
@@ -116,7 +144,10 @@ html.ark-dark {
 }
 
 html.ark-dark body {
-  background: #020617;
+  background:
+    radial-gradient(circle at 8% 2%, rgba(79, 70, 229, 0.2), transparent 28rem),
+    radial-gradient(circle at 92% 16%, rgba(217, 119, 6, 0.12), transparent 24rem),
+    #020617;
   color: #f8fafc;
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import BackButton from "../../components/BackButton";
 import ConfirmDialog from "../../components/ConfirmDialog";
@@ -31,6 +32,7 @@ function InformationCard({ label, value, href }) {
 }
 
 export default function EmployeeSettingsPage() {
+  const router = useRouter();
   const { user, profile, logout } = useAuth();
   const [data, setData] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
@@ -77,7 +79,7 @@ export default function EmployeeSettingsPage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Could not delete your account.");
       await logout().catch(() => null);
-      window.location.assign("/login");
+      router.replace("/login");
     } catch {
       setDeleteOpen(false);
       setError(navigator.onLine ? "Could not delete your account." : "Check your internet connection.");
@@ -89,7 +91,7 @@ export default function EmployeeSettingsPage() {
   const activeCard = "min-h-28 rounded-3xl border border-slate-900 bg-slate-900 p-4 text-left text-white shadow-sm transition active:scale-[0.99] sm:p-5";
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-4xl">
         <BackButton href="/" />
         <header className="mt-6"><h1 className="text-4xl font-black tracking-tight">Settings</h1></header>
