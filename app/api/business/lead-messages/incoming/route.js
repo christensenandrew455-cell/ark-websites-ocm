@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { addBillingMessageEventToTransaction } from "../../../../lib/billingMessageUsage";
+import { isMessageContactBlocked } from "../../../../lib/messageContactBlocks";
 import {
   ARK_SUPPORT_URL,
   helpConfirmationMessage,
@@ -154,6 +155,9 @@ export async function POST(request) {
 
     const clientId = await resolveClientId(db, event.clientId, event.toPhone);
     if (!clientId) return NextResponse.json({ error: "No ARK business is assigned to that Telnyx number." }, { status: 404 });
+    if (await isMessageContactBlocked(db, clientId, event.fromPhone)) {
+      return NextResponse.json({ ok: true, ignored: true, reason: "contact-blocked" });
+    }
     const resolved = await resolveConversation(db, clientId, event.fromPhone, event.providedConversationId);
     if (!resolved) return NextResponse.json({ ok: true, ignored: true, reason: "conversation-not-started" });
 

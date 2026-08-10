@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { readApiJson } from "../../lib/apiResponse";
 
-const BILLING_SUMMARY = "$50 per month, plus $2 for each connected AI receptionist call, $1 per 50 SMS parts, and $5 for each active employee used during the billing period. A lead saved from a counted call is not a second charge.";
+const BILLING_SUMMARY = "$50 per month, plus $2 for each new lead, $1 when each chat is created, $1 whenever the rolling SMS counter completes another 50 parts, and $5 for each approved employee active during the billing period.";
 
 export default function SignupStatusPage() {
   const router = useRouter();

@@ -37,8 +37,8 @@ export const HELP_SECTIONS = [
     summary: "Every owner account uses the same monthly and usage pricing.",
     points: [
       "The owner account is $50 per monthly billing period.",
-      "Each connected AI receptionist call is $2 and is counted once when it ends. A lead saved from that same call is not a second charge.",
-      "When Messages is enabled, each new chat is $1, then combined inbound and outbound SMS usage is $1 per 50 parts.",
+      "Each new lead is $2 in the period when it arrives. Keeping or deleting the lead later does not count it again or remove the original event.",
+      "When Messages is enabled, each new chat is $1 once, then combined inbound and outbound SMS usage is $1 whenever the rolling counter completes another 50 parts. Partial progress carries across periods.",
       "When Employees is enabled, each approved active employee used at any time during the billing period is $5, even if the employee is later disabled or deleted.",
       "Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.",
       "Settings → Payment shows the current counts, subtotal, referral savings, payment method, and estimated total. Stripe's finalized invoice controls the final amount charged.",

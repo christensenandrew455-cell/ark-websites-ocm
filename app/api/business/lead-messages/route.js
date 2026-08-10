@@ -5,6 +5,7 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 import { addBillingConversationEventToBatch, isBillableConversationData } from "../../../lib/billingConversationUsage";
 import { addBillingMessageEventToBatch } from "../../../lib/billingMessageUsage";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
+import { isMessageContactBlocked, messageContactBlockId } from "../../../lib/messageContactBlocks";
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../lib/smsParts";
 import { requireUser } from "../../../lib/userRequest";
@@ -91,8 +92,15 @@ async function loadLead(access, collectionKey, leadId) {
 async function loadAvailableLeads(access) {
   const root = access.db.collection("ocmClients").doc(access.clientId);
   const collections = ["contactedMe", "clients"];
-  const snapshots = await Promise.all(collections.map((key) => access.isEmployee ? root.collection(key).where("assignedEmployeeUid", "==", access.decoded.uid).get() : root.collection(key).get()));
-  return snapshots.flatMap((snapshot, index) => snapshot.docs.map((document) => normalizeLead(document, collections[index]))).sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)));
+  const [snapshots, blockedSnapshot] = await Promise.all([
+    Promise.all(collections.map((key) => access.isEmployee ? root.collection(key).where("assignedEmployeeUid", "==", access.decoded.uid).get() : root.collection(key).get())),
+    root.collection("blockedMessageContacts").get(),
+  ]);
+  const blockedIds = new Set(blockedSnapshot.docs.map((document) => document.id));
+  return snapshots
+    .flatMap((snapshot, index) => snapshot.docs.map((document) => normalizeLead(document, collections[index])))
+    .filter((lead) => !blockedIds.has(messageContactBlockId(access.clientId, lead.phoneNormalized)))
+    .sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)));
 }
 
 async function deleteQuery(db, query) {
@@ -184,6 +192,7 @@ export async function GET(request) {
     if (selectedLeadId) {
       const loaded = await loadLead(access, selectedCollection, selectedLeadId);
       if (!loaded) return NextResponse.json({ error: "That lead is not available to this account." }, { status: 404 });
+      if (await isMessageContactBlocked(access.db, access.clientId, loaded.lead.phoneNormalized)) return NextResponse.json({ error: "Messaging with this phone number was blocked when its conversation was deleted." }, { status: 409 });
       const key = conversationId(access.clientId, selectedCollection, selectedLeadId);
       selectedConversation = conversations.find((item) => item.id === key) || { id: key, leadId: selectedLeadId, collectionKey: selectedCollection, leadName: loaded.lead.name, leadPhone: loaded.lead.phone, assignedEmployeeUid: loaded.lead.assignedEmployeeUid, assignedEmployeeName: loaded.lead.assignedEmployeeName, messagingOptedOut: false, newConversation: true };
       const conversationRef = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations").doc(key);
@@ -285,6 +294,7 @@ export async function POST(request) {
     const loaded = await loadLead(access, collectionKey, leadId);
     if (!loaded) return NextResponse.json({ error: "That lead is not available to this account." }, { status: 404 });
     if (!loaded.lead.phoneNormalized) return NextResponse.json({ error: "This lead does not have a valid phone number for text messaging." }, { status: 409 });
+    if (await isMessageContactBlocked(access.db, access.clientId, loaded.lead.phoneNormalized)) return NextResponse.json({ error: "Messaging with this phone number was blocked when its conversation was deleted." }, { status: 409 });
     if (!access.fromPhone) return NextResponse.json({ error: "This business does not have a connected Telnyx number." }, { status: 409 });
 
     const key = conversationId(access.clientId, collectionKey, leadId);
