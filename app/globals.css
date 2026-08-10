@@ -11,6 +11,16 @@ body {
   min-height: 100vh;
 }
 
+/* Every signed-in workspace page uses the same outer canvas. Cards and
+ * inset panels provide the visual layers instead of each route choosing a
+ * different page color. */
+.ark-workspace-surface,
+.ark-workspace-surface .ark-pull-to-refresh-content,
+.ark-workspace-surface .ark-pull-to-refresh-content > main {
+  background-color: #e2e8f0 !important;
+  background-image: none !important;
+}
+
 html {
   background: var(--ark-top-safe-area-color);
 }
@@ -190,6 +200,13 @@ html.ark-dark body {
     radial-gradient(circle at 92% 16%, rgba(217, 119, 6, 0.12), transparent 24rem),
     #020617;
   color: #f8fafc;
+}
+
+html.ark-dark .ark-workspace-surface,
+html.ark-dark .ark-workspace-surface .ark-pull-to-refresh-content,
+html.ark-dark .ark-workspace-surface .ark-pull-to-refresh-content > main {
+  background-color: #334155 !important;
+  background-image: none !important;
 }
 
 html.ark-dark .bg-slate-50 {

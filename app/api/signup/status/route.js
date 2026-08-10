@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { MESSAGE_PARTS_PER_BUNDLE, MONTHLY_BASE_CENTS, PER_CALL_CENTS, PER_CHAT_CENTS, PER_EMPLOYEE_CENTS, PER_MESSAGE_BUNDLE_CENTS } from "../../../lib/stripeUsageBilling";
+import { MESSAGE_PARTS_PER_BUNDLE, MONTHLY_BASE_CENTS, PER_CALL_CENTS, PER_CHAT_CENTS, PER_EMPLOYEE_CENTS, PER_LEAD_CENTS, PER_MESSAGE_BUNDLE_CENTS } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +35,7 @@ export async function GET(request) {
     billingPlan: "standard",
     planName: "ARK AI Receptionist",
     monthlyBaseCents: MONTHLY_BASE_CENTS,
+    perLeadCents: PER_LEAD_CENTS,
     perCallCents: PER_CALL_CENTS,
     perChatCents: PER_CHAT_CENTS,
     perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,

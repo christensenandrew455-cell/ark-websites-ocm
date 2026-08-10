@@ -2,9 +2,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
-import { loadBillingCalls } from "../../../lib/billingCallUsage";
 import { loadBillingConversationUsage } from "../../../lib/billingConversationUsage";
 import { loadBillingEmployeeUsage } from "../../../lib/billingEmployeeUsage";
+import { loadBillingLeads } from "../../../lib/billingLeadUsage";
 import { loadBillingMessageUsage } from "../../../lib/billingMessageUsage";
 import {
   BILLING_PLAN_NAME,
@@ -39,16 +39,19 @@ function storedSummary(summary, window) {
     currentBillingMonth: window.monthKey,
     currentBillingPeriodStart: new Date(window.startMs),
     currentBillingPeriodEnd: new Date(window.endMs),
-    currentMonthCallCount: summary.callCount,
-    currentMonthLeadCount: summary.callCount,
+    currentMonthCallCount: summary.leadCount,
+    currentMonthLeadCount: summary.leadCount,
     currentMonthChatCount: summary.chatCount,
     currentMonthChatUsageCents: summary.chatUsageCents,
     currentMonthMessageCount: summary.messageCount,
     currentMonthMessagePartCount: summary.messagePartCount,
     currentMonthMessageBundleCount: summary.messageBundleCount,
+    currentMonthMessagePartBlockCount: summary.messagePartBlockCount,
+    currentMessagePartRemainder: summary.messagePartRemainder,
     currentMonthMessagePartUsageCents: summary.messagePartUsageCents,
     currentMonthEmployeeCount: summary.employeeCount,
-    currentMonthCallUsageCents: summary.callUsageCents,
+    currentMonthCallUsageCents: summary.leadUsageCents,
+    currentMonthLeadUsageCents: summary.leadUsageCents,
     currentMonthMessageUsageCents: summary.messageUsageCents,
     currentMonthEmployeeUsageCents: summary.employeeUsageCents,
     currentMonthUsageCents: summary.usageCents,
@@ -62,16 +65,16 @@ function storedSummary(summary, window) {
   };
 }
 
-async function reconcileStripe({ db, auth, business, account, window, calls, conversationUsage, messageUsage, employeeUsage }) {
+async function reconcileStripe({ db, auth, business, account, window, leads, conversationUsage, messageUsage, employeeUsage }) {
   if (!process.env.STRIPE_SECRET_KEY) {
-    return { status: "not-configured", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+    return { status: "not-configured", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
   if (!customerId) {
-    return { status: "payment-method-required", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+    return { status: "payment-method-required", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   if (account.termsAccepted !== true || text(account.termsVersion) !== TERMS_VERSION) {
-    return { status: "terms-required", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+    return { status: "terms-required", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const subscriptionId = text(business.stripeSubscriptionId || account.stripeSubscriptionId);
@@ -85,7 +88,7 @@ async function reconcileStripe({ db, auth, business, account, window, calls, con
     fallbackPaymentMethodId: text(business.stripePaymentMethodId || account.stripePaymentMethodId),
   });
   if (!refreshed.paymentMethodId) {
-    return { status: "payment-method-required", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+    return { status: "payment-method-required", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
   }
   const subscription = await ensureCustomerBillingSubscription({
     stripe,
@@ -104,7 +107,7 @@ async function reconcileStripe({ db, auth, business, account, window, calls, con
     customerId,
     subscription,
     window,
-    calls,
+    leads,
     conversations: conversationUsage.conversations,
     messageUsage,
     employeeIds: employeeUsage.employeeIds,
@@ -138,8 +141,8 @@ export async function GET(request) {
       subscriptionId: text(business.stripeSubscriptionId || account.stripeSubscriptionId),
       timeZone,
     });
-    const [calls, activeEmployees, conversationUsage, messageUsage, referralCount] = await Promise.all([
-      loadBillingCalls({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
+    const [leads, activeEmployees, conversationUsage, messageUsage, referralCount] = await Promise.all([
+      loadBillingLeads({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
       loadActiveEmployees(db, auth.clientId),
       loadBillingConversationUsage({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
       loadBillingMessageUsage({ db, clientId: auth.clientId, startMs: window.startMs, endMs: window.endMs }),
@@ -152,20 +155,22 @@ export async function GET(request) {
       activeEmployees,
     });
     const summary = calculateBillingSummary({
-      callCount: calls.length,
+      leadCount: leads.length,
       chatCount: conversationUsage.count,
       messagePartCount: messageUsage.parts,
+      messagePartBlockCount: messageUsage.blocks,
+      messagePartRemainder: messageUsage.remainder,
       messageCount: messageUsage.messages,
       employeeCount: employeeUsage.count,
       referralCount,
     });
 
-    let stripeSync = { status: "not-synced", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+    let stripeSync = { status: "not-synced", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
     try {
-      stripeSync = await reconcileStripe({ db, auth, business, account, window, calls, conversationUsage, messageUsage, employeeUsage });
+      stripeSync = await reconcileStripe({ db, auth, business, account, window, leads, conversationUsage, messageUsage, employeeUsage });
     } catch (stripeError) {
       console.error("Unable to reconcile monthly Stripe billing", stripeError);
-      stripeSync = { status: "sync-error", callsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+      stripeSync = { status: "sync-error", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
     }
 
     await Promise.all([
@@ -183,12 +188,12 @@ export async function GET(request) {
       employeesEnabled,
       employeeMessagingEnabled: messagesEnabled && employeesEnabled
         && (business.employeeMessagingEnabled === true || account.employeeMessagingEnabled === true),
-      leadCount: summary.callCount,
+      leadCount: summary.leadCount,
       overageCents: summary.usageCents,
-      perOverageCents: summary.perCallCents,
+      perOverageCents: summary.perLeadCents,
       perEmployeeOverageCents: summary.perEmployeeCents,
       employeeOverageCents: summary.employeeUsageCents,
-      leadOverageCount: summary.callCount,
+      leadOverageCount: summary.leadCount,
       conversationOverageCount: summary.chatCount,
       employeeOverageCount: summary.employeeCount,
       includedLeads: 0,
@@ -198,8 +203,8 @@ export async function GET(request) {
       freeConversationsRemaining: 0,
       freeEmployeesRemaining: 0,
       stripeStatus: stripeSync.status,
-      stripeCallsSynced: stripeSync.callsSynced,
-      stripeLeadsSynced: stripeSync.callsSynced,
+      stripeCallsSynced: 0,
+      stripeLeadsSynced: stripeSync.leadsSynced,
       stripeChatsSynced: stripeSync.chatsSynced,
       stripeMessagePartsSynced: stripeSync.messagePartsSynced,
       stripeEmployeesSynced: stripeSync.employeesSynced,

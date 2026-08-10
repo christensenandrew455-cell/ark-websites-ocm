@@ -2,6 +2,11 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../lib/firebase-admin";
 import {
+  addBillingLeadEventToBatch,
+  billingLeadEventId,
+  billingLeadEventRef,
+} from "../../lib/billingLeadUsage";
+import {
   leadContactFieldDeletionPatch,
   stripLeadContactFields,
 } from "../../lib/leadContactFields";
@@ -53,11 +58,18 @@ function secretMatches(expected, provided) {
   return timingSafeEqual(expectedHash, providedHash);
 }
 
+function alreadyExists(error) {
+  const code = String(error?.code || "").trim().toLowerCase();
+  return Number(error?.code) === 6
+    || code === "already-exists"
+    || code === "already_exists";
+}
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-ARK-Connection-Key",
+    "Access-Control-Allow-Headers": "Content-Type, Idempotency-Key, X-ARK-Connection-Key",
   };
 }
 
@@ -242,6 +254,28 @@ export async function POST(request) {
       );
     }
 
+    const suppliedBillingSourceId = text(
+      request.headers.get("idempotency-key")
+      || data.idempotencyKey
+      || data.callControlId
+    ).slice(0, 500);
+    const suppliedBillingEventRef = sectionKey === "contactedMe" && suppliedBillingSourceId
+      ? billingLeadEventRef(db, { clientId, sourceId: suppliedBillingSourceId })
+      : null;
+    if (suppliedBillingEventRef) {
+      const existingEvent = await suppliedBillingEventRef.get();
+      if (existingEvent.exists) {
+        return Response.json({
+          ok: true,
+          id: text(existingEvent.data().leadId),
+          clientId,
+          sectionKey,
+          propertyKey: row.PropertyKey,
+          duplicate: true,
+        }, { status: 200, headers: corsHeaders() });
+      }
+    }
+
     const matches = await findPropertyMatches(db, clientId, row.PropertyKey);
     const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
     const primary = existingInTarget || matches[0] || null;
@@ -252,7 +286,12 @@ export async function POST(request) {
     const previousJobs = mergeJobs(
       ...matches.map((match) => normalizeJobs(match.data, match.stageKey))
     );
-    const nextJob = createJob(row, previousJobs.length + 1, sectionKey);
+    const generatedJob = createJob(row, previousJobs.length + 1, sectionKey);
+    const billingSourceId = suppliedBillingSourceId || generatedJob.id;
+    const nextJob = sectionKey === "contactedMe"
+      ? { ...generatedJob, id: `job-${billingLeadEventId(clientId, billingSourceId)}` }
+      : generatedJob;
+    const duplicateSubmission = previousJobs.some((job) => job.id === nextJob.id);
     const Jobs = mergeJobs(previousJobs, nextJob);
 
     const ContactNames = uniqueTexts(
@@ -300,9 +339,37 @@ export async function POST(request) {
       lastLeadStage: sectionKey,
     }, { merge: true });
 
-    await batch.commit();
-
+    let billingEventRef = null;
     if (sectionKey === "contactedMe") {
+      billingEventRef = addBillingLeadEventToBatch(batch, db, {
+        clientId,
+        sourceId: billingSourceId,
+        leadId: targetRef.id,
+        jobId: nextJob.id,
+        occurredAt: nextJob.createdAt,
+      });
+    }
+
+    try {
+      await batch.commit();
+    } catch (commitError) {
+      if (billingEventRef && alreadyExists(commitError)) {
+        const existingEvent = await billingEventRef.get();
+        if (existingEvent.exists) {
+          return Response.json({
+            ok: true,
+            id: text(existingEvent.data().leadId),
+            clientId,
+            sectionKey,
+            propertyKey: row.PropertyKey,
+            duplicate: true,
+          }, { status: 200, headers: corsHeaders() });
+        }
+      }
+      throw commitError;
+    }
+
+    if (sectionKey === "contactedMe" && !duplicateSubmission) {
       try {
         await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
       } catch (notificationError) {
@@ -319,8 +386,9 @@ export async function POST(request) {
         propertyKey: row.PropertyKey,
         totalJobs: Jobs.length,
         repeatClient: Jobs.length > 1,
+        duplicate: duplicateSubmission,
       },
-      { status: 201, headers: corsHeaders() }
+      { status: duplicateSubmission ? 200 : 201, headers: corsHeaders() }
     );
   } catch (error) {
     console.error("Unable to process connected intake", error);

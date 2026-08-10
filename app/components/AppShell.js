@@ -64,7 +64,7 @@ function PullToRefresh({ children }) {
   }
 
   const label = refreshing ? "Refreshing client center…" : distance >= 60 ? "Release to refresh" : "Pull to refresh";
-  return <div className="ark-pull-to-refresh relative min-h-screen overflow-x-hidden" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>{(distance > 0 || refreshing) && <div className="pointer-events-none fixed inset-x-0 top-2 z-[100] flex justify-center"><div className="flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg">{refreshing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />}{label}</div></div>}<div className="ark-pull-to-refresh-content" style={{ transform: distance > 0 ? `translateY(${distance}px)` : "none", transition: tracking.current ? "none" : "transform 160ms ease-out" }}>{children}</div></div>;
+  return <div className="ark-pull-to-refresh ark-workspace-surface relative min-h-screen overflow-x-hidden" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={handleTouchEnd}>{(distance > 0 || refreshing) && <div className="pointer-events-none fixed inset-x-0 top-2 z-[100] flex justify-center"><div className="flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-lg">{refreshing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />}{label}</div></div>}<div className="ark-pull-to-refresh-content" style={{ transform: distance > 0 ? `translateY(${distance}px)` : "none", transition: tracking.current ? "none" : "transform 160ms ease-out" }}>{children}</div></div>;
 }
 
 function formatDeadline(value) {
@@ -98,7 +98,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} isEmployee={false} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && !pathname.startsWith("/lead-messages") && <ReferralCenter clientId={profile?.clientId} />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} isEmployee={false} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}</>;
 }
 
 export default function AppShell({ children }) {

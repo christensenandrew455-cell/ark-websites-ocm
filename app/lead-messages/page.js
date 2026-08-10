@@ -91,7 +91,7 @@ export default function LeadMessagesPage() {
     if (!user || isEmployee || !leadId || deleting) return;
     const confirmed = await requestAppConfirmation({
       title: `Delete the conversation with ${leadName || "this lead"}?`,
-      message: "This cannot be undone. Billing usage already recorded for the chat and its parts will remain.",
+      message: "This cannot be undone. ARK will block future messaging with this phone number, and billing usage already recorded for the chat and its parts will remain.",
       confirmLabel: "Delete",
     });
     if (!confirmed) return;
@@ -104,7 +104,7 @@ export default function LeadMessagesPage() {
       if (!response.ok) throw new Error(result.error || "Could not delete the conversation.");
       if (selectedLead === leadId && selectedCollection === collectionKey) { setSelectedLead(""); setSelectedCollection("contactedMe"); setMessage(""); router.replace("/lead-messages"); }
       await load("", "contactedMe");
-      setNotice("Conversation deleted.");
+      setNotice(result.contactBlocked ? "Conversation deleted and this phone number was blocked in ARK." : "Conversation deleted.");
     } catch (deleteError) { setError(deleteError.message || "Something went wrong."); } finally { setDeleting(""); }
   }
 

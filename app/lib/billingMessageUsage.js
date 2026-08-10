@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { messageBundleCount } from "./billingPricing.js";
+import { MESSAGE_PARTS_PER_BUNDLE, messagePartBlocksCrossed } from "./billingPricing.js";
 
 function text(value) { return String(value || "").trim(); }
 
@@ -55,9 +55,13 @@ function isLegacyBillableMessage(data) {
   return !["provider-error", "provider-not-configured"].includes(status);
 }
 
-async function backfillCurrentMessageEvents({ db, clientId, startMs, endMs }) {
+async function backfillMessageEvents({ db, clientId }) {
   const root = db.collection("ocmClients").doc(clientId);
-  const conversations = await root.collection("leadConversations").get();
+  const [conversations, recorded] = await Promise.all([
+    root.collection("leadConversations").get(),
+    root.collection("billingMessageEvents").get(),
+  ]);
+  const recordedIds = new Set(recorded.docs.map((document) => document.id));
   let batch = db.batch();
   let writes = 0;
   for (const conversation of conversations.docs) {
@@ -65,9 +69,10 @@ async function backfillCurrentMessageEvents({ db, clientId, startMs, endMs }) {
     for (const document of messages.docs) {
       const data = document.data();
       const occurredAt = billingTimestampMillis(data.createdAt || data.updatedAt);
-      if (!occurredAt || occurredAt < startMs || occurredAt >= endMs || !isLegacyBillableMessage(data)) continue;
+      if (!occurredAt || !isLegacyBillableMessage(data)) continue;
       const direction = text(data.direction).toLowerCase();
       const sourceId = text(data.providerMessageId) || `${conversation.id}:${document.id}`;
+      if (recordedIds.has(billingMessageEventId(clientId, direction, sourceId))) continue;
       addBillingMessageEventToBatch(batch, db, {
         clientId,
         direction,
@@ -87,17 +92,34 @@ async function backfillCurrentMessageEvents({ db, clientId, startMs, endMs }) {
 }
 
 export async function loadBillingMessageUsage({ db, clientId, startMs, endMs }) {
-  await backfillCurrentMessageEvents({ db, clientId, startMs, endMs });
+  await backfillMessageEvents({ db, clientId });
   const snapshot = await db.collection("ocmClients").doc(clientId)
     .collection("billingMessageEvents").get();
   let parts = 0;
   let messages = 0;
+  let partsBefore = 0;
+  let partsThroughPeriod = 0;
   for (const document of snapshot.docs) {
     const data = document.data();
     const occurredAt = billingTimestampMillis(data.occurredAt || data.createdAt);
-    if (!occurredAt || occurredAt < startMs || occurredAt >= endMs) continue;
-    parts += Math.max(0, Math.floor(Number(data.smsParts) || 0));
+    if (!occurredAt || occurredAt >= endMs) continue;
+    const eventParts = Math.max(0, Math.floor(Number(data.smsParts) || 0));
+    partsThroughPeriod += eventParts;
+    if (occurredAt < startMs) {
+      partsBefore += eventParts;
+      continue;
+    }
+    parts += eventParts;
     messages += 1;
   }
-  return { parts, messages, bundles: messageBundleCount(parts) };
+  const blocks = messagePartBlocksCrossed(partsBefore, partsThroughPeriod);
+  return {
+    parts,
+    messages,
+    partsBefore,
+    totalParts: partsThroughPeriod,
+    blocks,
+    bundles: blocks,
+    remainder: partsThroughPeriod % MESSAGE_PARTS_PER_BUNDLE,
+  };
 }

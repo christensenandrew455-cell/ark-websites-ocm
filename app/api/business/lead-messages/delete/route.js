@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { messageContactBlockRef, normalizeMessagePhone } from "../../../../lib/messageContactBlocks";
 import { requireUser } from "../../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -45,10 +47,24 @@ export async function POST(request) {
     const conversationSnapshot = await conversationRef.get();
     if (!conversationSnapshot.exists) return NextResponse.json({ error: "That conversation no longer exists." }, { status: 404 });
 
+    const conversation = conversationSnapshot.data();
+    const blockedPhone = normalizeMessagePhone(conversation.leadPhoneNormalized || conversation.leadPhone);
+    const blockRef = messageContactBlockRef(db, clientId, blockedPhone);
+    if (blockRef) {
+      await blockRef.set({
+        leadId,
+        collectionKey,
+        phoneLastFour: blockedPhone.slice(-4),
+        sourceConversationId: key,
+        blockedByUid: decoded.uid,
+        blockedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
     await deleteQuery(db, conversationRef.collection("messages"));
     await deleteQuery(db, root.collection("telnyxMessageIndex").where("conversationId", "==", key));
     await conversationRef.delete();
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, contactBlocked: Boolean(blockRef) });
   } catch (error) {
     console.error("Unable to delete lead conversation", error);
     return NextResponse.json({ error: "Could not delete the conversation." }, { status: 500 });
