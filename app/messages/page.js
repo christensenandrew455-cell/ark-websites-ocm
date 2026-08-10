@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 
 const STATUS_LABELS = {
@@ -90,7 +90,7 @@ function CustomerMessages({ user, requests, onRefresh }) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-3xl">
         <header className="mb-4 sm:mb-7">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Contact ARK</p>
@@ -205,7 +205,7 @@ function AdminMessages({ user, requests, onRefresh }) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-5xl">
         <header className="mb-4 flex items-end justify-between gap-3 sm:mb-7">
           <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Administrator</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Messages</h1><p className="mt-1 text-xs font-semibold text-slate-500">Oldest unresolved help request stays at the top. Completed and denied requests leave this page.</p></div>
@@ -247,7 +247,7 @@ export default function MessagesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!user) return;
     try {
       const data = await apiFetch(user);
@@ -258,11 +258,11 @@ export default function MessagesPage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [user]);
 
   useEffect(() => {
     if (!loading && user) load();
-  }, [loading, user]);
+  }, [load, loading, user]);
 
   if (loading || isLoading) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Loading messages…</main>;
   if (error && requests.length === 0) return <main className="grid min-h-[70vh] place-items-center p-6"><div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-700">{error}</div></main>;

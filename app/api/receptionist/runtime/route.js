@@ -204,7 +204,6 @@ export async function POST(request) {
 
     const usageUrl = new URL("/api/receptionist/call-usage", origin);
     usageUrl.searchParams.set("clientId", clientId);
-    usageUrl.searchParams.set("key", connectionKey);
 
     return NextResponse.json({
       ok: true,
@@ -213,6 +212,7 @@ export async function POST(request) {
       profile,
       intakeUrl: intakeUrl.toString(),
       usageUrl: usageUrl.toString(),
+      usageKey: connectionKey,
     });
   } catch (error) {
     console.error("Unable to load receptionist runtime settings", error);

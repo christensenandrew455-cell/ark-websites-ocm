@@ -1,10 +1,38 @@
+import Link from "next/link";
+
 const features = [
-  ["AI receptionist leads", "Review new calls and leads delivered by the receptionist, see saved details, and accept qualified leads into the client list."],
-  ["Optional lead conversations", "Turn on Messages when the business needs texting. Each new lead conversation is $1, while additional texts in that thread are included."],
+  ["AI receptionist leads", "Review calls and leads delivered by the receptionist, see saved details, and accept qualified leads into the client list."],
+  ["Optional lead conversations", "Turn on Messages when the business needs texting. Usage is measured in SMS parts, including longer messages that require multiple parts."],
   ["Optional employee routing", "Turn on Employees to approve employee accounts, control visible lead fields, and assign leads or clients to one employee."],
-  ["One owner account", "Manage receptionist details, feature toggles, payment methods, policies, downloads, and account deletion in one place."],
+  ["One owner account", "Manage receptionist details, feature controls, payment methods, policies, downloads, and account deletion in one place."],
 ];
 
-export default function AboutPage() {
-  return <main className="min-h-screen bg-slate-50 text-slate-950"><section className="bg-slate-950 px-4 py-12 text-white sm:px-6 sm:py-20"><div className="mx-auto max-w-5xl"><p className="text-xs font-black uppercase tracking-[0.24em] text-slate-300">ARK Client Center</p><h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">About your Client Center</h1><p className="mt-5 max-w-3xl text-base font-semibold leading-7 text-slate-300 sm:text-xl sm:leading-8">A private business app for AI receptionist leads, optional customer messaging, optional employee routing, and simple usage-based billing.</p></div></section><div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12"><section className="grid gap-4 sm:grid-cols-2">{features.map(([title, description]) => <article key={title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><h2 className="text-xl font-black">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{description}</p></article>)}</section><section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">One account</p><h2 className="mt-2 text-2xl font-black">$50 per month, then pay for usage</h2><div className="mt-4 grid gap-4 sm:grid-cols-3"><div className="rounded-2xl bg-slate-950 p-5 text-white"><h3 className="text-xl font-black">Calls · $2 each</h3><p className="mt-2 text-sm leading-6 text-slate-300">Each new AI receptionist call or unique lead delivered to Contacted You.</p></div><div className="rounded-2xl bg-slate-800 p-5 text-white"><h3 className="text-xl font-black">Messages · $1 each</h3><p className="mt-2 text-sm leading-6 text-slate-300">Each new lead conversation when Messages is enabled. Follow-up texts inside that thread are included.</p></div><div className="rounded-2xl bg-slate-100 p-5"><h3 className="text-xl font-black">Employees · $5 each</h3><p className="mt-2 text-sm leading-6 text-slate-600">Each approved active employee account when Employees is enabled.</p></div></div></section><section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><h2 className="text-2xl font-black">Privacy and account access</h2><p className="mt-3 text-sm leading-6 text-slate-600">ARK administrators can access business, owner, employee, lead, client, assignment, supported conversation, billing-status, and technical information needed to operate and support the Service. Approved employees receive only assigned records and owner-enabled fields through filtered APIs. ARK does not receive or store full payment-card numbers.</p></section></div></main>;
+export default async function AboutPage({ searchParams }) {
+  const params = await searchParams;
+  const setup = params?.setup === "1";
+  return <main className="min-h-screen bg-transparent text-slate-950">
+    <section className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-12 text-white sm:px-6 sm:py-20">
+      <div className="mx-auto max-w-5xl">
+        <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-300">ARK Client Center</p>
+        {setup && <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-slate-300">Step 1 of 2 · Review the app</p>}
+        <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">About your Client Center</h1>
+        <p className="mt-5 max-w-3xl text-base font-semibold leading-7 text-slate-300 sm:text-xl sm:leading-8">A private business app for AI receptionist leads, optional customer messaging, optional employee routing, and simple usage-based billing.</p>
+      </div>
+    </section>
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+      <section className="grid gap-4 sm:grid-cols-2">{features.map(([title, description]) => <article key={title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><h2 className="text-xl font-black">{title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{description}</p></article>)}</section>
+      <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">One account</p>
+        <h2 className="mt-2 text-2xl font-black">$50 per month, then pay for usage</h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl bg-slate-950 p-5 text-white"><h3 className="text-xl font-black">Calls · $2 each</h3><p className="mt-2 text-sm leading-6 text-slate-300">Each connected AI receptionist call is counted once. A lead saved from that same call is not a second charge.</p></div>
+          <div className="rounded-2xl bg-indigo-950 p-5 text-white"><h3 className="text-xl font-black">SMS · $1 per 50 parts</h3><p className="mt-2 text-sm leading-6 text-indigo-100">Inbound and outbound SMS parts are combined during the billing period.</p></div>
+          <div className="rounded-2xl bg-amber-50 p-5"><h3 className="text-xl font-black">Employees · $5 each</h3><p className="mt-2 text-sm leading-6 text-slate-600">Each approved active employee used during the billing period.</p></div>
+        </div>
+        <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.</p>
+      </section>
+      <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><h2 className="text-2xl font-black">Privacy and account access</h2><p className="mt-3 text-sm leading-6 text-slate-600">ARK administrators can access business, owner, employee, lead, client, assignment, supported conversation, billing-status, and technical information needed to operate and support the Service. Approved employees receive only assigned records and owner-enabled fields through filtered APIs. ARK does not receive or store full payment-card numbers.</p></section>
+      {setup && <Link href="/signup/status" className="mt-6 block w-full rounded-2xl bg-slate-950 px-6 py-4 text-center text-sm font-black text-white shadow-lg sm:ml-auto sm:w-fit">Continue to Payment Setup</Link>}
+    </div>
+  </main>;
 }

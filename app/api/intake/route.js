@@ -13,6 +13,7 @@ import {
   normalizeJobs,
   uniqueTexts,
 } from "../../lib/propertyProfiles";
+import { validTimeZone } from "../../lib/timeWindows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -179,15 +180,16 @@ export async function POST(request) {
 
     if (!clientId || !providedKey) {
       return Response.json(
-        { ok: false, error: "Use the private webhook URL generated from ARK OCM Connections." },
+        { ok: false, error: "Use the private webhook URL generated from ARK Client Center Connections." },
         { status: 401, headers: corsHeaders() }
       );
     }
 
     const db = getAdminDb();
-    const [businessSnapshot, connectionSnapshot] = await Promise.all([
+    const [businessSnapshot, connectionSnapshot, receptionistSnapshot] = await Promise.all([
       db.collection("businesses").doc(clientId).get(),
       db.collection("connections").doc(clientId).get(),
+      db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist").get(),
     ]);
 
     if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
@@ -221,6 +223,10 @@ export async function POST(request) {
       ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
       : channel || "website";
     const row = buildRow(data, source);
+    const timeZone = validTimeZone(
+      text(receptionistSnapshot.exists ? receptionistSnapshot.data().timeZone : "")
+        || text(businessSnapshot.data().timeZone)
+    );
 
     if (!row.Name && !row.Phone && !row.Notes) {
       return Response.json(
@@ -277,6 +283,7 @@ export async function POST(request) {
       RepeatJobs: Math.max(0, Jobs.length - 1),
       currentStage: sectionKey,
       connectionClientId: clientId,
+      BusinessTimeZone: timeZone,
       createdAt: primaryData.createdAt || FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       ...leadContactFieldDeletionPatch(FieldValue.delete()),

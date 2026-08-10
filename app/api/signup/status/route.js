@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { MONTHLY_BASE_CENTS, PER_CALL_CENTS, PER_EMPLOYEE_CENTS, PER_MESSAGE_CONVERSATION_CENTS } from "../../../lib/stripeUsageBilling";
+import { MESSAGE_PARTS_PER_BUNDLE, MONTHLY_BASE_CENTS, PER_CALL_CENTS, PER_EMPLOYEE_CENTS, PER_MESSAGE_BUNDLE_CENTS } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +36,8 @@ export async function GET(request) {
     planName: "ARK AI Receptionist",
     monthlyBaseCents: MONTHLY_BASE_CENTS,
     perCallCents: PER_CALL_CENTS,
-    perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+    perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+    messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
     perEmployeeCents: PER_EMPLOYEE_CENTS,
     includedLeads: 0,
     includedConversations: 0,
@@ -46,6 +47,8 @@ export async function GET(request) {
     accountEmail: String(account.accountEmail || ""),
     accountPhone: String(account.accountPhone || ""),
     clientId: String(account.clientId || ""),
+    referrerAccountId: String(account.referrerClientId || ""),
+    referralStatus: String(account.referralStatus || "none"),
     submittedAt: iso(account.createdAt),
   });
 }

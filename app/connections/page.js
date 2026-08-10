@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "../components/ReceptionistBusinessForm";
 import { normalizeClientId } from "../lib/valueUtils";
@@ -152,21 +152,21 @@ export default function ConnectionsPage() {
     return accounts.filter((business) => [business.businessName, business.ownerName, business.accountEmail, business.phone, business.receptionistPhone, business.clientId].some((value) => String(value || "").toLowerCase().includes(query)));
   }, [businesses, searchQuery]);
 
-  async function adminFetch(url, options = {}) {
+  const adminFetch = useCallback(async (url, options = {}) => {
     const token = await user.getIdToken(true);
     const response = await fetch(url, { ...options, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(options.headers || {}) }, cache: "no-store" });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "The administrator request failed.");
     return data;
-  }
+  }, [user]);
 
-  async function loadBusinesses(preferredId = "") {
+  const loadBusinesses = useCallback(async (preferredId = "") => {
     const data = await adminFetch("/api/admin/connections");
     const next = data.businesses || [];
     setBusinesses(next);
     const requested = preferredId || new URLSearchParams(window.location.search).get("clientId") || "";
     setSelectedId(requested && next.some((business) => business.clientId === requested) ? requested : "");
-  }
+  }, [adminFetch]);
 
   useEffect(() => {
     if (loading) return;
@@ -176,7 +176,7 @@ export default function ConnectionsPage() {
       return;
     }
     loadBusinesses().catch((loadError) => setError(loadError.message)).finally(() => setIsLoading(false));
-  }, [isAdmin, loading, router, user]);
+  }, [isAdmin, loadBusinesses, loading, router]);
 
   useEffect(() => {
     if (!selected) {
@@ -195,7 +195,7 @@ export default function ConnectionsPage() {
       setRequestHistory(history.requests || []);
       setReceptionist(prepareReceptionistProfile(profile.profile));
     }).catch((loadError) => setError(loadError.message));
-  }, [selected]);
+  }, [adminFetch, selected]);
 
   function updateNewCustomer(field, value) {
     setNewCustomer((current) => {
@@ -321,7 +321,7 @@ export default function ConnectionsPage() {
   if (loading || isLoading || !isAdmin) return <main className="grid min-h-[70vh] place-items-center p-6 text-sm font-semibold text-slate-500">Opening accounts…</main>;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-5 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-4 flex items-end justify-between gap-3 sm:mb-8">
           <div><p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Administrator</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Accounts</h1></div>

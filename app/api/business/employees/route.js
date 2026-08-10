@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { normalizeEmployeeDirectoryVisibility, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
+import { addEmployeeActivationToBatch } from "../../../lib/billingEmployeeUsage";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
 import { PER_EMPLOYEE_CENTS } from "../../../lib/stripeUsageBilling";
@@ -115,6 +116,16 @@ export async function POST(request) {
       const batch = access.db.batch();
       batch.set(employeeRef, update, { merge: true });
       batch.set(accountRef, update, { merge: true });
+      if (nextStatus === "active" && text(employeeSnapshot.data().status) !== "active") {
+        const activatedAt = Date.now();
+        addEmployeeActivationToBatch(batch, access.db, {
+          clientId: access.clientId,
+          employeeUid,
+          sourceId: `owner-activation:${activatedAt}`,
+          sourceType: action === "approve" ? "owner-approval" : "owner-activation",
+          occurredAt: activatedAt,
+        });
+      }
       const nameKey = text(employeeSnapshot.data().employeeNameKey);
       if (nameKey) batch.set(businessRef.collection("employeeHandles").doc(nameKey), { status: update.employeeStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       await batch.commit();

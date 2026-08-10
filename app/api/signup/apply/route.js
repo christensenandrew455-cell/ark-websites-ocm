@@ -6,11 +6,13 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import {
   BILLING_VERSION,
+  MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
   PER_EMPLOYEE_CENTS,
-  PER_MESSAGE_CONVERSATION_CENTS,
+  PER_MESSAGE_BUNDLE_CENTS,
 } from "../../../lib/stripeUsageBilling";
+import { pendingReferralFields, validateReferrerAccount } from "../../../lib/referrals";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -38,6 +40,7 @@ export async function POST(request) {
       acceptedPrivacy,
       termsVersion,
       privacyVersion,
+      referrerAccountId,
     } = await request.json();
 
     const business = trimmedText(businessName);
@@ -67,6 +70,7 @@ export async function POST(request) {
 
     if (existingBusiness.exists || (existingRegistry.exists && existingRegistry.data().clientId !== clientId)) return NextResponse.json({ error: "That business name is already registered. Use a different business name." }, { status: 409 });
     if (existingUser) return NextResponse.json({ error: "That email address is already registered." }, { status: 409 });
+    const referrer = await validateReferrerAccount({ db, referrerAccountId, referredClientId: clientId });
 
     createdUser = await auth.createUser({ email, password, displayName: owner, emailVerified: false, disabled: false });
     const claims = {
@@ -102,7 +106,8 @@ export async function POST(request) {
       billingVersion: BILLING_VERSION,
       monthlyBaseCents: MONTHLY_BASE_CENTS,
       perCallCents: PER_CALL_CENTS,
-      perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+      perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+      messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
       perEmployeeCents: PER_EMPLOYEE_CENTS,
       includedLeads: 0,
       includedConversations: 0,
@@ -110,6 +115,7 @@ export async function POST(request) {
       messagesEnabled: false,
       employeesEnabled: false,
       employeeMessagingEnabled: false,
+      ...pendingReferralFields(referrer),
       status: "approved_pending_payment",
       verificationStatus: "not_required",
       paymentSetupStatus: "ready",
@@ -139,11 +145,13 @@ export async function POST(request) {
       });
     });
 
-    return NextResponse.json({ ok: true, email, clientId, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", status: "approved_pending_payment" });
+    return NextResponse.json({ ok: true, email, clientId, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", status: "approved_pending_payment", referralStatus: referrer.referrerClientId ? "pending_activation" : "none" });
   } catch (error) {
     console.error("Unable to create owner account", error);
     if (createdUser?.uid) await getAdminAuth().deleteUser(createdUser.uid).catch(() => null);
     if (String(error?.message || "") === "BUSINESS_TAKEN") return NextResponse.json({ error: "That business name is already registered. Use a different business name." }, { status: 409 });
+    if (String(error?.message || "") === "SELF_REFERRAL") return NextResponse.json({ error: "A business cannot refer its own account." }, { status: 400 });
+    if (String(error?.message || "") === "REFERRER_NOT_FOUND") return NextResponse.json({ error: "That referral account ID is not an active ARK account." }, { status: 400 });
     return NextResponse.json({ error: safeApplicationError(error) }, { status: 500 });
   }
 }

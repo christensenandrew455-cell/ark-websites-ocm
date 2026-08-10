@@ -4,7 +4,14 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY } from "../../../lib/accountTypes";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { BILLING_VERSION, MONTHLY_BASE_CENTS, PER_CALL_CENTS, PER_EMPLOYEE_CENTS, PER_MESSAGE_CONVERSATION_CENTS } from "../../../lib/stripeUsageBilling";
+import {
+  BILLING_VERSION,
+  MESSAGE_PARTS_PER_BUNDLE,
+  MONTHLY_BASE_CENTS,
+  PER_CALL_CENTS,
+  PER_EMPLOYEE_CENTS,
+  PER_MESSAGE_BUNDLE_CENTS,
+} from "../../../lib/stripeUsageBilling";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -82,7 +89,8 @@ export async function POST(request) {
       includedConversations: 0,
       includedEmployees: 0,
       perCallCents: PER_CALL_CENTS,
-      perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS,
+      perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+      messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
       perEmployeeCents: PER_EMPLOYEE_CENTS,
       messagesEnabled: false,
       employeesEnabled: false,
@@ -99,8 +107,8 @@ export async function POST(request) {
     batch.set(businessRef, accountData);
     batch.set(db.collection("businessNameRegistry").doc(clientId), { clientId, businessName, ownerUid: createdUser.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     batch.set(db.collection("connections").doc(clientId), connectionData);
-    batch.set(db.collection("ocmClients").doc(clientId), { businessName, ownerUid: createdUser.uid, status: "active", businessSetupComplete: false, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", billingPlanName: "ARK AI Receptionist", billingVersion: BILLING_VERSION, monthlyBaseCents: MONTHLY_BASE_CENTS, perCallCents: PER_CALL_CENTS, perMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS, perEmployeeCents: PER_EMPLOYEE_CENTS, messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), { BusinessName: businessName, OwnerName: ownerName, AccountEmail: accountEmail, AccountPhone: businessPhone, NotificationEmail: notificationEmail, NotificationPhone: notificationPhone, BillingStatus: "Admin created", AccountType: ACCOUNT_TYPES.OWNER, BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", BillingVersion: BILLING_VERSION, MonthlyBaseCents: MONTHLY_BASE_CENTS, PerCallCents: PER_CALL_CENTS, PerMessageConversationCents: PER_MESSAGE_CONVERSATION_CENTS, PerEmployeeCents: PER_EMPLOYEE_CENTS, MessagesEnabled: false, EmployeesEnabled: false, EmployeeMessagingEnabled: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection("ocmClients").doc(clientId), { businessName, ownerUid: createdUser.uid, status: "active", businessSetupComplete: false, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", billingPlanName: "ARK AI Receptionist", billingVersion: BILLING_VERSION, monthlyBaseCents: MONTHLY_BASE_CENTS, perCallCents: PER_CALL_CENTS, perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, perEmployeeCents: PER_EMPLOYEE_CENTS, messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), { BusinessName: businessName, OwnerName: ownerName, AccountEmail: accountEmail, AccountPhone: businessPhone, NotificationEmail: notificationEmail, NotificationPhone: notificationPhone, BillingStatus: "Admin created", AccountType: ACCOUNT_TYPES.OWNER, BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", BillingVersion: BILLING_VERSION, MonthlyBaseCents: MONTHLY_BASE_CENTS, PerCallCents: PER_CALL_CENTS, PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, PerEmployeeCents: PER_EMPLOYEE_CENTS, MessagesEnabled: false, EmployeesEnabled: false, EmployeeMessagingEnabled: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
     const adminClientId = trimmedText(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
     if (adminClientId && adminClientId !== clientId) {

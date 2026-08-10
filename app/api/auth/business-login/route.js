@@ -79,7 +79,7 @@ export async function POST(request) {
         : { role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId: account.clientId, accountStatus: account.status, billingPlan: "standard", messagesEnabled, employeesEnabled, employeeMessagingEnabled, termsAccepted: account.termsAccepted === true, privacyAccepted: account.privacyAccepted === true, termsVersion: String(account.termsVersion || ""), privacyVersion: String(account.privacyVersion || "") };
 
     await auth.setCustomUserClaims(userRecord.uid, claims);
-    if (isAdmin) await db.collection("accounts").doc(userRecord.uid).set({ uid: userRecord.uid, accountEmail: email, ownerName: account.ownerName || userRecord.displayName || "ARK OCM Admin", businessName: account.businessName || "ARK Websites", clientId: account.clientId || "", role: "admin", status: "active", updatedAt: new Date() }, { merge: true });
+    if (isAdmin) await db.collection("accounts").doc(userRecord.uid).set({ uid: userRecord.uid, accountEmail: email, ownerName: account.ownerName || userRecord.displayName || "ARK Client Center Admin", businessName: account.businessName || "ARK Websites", clientId: account.clientId || "", role: "admin", status: "active", updatedAt: new Date() }, { merge: true });
     const token = await auth.createCustomToken(userRecord.uid, claims);
     return NextResponse.json({ token, role: isAdmin ? "admin" : isEmployee ? "employee" : "customer", accountType: claims.accountType || "admin", status: isAdmin ? "active" : account.status });
   } catch (error) {

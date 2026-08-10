@@ -10,8 +10,10 @@
     overscroll-behavior: none;
   }
 
-  body:has(main textarea[placeholder="Message"]) header.sticky,
-  body:has(main textarea[placeholder="Customer opted out"]) header.sticky {
+  body:has(main textarea[placeholder="Message"]) .ark-workspace-header,
+  body:has(main textarea[placeholder="Customer opted out"]) .ark-workspace-header,
+  body:has(main textarea[placeholder="Message"]) .ark-workspace-header-spacer,
+  body:has(main textarea[placeholder="Customer opted out"]) .ark-workspace-header-spacer {
     display: none !important;
   }
 

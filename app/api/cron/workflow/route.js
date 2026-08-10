@@ -1,24 +1,19 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessNow, isDateDue } from "../../../lib/businessTime";
+import {
+  estimateRequestCreatedAt,
+  estimateRequestLifecycle,
+} from "../../../lib/estimateRequestLifecycle";
 import { sendEstimateRequestStatusNotice } from "../../../lib/estimateRequestStatusNotice";
+import { cleanupExpiredLeads, normalizeLeadRetentionDays } from "../../../lib/leadRetention";
+import { validTimeZone } from "../../../lib/timeWindows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const LEGACY_CLIENT_ID = "tabor-painting";
-const ESTIMATE_REQUEST_AUTO_DECLINE_AGE_MS = 6 * 24 * 60 * 60 * 1000;
-
 function text(value) {
   return String(value || "").trim();
-}
-
-function toMillis(value) {
-  if (!value) return 0;
-  if (typeof value.toMillis === "function") return value.toMillis();
-  if (Number.isFinite(value.seconds)) return value.seconds * 1000;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function authorized(request) {
@@ -44,12 +39,17 @@ function safeWorkflowError(error) {
 
 async function listActiveBusinesses(db) {
   const snapshot = await db.collection("businesses").where("status", "==", "active").get();
-  const businesses = new Map(snapshot.docs.map((documentSnapshot) => [documentSnapshot.id, documentSnapshot.data()]));
-  if (!businesses.has(LEGACY_CLIENT_ID)) {
-    const legacy = await db.collection("businesses").doc(LEGACY_CLIENT_ID).get();
-    if (legacy.exists) businesses.set(LEGACY_CLIENT_ID, legacy.data());
-  }
-  return businesses;
+  return new Map(snapshot.docs.map((documentSnapshot) => [documentSnapshot.id, documentSnapshot.data()]));
+}
+
+async function accountTimeZone(db, clientId, business = {}) {
+  const settings = await db
+    .collection("ocmClients")
+    .doc(clientId)
+    .collection("settings")
+    .doc("receptionist")
+    .get();
+  return validTimeZone(text(settings.exists ? settings.data().timeZone : "") || text(business.timeZone));
 }
 
 async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
@@ -60,20 +60,25 @@ async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
 
   for (const documentSnapshot of snapshot.docs) {
     const lead = documentSnapshot.data();
-    const createdAt = toMillis(lead.createdAt || lead.contactedAt || lead.updatedAt);
-    if (!createdAt || now.getTime() - createdAt < ESTIMATE_REQUEST_AUTO_DECLINE_AGE_MS) continue;
+    const createdAt = estimateRequestCreatedAt(lead);
+    if (!estimateRequestLifecycle(createdAt, now).expired) continue;
 
     if (business?.clientDeclineNoticeEnabled !== false) {
-      const notice = await sendEstimateRequestStatusNotice({
-        db,
-        clientId,
-        businessName: text(business?.businessName || business?.name) || "the business",
-        leadId: documentSnapshot.id,
-        leadName: text(lead.Name || lead.name || lead.fullName),
-        phone: text(lead.Phone || lead.phone || lead.phoneNumber),
-        status: "declined",
-      });
-      if (notice.sent === false && !notice.skipped && !notice.duplicate) declineNoticesFailed += 1;
+      try {
+        const notice = await sendEstimateRequestStatusNotice({
+          db,
+          clientId,
+          businessName: text(business?.businessName || business?.name) || "the business",
+          leadId: documentSnapshot.id,
+          leadName: text(lead.Name || lead.name || lead.fullName),
+          phone: text(lead.Phone || lead.phone || lead.phoneNumber),
+          status: "declined",
+        });
+        if (notice.sent === false && !notice.skipped && !notice.duplicate) declineNoticesFailed += 1;
+      } catch (error) {
+        declineNoticesFailed += 1;
+        console.error(`Auto-decline notice failed for ${clientId}/${documentSnapshot.id}`, error);
+      }
     }
 
     await documentSnapshot.ref.delete();
@@ -83,7 +88,7 @@ async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
   return { autoDeclined, declineNoticesFailed };
 }
 
-async function markEstimateFollowUps(db, clientId, now) {
+async function markEstimateFollowUps(db, clientId, now, timeZone) {
   const preClientsRef = db.collection("ocmClients").doc(clientId).collection("preClients");
   const snapshot = await preClientsRef.get();
   let followUpsMarked = 0;
@@ -107,7 +112,7 @@ async function markEstimateFollowUps(db, clientId, now) {
       followUpsMarked += 1;
     }
 
-    if (row.WorkStartDate && isDateDue(row.WorkStartDate, now)) {
+    if (row.WorkStartDate && isDateDue(row.WorkStartDate, now, timeZone)) {
       const clientRef = db.collection("ocmClients").doc(clientId).collection("clients").doc(documentSnapshot.id);
       const batch = db.batch();
       batch.set(clientRef, {
@@ -128,8 +133,8 @@ async function markEstimateFollowUps(db, clientId, now) {
   return { followUpsMarked, movedToClients };
 }
 
-async function createDailyReviewNotification(db, clientId, now) {
-  const clock = businessNow(now);
+async function createDailyReviewNotification(db, clientId, now, timeZone) {
+  const clock = businessNow(now, timeZone);
   if (clock.hour < 17) return false;
 
   const notificationRef = db
@@ -175,16 +180,31 @@ async function runWorkflow(request) {
     const businesses = [];
 
     for (const [clientId, business] of activeBusinesses) {
-      const expired = await autoDeclineExpiredEstimateRequests(db, clientId, business, now);
-      const workflow = await markEstimateFollowUps(db, clientId, now);
-      const dailyReviewCreated = await createDailyReviewNotification(db, clientId, now);
-      businesses.push({ clientId, ...expired, ...workflow, dailyReviewCreated });
+      try {
+        const timeZone = await accountTimeZone(db, clientId, business);
+        const expired = await autoDeclineExpiredEstimateRequests(db, clientId, business, now);
+        const workflow = await markEstimateFollowUps(db, clientId, now, timeZone);
+        const dailyReviewCreated = await createDailyReviewNotification(db, clientId, now, timeZone);
+        const retentionDays = normalizeLeadRetentionDays(business.leadRetentionDays);
+        const retainedLeadsDeleted = await cleanupExpiredLeads(db, clientId, retentionDays, now);
+        businesses.push({
+          clientId,
+          timeZone,
+          retentionDays,
+          retainedLeadsDeleted,
+          ...expired,
+          ...workflow,
+          dailyReviewCreated,
+        });
+      } catch (error) {
+        console.error(`Workflow failed for ${clientId}`, error);
+        businesses.push({ clientId, error: String(error?.message || "Workflow failed.") });
+      }
     }
 
     return Response.json({
       ok: true,
       checkedAt: now.toISOString(),
-      businessClock: businessNow(now),
       businesses,
     });
   } catch (error) {

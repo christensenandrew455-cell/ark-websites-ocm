@@ -14,7 +14,7 @@ A shared Railway receptionist service forwards the original signed Telnyx call e
 POST /api/receptionist/runtime
 ```
 
-OCM verifies the Telnyx signature and timestamp using `TELNYX_PUBLIC_KEY`, matches the destination phone number to one business, and returns that business's profile plus its private intake and call-usage URLs. Railway should use:
+ARK Client Center verifies the Telnyx signature and timestamp using `TELNYX_PUBLIC_KEY`, matches the destination phone number to one business, and returns that business's profile plus its private intake and call-usage URLs. Railway should use:
 
 ```text
 ARC_RUNTIME_URL=https://<ocm-host>/api/receptionist/runtime
@@ -22,6 +22,6 @@ ARC_RUNTIME_URL=https://<ocm-host>/api/receptionist/runtime
 
 No receptionist configuration secret is required. The removed `/api/receptionist/config` and `/api/receptionist/intake` compatibility routes must not be used.
 
-The business profile includes the business name, owner, phone, email, hours, time zone, estimate availability, service areas, services, and business facts. AI runtime controls do not come from OCM.
+The business profile includes the business name, owner, phone, email, hours, time zone, estimate availability, service areas, services, and business facts. AI runtime controls do not come from ARK Client Center.
 
-The model, voice, turn timing, output limits, context limits, response ceiling, call-duration ceiling, and provider credentials remain on Railway. OCM is only the business-information control panel, connection router, intake destination, and Firestore-backed lead store.
+The model, voice, turn timing, output limits, context limits, response ceiling, call-duration ceiling, and provider credentials remain on Railway. ARK Client Center is the business-information control panel, connection router, intake destination, and Firestore-backed lead store.

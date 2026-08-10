@@ -1,4 +1,4 @@
-# ARK OCM account and payment setup
+# ARK Client Center account and payment setup
 
 The app now supports business signup, Stripe-hosted payment-method setup, business-name login, password reset, account-isolated CRM data, and an ARK admin account that can switch businesses.
 
@@ -37,7 +37,7 @@ Also add:
 
 - `NEXT_PUBLIC_APP_URL=https://ark-websites-ocm.vercel.app`
 
-Signup uses Stripe Checkout in `setup` mode. Stripe collects and stores the card information; ARK OCM receives only the saved payment-method reference and card label.
+Signup uses Stripe Checkout in `setup` mode. Stripe collects and stores the card information; ARK Client Center receives only the saved payment-method reference and card label.
 
 ## 4. Configure the ARK admin account
 
@@ -69,13 +69,15 @@ After the rules are published:
 
 ## 6. Signup behavior
 
-1. The customer enters business name, their name, business email, business phone, and password.
-2. Stripe Checkout collects the payment method.
-3. The server verifies that Stripe completed the SetupIntent.
-4. The server creates the Firebase Authentication user and business records.
-5. The account becomes active and is signed in to its own CRM.
+1. The customer enters the business and owner information, password, and an optional referring account ID.
+2. The customer reviews the About page.
+3. Stripe Checkout collects the payment method.
+4. The server verifies that Stripe completed the SetupIntent and activates the existing Firebase account and business records.
+5. The owner finishes the receptionist business setup and opens ARK Client Center.
 
-If Stripe is canceled, the Firebase account is not created.
+If Stripe is canceled, the saved owner account returns to payment setup instead of being discarded.
+
+The standard billing model is $50 per monthly period, $2 per connected AI receptionist call, $1 per 50 SMS parts, and $5 per active employee used during the period. A lead saved from a counted call is not another charge. Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.
 
 ## 7. Password reset
 

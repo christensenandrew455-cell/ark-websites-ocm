@@ -1,6 +1,5 @@
 "use client";
 
-import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
@@ -8,49 +7,10 @@ const LABEL_CLASS = "text-[10px] font-black uppercase tracking-[0.12em] text-sla
 
 export default function ClientDeclineNoticeSettings() {
   const { user, isAdmin, isEmployee } = useAuth();
-  const [mountNode, setMountNode] = useState(null);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    let observer;
-    let slot;
-
-    function attach() {
-      const heading = [...document.querySelectorAll(".settings-layered h2")]
-        .find((node) => node.textContent?.trim() === "Customization");
-      const panel = heading?.parentElement?.nextElementSibling;
-      const controls = panel?.querySelector(".space-y-6");
-      if (!controls) {
-        setMountNode(null);
-        return false;
-      }
-      slot = controls.querySelector(".client-decline-notice-slot");
-      if (!slot) {
-        slot = document.createElement("div");
-        slot.className = "client-decline-notice-slot";
-        const employeeAccess = [...controls.children].find((child) => child.querySelector?.("[class*='Employee access']"));
-        if (employeeAccess) controls.insertBefore(slot, employeeAccess);
-        else controls.appendChild(slot);
-      }
-      setMountNode(slot);
-      return true;
-    }
-
-    attach();
-    const root = document.querySelector(".settings-layered");
-    if (root) {
-      observer = new MutationObserver(attach);
-      observer.observe(root, { childList: true, subtree: true });
-    }
-    return () => {
-      observer?.disconnect();
-      if (slot?.parentNode) slot.parentNode.removeChild(slot);
-      setMountNode(null);
-    };
-  }, []);
 
   useEffect(() => {
     if (!user || isAdmin || isEmployee) return;
@@ -94,8 +54,7 @@ export default function ClientDeclineNoticeSettings() {
     }
   }
 
-  if (!mountNode) return null;
-  return createPortal(
+  return (
     <div>
       <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
         <span>
@@ -111,7 +70,6 @@ export default function ClientDeclineNoticeSettings() {
         />
       </label>
       {error && <p className="mt-2 text-xs font-bold text-red-700">{error}</p>}
-    </div>,
-    mountNode,
+    </div>
   );
 }
