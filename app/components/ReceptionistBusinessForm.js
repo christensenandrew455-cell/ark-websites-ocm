@@ -198,7 +198,7 @@ export function receptionistRequestPayload(profile = {}) {
   };
 }
 
-export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false }) {
+export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false, identityReadOnly = false }) {
   if (!profile) return null;
   function update(field, value) { onChange({ ...profile, [field]: value }); }
   return (
@@ -208,10 +208,10 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
         <h3 className="text-lg font-black">Business Information</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Business name"><Input value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
-          <Field label="Owner name"><Input value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
-          <Field label="Business phone"><Input type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
-          <Field label="Business email"><Input type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
+          <Field label="Business name"><Input readOnly={identityReadOnly} value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
+          <Field label="Owner name"><Input readOnly={identityReadOnly} value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
+          <Field label="Business phone"><Input readOnly={identityReadOnly} type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
+          <Field label="Business email"><Input readOnly={identityReadOnly} type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
           <Field label="Time zone"><Select value={profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select></Field>
           <DayCheckboxes label="Business days" hint="Choose every day the business is normally open." selected={profile.businessWeekdays} onChange={(days) => update("businessWeekdays", days)} />
           <HourPeriodPicker label="Business opens" hour={profile.businessStartHour} period={profile.businessStartPeriod} onHourChange={(value) => update("businessStartHour", value)} onPeriodChange={(value) => update("businessStartPeriod", value)} />

@@ -258,7 +258,7 @@ async function alignExistingSubscription({ stripe, subscription, priceIds, metad
   });
 }
 
-export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId }) {
+export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId, persist = true }) {
   const catalog = await ensureStripeBillingCatalog({ stripe, db });
   const priceIds = expectedPriceIds(catalog);
   const metadata = {
@@ -310,28 +310,30 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
     stripeEmployeePriceId: catalog.employeePriceId,
     updatedAt: FieldValue.serverTimestamp(),
   };
-  await Promise.all([
-    db.collection("businesses").doc(clientId).set(update, { merge: true }),
-    uid ? db.collection("accounts").doc(uid).set(update, { merge: true }) : Promise.resolve(),
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("account").set({
-      BillingPlan: BILLING_PLAN_KEY,
-      BillingPlanName: BILLING_PLAN_NAME,
-      BillingVersion: BILLING_VERSION,
-      MonthlyBaseCents: MONTHLY_BASE_CENTS,
-      IncludedLeads: 0,
-      IncludedConversations: 0,
-      IncludedEmployees: 0,
-      PerLeadCents: PER_LEAD_CENTS,
-      PerCallCents: PER_LEAD_CENTS,
-      PerChatCents: PER_CHAT_CENTS,
-      PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
-      MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
-      PerEmployeeCents: PER_EMPLOYEE_CENTS,
-      StripeSubscriptionId: subscription.id,
-      StripeSubscriptionStatus: subscription.status,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true }),
-  ]);
+  if (persist) {
+    await Promise.all([
+      db.collection("businesses").doc(clientId).set(update, { merge: true }),
+      uid ? db.collection("accounts").doc(uid).set(update, { merge: true }) : Promise.resolve(),
+      db.collection("ocmClients").doc(clientId).collection("settings").doc("account").set({
+        BillingPlan: BILLING_PLAN_KEY,
+        BillingPlanName: BILLING_PLAN_NAME,
+        BillingVersion: BILLING_VERSION,
+        MonthlyBaseCents: MONTHLY_BASE_CENTS,
+        IncludedLeads: 0,
+        IncludedConversations: 0,
+        IncludedEmployees: 0,
+        PerLeadCents: PER_LEAD_CENTS,
+        PerCallCents: PER_LEAD_CENTS,
+        PerChatCents: PER_CHAT_CENTS,
+        PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
+        MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
+        PerEmployeeCents: PER_EMPLOYEE_CENTS,
+        StripeSubscriptionId: subscription.id,
+        StripeSubscriptionStatus: subscription.status,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true }),
+    ]);
+  }
   return subscription;
 }
 

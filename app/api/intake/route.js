@@ -10,6 +10,7 @@ import {
   leadContactFieldDeletionPatch,
   stripLeadContactFields,
 } from "../../lib/leadContactFields";
+import { mergeablePropertyMatches } from "../../lib/intakeLeadRecords";
 import { sendNewLeadNotification } from "../../lib/notificationService";
 import {
   createJob,
@@ -276,7 +277,10 @@ export async function POST(request) {
       }
     }
 
-    const matches = await findPropertyMatches(db, clientId, row.PropertyKey);
+    const propertyMatches = sectionKey === "contactedMe"
+      ? []
+      : await findPropertyMatches(db, clientId, row.PropertyKey);
+    const matches = mergeablePropertyMatches(sectionKey, propertyMatches);
     const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
     const primary = existingInTarget || matches[0] || null;
     const primaryData = stripLeadContactFields(primary?.data || {});

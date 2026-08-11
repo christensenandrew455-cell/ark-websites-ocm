@@ -12,7 +12,7 @@ import NativeAppSetup from "./NativeAppSetup";
 import ReferralCenter from "./ReferralCenter";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
-const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/signup/complete", "/employee/pending", "/forgot-password", "/about", "/docs"];
+const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/employee/pending", "/forgot-password", "/about", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },

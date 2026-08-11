@@ -1,4 +1,4 @@
-import Link from "next/link";
+import SignupAboutContinue from "../components/SignupAboutContinue";
 
 const features = [
   ["AI receptionist leads", "Review calls and leads delivered by the receptionist, see saved details, and accept qualified leads into the client list."],
@@ -14,7 +14,7 @@ export default async function AboutPage({ searchParams }) {
     <section className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 px-4 py-12 text-white sm:px-6 sm:py-20">
       <div className="mx-auto max-w-5xl">
         <p className="text-xs font-black uppercase tracking-[0.24em] text-amber-300">ARK Client Center</p>
-        {setup && <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-slate-300">Step 1 of 2 · Review the app</p>}
+        {setup && <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-slate-300">Step 3 of 4 · About</p>}
         <h1 className="mt-3 max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">About your Client Center</h1>
         <p className="mt-5 max-w-3xl text-base font-semibold leading-7 text-slate-300 sm:text-xl sm:leading-8">A private business app for AI receptionist leads, optional customer messaging, optional employee routing, and simple usage-based billing.</p>
       </div>
@@ -32,7 +32,7 @@ export default async function AboutPage({ searchParams }) {
         <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.</p>
       </section>
       <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"><h2 className="text-2xl font-black">Privacy and account access</h2><p className="mt-3 text-sm leading-6 text-slate-600">ARK administrators can access business, owner, employee, lead, client, assignment, supported conversation, billing-status, and technical information needed to operate and support the Service. Approved employees receive only assigned records and owner-enabled fields through filtered APIs. ARK does not receive or store full payment-card numbers.</p></section>
-      {setup && <Link href="/signup/status" className="mt-6 block w-full rounded-2xl bg-slate-950 px-6 py-4 text-center text-sm font-black text-white shadow-lg sm:ml-auto sm:w-fit">Continue to Payment Setup</Link>}
+      {setup && <SignupAboutContinue />}
     </div>
   </main>;
 }
