@@ -6,6 +6,7 @@ import { normalizeOwnerSignup, validateOwnerSignup } from "../../../lib/ownerSig
 import { ownerSignupDigest } from "../../../lib/ownerSignupServer";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { validateReferrerAccount } from "../../../lib/referrals";
+import { checkSignupAvailability, signupAvailabilityMessage } from "../../../lib/signupAvailability";
 import { billingPlanDefinition, normalizeBillingPlan } from "../../../lib/stripeUsageBilling";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
@@ -44,13 +45,14 @@ async function startPaymentGatedSignup(request, rawSignup) {
   const clientId = normalizeClientId(signup.businessName);
   const businessRef = db.collection("businesses").doc(clientId);
   const registryRef = db.collection("businessNameRegistry").doc(clientId);
-  const [existingBusiness, existingRegistry, existingUser] = await Promise.all([
+  const [existingBusiness, existingRegistry, availability] = await Promise.all([
     businessRef.get(),
     registryRef.get(),
-    auth.getUserByEmail(signup.accountEmail).catch(() => null),
+    checkSignupAvailability({ auth, db, accountEmail: signup.accountEmail, accountPhone: signup.accountPhone }),
   ]);
   if (existingBusiness.exists || existingRegistry.exists) return NextResponse.json({ error: "That business name is already registered. Use a different business name." }, { status: 409 });
-  if (existingUser) return NextResponse.json({ error: "That email address is already registered." }, { status: 409 });
+  const availabilityError = signupAvailabilityMessage(availability);
+  if (availabilityError) return NextResponse.json({ error: availabilityError }, { status: 409 });
 
   try {
     await validateReferrerAccount({ db, referrerAccountId: signup.referrerAccountId, referredClientId: clientId });

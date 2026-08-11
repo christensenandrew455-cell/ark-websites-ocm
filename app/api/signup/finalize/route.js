@@ -6,6 +6,7 @@ import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateOwnerSignup } from "../../../lib/ownerSignup";
 import { ownerSignupDigestMatches, ownerSignupUid } from "../../../lib/ownerSignupServer";
 import { pendingReferralFields, qualifyReferralAfterActivation, validateReferrerAccount } from "../../../lib/referrals";
+import { checkSignupAvailability, normalizeSignupPhone } from "../../../lib/signupAvailability";
 import {
   BILLING_VERSION,
   MESSAGE_PARTS_PER_BUNDLE,
@@ -28,6 +29,7 @@ function signupError(error) {
   const code = text(error?.code || error?.errorInfo?.code);
   const message = text(error?.message || error?.errorInfo?.message);
   if (code === "auth/email-already-exists" || message === "EMAIL_TAKEN") return { status: 409, message: "That email address is already registered." };
+  if (message === "PHONE_TAKEN") return { status: 409, message: "That phone number is already registered." };
   if (message === "BUSINESS_TAKEN") return { status: 409, message: "That business name is already registered. Use a different business name." };
   if (message === "SELF_REFERRAL") return { status: 400, message: "A business cannot refer its own account." };
   if (message === "REFERRER_NOT_FOUND") return { status: 400, message: "That referral account ID is not an active ARK account." };
@@ -99,6 +101,7 @@ export async function POST(request) {
     const auth = getAdminAuth();
     const uid = ownerSignupUid(sessionId);
     createdUid = uid;
+    const accountPhoneNormalized = normalizeSignupPhone(signup.accountPhone);
     const digest = text(metadata.signupDigest);
     const accountRef = db.collection("accounts").doc(uid);
     const businessRef = db.collection("businesses").doc(clientId);
@@ -107,14 +110,15 @@ export async function POST(request) {
     const completed = await existingCompletion({ auth, db, receiptRef, digest });
     if (completed) return completed.response;
 
-    const [businessSnapshot, registrySnapshot, userByEmail, userByUid] = await Promise.all([
+    const [businessSnapshot, registrySnapshot, availability, userByUid] = await Promise.all([
       businessRef.get(),
       registryRef.get(),
-      auth.getUserByEmail(signup.accountEmail).catch(() => null),
+      checkSignupAvailability({ auth, db, accountEmail: signup.accountEmail, accountPhone: signup.accountPhone, allowedUid: uid }),
       auth.getUser(uid).catch(() => null),
     ]);
     if (!compatibleReservation(businessSnapshot, sessionId, uid) || !compatibleReservation(registrySnapshot, sessionId, uid)) throw new Error("BUSINESS_TAKEN");
-    if (userByEmail && userByEmail.uid !== uid) throw new Error("EMAIL_TAKEN");
+    if (availability.emailInUse) throw new Error("EMAIL_TAKEN");
+    if (availability.phoneInUse) throw new Error("PHONE_TAKEN");
     if (userByUid && text(userByUid.email).toLowerCase() !== signup.accountEmail) throw new Error("EMAIL_TAKEN");
 
     const referrer = await validateReferrerAccount({ db, referrerAccountId: signup.referrerAccountId, referredClientId: clientId });
@@ -135,6 +139,7 @@ export async function POST(request) {
         ownerName: signup.ownerName,
         accountEmail: signup.accountEmail,
         accountPhone: signup.accountPhone,
+        accountPhoneNormalized,
         signupSessionId: sessionId,
         status: "activating",
         updatedAt: FieldValue.serverTimestamp(),
@@ -195,6 +200,7 @@ export async function POST(request) {
       ownerNameKey: normalizePersonKey(signup.ownerName),
       accountEmail: signup.accountEmail,
       accountPhone: signup.accountPhone,
+      accountPhoneNormalized,
       ...billingFields,
       messagesEnabled,
       employeesEnabled,

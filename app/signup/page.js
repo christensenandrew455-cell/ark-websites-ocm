@@ -75,6 +75,13 @@ export default function SignupPage() {
     const employeeSignup = accountType === "employee";
     setSubmitting(true);
     try {
+      const availabilityResponse = await fetch("/api/signup/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountEmail: form.accountEmail, accountPhone: form.accountPhone }),
+      });
+      await readApiJson(availabilityResponse, "Unable to check whether that email and phone are available.");
+
       if (!employeeSignup) {
         const current = loadOwnerSignupDraft();
         saveOwnerSignupDraft({
@@ -140,7 +147,7 @@ export default function SignupPage() {
   const employeeSignup = accountType === "employee";
 
   return (
-    <main className="min-h-screen bg-slate-950 p-5 py-10">
+    <main className="min-h-screen bg-slate-950 px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
       <div className="mx-auto w-full max-w-3xl rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Client Center</p>
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
@@ -167,7 +174,10 @@ export default function SignupPage() {
           {employeeSignup && <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><p className="text-sm font-black text-slate-950">Owner approval required</p><p className="mt-1 text-sm leading-6 text-slate-700">The business owner must approve your account before you can sign in.</p></div>}
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><input required type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-slate-950" /><span className="text-sm leading-6 text-slate-700">I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>.</span></label>
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 md:col-span-2">{error}</p>}
-          <button disabled={submitting || !acceptedLegal} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60 md:col-span-2">{submitting ? (employeeSignup ? "Creating account…" : "Opening business information…") : employeeSignup ? "Create Employee Account" : "Next"}</button>
+          <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">
+            <Link href="/login" onClick={clearOwnerSignupDraft} className="rounded-xl border border-slate-300 px-5 py-3 text-center font-bold text-slate-700">Back</Link>
+            <button type="submit" disabled={submitting || !acceptedLegal} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60">{submitting ? (employeeSignup ? "Creating account…" : "Opening business information…") : employeeSignup ? "Create Employee Account" : "Next"}</button>
+          </div>
         </form>
         <Link href="/login" onClick={clearOwnerSignupDraft} className="mt-5 block text-center text-sm font-semibold text-slate-600 hover:text-slate-950">Already have an account? Sign in</Link>
       </div>

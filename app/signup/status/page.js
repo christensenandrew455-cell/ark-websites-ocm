@@ -101,7 +101,7 @@ export default function SignupStatusPage() {
 
   const ready = mode === "draft" ? Boolean(draft) && !validateOwnerSignup(draft) : application?.status === "approved_pending_payment";
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 p-5 py-10">
+    <main className="grid min-h-screen place-items-center bg-slate-950 px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
       <section className="w-full max-w-xl rounded-3xl bg-white p-7 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment Method</p>
