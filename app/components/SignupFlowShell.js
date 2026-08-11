@@ -27,7 +27,7 @@ export default function SignupFlowShell({ children }) {
       initialAuthenticatedRouteHandled.current = true;
       if (!employeePending && !ownerUnfinished && !needsBusinessSetup && pathname !== "/") { router.replace("/"); return; }
     }
-    if (setupPage && (!user || isAdmin || isEmployee)) { router.replace(user ? "/" : "/login"); return; }
+    if (setupPage && user && (isAdmin || isEmployee)) { router.replace("/"); return; }
     if (employeePending && !employeePendingPage && !publicInformationPage) { router.replace("/employee/pending"); return; }
     if (ownerUnfinished && !signupPage && !publicInformationPage) { router.replace("/signup/status"); return; }
     if (needsBusinessSetup && !setupPage && !publicInformationPage && !signupPage) { router.replace("/setup/business"); return; }
@@ -36,7 +36,7 @@ export default function SignupFlowShell({ children }) {
   }, [employeePending, employeePendingPage, isAdmin, isEmployee, loading, needsBusinessSetup, ownerUnfinished, pathname, profile?.status, publicInformationPage, router, setupPage, signupPage, user]);
 
   if (loading) return <Waiting>Loading client center…</Waiting>;
-  if (setupPage && (!user || isAdmin || isEmployee)) return <Waiting>Opening the correct account page…</Waiting>;
+  if (setupPage && user && (isAdmin || isEmployee)) return <Waiting>Opening the correct account page…</Waiting>;
   if (signupPage || setupPage || employeePendingPage) return children;
   if ((employeePending || ownerUnfinished) && publicInformationPage) return children;
   if (employeePending) return <Waiting>Opening employee approval…</Waiting>;

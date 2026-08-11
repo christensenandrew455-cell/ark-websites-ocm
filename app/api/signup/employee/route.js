@@ -4,6 +4,7 @@ import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
+import { checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -24,7 +25,9 @@ export async function POST(request) {
     const employeeNameKey = normalizePersonKey(name);
     const email = trimmedText(accountEmail).toLowerCase();
     const phone = trimmedText(accountPhone);
+    const phoneNormalized = normalizeSignupPhone(phone);
     if (!requestedBusinessKey || !employeeNameKey || !email || !phone || typeof password !== "string") return NextResponse.json({ error: "Complete every employee account field." }, { status: 400 });
+    if (!/^\+1\d{10}$/.test(phoneNormalized)) return NextResponse.json({ error: "Enter a 10-digit phone number." }, { status: 400 });
     if (password.length < 8) return NextResponse.json({ error: "Use a password with at least 8 characters." }, { status: 400 });
     if (!/^\S+@\S+\.\S+$/.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     if (acceptedTerms !== true || acceptedPrivacy !== true) return NextResponse.json({ error: "Agree to the Terms of Use and Privacy Policy before continuing." }, { status: 400 });
@@ -34,7 +37,12 @@ export async function POST(request) {
     const db = getAdminDb();
     const rateLimit = await checkRequestRateLimit({ db, request, scope: "employee-signup", limit: 8, windowMs: 60 * 60 * 1000 });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
-    const registrySnapshot = await db.collection("businessNameRegistry").doc(requestedBusinessKey).get();
+    const [registrySnapshot, availability] = await Promise.all([
+      db.collection("businessNameRegistry").doc(requestedBusinessKey).get(),
+      checkSignupAvailability({ auth, db, accountEmail: email, accountPhone: phone }),
+    ]);
+    const availabilityError = signupAvailabilityMessage(availability);
+    if (availabilityError) return NextResponse.json({ error: availabilityError }, { status: 409 });
     const clientId = normalizeClientId(registrySnapshot.exists ? registrySnapshot.data().clientId : requestedBusinessKey);
     const businessRef = db.collection("businesses").doc(clientId);
     const businessSnapshot = await businessRef.get();
@@ -42,8 +50,6 @@ export async function POST(request) {
     const business = businessSnapshot.data();
     if (business.status !== "active" || business.employeesEnabled !== true) return NextResponse.json({ error: "That business is not accepting employee accounts. The owner must enable Employees first." }, { status: 409 });
     if (normalizePersonKey(business.ownerName) === employeeNameKey) return NextResponse.json({ error: "That name is already used by the account owner." }, { status: 409 });
-    if (await auth.getUserByEmail(email).catch(() => null)) return NextResponse.json({ error: "That email address is already registered." }, { status: 409 });
-
     const handleRef = businessRef.collection("employeeHandles").doc(employeeNameKey);
     if ((await handleRef.get()).exists) return NextResponse.json({ error: "An employee with that name already exists under this business." }, { status: 409 });
 
@@ -59,6 +65,7 @@ export async function POST(request) {
       employeeNameKey,
       accountEmail: email,
       accountPhone: phone,
+      accountPhoneNormalized: phoneNormalized,
       billingPlan: "standard",
       messagesEnabled: business.messagesEnabled === true,
       employeesEnabled: true,

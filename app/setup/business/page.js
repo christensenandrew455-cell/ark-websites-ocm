@@ -46,7 +46,7 @@ export default function BusinessSetupPage() {
   if (!ready || !draft || !receptionist) return <main className="grid min-h-screen place-items-center bg-slate-950 text-sm font-semibold text-white">Opening business information…</main>;
 
   return (
-    <main className="min-h-screen bg-slate-950 p-5 py-10 text-slate-950">
+    <main className="min-h-screen bg-slate-950 px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10 text-slate-950">
       <section className="mx-auto w-full max-w-4xl rounded-3xl bg-white p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 2 of 4 · Business information</p>

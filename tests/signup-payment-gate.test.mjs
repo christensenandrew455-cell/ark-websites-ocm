@@ -6,6 +6,11 @@ import {
   ownerSignupDigestInput,
   validateOwnerSignup,
 } from "../app/lib/ownerSignup.js";
+import {
+  normalizeSignupPhone,
+  signupAvailabilityMessage,
+  signupPhoneVariants,
+} from "../app/lib/signupAvailability.js";
 
 function completeSignup() {
   return {
@@ -75,4 +80,48 @@ test("the owner Auth record is created only in the post-Stripe finalize endpoint
   assert.ok(paymentConfirmed >= 0);
   assert.ok(accountCreated >= 0);
   assert.ok(paymentConfirmed < accountCreated);
+});
+
+test("signup detects equivalent phone formats and reports duplicate contacts clearly", () => {
+  assert.equal(normalizeSignupPhone("(978) 555-1212"), "+19785551212");
+  const variants = signupPhoneVariants("+1 978 555 1212");
+  assert.ok(variants.includes("(978) 555-1212"));
+  assert.ok(variants.includes("978-555-1212"));
+  assert.equal(signupAvailabilityMessage({ emailInUse: true, phoneInUse: false }), "That email address is already registered.");
+  assert.equal(signupAvailabilityMessage({ emailInUse: false, phoneInUse: true }), "That phone number is already registered.");
+  assert.equal(signupAvailabilityMessage({ emailInUse: true, phoneInUse: true }), "That email address and phone number are already registered.");
+});
+
+test("the signed-out draft can reach business information without being forced to login", async () => {
+  const shellSource = await readFile(new URL("../app/components/SignupFlowShell.js", import.meta.url), "utf8");
+  assert.ok(shellSource.includes("setupPage && user && (isAdmin || isEmployee)"));
+  assert.equal(shellSource.includes("router.replace(user ? \"/\" : \"/login\")"), false);
+});
+
+test("all pre-payment signup steps expose navigation above the mobile safe area", async () => {
+  const [accountSource, businessSource, aboutSource] = await Promise.all([
+    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/setup/business/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/SignupAboutContinue.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(accountSource.includes(">Back</Link>"));
+  assert.ok(businessSource.includes(">Back</Link>"));
+  assert.ok(businessSource.includes(">Next</button>"));
+  assert.ok(aboutSource.includes("/setup/business?signup=1"));
+  assert.ok(aboutSource.includes("safe-area-inset-bottom"));
+});
+
+test("owner signup checks email and phone before advancing and checks again after payment", async () => {
+  const [accountSource, checkoutSource, finalizeSource] = await Promise.all([
+    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+  ]);
+  const availabilityCheck = accountSource.indexOf("/api/signup/availability");
+  const businessStep = accountSource.indexOf("router.push(\"/setup/business?signup=1\")");
+  assert.ok(availabilityCheck >= 0 && availabilityCheck < businessStep);
+  assert.ok(checkoutSource.includes("checkSignupAvailability"));
+  const finalPhoneCheck = finalizeSource.indexOf("availability.phoneInUse");
+  const accountCreated = finalizeSource.indexOf("auth.createUser(");
+  assert.ok(finalPhoneCheck >= 0 && finalPhoneCheck < accountCreated);
 });
