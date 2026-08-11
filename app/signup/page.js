@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
+import { clearOwnerSignupDraft, loadOwnerSignupDraft, saveOwnerSignupDraft } from "../lib/ownerSignupStorage";
 import { dashBusinessName } from "../lib/valueUtils";
 
 function formatPhoneInput(value) {
@@ -39,6 +40,21 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    const draft = loadOwnerSignupDraft();
+    if (!draft) return;
+    setForm({
+      businessName: draft.businessName,
+      personName: draft.ownerName,
+      accountEmail: draft.accountEmail,
+      accountPhone: draft.accountPhone,
+      password: draft.password,
+      confirmPassword: draft.password,
+      referrerAccountId: draft.referrerAccountId,
+    });
+    setAcceptedLegal(draft.acceptedTerms && draft.acceptedPrivacy);
+  }, []);
+
   function updateField(event) {
     const { name } = event.target;
     const value = name === "businessName" || name === "referrerAccountId"
@@ -59,6 +75,33 @@ export default function SignupPage() {
     const employeeSignup = accountType === "employee";
     setSubmitting(true);
     try {
+      if (!employeeSignup) {
+        const current = loadOwnerSignupDraft();
+        saveOwnerSignupDraft({
+          ...current,
+          businessName: form.businessName,
+          ownerName: form.personName,
+          accountEmail: form.accountEmail,
+          accountPhone: form.accountPhone,
+          password: form.password,
+          referrerAccountId: form.referrerAccountId,
+          acceptedTerms: true,
+          acceptedPrivacy: true,
+          termsVersion: TERMS_VERSION,
+          privacyVersion: PRIVACY_VERSION,
+          receptionist: {
+            ...(current?.receptionist || {}),
+            businessName: form.businessName,
+            ownerName: form.personName,
+            businessEmail: form.accountEmail,
+            businessPhone: form.accountPhone,
+          },
+        });
+        router.push("/setup/business?signup=1");
+        return;
+      }
+
+      clearOwnerSignupDraft();
       const response = await fetch(employeeSignup ? "/api/signup/employee" : "/api/signup/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,7 +130,7 @@ export default function SignupPage() {
       });
       const data = await readApiJson(response, "Unable to create the account.");
       await signInWithEmailAndPassword(auth, data.email, form.password);
-      router.replace(employeeSignup ? "/employee/pending" : "/about?setup=1");
+      router.replace("/employee/pending");
     } catch (signupError) {
       setError(signupError.message);
       setSubmitting(false);
@@ -101,7 +144,8 @@ export default function SignupPage() {
       <div className="mx-auto w-full max-w-3xl rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Client Center</p>
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
-        <p className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-semibold leading-6 text-indigo-950">Enter the business and account information below. Owner accounts will review the app, add a payment method, and then finish the receptionist setup.</p>
+        {!employeeSignup && <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 1 of 4 · Account information</p>}
+        <p className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-semibold leading-6 text-indigo-950">Enter the business and account information below. Owner accounts continue through business information, About, and Payment Method. The account is created only after the payment method is added.</p>
 
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
           <fieldset className="md:col-span-2">
@@ -123,9 +167,9 @@ export default function SignupPage() {
           {employeeSignup && <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><p className="text-sm font-black text-slate-950">Owner approval required</p><p className="mt-1 text-sm leading-6 text-slate-700">The business owner must approve your account before you can sign in.</p></div>}
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><input required type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-slate-950" /><span className="text-sm leading-6 text-slate-700">I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>.</span></label>
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 md:col-span-2">{error}</p>}
-          <button disabled={submitting || !acceptedLegal} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60 md:col-span-2">{submitting ? "Creating account…" : employeeSignup ? "Create Employee Account" : "Create Owner Account"}</button>
+          <button disabled={submitting || !acceptedLegal} className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60 md:col-span-2">{submitting ? (employeeSignup ? "Creating account…" : "Opening business information…") : employeeSignup ? "Create Employee Account" : "Next"}</button>
         </form>
-        <Link href="/login" className="mt-5 block text-center text-sm font-semibold text-slate-600 hover:text-slate-950">Already have an account? Sign in</Link>
+        <Link href="/login" onClick={clearOwnerSignupDraft} className="mt-5 block text-center text-sm font-semibold text-slate-600 hover:text-slate-950">Already have an account? Sign in</Link>
       </div>
     </main>
   );

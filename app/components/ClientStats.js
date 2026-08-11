@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import DashboardOnboarding from "./DashboardOnboarding";
 import { db } from "../lib/firebase";
 
 function DashboardCard({ value, label, description, onClick, disabled = false }) {
@@ -107,6 +108,7 @@ export default function ClientStats() {
 
   return (
     <section className="ark-dashboard-page min-h-[calc(100vh-78px)] bg-slate-200 px-3 py-4 text-slate-950 sm:px-5 sm:py-8 md:px-8">
+      <DashboardOnboarding />
       <div className="mx-auto max-w-6xl">
         <div>
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1>
