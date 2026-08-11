@@ -174,7 +174,7 @@ test("owner signup checks email and phone before advancing and checks again afte
   assert.ok(finalPhoneCheck >= 0 && finalPhoneCheck < accountCreated);
 });
 
-test("onboarding UI hides repeated identity fields and keeps saved service entries non-editable", async () => {
+test("business information UI stays compact in onboarding and settings", async () => {
   const [businessPageSource, formSource] = await Promise.all([
     readFile(new URL("../app/setup/business/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/ReceptionistBusinessForm.js", import.meta.url), "utf8"),
@@ -189,10 +189,18 @@ test("onboarding UI hides repeated identity fields and keeps saved service entri
   assert.equal(formSource.includes('label="Business days"'), false);
   assert.equal(formSource.includes('label="Business opens"'), false);
   assert.equal(formSource.includes('label="Business closes"'), false);
-  assert.ok(formSource.includes("Estimate days (optional)"));
+  assert.ok(formSource.includes('label="Estimate days"'));
+  assert.equal(formSource.includes("Estimate days (optional)"), false);
   assert.ok(formSource.includes("Information title"));
   assert.ok(formSource.includes("Information details"));
   assert.ok(formSource.includes(">Add Info</button>"));
+  assert.ok(formSource.includes("aria-expanded={open}"));
+  assert.ok(formSource.includes("Show\"} explanation for ${label}"));
+  assert.ok(formSource.includes("Add each town, city, county, or state where the business accepts jobs."));
+  assert.ok(formSource.includes("{identitySection}"));
+  assert.ok(formSource.includes("{sharedSections}"));
+  assert.equal(formSource.includes("These locations help the AI receptionist"), false);
+  assert.equal(formSource.includes("Choose the business time zone. Estimate days and hours"), false);
 });
 
 test("saved business information reaches settings and receptionist runtime without business-hour defaults", async () => {
