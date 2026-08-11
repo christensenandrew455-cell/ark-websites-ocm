@@ -147,6 +147,17 @@ export async function qualifyReferralAfterActivation({ db, stripe, referredClien
   const account = accountSnapshot?.exists ? accountSnapshot.data() : {};
   const referrerClientId = normalizeClientId(business.referrerClientId || account.referrerClientId);
   if (!referrerClientId) return { status: "none" };
+  const referredStatus = text(account.status || business.status);
+  const paymentSetupStatus = text(account.paymentSetupStatus || business.paymentSetupStatus);
+  const subscriptionIdForReferredAccount = text(account.stripeSubscriptionId || business.stripeSubscriptionId);
+  const subscriptionStatusForReferredAccount = text(account.stripeSubscriptionStatus || business.stripeSubscriptionStatus);
+  if (referredStatus !== "active" || paymentSetupStatus !== "complete" || !subscriptionIdForReferredAccount || subscriptionStatusForReferredAccount !== "active") {
+    await markReferredAccount(db, referredClientId, referredUid, {
+      referralStatus: "pending_payment",
+      referralUpdatedAt: FieldValue.serverTimestamp(),
+    });
+    return { status: "pending_payment" };
+  }
 
   const [referrerSnapshot, referrerReceptionistSnapshot] = await Promise.all([
     db.collection("businesses").doc(referrerClientId).get(),
@@ -286,7 +297,7 @@ export async function retryPendingReferralActivations({ db, stripe }) {
   const businesses = await db.collection("businesses").get();
   const pending = businesses.docs.filter((document) => {
     const data = document.data();
-    return Boolean(text(data.referrerClientId)) && text(data.referralStatus) === "pending_activation";
+    return Boolean(text(data.referrerClientId)) && ["pending_activation", "pending_payment"].includes(text(data.referralStatus));
   });
   const results = [];
   for (const document of pending) {

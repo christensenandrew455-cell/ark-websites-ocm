@@ -7,32 +7,31 @@ export const OWNER_SIGNUP_DRAFT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export const DASHBOARD_ONBOARDING_KEY = "ark-dashboard-onboarding-v1";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-const DEFAULT_WEEKDAYS = WEEKDAYS.slice(0, 5);
 const PERIODS = new Set(["AM", "PM"]);
 
 function cleanText(value, maximum = 500) {
   return trimmedText(value).slice(0, maximum);
 }
 
-function hour(value, fallback) {
+function hour(value) {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 12 ? parsed : fallback;
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 12 ? parsed : "";
 }
 
-function period(value, fallback) {
+function period(value) {
   const normalized = cleanText(value, 2).toUpperCase();
-  return PERIODS.has(normalized) ? normalized : fallback;
+  return PERIODS.has(normalized) ? normalized : "";
 }
 
-function weekdayList(value, fallback = []) {
+function weekdayList(value) {
   if (Array.isArray(value)) {
     const selected = new Set(value.map((item) => cleanText(item, 12).toLowerCase()));
     return WEEKDAYS.filter((day) => selected.has(day));
   }
   const source = cleanText(value, 200).toLowerCase();
-  if (!source) return [...fallback];
+  if (!source) return [];
   const selected = WEEKDAYS.filter((day) => source.includes(day));
-  return selected.length ? selected : [...fallback];
+  return selected;
 }
 
 function textList(value, maximumItems = 100, maximumLength = 160) {
@@ -92,16 +91,20 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const ownerName = cleanText(value.ownerName || value.personName || receptionist.ownerName, 120);
   const accountEmail = cleanText(value.accountEmail || receptionist.businessEmail, 254).toLowerCase();
   const accountPhone = cleanText(value.accountPhone || receptionist.businessPhone, 30);
-  const businessWeekdays = weekdayList(receptionist.businessWeekdays, DEFAULT_WEEKDAYS);
-  const estimateWeekdays = weekdayList(receptionist.estimateWeekdays, DEFAULT_WEEKDAYS);
-  const businessStartHour = hour(receptionist.businessStartHour, 9);
-  const businessStartPeriod = period(receptionist.businessStartPeriod, "AM");
-  const businessEndHour = hour(receptionist.businessEndHour, 5);
-  const businessEndPeriod = period(receptionist.businessEndPeriod, "PM");
-  const estimateStartHour = hour(receptionist.estimateStartHour, 9);
-  const estimateStartPeriod = period(receptionist.estimateStartPeriod, "AM");
-  const estimateEndHour = hour(receptionist.estimateEndHour, 4);
-  const estimateEndPeriod = period(receptionist.estimateEndPeriod, "PM");
+  const businessWeekdays = weekdayList(receptionist.businessWeekdays);
+  const estimateWeekdays = weekdayList(receptionist.estimateWeekdays);
+  const businessStartHour = hour(receptionist.businessStartHour);
+  const businessStartPeriod = period(receptionist.businessStartPeriod);
+  const businessEndHour = hour(receptionist.businessEndHour);
+  const businessEndPeriod = period(receptionist.businessEndPeriod);
+  const estimateStartHour = hour(receptionist.estimateStartHour);
+  const estimateStartPeriod = period(receptionist.estimateStartPeriod);
+  const estimateEndHour = hour(receptionist.estimateEndHour);
+  const estimateEndPeriod = period(receptionist.estimateEndPeriod);
+  const timeZone = cleanText(receptionist.timeZone, 80).toLowerCase() === "choose" ? "" : cleanText(receptionist.timeZone, 80);
+  const businessHoursComplete = businessWeekdays.length && businessStartHour && businessStartPeriod && businessEndHour && businessEndPeriod;
+  const estimateStartComplete = estimateStartHour && estimateStartPeriod;
+  const estimateEndComplete = estimateEndHour && estimateEndPeriod;
 
   return {
     version: OWNER_SIGNUP_DRAFT_VERSION,
@@ -115,26 +118,27 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
     acceptedPrivacy: value.acceptedPrivacy === true,
     termsVersion: cleanText(value.termsVersion, 40),
     privacyVersion: cleanText(value.privacyVersion, 40),
+    businessInformationCompleted: value.businessInformationCompleted === true,
     receptionist: {
       businessName,
       ownerName,
       businessPhone: accountPhone,
       businessEmail: accountEmail,
-      timeZone: cleanText(receptionist.timeZone || "America/New_York", 80),
+      timeZone,
       businessWeekdays,
       businessStartHour,
       businessStartPeriod,
       businessEndHour,
       businessEndPeriod,
-      businessHours: `Open ${daySummary(businessWeekdays)} from ${timeSummary(businessStartHour, businessStartPeriod)} to ${timeSummary(businessEndHour, businessEndPeriod)}.`,
-      estimateDays: daySummary(estimateWeekdays),
+      businessHours: businessHoursComplete ? `Open ${daySummary(businessWeekdays)} from ${timeSummary(businessStartHour, businessStartPeriod)} to ${timeSummary(businessEndHour, businessEndPeriod)}.` : "",
+      estimateDays: estimateWeekdays.length ? daySummary(estimateWeekdays) : "",
       estimateWeekdays,
       estimateStartHour,
       estimateStartPeriod,
       estimateEndHour,
       estimateEndPeriod,
-      earliestEstimateStart: timeSummary(estimateStartHour, estimateStartPeriod),
-      latestEstimateStart: timeSummary(estimateEndHour, estimateEndPeriod),
+      earliestEstimateStart: estimateStartComplete ? timeSummary(estimateStartHour, estimateStartPeriod) : "",
+      latestEstimateStart: estimateEndComplete ? timeSummary(estimateEndHour, estimateEndPeriod) : "",
       businessBase: cleanText(receptionist.businessBase, 200),
       serviceAreas: textList(receptionist.serviceAreas),
       services: servicesObject(receptionist.services),
@@ -152,19 +156,31 @@ export function validateOwnerSignup(value = {}, { requirePassword = true } = {})
   if (requirePassword && signup.password.length < 8) return "Use a password with at least 8 characters.";
   if (!signup.acceptedTerms || !signup.acceptedPrivacy) return "Agree to the Terms of Use and Privacy Policy before continuing.";
   if (signup.termsVersion !== TERMS_VERSION || signup.privacyVersion !== PRIVACY_VERSION) return "The legal policies were updated. Start signup again and review the current versions.";
+  return validateReceptionistBusinessInformation(signup.receptionist);
+}
+
+export function validateReceptionistBusinessInformation(value = {}) {
+  const receptionist = normalizeOwnerSignup({ receptionist: value }, { includePassword: false }).receptionist;
+  if (!receptionist.timeZone) return "Choose a time zone.";
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone: signup.receptionist.timeZone }).format();
+    new Intl.DateTimeFormat("en-US", { timeZone: receptionist.timeZone }).format();
   } catch {
     return "Choose a valid time zone.";
   }
-  if (!signup.receptionist.businessWeekdays.length) return "Select at least one normal business day.";
-  if (!signup.receptionist.estimateWeekdays.length) return "Select at least one day available for estimates.";
-  if (timeMinutes(signup.receptionist.estimateStartHour, signup.receptionist.estimateStartPeriod) > timeMinutes(signup.receptionist.estimateEndHour, signup.receptionist.estimateEndPeriod)) return "The latest estimate time must be after the earliest estimate time.";
-  if (!signup.receptionist.serviceAreas.length) return "Add at least one service area.";
-  if (!Object.keys(signup.receptionist.services).length) return "Add at least one service.";
+  if (!receptionist.businessWeekdays.length) return "Select at least one normal business day.";
+  if (!receptionist.businessStartHour || !receptionist.businessStartPeriod) return "Choose the business opening time.";
+  if (!receptionist.businessEndHour || !receptionist.businessEndPeriod) return "Choose the business closing time.";
+  if (!receptionist.estimateWeekdays.length) return "Select at least one day available for estimates.";
+  if (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod) return "Choose the earliest estimate time.";
+  if (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod) return "Choose the latest estimate time.";
+  if (timeMinutes(receptionist.estimateStartHour, receptionist.estimateStartPeriod) > timeMinutes(receptionist.estimateEndHour, receptionist.estimateEndPeriod)) return "The latest estimate time must be after the earliest estimate time.";
+  if (!receptionist.serviceAreas.length) return "Add at least one service area.";
+  if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";
 }
 
 export function ownerSignupDigestInput(value = {}) {
-  return JSON.stringify(normalizeOwnerSignup(value, { includePassword: true }));
+  const signup = normalizeOwnerSignup(value, { includePassword: true });
+  delete signup.businessInformationCompleted;
+  return JSON.stringify(signup);
 }

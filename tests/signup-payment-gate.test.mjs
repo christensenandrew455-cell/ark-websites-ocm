@@ -45,7 +45,7 @@ function completeSignup() {
   };
 }
 
-test("owner signup pre-fills and locks business identity from step one", () => {
+test("owner signup keeps step-one business identity authoritative", () => {
   const signup = normalizeOwnerSignup(completeSignup());
   assert.equal(signup.receptionist.businessName, "sample-painting");
   assert.equal(signup.receptionist.ownerName, "Taylor Owner");
@@ -64,11 +64,37 @@ test("business information is required before the payment step", () => {
   assert.equal(validateOwnerSignup(missingService), "Add at least one service.");
 });
 
+test("a new owner signup does not assume any business-information selection", () => {
+  const signup = completeSignup();
+  signup.receptionist = {
+    serviceAreas: [],
+    services: {},
+    timeZone: "Choose",
+    businessWeekdays: [],
+    estimateWeekdays: [],
+  };
+  const normalized = normalizeOwnerSignup(signup);
+  assert.equal(normalized.receptionist.timeZone, "");
+  assert.deepEqual(normalized.receptionist.businessWeekdays, []);
+  assert.deepEqual(normalized.receptionist.estimateWeekdays, []);
+  assert.equal(normalized.receptionist.businessStartHour, "");
+  assert.equal(normalized.receptionist.businessStartPeriod, "");
+  assert.equal(normalized.receptionist.businessEndHour, "");
+  assert.equal(normalized.receptionist.businessEndPeriod, "");
+  assert.equal(normalized.receptionist.estimateStartHour, "");
+  assert.equal(normalized.receptionist.estimateStartPeriod, "");
+  assert.equal(normalized.receptionist.estimateEndHour, "");
+  assert.equal(normalized.receptionist.estimateEndPeriod, "");
+  assert.equal(normalized.receptionist.businessHours, "");
+  assert.equal(validateOwnerSignup(normalized), "Choose a time zone.");
+});
+
 test("the payment-session digest binds the password and every signup field", () => {
   const first = completeSignup();
   const second = { ...completeSignup(), password: "a different secure password" };
   assert.notEqual(ownerSignupDigestInput(first), ownerSignupDigestInput(second));
   assert.equal(ownerSignupDigestInput(first), ownerSignupDigestInput(completeSignup()));
+  assert.equal(ownerSignupDigestInput({ ...first, businessInformationCompleted: true }), ownerSignupDigestInput(first));
 });
 
 test("the owner Auth record is created only in the post-Stripe finalize endpoint", async () => {
@@ -124,4 +150,64 @@ test("owner signup checks email and phone before advancing and checks again afte
   const finalPhoneCheck = finalizeSource.indexOf("availability.phoneInUse");
   const accountCreated = finalizeSource.indexOf("auth.createUser(");
   assert.ok(finalPhoneCheck >= 0 && finalPhoneCheck < accountCreated);
+});
+
+test("onboarding UI hides repeated identity fields and keeps saved service entries non-editable", async () => {
+  const [businessPageSource, formSource] = await Promise.all([
+    readFile(new URL("../app/setup/business/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/ReceptionistBusinessForm.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(businessPageSource.includes("onboardingMode"));
+  assert.equal(businessPageSource.includes("identityReadOnly"), false);
+  assert.equal(businessPageSource.includes("filled from step 1"), false);
+  assert.ok(formSource.includes('<option value="">Choose</option>'));
+  assert.ok(formSource.includes("onClick={addItem}"));
+  assert.ok(formSource.includes("aria-label={`Remove ${item}`}"));
+  assert.ok(formSource.includes("<div className=\"flex h-11 min-w-0 flex-1 items-center"));
+});
+
+test("the payment step is limited to secure payment setup controls", async () => {
+  const source = await readFile(new URL("../app/signup/status/page.js", import.meta.url), "utf8");
+  assert.ok(source.includes("Add Payment Method"));
+  assert.equal(source.includes("Account not created yet"), false);
+  assert.equal(source.includes("What this payment method covers"), false);
+  assert.equal(source.includes("BILLING_SUMMARY"), false);
+  assert.equal(source.includes("Qualified referrals save"), false);
+});
+
+test("payment setup creates and reuses an explicit Stripe customer", async () => {
+  const source = await readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8");
+  const customerCreated = source.indexOf("stripe.customers.create");
+  const sessionCreated = source.indexOf("stripe.checkout.sessions.create");
+  assert.ok(customerCreated >= 0 && customerCreated < sessionCreated);
+  assert.ok(source.includes("customer: customer.id"));
+  assert.ok(source.includes("ark-owner-signup-customer-${digest}"));
+  assert.equal(source.includes('customer_creation: "always"'), false);
+});
+
+test("employees skip owner-only onboarding, payment, and referrals", async () => {
+  const [signupSource, employeeRouteSource, shellSource] = await Promise.all([
+    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/signup/employee/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/SignupFlowShell.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(signupSource.includes("!employeeSignup && <label"));
+  assert.ok(signupSource.includes('router.replace("/employee/pending")'));
+  assert.equal(employeeRouteSource.includes("referrerAccountId"), false);
+  assert.ok(shellSource.includes("setupPage && user && (isAdmin || isEmployee)"));
+});
+
+test("a referral qualifies only after an active paid subscription exists", async () => {
+  const [finalizeSource, referralSource, billingSource] = await Promise.all([
+    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/referrals.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/stripeUsageBilling.js", import.meta.url), "utf8"),
+  ]);
+  const subscriptionCreated = finalizeSource.indexOf("const subscription = await ensureCustomerBillingSubscription");
+  const referralQualified = finalizeSource.indexOf("qualifyReferralAfterActivation", subscriptionCreated);
+  assert.ok(subscriptionCreated >= 0 && referralQualified > subscriptionCreated);
+  assert.ok(billingSource.includes('payment_behavior: "error_if_incomplete"'));
+  assert.ok(referralSource.includes('paymentSetupStatus !== "complete"'));
+  assert.ok(referralSource.includes('subscriptionStatusForReferredAccount !== "active"'));
+  assert.ok(referralSource.includes('referralStatus: "pending_payment"'));
 });

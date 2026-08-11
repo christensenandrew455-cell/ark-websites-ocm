@@ -152,7 +152,7 @@ export default function SignupPage() {
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Client Center</p>
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
         {!employeeSignup && <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 1 of 4 · Account information</p>}
-        <p className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-semibold leading-6 text-indigo-950">Enter the business and account information below. Owner accounts continue through business information, About, and Payment Method. The account is created only after the payment method is added.</p>
+        <p className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-semibold leading-6 text-indigo-950">{employeeSignup ? "Enter your account information to request access to the business. The owner must approve the employee account before it can be used." : "Enter the business and account information below. Owner accounts continue through Business Information, About, and Add Payment Method. The account is created only after the payment method is added."}</p>
 
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
           <fieldset className="md:col-span-2">

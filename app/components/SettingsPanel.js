@@ -12,6 +12,7 @@ import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
 import { db } from "../lib/firebase";
+import { validateReceptionistBusinessInformation } from "../lib/ownerSignup";
 
 const DEFAULT_SETTINGS = { BillingStatus: "", PaymentMethodLabel: "", StripeCustomerId: "" };
 const THEME_KEY = "ark-theme-v1";
@@ -96,7 +97,7 @@ export default function SettingsPanel({ setupMode = false }) {
     let active = true;
     user.getIdToken(true).then(async (token) => {
       const [receptionistResponse, featureResponse] = await Promise.all([
-        fetch("/api/receptionist/settings", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        fetch(setupMode ? "/api/receptionist/settings?onboarding=1" : "/api/receptionist/settings", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
         fetch("/api/account/features", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
       ]);
       const receptionistData = await receptionistResponse.json().catch(() => ({}));
@@ -104,7 +105,7 @@ export default function SettingsPanel({ setupMode = false }) {
       if (!receptionistResponse.ok) throw new Error(receptionistData.error || "Could not load AI receptionist information.");
       if (!featureResponse.ok) throw new Error(featureData.error || "Could not load account features.");
       if (active) {
-        const prepared = prepareReceptionistProfile(receptionistData.profile);
+        const prepared = prepareReceptionistProfile(receptionistData.profile, { requireExplicitSelections: setupMode });
         const nextFeatures = featureValues(featureData);
         setReceptionist(prepared);
         setSavedReceptionist(prepared);
@@ -119,7 +120,7 @@ export default function SettingsPanel({ setupMode = false }) {
       }
     }).catch((loadError) => active && setError(loadError.message)).finally(() => active && setIsLoading(false));
     return () => { active = false; };
-  }, [clientId, isAdmin, user]);
+  }, [clientId, isAdmin, setupMode, user]);
 
   const refreshBillingSummary = useCallback(async () => {
     if (!user || isAdmin) return;
@@ -153,12 +154,17 @@ export default function SettingsPanel({ setupMode = false }) {
     const response = await fetch("/api/receptionist/settings", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(receptionistRequestPayload(receptionist)) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Could not save AI receptionist information.");
-    const prepared = prepareReceptionistProfile(data.profile);
+    const prepared = prepareReceptionistProfile(data.profile, { requireExplicitSelections: setupMode });
     setReceptionist(prepared);
     return { token, prepared };
   }
   async function saveBusinessInformation() {
-    if (!user || !receptionist || isSaving || !businessDirty) return true;
+    if (!user || !receptionist || isSaving) return true;
+    if (setupMode) {
+      const validationError = validateReceptionistBusinessInformation(receptionist);
+      if (validationError) { setError(validationError); return false; }
+    }
+    if (!businessDirty) return true;
     setIsSaving(true); setError("");
     try {
       const result = await saveReceptionistProfile();
@@ -320,7 +326,7 @@ export default function SettingsPanel({ setupMode = false }) {
         {(setupMode || !activeSection) && <header className="mb-4 sm:mb-7">{!setupMode && <BackButton href="/" className="mb-4" />}{setupMode && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Final account step</p>}<h1 className="text-3xl font-black tracking-tight sm:text-4xl">{setupMode ? "Finish Account Setup" : "Settings"}</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         {downloadNotice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700">{downloadNotice}</div>}
-        {setupMode ? <SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading setup…</p> : <form onSubmit={async (event) => { event.preventDefault(); if (await saveBusinessInformation()) router.replace("/"); }}><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} /><button type="submit" disabled={isSaving} className="mt-7 w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">{isSaving ? "Saving…" : "Save and Open Client Center"}</button></form>}</SectionPanel>
+        {setupMode ? <SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading setup…</p> : <form onSubmit={async (event) => { event.preventDefault(); if (await saveBusinessInformation()) router.replace("/"); }}><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} onboardingMode /><button type="submit" disabled={isSaving} className="mt-7 w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">{isSaving ? "Saving…" : "Save and Open Client Center"}</button></form>}</SectionPanel>
           : isOwner && !activeSection ? <div className="rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} onClick={() => setActiveSection(block.key)} />)}</div></div>
             : isOwner && activeSection === "business" ? businessSection()
               : isOwner && activeSection === "customization" ? customizationSection()

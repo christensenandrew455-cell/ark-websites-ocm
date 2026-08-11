@@ -24,6 +24,19 @@ function safeConfigurationError(error) {
   return "Unable to start secure card setup right now.";
 }
 
+function applicationUrl(request) {
+  const requestOrigin = new URL(request.url).origin;
+  const configured = String(process.env.NEXT_PUBLIC_APP_URL || "").trim();
+  if (!configured) return requestOrigin;
+  try {
+    const parsed = new URL(configured);
+    if (!new Set(["http:", "https:"]).has(parsed.protocol)) return requestOrigin;
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return requestOrigin;
+  }
+}
+
 async function authorize(request) {
   const header = String(request.headers.get("authorization") || "");
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
@@ -64,12 +77,17 @@ async function startPaymentGatedSignup(request, rawSignup) {
 
   const plan = billingPlanDefinition("standard");
   const digest = ownerSignupDigest(signup);
-  const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
+  const appUrl = applicationUrl(request);
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const customer = await stripe.customers.create({
+    email: signup.accountEmail,
+    name: signup.ownerName,
+    phone: signup.accountPhone,
+    metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId, billingPlan: "standard" },
+  }, { idempotencyKey: `ark-owner-signup-customer-${digest}` });
   const session = await stripe.checkout.sessions.create({
     mode: "setup",
-    customer_creation: "always",
-    customer_email: signup.accountEmail,
+    customer: customer.id,
     payment_method_types: ["card"],
     client_reference_id: digest,
     expires_at: Math.floor(Date.now() / 1000) + 6 * 60 * 60,
@@ -78,6 +96,7 @@ async function startPaymentGatedSignup(request, rawSignup) {
     metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId, billingPlan: "standard", planName: plan.name },
     setup_intent_data: { metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId } },
   });
+  if (!session.url) throw new Error("Stripe Checkout did not return a hosted setup URL.");
   return NextResponse.json({ url: session.url });
 }
 
@@ -110,7 +129,7 @@ async function startLegacySignup(request) {
     await stripe.customers.update(customerId, { metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan: "standard" } }).catch(() => null);
   }
 
-  const appUrl = String(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
+  const appUrl = applicationUrl(request);
   const session = await stripe.checkout.sessions.create({
     mode: "setup",
     customer: customerId,

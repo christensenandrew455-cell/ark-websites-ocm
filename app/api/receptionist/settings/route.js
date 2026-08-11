@@ -39,7 +39,8 @@ function servicesObject(value) {
   }).filter(([name]) => name));
 }
 
-function profilePayload(clientId, business = {}, account = {}, settings = {}, connection = {}, configured = false) {
+function profilePayload(clientId, business = {}, account = {}, settings = {}, connection = {}, configured = false, onboarding = false) {
+  const savedEstimateWeekdays = list(settings.estimateWeekdays).map((day) => day.toLowerCase());
   return {
     configured,
     clientId,
@@ -50,12 +51,12 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
     businessPhone: text(settings.businessPhone || account.AccountPhone || business.accountPhone),
     businessEmail: text(settings.businessEmail || account.AccountEmail || business.accountEmail).toLowerCase(),
-    businessHours: text(settings.businessHours || "Monday through Friday, 9:00 AM to 5:00 PM"),
-    timeZone: text(settings.timeZone || "America/New_York"),
-    estimateDays: text(settings.estimateDays || "Monday through Friday"),
-    estimateWeekdays: list(settings.estimateWeekdays).length ? list(settings.estimateWeekdays).map((day) => day.toLowerCase()) : DEFAULT_WEEKDAYS,
-    earliestEstimateStart: text(settings.earliestEstimateStart || "9:00 AM"),
-    latestEstimateStart: text(settings.latestEstimateStart || "4:30 PM"),
+    businessHours: text(settings.businessHours || (onboarding ? "" : "Monday through Friday, 9:00 AM to 5:00 PM")),
+    timeZone: text(settings.timeZone || (onboarding ? "" : "America/New_York")),
+    estimateDays: text(settings.estimateDays || (onboarding ? "" : "Monday through Friday")),
+    estimateWeekdays: savedEstimateWeekdays.length ? savedEstimateWeekdays : onboarding ? [] : DEFAULT_WEEKDAYS,
+    earliestEstimateStart: text(settings.earliestEstimateStart || (onboarding ? "" : "9:00 AM")),
+    latestEstimateStart: text(settings.latestEstimateStart || (onboarding ? "" : "4:30 PM")),
     businessBase: text(settings.businessBase),
     serviceAreas: list(settings.serviceAreas),
     services: servicesObject(settings.services),
@@ -141,7 +142,8 @@ export async function GET(request) {
   const db = getAdminDb();
   const loaded = await loadProfile(db, access.clientId);
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
-  return NextResponse.json({ profile: profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.connection, loaded.configured) });
+  const onboarding = new URL(request.url).searchParams.get("onboarding") === "1";
+  return NextResponse.json({ profile: profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.connection, loaded.configured, onboarding) });
 }
 
 export async function POST(request) {
