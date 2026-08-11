@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { dashBusinessName } from "../lib/valueUtils";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -104,49 +104,53 @@ function DayCheckboxes({ label, hint, selected, onChange }) {
   );
 }
 
-function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeriodChange }) {
+function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeriodChange, requireChoice = false }) {
+  const selectedHour = Number.isInteger(Number(hour)) && Number(hour) >= 1 && Number(hour) <= 12 ? Number(hour) : "";
+  const selectedPeriod = PERIODS.includes(period) ? period : "";
   return (
     <Field label={label} hint={hint}>
       <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
-        <Select ariaLabel={`${label} hour`} value={Number(hour) || 12} onChange={(event) => onHourChange(Number(event.target.value))}>{HOURS.map((value) => <option key={value} value={value}>{value}</option>)}</Select>
-        <Select ariaLabel={`${label} AM or PM`} value={period || "AM"} onChange={(event) => onPeriodChange(event.target.value)}>{PERIODS.map((value) => <option key={value} value={value}>{value}</option>)}</Select>
+        <Select ariaLabel={`${label} hour`} value={requireChoice ? selectedHour : selectedHour || 12} onChange={(event) => onHourChange(event.target.value ? Number(event.target.value) : "")}>
+          {requireChoice && <option value="">Choose</option>}
+          {HOURS.map((value) => <option key={value} value={value}>{value}</option>)}
+        </Select>
+        <Select ariaLabel={`${label} AM or PM`} value={requireChoice ? selectedPeriod : selectedPeriod || "AM"} onChange={(event) => onPeriodChange(event.target.value)}>
+          {requireChoice && <option value="">Choose</option>}
+          {PERIODS.map((value) => <option key={value} value={value}>{value}</option>)}
+        </Select>
       </div>
     </Field>
   );
 }
 
 function StackedListEditor({ items, onChange, placeholder, addLabel }) {
-  const normalizedItems = Array.isArray(items) && items.length ? items : [""];
-  const itemKey = JSON.stringify(normalizedItems);
-  const [rows, setRows] = useState(() => normalizedItems);
+  const normalizedItems = Array.isArray(items) ? items.map((item) => String(item || "").trim()).filter(Boolean) : [];
+  const [entry, setEntry] = useState("");
 
-  useEffect(() => {
-    setRows(JSON.parse(itemKey));
-  }, [itemKey]);
-
-  function apply(nextRows) {
-    setRows(nextRows);
-    onChange(nextRows.map((item) => String(item || "").trim()).filter(Boolean));
-  }
-
-  function updateRow(index, value) {
-    apply(rows.map((row, rowIndex) => rowIndex === index ? value : row));
+  function addItem() {
+    const nextItem = entry.trim();
+    if (!nextItem) return;
+    const duplicate = normalizedItems.some((item) => item.toLowerCase() === nextItem.toLowerCase());
+    if (!duplicate) onChange([...normalizedItems, nextItem]);
+    setEntry("");
   }
 
   function removeRow(index) {
-    const next = rows.filter((_, rowIndex) => rowIndex !== index);
-    apply(next.length ? next : [""]);
+    onChange(normalizedItems.filter((_, rowIndex) => rowIndex !== index));
   }
 
   return (
     <div className="space-y-2">
-      {rows.map((item, index) => (
-        <div key={index} className="flex items-center gap-2">
-          <input value={item} onChange={(event) => updateRow(index, event.target.value)} placeholder={placeholder} className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
-          <button type="button" onClick={() => removeRow(index)} aria-label={`Delete ${item || "empty item"}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-200 bg-white text-xl font-black text-red-600">×</button>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <input value={entry} onChange={(event) => setEntry(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addItem(); } }} placeholder={placeholder} className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
+        <button type="button" disabled={!entry.trim()} onClick={addItem} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{addLabel}</button>
+      </div>
+      {normalizedItems.map((item, index) => (
+        <div key={`${item}-${index}`} className="flex items-center gap-2">
+          <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm text-slate-800">{item}</div>
+          <button type="button" onClick={() => removeRow(index)} aria-label={`Remove ${item}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-200 bg-white text-xl font-black text-red-600">×</button>
         </div>
       ))}
-      <button type="button" onClick={() => setRows((current) => [...current, ""])} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700">+ {addLabel}</button>
     </div>
   );
 }
@@ -166,24 +170,28 @@ function editableProfileWithoutRemovedFields(profile = {}) {
   );
 }
 
-export function prepareReceptionistProfile(profile = {}) {
+export function prepareReceptionistProfile(profile = {}, { requireExplicitSelections = false } = {}) {
   const hours = parseBusinessHours(profile.businessHours);
   const estimateStart = parseTime(profile.earliestEstimateStart, 9, "AM");
   const estimateEnd = parseTime(profile.latestEstimateStart, 5, "PM");
   const editableProfile = editableProfileWithoutRemovedFields(profile);
+  const explicitHour = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 12 ? Number(value) : "";
+  const explicitPeriod = (value) => PERIODS.includes(value) ? value : "";
   return {
     ...editableProfile,
     serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
-    businessWeekdays: Array.isArray(profile.businessWeekdays) ? profile.businessWeekdays : hours.days,
-    businessStartHour: Number(profile.businessStartHour || hours.start.hour),
-    businessStartPeriod: profile.businessStartPeriod || hours.start.period,
-    businessEndHour: Number(profile.businessEndHour || hours.end.hour),
-    businessEndPeriod: profile.businessEndPeriod || hours.end.period,
-    estimateStartHour: Number(profile.estimateStartHour || estimateStart.hour),
-    estimateStartPeriod: profile.estimateStartPeriod || estimateStart.period,
-    estimateEndHour: Number(profile.estimateEndHour || estimateEnd.hour),
-    estimateEndPeriod: profile.estimateEndPeriod || estimateEnd.period,
+    timeZone: requireExplicitSelections ? String(profile.timeZone || "") : profile.timeZone || "America/New_York",
+    businessWeekdays: Array.isArray(profile.businessWeekdays) ? profile.businessWeekdays : requireExplicitSelections ? [] : hours.days,
+    businessStartHour: requireExplicitSelections ? explicitHour(profile.businessStartHour) : Number(profile.businessStartHour || hours.start.hour),
+    businessStartPeriod: requireExplicitSelections ? explicitPeriod(profile.businessStartPeriod) : profile.businessStartPeriod || hours.start.period,
+    businessEndHour: requireExplicitSelections ? explicitHour(profile.businessEndHour) : Number(profile.businessEndHour || hours.end.hour),
+    businessEndPeriod: requireExplicitSelections ? explicitPeriod(profile.businessEndPeriod) : profile.businessEndPeriod || hours.end.period,
+    estimateWeekdays: Array.isArray(profile.estimateWeekdays) ? profile.estimateWeekdays : [],
+    estimateStartHour: requireExplicitSelections ? explicitHour(profile.estimateStartHour) : Number(profile.estimateStartHour || estimateStart.hour),
+    estimateStartPeriod: requireExplicitSelections ? explicitPeriod(profile.estimateStartPeriod) : profile.estimateStartPeriod || estimateStart.period,
+    estimateEndHour: requireExplicitSelections ? explicitHour(profile.estimateEndHour) : Number(profile.estimateEndHour || estimateEnd.hour),
+    estimateEndPeriod: requireExplicitSelections ? explicitPeriod(profile.estimateEndPeriod) : profile.estimateEndPeriod || estimateEnd.period,
   };
 }
 
@@ -198,31 +206,53 @@ export function receptionistRequestPayload(profile = {}) {
   };
 }
 
-export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false, identityReadOnly = false }) {
+export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false, onboardingMode = false }) {
   if (!profile) return null;
   function update(field, value) { onChange({ ...profile, [field]: value }); }
+  const timeZoneField = <Field label="Time zone"><Select value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{onboardingMode && <option value="">Choose</option>}{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select></Field>;
+  const hoursFields = <>
+    {timeZoneField}
+    <DayCheckboxes label="Business days" hint="Choose every day the business is normally open." selected={profile.businessWeekdays} onChange={(days) => update("businessWeekdays", days)} />
+    <HourPeriodPicker requireChoice={onboardingMode} label="Business opens" hour={profile.businessStartHour} period={profile.businessStartPeriod} onHourChange={(value) => update("businessStartHour", value)} onPeriodChange={(value) => update("businessStartPeriod", value)} />
+    <HourPeriodPicker requireChoice={onboardingMode} label="Business closes" hour={profile.businessEndHour} period={profile.businessEndPeriod} onHourChange={(value) => update("businessEndHour", value)} onPeriodChange={(value) => update("businessEndPeriod", value)} />
+    <DayCheckboxes label="Days available for estimates" hint="Choose the days the receptionist may offer an estimate appointment." selected={profile.estimateWeekdays} onChange={(days) => update("estimateWeekdays", days)} />
+    <HourPeriodPicker requireChoice={onboardingMode} label="Earliest estimate time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
+    <HourPeriodPicker requireChoice={onboardingMode} label="Latest estimate time" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
+  </>;
+  const serviceAreasField = <Field label="Service areas" hint="Add each city, town, county, or region the business serves." wide><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>;
+  const servicesField = <Field label="Services" hint="Add each type of work customers can request." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>;
   return (
     <div className="space-y-7">
       {adminMode && <section><h3 className="text-lg font-black">Receptionist Access</h3><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Railway owns the model, voice, timing, and call controls. This switch only controls whether this business may receive receptionist calls.</p><label className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label></section>}
-      <section>
+      {onboardingMode ? <>
+        <section>
+          <h3 className="text-lg font-black">Hours and availability</h3>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">The AI receptionist uses these hours to tell callers when the business is open and when estimates may be requested.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">{hoursFields}</div>
+        </section>
+        <section>
+          <h3 className="text-lg font-black">Service areas</h3>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These locations help the AI receptionist answer whether the business serves a caller&apos;s project area.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">{serviceAreasField}</div>
+        </section>
+        <section>
+          <h3 className="text-lg font-black">Services</h3>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">List the work the business offers so the AI receptionist can answer service questions and record requests accurately.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">{servicesField}</div>
+        </section>
+      </> : <section>
         <h3 className="text-lg font-black">Business Information</h3>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Business name"><Input readOnly={identityReadOnly} value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
-          <Field label="Owner name"><Input readOnly={identityReadOnly} value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
-          <Field label="Business phone"><Input readOnly={identityReadOnly} type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
-          <Field label="Business email"><Input readOnly={identityReadOnly} type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
-          <Field label="Time zone"><Select value={profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select></Field>
-          <DayCheckboxes label="Business days" hint="Choose every day the business is normally open." selected={profile.businessWeekdays} onChange={(days) => update("businessWeekdays", days)} />
-          <HourPeriodPicker label="Business opens" hour={profile.businessStartHour} period={profile.businessStartPeriod} onHourChange={(value) => update("businessStartHour", value)} onPeriodChange={(value) => update("businessStartPeriod", value)} />
-          <HourPeriodPicker label="Business closes" hour={profile.businessEndHour} period={profile.businessEndPeriod} onHourChange={(value) => update("businessEndHour", value)} onPeriodChange={(value) => update("businessEndPeriod", value)} />
-          <DayCheckboxes label="Days available for estimates" hint="Choose the days the receptionist may offer an estimate appointment." selected={profile.estimateWeekdays} onChange={(days) => update("estimateWeekdays", days)} />
-          <HourPeriodPicker label="Earliest estimate time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
-          <HourPeriodPicker label="Latest estimate time" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
-          <Field label="Service areas" hint="Each area stays on its own line. Add as many as the business needs." wide><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>
-          <Field label="Services" hint="Each service stays on its own line." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>
+          <Field label="Business name"><Input value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
+          <Field label="Owner name"><Input value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
+          <Field label="Business phone"><Input type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
+          <Field label="Business email"><Input type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
+          {hoursFields}
+          {serviceAreasField}
+          {servicesField}
         </div>
-      </section>
+      </section>}
     </div>
   );
 }

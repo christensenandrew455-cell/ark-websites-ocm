@@ -8,8 +8,6 @@ import { readApiJson } from "../../lib/apiResponse";
 import { validateOwnerSignup } from "../../lib/ownerSignup";
 import { clearOwnerSignupDraft, loadOwnerSignupDraft, saveOwnerSignupDraft } from "../../lib/ownerSignupStorage";
 
-const BILLING_SUMMARY = "$50 per month, plus $2 for each new lead, $1 when each chat is created, $1 whenever the rolling SMS counter completes another 50 parts, and $5 for each approved employee active during the billing period.";
-
 export default function SignupStatusPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
@@ -105,11 +103,7 @@ export default function SignupStatusPage() {
       <section className="w-full max-w-xl rounded-3xl bg-white p-7 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment Method</p>
-        <div className={mode === "draft" ? "mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-[10px] font-black uppercase text-amber-800" : "mt-3 inline-flex rounded-full bg-green-100 px-3 py-1 text-[10px] font-black uppercase text-green-800"}>{mode === "draft" ? "Account not created yet" : "Existing signup"}</div>
-        <h1 className="mt-4 text-3xl font-black tracking-tight">Payment Method</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">Add a payment method for the ARK AI Receptionist plan. For a new signup, ARK creates the owner account only after Stripe confirms the payment method.</p>
-        {application && <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm"><p className="font-black text-slate-950">{application.businessName}</p><p className="mt-1 text-slate-600">{application.ownerName}</p><p className="mt-2 break-all text-slate-600">{application.accountEmail}</p><p className="mt-1 text-slate-600">{application.accountPhone}</p></div>}
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700"><p><strong>What this payment method covers</strong></p><p className="mt-1">{BILLING_SUMMARY}</p><p className="mt-1">Qualified referrals save 10% each for one billing period, up to 50%. Stripe securely stores the payment method and processes recurring and usage-based invoices.</p></div>
+        <h1 className="mt-4 text-3xl font-black tracking-tight">Add Payment Method</h1>
         {canceled && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">{mode === "draft" ? "Payment setup was canceled. No new account was created." : "Payment setup was canceled. Your existing signup is still ready to continue."}</p>}
         {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}
         {ready && <button type="button" disabled={billing} onClick={openBilling} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3 font-black text-white disabled:opacity-50">{billing ? "Opening secure payment…" : "Add Payment Method"}</button>}

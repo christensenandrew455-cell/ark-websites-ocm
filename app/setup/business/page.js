@@ -9,6 +9,28 @@ import SettingsPanel from "../../components/SettingsPanel";
 import { validateOwnerSignup } from "../../lib/ownerSignup";
 import { loadOwnerSignupDraft, saveOwnerSignupDraft } from "../../lib/ownerSignupStorage";
 
+function onboardingReceptionist(stored) {
+  if (stored.businessInformationCompleted) return stored.receptionist;
+  return {
+    ...stored.receptionist,
+    timeZone: "",
+    businessWeekdays: [],
+    businessStartHour: "",
+    businessStartPeriod: "",
+    businessEndHour: "",
+    businessEndPeriod: "",
+    businessHours: "",
+    estimateDays: "",
+    estimateWeekdays: [],
+    estimateStartHour: "",
+    estimateStartPeriod: "",
+    estimateEndHour: "",
+    estimateEndPeriod: "",
+    earliestEstimateStart: "",
+    latestEstimateStart: "",
+  };
+}
+
 export default function BusinessSetupPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -25,13 +47,13 @@ export default function BusinessSetupPage() {
       return;
     }
     setDraft(stored);
-    setReceptionist(prepareReceptionistProfile(stored.receptionist));
+    setReceptionist(prepareReceptionistProfile(onboardingReceptionist(stored), { requireExplicitSelections: true }));
     setReady(true);
   }, [loading, router, user]);
 
   function continueSignup(event) {
     event.preventDefault();
-    const next = { ...draft, receptionist };
+    const next = { ...draft, receptionist, businessInformationCompleted: true };
     const validationError = validateOwnerSignup(next);
     if (validationError) {
       setError(validationError);
@@ -51,10 +73,9 @@ export default function BusinessSetupPage() {
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 2 of 4 · Business information</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Set up your business</h1>
-        <p className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-semibold leading-6 text-indigo-950">Your business name, owner name, email, and phone are filled from step 1. Complete the remaining receptionist information before payment.</p>
 
         <form onSubmit={continueSignup} className="mt-7">
-          <ReceptionistBusinessForm profile={receptionist} onChange={(next) => { setReceptionist(next); setError(""); }} identityReadOnly />
+          <ReceptionistBusinessForm profile={receptionist} onChange={(next) => { setReceptionist(next); setError(""); }} onboardingMode />
           {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}
           <div className="mt-7 grid gap-3 sm:grid-cols-2">
             <Link href="/signup" className="rounded-xl border border-slate-300 px-5 py-3 text-center text-sm font-black text-slate-700">Back</Link>
