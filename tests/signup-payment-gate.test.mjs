@@ -6,6 +6,7 @@ import {
   ownerSignupDigestInput,
   validateOwnerSignup,
 } from "../app/lib/ownerSignup.js";
+import { businessInformationText, normalizeBusinessInformation } from "../app/lib/receptionistBusinessInformation.js";
 import {
   normalizeSignupPhone,
   signupAvailabilityMessage,
@@ -29,11 +30,6 @@ function completeSignup() {
       businessPhone: "0000000000",
       businessEmail: "wrong@example.com",
       timeZone: "America/New_York",
-      businessWeekdays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-      businessStartHour: 9,
-      businessStartPeriod: "AM",
-      businessEndHour: 5,
-      businessEndPeriod: "PM",
       estimateWeekdays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
       estimateStartHour: 9,
       estimateStartPeriod: "AM",
@@ -41,6 +37,7 @@ function completeSignup() {
       estimateEndPeriod: "PM",
       serviceAreas: ["Worcester, Massachusetts"],
       services: { "interior painting": "interior painting" },
+      businessInformation: [{ title: "Business hours", info: "Every day, 5 PM to 9 PM" }],
     },
   };
 }
@@ -62,6 +59,31 @@ test("business information is required before the payment step", () => {
   const missingService = completeSignup();
   missingService.receptionist.services = {};
   assert.equal(validateOwnerSignup(missingService), "Add at least one service.");
+});
+
+test("business hours are not required and estimate availability is optional", () => {
+  const signup = completeSignup();
+  signup.receptionist.estimateWeekdays = [];
+  signup.receptionist.estimateStartHour = "";
+  signup.receptionist.estimateStartPeriod = "";
+  signup.receptionist.estimateEndHour = "";
+  signup.receptionist.estimateEndPeriod = "";
+  assert.equal(validateOwnerSignup(signup), "");
+
+  signup.receptionist.estimateStartHour = 9;
+  signup.receptionist.estimateStartPeriod = "AM";
+  assert.equal(validateOwnerSignup(signup), "Choose at least one estimate day or leave the estimate schedule blank.");
+});
+
+test("custom business information keeps complete title and info pairs", () => {
+  const information = normalizeBusinessInformation([
+    { title: " Business hours ", info: " Every day, 5 PM to 9 PM " },
+    { title: "Business hours", info: "Every day, 5 PM to 9 PM" },
+    { title: "Missing info", info: "" },
+  ]);
+  assert.deepEqual(information, [{ title: "Business hours", info: "Every day, 5 PM to 9 PM" }]);
+  assert.equal(businessInformationText(information), "Business hours: Every day, 5 PM to 9 PM");
+  assert.deepEqual(normalizeOwnerSignup(completeSignup()).receptionist.businessInformation, information);
 });
 
 test("a new owner signup does not assume any business-information selection", () => {
@@ -164,6 +186,29 @@ test("onboarding UI hides repeated identity fields and keeps saved service entri
   assert.ok(formSource.includes("onClick={addItem}"));
   assert.ok(formSource.includes("aria-label={`Remove ${item}`}"));
   assert.ok(formSource.includes("<div className=\"flex h-11 min-w-0 flex-1 items-center"));
+  assert.equal(formSource.includes('label="Business days"'), false);
+  assert.equal(formSource.includes('label="Business opens"'), false);
+  assert.equal(formSource.includes('label="Business closes"'), false);
+  assert.ok(formSource.includes("Estimate days (optional)"));
+  assert.ok(formSource.includes("Information title"));
+  assert.ok(formSource.includes("Information details"));
+  assert.ok(formSource.includes(">Add Info</button>"));
+});
+
+test("saved business information reaches settings and receptionist runtime without business-hour defaults", async () => {
+  const [settingsSource, runtimeSource, finalizeSource] = await Promise.all([
+    readFile(new URL("../app/api/receptionist/settings/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/receptionist/runtime/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(settingsSource.includes("businessInformation: profile.businessInformation"));
+  assert.ok(settingsSource.includes("businessHours: FieldValue.delete()"));
+  assert.ok(runtimeSource.includes("estimateSchedulingConfigured"));
+  assert.ok(runtimeSource.includes("businessInformation,"));
+  assert.ok(runtimeSource.includes("extraInformation: businessInformationText(businessInformation)"));
+  assert.equal(runtimeSource.includes("businessHours:"), false);
+  assert.ok(finalizeSource.includes("businessInformation: signup.receptionist.businessInformation || []"));
+  assert.equal(finalizeSource.includes("businessHours: signup.receptionist.businessHours"), false);
 });
 
 test("the payment step is limited to secure payment setup controls", async () => {

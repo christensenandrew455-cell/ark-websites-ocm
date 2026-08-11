@@ -1,4 +1,5 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
+import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
 export const OWNER_SIGNUP_DRAFT_KEY = "ark-owner-signup-draft-v2";
@@ -91,6 +92,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const ownerName = cleanText(value.ownerName || value.personName || receptionist.ownerName, 120);
   const accountEmail = cleanText(value.accountEmail || receptionist.businessEmail, 254).toLowerCase();
   const accountPhone = cleanText(value.accountPhone || receptionist.businessPhone, 30);
+  // Keep legacy business-hour values in the signed draft shape so an already-open Stripe setup session can still finish. New forms neither collect nor store them.
   const businessWeekdays = weekdayList(receptionist.businessWeekdays);
   const estimateWeekdays = weekdayList(receptionist.estimateWeekdays);
   const businessStartHour = hour(receptionist.businessStartHour);
@@ -105,6 +107,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const businessHoursComplete = businessWeekdays.length && businessStartHour && businessStartPeriod && businessEndHour && businessEndPeriod;
   const estimateStartComplete = estimateStartHour && estimateStartPeriod;
   const estimateEndComplete = estimateEndHour && estimateEndPeriod;
+  const businessInformation = normalizeBusinessInformation(receptionist.businessInformation);
 
   return {
     version: OWNER_SIGNUP_DRAFT_VERSION,
@@ -142,7 +145,8 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       businessBase: cleanText(receptionist.businessBase, 200),
       serviceAreas: textList(receptionist.serviceAreas),
       services: servicesObject(receptionist.services),
-      extraInformation: cleanText(receptionist.extraInformation, 2_000),
+      ...(businessInformation.length ? { businessInformation } : {}),
+      extraInformation: businessInformation.length ? businessInformationText(businessInformation) : cleanText(receptionist.extraInformation, 2_000),
     },
   };
 }
@@ -167,13 +171,11 @@ export function validateReceptionistBusinessInformation(value = {}) {
   } catch {
     return "Choose a valid time zone.";
   }
-  if (!receptionist.businessWeekdays.length) return "Select at least one normal business day.";
-  if (!receptionist.businessStartHour || !receptionist.businessStartPeriod) return "Choose the business opening time.";
-  if (!receptionist.businessEndHour || !receptionist.businessEndPeriod) return "Choose the business closing time.";
-  if (!receptionist.estimateWeekdays.length) return "Select at least one day available for estimates.";
-  if (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod) return "Choose the earliest estimate time.";
-  if (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod) return "Choose the latest estimate time.";
-  if (timeMinutes(receptionist.estimateStartHour, receptionist.estimateStartPeriod) > timeMinutes(receptionist.estimateEndHour, receptionist.estimateEndPeriod)) return "The latest estimate time must be after the earliest estimate time.";
+  const hasEstimateSchedule = Boolean(receptionist.estimateWeekdays.length || receptionist.estimateStartHour || receptionist.estimateStartPeriod || receptionist.estimateEndHour || receptionist.estimateEndPeriod);
+  if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
+  if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest estimate time or leave the estimate schedule blank.";
+  if (hasEstimateSchedule && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Complete the latest estimate time or leave the estimate schedule blank.";
+  if (hasEstimateSchedule && timeMinutes(receptionist.estimateStartHour, receptionist.estimateStartPeriod) > timeMinutes(receptionist.estimateEndHour, receptionist.estimateEndPeriod)) return "The latest estimate time must be after the earliest estimate time.";
   if (!receptionist.serviceAreas.length) return "Add at least one service area.";
   if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";

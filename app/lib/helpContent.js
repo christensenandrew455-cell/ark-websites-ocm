@@ -118,7 +118,7 @@ export const HELP_SECTIONS = [
     title: "Settings blocks, payment, and Help",
     summary: "Settings opens to four compact blocks and shows only one full section after a block is tapped.",
     points: [
-      "Business Information contains only business details, hours, services, service areas, and estimate availability.",
+      "Business Information contains business details, services, service areas, optional estimate availability, and optional titled information the AI receptionist can use during calls.",
       "Customization contains Dark Mode, Messages, Employees, Messages for Employees, AI timing, and Download Client Data.",
       "Payment contains a live usage breakdown, subtotal, referral savings, estimated total, payment method, Refresh, and Manage Payment Method.",
       "Help & Account contains Help, Documentation, Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.",

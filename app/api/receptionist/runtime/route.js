@@ -1,11 +1,11 @@
 import { createPublicKey, verify } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DEFAULT_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 const SIGNATURE_MAX_AGE_SECONDS = 300;
 
 function text(value) {
@@ -94,24 +94,29 @@ async function findConnection(db, calledPhone) {
 function buildProfile(clientId, business, account, settings) {
   const serviceAreas = list(settings.serviceAreas);
   const services = servicesObject(settings.services);
+  const businessInformation = normalizeBusinessInformation(settings.businessInformation);
   const businessBase = text(settings.businessBase) || serviceAreas[0] || "the local service area";
   const normalizedServiceAreas = serviceAreas.length ? serviceAreas : [businessBase];
+  const savedEstimateWeekdays = list(settings.estimateWeekdays).map((day) => day.toLowerCase());
+  const earliestEstimateStart = text(settings.earliestEstimateStart);
+  const latestEstimateStart = text(settings.latestEstimateStart);
+  const estimateSchedulingConfigured = Boolean(savedEstimateWeekdays.length && earliestEstimateStart && latestEstimateStart);
 
   return {
     clientId,
     businessName: text(settings.businessName || account.BusinessName || business.businessName || clientId),
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
-    businessHours: text(settings.businessHours || "Monday through Friday, 9:00 AM to 5:00 PM"),
     timeZone: text(settings.timeZone || "America/New_York"),
-    estimateDays: text(settings.estimateDays || "Monday through Friday"),
-    estimateWeekdays: list(settings.estimateWeekdays).length
-      ? list(settings.estimateWeekdays).map((day) => day.toLowerCase())
-      : DEFAULT_WEEKDAYS,
-    earliestEstimateStart: text(settings.earliestEstimateStart || "9:00 AM"),
-    latestEstimateStart: text(settings.latestEstimateStart || "4:30 PM"),
+    estimateSchedulingConfigured,
+    estimateDays: estimateSchedulingConfigured ? text(settings.estimateDays) : "",
+    estimateWeekdays: estimateSchedulingConfigured ? savedEstimateWeekdays : [],
+    earliestEstimateStart: estimateSchedulingConfigured ? earliestEstimateStart : "",
+    latestEstimateStart: estimateSchedulingConfigured ? latestEstimateStart : "",
     businessBase,
     serviceAreas: normalizedServiceAreas,
     services,
+    businessInformation,
+    extraInformation: businessInformationText(businessInformation),
   };
 }
 

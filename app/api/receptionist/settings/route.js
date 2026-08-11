@@ -1,13 +1,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const DEFAULT_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
 function text(value) {
   return trimmedText(value);
@@ -41,6 +40,7 @@ function servicesObject(value) {
 
 function profilePayload(clientId, business = {}, account = {}, settings = {}, connection = {}, configured = false, onboarding = false) {
   const savedEstimateWeekdays = list(settings.estimateWeekdays).map((day) => day.toLowerCase());
+  const businessInformation = normalizeBusinessInformation(settings.businessInformation);
   return {
     configured,
     clientId,
@@ -51,17 +51,36 @@ function profilePayload(clientId, business = {}, account = {}, settings = {}, co
     ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
     businessPhone: text(settings.businessPhone || account.AccountPhone || business.accountPhone),
     businessEmail: text(settings.businessEmail || account.AccountEmail || business.accountEmail).toLowerCase(),
-    businessHours: text(settings.businessHours || (onboarding ? "" : "Monday through Friday, 9:00 AM to 5:00 PM")),
     timeZone: text(settings.timeZone || (onboarding ? "" : "America/New_York")),
-    estimateDays: text(settings.estimateDays || (onboarding ? "" : "Monday through Friday")),
-    estimateWeekdays: savedEstimateWeekdays.length ? savedEstimateWeekdays : onboarding ? [] : DEFAULT_WEEKDAYS,
-    earliestEstimateStart: text(settings.earliestEstimateStart || (onboarding ? "" : "9:00 AM")),
-    latestEstimateStart: text(settings.latestEstimateStart || (onboarding ? "" : "4:30 PM")),
+    estimateDays: text(settings.estimateDays),
+    estimateWeekdays: savedEstimateWeekdays,
+    earliestEstimateStart: text(settings.earliestEstimateStart),
+    latestEstimateStart: text(settings.latestEstimateStart),
     businessBase: text(settings.businessBase),
     serviceAreas: list(settings.serviceAreas),
     services: servicesObject(settings.services),
-    extraInformation: text(settings.extraInformation),
+    businessInformation,
+    extraInformation: businessInformationText(businessInformation),
   };
+}
+
+function clockMinutes(value) {
+  const match = text(value).toUpperCase().match(/^\s*(1[0-2]|[1-9])(?::([0-5]\d))?\s*(AM|PM)\s*$/);
+  if (!match) return null;
+  const hour = Number(match[1]) % 12;
+  return (hour + (match[3] === "PM" ? 12 : 0)) * 60 + Number(match[2] || 0);
+}
+
+function validateEstimateSchedule(profile) {
+  const hasSchedule = Boolean(profile.estimateWeekdays.length || profile.earliestEstimateStart || profile.latestEstimateStart);
+  if (!hasSchedule) return "";
+  if (!profile.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
+  const earliest = clockMinutes(profile.earliestEstimateStart);
+  const latest = clockMinutes(profile.latestEstimateStart);
+  if (earliest === null) return "Complete the earliest estimate time or leave the estimate schedule blank.";
+  if (latest === null) return "Complete the latest estimate time or leave the estimate schedule blank.";
+  if (earliest > latest) return "The latest estimate time must be after the earliest estimate time.";
+  return "";
 }
 
 async function resolveClient(request, body = null) {
@@ -106,10 +125,9 @@ function validateProfile(profile) {
   if (!profile.ownerName) return "Enter the owner name.";
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
   if (!profile.businessPhone) return "Enter the business phone number.";
-  if (!profile.estimateWeekdays.length) return "Select at least one day available for estimates.";
   if (!Object.keys(profile.services).length) return "Add at least one service.";
   try { new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format(); } catch { return "Choose a valid time zone."; }
-  return "";
+  return validateEstimateSchedule(profile);
 }
 
 async function validateConnectionPhone(db, clientId, phone) {
@@ -173,8 +191,7 @@ export async function POST(request) {
     ownerName: text(body.ownerName ?? current.ownerName),
     businessPhone: text(body.businessPhone ?? current.businessPhone),
     businessEmail: text(body.businessEmail ?? current.businessEmail).toLowerCase(),
-    businessHours: text(body.businessHours ?? current.businessHours),
-    timeZone: text(body.timeZone ?? current.timeZone) || "America/New_York",
+    timeZone: text(body.timeZone ?? current.timeZone),
     estimateDays: text(body.estimateDays ?? current.estimateDays),
     estimateWeekdays: list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
     earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
@@ -182,7 +199,7 @@ export async function POST(request) {
     businessBase: text(body.businessBase ?? current.businessBase),
     serviceAreas: list(body.serviceAreas ?? current.serviceAreas),
     services: servicesObject(body.services ?? current.services),
-    extraInformation: text(body.extraInformation ?? current.extraInformation),
+    businessInformation: normalizeBusinessInformation(body.businessInformation ?? current.businessInformation),
   };
   if (access.isAdmin) {
     profile.enabled = body.enabled !== false;
@@ -208,7 +225,7 @@ export async function POST(request) {
     ownerName: profile.ownerName,
     businessPhone: profile.businessPhone,
     businessEmail: profile.businessEmail,
-    businessHours: profile.businessHours,
+    businessHours: FieldValue.delete(),
     timeZone: profile.timeZone,
     estimateDays: profile.estimateDays,
     estimateWeekdays: profile.estimateWeekdays,
@@ -217,8 +234,9 @@ export async function POST(request) {
     businessBase: profile.businessBase,
     serviceAreas: profile.serviceAreas,
     services: profile.services,
+    businessInformation: profile.businessInformation,
     about: FieldValue.delete(),
-    extraInformation: profile.extraInformation,
+    extraInformation: businessInformationText(profile.businessInformation),
     aiVoice: FieldValue.delete(),
     aiSpeechSpeed: FieldValue.delete(),
     aiSilenceMs: FieldValue.delete(),
