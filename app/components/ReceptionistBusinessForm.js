@@ -53,25 +53,48 @@ function formatDayList(days) {
   return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
 }
 
-function Field({ label, hint = "", children, wide = false }) {
+function ExplainedLabel({ label, explanation, heading = false }) {
+  const [open, setOpen] = useState(false);
+  const labelClassName = heading
+    ? "text-lg font-black"
+    : "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
   return (
-    <label className={wide ? "min-w-0 md:col-span-2" : "min-w-0"}>
-      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{label}</span>
-      {children}
-      {hint && <span className="mt-1 block text-[11px] font-semibold leading-4 text-slate-500">{hint}</span>}
-    </label>
+    <div>
+      <div className="flex items-center gap-2">
+        {heading ? <h3 className={labelClassName}>{label}</h3> : <p className={labelClassName}>{label}</p>}
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={`${open ? "Hide" : "Show"} explanation for ${label}`}
+          onClick={() => setOpen((current) => !current)}
+          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black ${open ? "border-slate-950 bg-slate-950 text-white" : "border-slate-300 bg-white text-slate-600"}`}
+        >
+          ?
+        </button>
+      </div>
+      {open && <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">{explanation}</p>}
+    </div>
   );
 }
 
-function Input({ value, onChange, type = "text", placeholder = "", readOnly = false }) {
-  return <input type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
+function Field({ label, explanation, children }) {
+  return (
+    <div className="min-w-0">
+      <ExplainedLabel label={label} explanation={explanation} />
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function Input({ value, onChange, type = "text", placeholder = "", readOnly = false, ariaLabel }) {
+  return <input aria-label={ariaLabel} type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
 }
 
 function Select({ value, onChange, children, ariaLabel }) {
   return <select aria-label={ariaLabel} value={value ?? ""} onChange={onChange} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950">{children}</select>;
 }
 
-function DayCheckboxes({ label, hint, selected, onChange }) {
+function DayCheckboxes({ label, explanation, selected, onChange }) {
   const values = Array.isArray(selected) ? selected : [];
   function toggle(day) {
     const next = new Set(values);
@@ -80,8 +103,7 @@ function DayCheckboxes({ label, hint, selected, onChange }) {
   }
   return (
     <div className="md:col-span-2">
-      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{label}</p>
-      <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">{hint}</p>
+      <ExplainedLabel label={label} explanation={explanation} />
       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-7">
         {WEEKDAYS.map((day) => <label key={day} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold capitalize"><input type="checkbox" checked={values.includes(day)} onChange={() => toggle(day)} />{day}</label>)}
       </div>
@@ -89,11 +111,11 @@ function DayCheckboxes({ label, hint, selected, onChange }) {
   );
 }
 
-function HourPeriodPicker({ label, hint = "", hour, period, onHourChange, onPeriodChange }) {
+function HourPeriodPicker({ label, explanation, hour, period, onHourChange, onPeriodChange }) {
   const selectedHour = Number.isInteger(Number(hour)) && Number(hour) >= 1 && Number(hour) <= 12 ? Number(hour) : "";
   const selectedPeriod = PERIODS.includes(period) ? period : "";
   return (
-    <Field label={label} hint={hint}>
+    <Field label={label} explanation={explanation}>
       <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
         <Select ariaLabel={`${label} hour`} value={selectedHour} onChange={(event) => onHourChange(event.target.value ? Number(event.target.value) : "")}>
           <option value="">Choose</option>
@@ -239,54 +261,47 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" });
   }
-  const timeZoneField = <Field label="Time zone"><Select value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{onboardingMode && <option value="">Choose</option>}{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select></Field>;
-  const estimateFields = <>
-    {timeZoneField}
-    <DayCheckboxes label="Estimate days (optional)" hint="Choose days only if the receptionist may offer estimate appointments. Unchecking every day clears the estimate times." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
-    <HourPeriodPicker label="Earliest estimate time (optional)" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
-    <HourPeriodPicker label="Latest estimate time (optional)" hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
+  const identitySection = !onboardingMode && (
+    <section>
+      <h3 className="text-lg font-black">Business details</h3>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Field label="Business name" explanation="Enter the name customers know the business by."><Input ariaLabel="Business name" value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
+        <Field label="Owner name" explanation="Enter the business owner&apos;s name."><Input ariaLabel="Owner name" value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
+        <Field label="Business phone" explanation="Enter the main phone number used for this business account."><Input ariaLabel="Business phone" type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
+        <Field label="Business email" explanation="Enter the main email address used for this business account."><Input ariaLabel="Business email" type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
+      </div>
+    </section>
+  );
+  const sharedSections = <>
+    <section>
+      <h3 className="text-lg font-black">Estimate availability</h3>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Field label="Time zone" explanation="Choose the time zone where the business is located so appointment times are interpreted correctly.">
+          <Select ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{onboardingMode && <option value="">Choose</option>}{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select>
+        </Field>
+        <DayCheckboxes label="Estimate days" explanation="Choose the days customers may request estimates, or leave them unchecked if there is no set schedule." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
+        <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
+        <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
+      </div>
+    </section>
+    <section>
+      <ExplainedLabel label="Service areas" explanation="Add each town, city, county, or state where the business accepts jobs." heading />
+      <div className="mt-4"><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></div>
+    </section>
+    <section>
+      <ExplainedLabel label="Services" explanation="Add each type of work customers can request from the business." heading />
+      <div className="mt-4"><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></div>
+    </section>
+    <section>
+      <ExplainedLabel label="Additional business information" explanation="Add optional titled facts the AI receptionist can use when answering customer questions." heading />
+      <div className="mt-4"><BusinessInformationEditor items={profile.businessInformation} onChange={(items) => update("businessInformation", items)} /></div>
+    </section>
   </>;
-  const serviceAreasField = <Field label="Service areas" hint="Add each city, town, county, or region the business serves." wide><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></Field>;
-  const servicesField = <Field label="Services" hint="Add each type of work customers can request." wide><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></Field>;
-  const businessInformationField = <Field label="Additional business information" hint="Optional. Add any other facts the AI receptionist should know." wide><BusinessInformationEditor items={profile.businessInformation} onChange={(items) => update("businessInformation", items)} /></Field>;
   return (
     <div className="space-y-7">
       {adminMode && <section><h3 className="text-lg font-black">Receptionist Access</h3><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Railway owns the model, voice, timing, and call controls. This switch only controls whether this business may receive receptionist calls.</p><label className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label></section>}
-      {onboardingMode ? <>
-        <section>
-          <h3 className="text-lg font-black">Estimate availability</h3>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Choose the business time zone. Estimate days and hours are optional and are used only when the receptionist may offer appointment times.</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">{estimateFields}</div>
-        </section>
-        <section>
-          <h3 className="text-lg font-black">Service areas</h3>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These locations help the AI receptionist answer whether the business serves a caller&apos;s project area.</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">{serviceAreasField}</div>
-        </section>
-        <section>
-          <h3 className="text-lg font-black">Services</h3>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">List the work the business offers so the AI receptionist can answer service questions and record requests accurately.</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">{servicesField}</div>
-        </section>
-        <section>
-          <h3 className="text-lg font-black">Additional business information</h3>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Optionally add other facts the AI receptionist may use when answering callers. Give each fact a title and the information itself.</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">{businessInformationField}</div>
-        </section>
-      </> : <section>
-        <h3 className="text-lg font-black">Business Information</h3>
-        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These details are used by the receptionist during calls.</p>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Business name"><Input value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
-          <Field label="Owner name"><Input value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
-          <Field label="Business phone"><Input type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
-          <Field label="Business email"><Input type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
-          {estimateFields}
-          {serviceAreasField}
-          {servicesField}
-          {businessInformationField}
-        </div>
-      </section>}
+      {identitySection}
+      {sharedSections}
     </div>
   );
 }
