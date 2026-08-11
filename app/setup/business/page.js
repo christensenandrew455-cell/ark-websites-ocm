@@ -14,12 +14,6 @@ function onboardingReceptionist(stored) {
   return {
     ...stored.receptionist,
     timeZone: "",
-    businessWeekdays: [],
-    businessStartHour: "",
-    businessStartPeriod: "",
-    businessEndHour: "",
-    businessEndPeriod: "",
-    businessHours: "",
     estimateDays: "",
     estimateWeekdays: [],
     estimateStartHour: "",
