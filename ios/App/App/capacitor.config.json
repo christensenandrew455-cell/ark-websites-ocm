@@ -31,8 +31,8 @@
 		"webContentsDebuggingEnabled": true
 	},
 	"packageClassList": [
-		"AppPlugin",
 		"ContactsPlugin",
+		"AppPlugin",
 		"PushNotificationsPlugin",
 		"CapacitorCalendarPlugin"
 	]
