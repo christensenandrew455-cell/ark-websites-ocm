@@ -56,6 +56,13 @@ export function AuthProvider({ children }) {
       employeesEnabled: account.employeesEnabled === true || tokenResult.claims.employeesEnabled === true,
       employeeMessagingEnabled: account.employeeMessagingEnabled === true || tokenResult.claims.employeeMessagingEnabled === true,
       paymentSetupStatus: account.paymentSetupStatus || (status === "active" && role !== "employee" ? "complete" : ""),
+      identityVerificationRequired: account.identityVerificationRequired === true || tokenResult.claims.identityVerificationRequired === true,
+      identityVerificationVerified: account.identityVerificationVerified === true || tokenResult.claims.identityVerificationVerified === true,
+      identityVerificationStatus: account.identityVerificationStatus || "",
+      emailVerificationStatus: account.emailVerificationStatus || "",
+      phoneVerificationStatus: account.phoneVerificationStatus || "",
+      onboardingTourStatus: account.onboardingTourStatus || "",
+      numberAssignmentStatus: account.numberAssignmentStatus || "",
       termsAccepted: account.termsAccepted === true || tokenResult.claims.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true || tokenResult.claims.privacyAccepted === true,
       termsVersion: account.termsVersion || String(tokenResult.claims.termsVersion || ""),
@@ -86,7 +93,7 @@ export function AuthProvider({ children }) {
       await loadProfile(nextUser);
     } catch (error) {
       console.error("Unable to load account profile", error);
-      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", billingPlan: "standard", clientId: "", status: "", messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, paymentSetupStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
+      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", billingPlan: "standard", clientId: "", status: "", messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, paymentSetupStatus: "", identityVerificationRequired: false, identityVerificationVerified: false, identityVerificationStatus: "", emailVerificationStatus: "", phoneVerificationStatus: "", onboardingTourStatus: "", numberAssignmentStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
       setActiveClientId("");
     } finally {
       setLoading(false);

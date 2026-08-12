@@ -48,8 +48,31 @@ function addPlistString(plist, key, value) {
   return plist.replace(closing, `${addition}${closing}`);
 }
 
+function addPlistUrlScheme(plist, scheme) {
+  if (plist.includes(`<string>${scheme}</string>`)) return plist;
+  const addition = `
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.arkwebsites.clientcenter</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>${escapeXml(scheme)}</string>
+			</array>
+		</dict>
+	</array>`;
+  const closing = "\n</dict>\n</plist>";
+  if (!plist.includes(closing)) throw new Error("Info.plist has an unexpected format.");
+  return plist.replace(closing, `${addition}${closing}`);
+}
+
 function vendorNativePluginSources() {
   const pluginSources = [
+    {
+      source: path.join(projectRoot, "node_modules", "@capacitor", "app", "ios", "Sources", "AppPlugin"),
+      destination: path.join(swiftSourcesRoot, "AppPlugin"),
+    },
     {
       source: path.join(projectRoot, "node_modules", "@capacitor", "push-notifications", "ios", "Sources", "PushNotificationsPlugin"),
       destination: path.join(swiftSourcesRoot, "PushNotificationsPlugin"),
@@ -89,6 +112,13 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "AppPlugin",
+            dependencies: [
+                .product(name: "Capacitor", package: "capacitor-swift-pm")
+            ],
+            path: "Sources/AppPlugin"
+        ),
+        .target(
             name: "PushNotificationsPlugin",
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
@@ -115,6 +145,7 @@ let package = Package(
         .target(
             name: "CapApp-SPM",
             dependencies: [
+                "AppPlugin",
                 "PushNotificationsPlugin",
                 "ContactsPlugin",
                 "CapacitorCalendarPlugin"
@@ -152,6 +183,7 @@ plist = addPlistString(
   "NSCalendarsFullAccessUsageDescription",
   "ARK Client Center can read and manage customer appointments in your calendar when you choose.",
 );
+plist = addPlistUrlScheme(plist, "arkclientcenter");
 fs.writeFileSync(plistPath, plist);
 
 let appDelegate = fs.readFileSync(appDelegatePath, "utf8");
@@ -176,9 +208,9 @@ if (!appDelegate.includes("capacitorDidRegisterForRemoteNotifications")) {
 
 vendorNativePluginSources();
 
-const plistCheck = spawnSync("/usr/bin/plutil", ["-lint", plistPath], { encoding: "utf8" });
-if (plistCheck.status !== 0) {
-  throw new Error(plistCheck.stderr || plistCheck.stdout || "Info.plist validation failed.");
+if (fs.existsSync("/usr/bin/plutil")) {
+  const plistCheck = spawnSync("/usr/bin/plutil", ["-lint", plistPath], { encoding: "utf8" });
+  if (plistCheck.status !== 0) throw new Error(plistCheck.stderr || plistCheck.stdout || "Info.plist validation failed.");
 }
 
 console.log("Configured a self-contained iOS project with contacts, calendar, and push-notification support.");

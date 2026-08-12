@@ -1,9 +1,12 @@
+import { randomBytes } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { missingAccountVerificationConfiguration } from "../../../lib/accountVerification";
 import { normalizeOwnerSignup, validateOwnerSignup } from "../../../lib/ownerSignup";
 import { ownerSignupDigest } from "../../../lib/ownerSignupServer";
+import { savePendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { validateReferrerAccount } from "../../../lib/referrals";
 import { checkSignupAvailability, signupAvailabilityMessage } from "../../../lib/signupAvailability";
@@ -14,7 +17,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function missingServerVariables() {
-  return [["FIREBASE_PROJECT_ID", process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID], ["FIREBASE_CLIENT_EMAIL", process.env.FIREBASE_CLIENT_EMAIL], ["FIREBASE_PRIVATE_KEY", process.env.FIREBASE_PRIVATE_KEY], ["STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY]].filter(([, value]) => !value).map(([name]) => name);
+  return [...[["FIREBASE_PROJECT_ID", process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID], ["FIREBASE_CLIENT_EMAIL", process.env.FIREBASE_CLIENT_EMAIL], ["FIREBASE_PRIVATE_KEY", process.env.FIREBASE_PRIVATE_KEY], ["STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY]].filter(([, value]) => !value).map(([name]) => name), ...missingAccountVerificationConfiguration()];
 }
 
 function safeConfigurationError(error) {
@@ -23,16 +26,7 @@ function safeConfigurationError(error) {
 }
 
 function applicationUrl(request) {
-  const requestOrigin = new URL(request.url).origin;
-  const configured = String(process.env.NEXT_PUBLIC_APP_URL || "").trim();
-  if (!configured) return requestOrigin;
-  try {
-    const parsed = new URL(configured);
-    if (!new Set(["http:", "https:"]).has(parsed.protocol)) return requestOrigin;
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return requestOrigin;
-  }
+  return new URL(request.url).origin;
 }
 
 async function authorize(request) {
@@ -75,6 +69,7 @@ async function startPaymentGatedSignup(request, rawSignup) {
 
   const plan = billingPlanDefinition("standard");
   const digest = ownerSignupDigest(signup);
+  const handoff = randomBytes(32).toString("base64url");
   const appUrl = applicationUrl(request);
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   const customer = await stripe.customers.create({
@@ -89,12 +84,18 @@ async function startPaymentGatedSignup(request, rawSignup) {
     payment_method_types: ["card"],
     client_reference_id: digest,
     expires_at: Math.floor(Date.now() / 1000) + 6 * 60 * 60,
-    success_url: `${appUrl}/signup/complete?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/signup/status?canceled=1`,
+    success_url: `${appUrl}/signup/return?session_id={CHECKOUT_SESSION_ID}&handoff=${encodeURIComponent(handoff)}`,
+    cancel_url: `${appUrl}/signup/return?canceled=1`,
     metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId, billingPlan: "standard", planName: plan.name },
     setup_intent_data: { metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId } },
   });
   if (!session.url) throw new Error("Stripe Checkout did not return a hosted setup URL.");
+  try {
+    await savePendingOwnerSignup({ db, sessionId: session.id, signup, stripeCustomerId: customer.id, handoff });
+  } catch (error) {
+    await stripe.checkout.sessions.expire(session.id).catch(() => null);
+    throw error;
+  }
   return NextResponse.json({ url: session.url });
 }
 
@@ -132,8 +133,8 @@ async function startLegacySignup(request) {
     mode: "setup",
     customer: customerId,
     payment_method_types: ["card"],
-    success_url: `${appUrl}/signup/complete?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/signup/status?canceled=1`,
+    success_url: `${appUrl}/signup/return?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl}/signup/return?canceled=1`,
     metadata: { uid: authorization.decoded.uid, clientId, businessName, ownerName, accountEmail: email, accountPhone, billingPlan: "standard", planName: plan.name },
   });
   await accountRef.set({ billingPlan: "standard", billingPlanName: plan.name, stripeCheckoutSessionId: session.id, paymentSetupStatus: "in_progress", updatedAt: FieldValue.serverTimestamp() }, { merge: true });

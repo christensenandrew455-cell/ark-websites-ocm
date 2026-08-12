@@ -26,6 +26,20 @@ if (missing.length) {
   console.log("[Android configuration] Native permissions already present.");
 }
 
+if (!manifest.includes('android:scheme="arkclientcenter"')) {
+  const deepLinkFilter = `
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="arkclientcenter" android:host="open" />
+            </intent-filter>`;
+  if (!manifest.includes("</activity>")) throw new Error("AndroidManifest.xml has an unexpected activity layout.");
+  manifest = manifest.replace("</activity>", `${deepLinkFilter}\n        </activity>`);
+  await writeFile(manifestPath, manifest, "utf8");
+  console.log("[Android configuration] Registered the ARK signup return link.");
+}
+
 await Promise.all([
   mkdir(javaDirectory, { recursive: true }),
   mkdir(drawableDirectory, { recursive: true }),

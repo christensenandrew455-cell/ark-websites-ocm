@@ -137,42 +137,28 @@ function AccountSection({ businesses, onOpen, searchQuery, onSearchChange }) {
   );
 }
 
-function ApprovalSection({ applications, phoneNumbers, busyId, onPhoneChange, onAccept, onDecline }) {
+function NumberAssignmentSection({ applications, phoneNumbers, busyId, onPhoneChange, onAssign }) {
   return (
     <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mb-6 sm:rounded-3xl sm:p-6">
-      <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">Waiting for Approval</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Review the submitted account, assign a receptionist number with the customer&apos;s area code, then accept it.</p></div><CountBadge value={applications.length} /></div>
+      <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">Needs a Number</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">These paid, active accounts need a receptionist number matching the owner&apos;s area code.</p></div><CountBadge value={applications.length} /></div>
       <div className="mt-4 space-y-3">
         {applications.map((application) => {
           const busy = busyId === application.clientId;
           return (
             <article key={application.clientId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div><h3 className="text-lg font-black">{application.businessName}</h3><p className="mt-0.5 text-xs font-bold text-slate-500">{application.ownerName} · {application.clientId}</p></div>
-                <Pill>Card Added</Pill>
-              </div>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{application.businessName}</h3><p className="mt-0.5 text-xs font-bold text-slate-500">{application.accountEmail} · {application.clientId}</p></div><Pill>Active</Pill></div>
               <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Owner phone</dt><dd className="mt-1 text-lg font-black">{application.accountPhone}</dd></div>
                 <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Email</dt><dd className="mt-1 break-all font-bold">{application.accountEmail}</dd></div>
-                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Payment method</dt><dd className="mt-1 font-bold">{application.paymentMethodLabel || "Card saved"}</dd></div>
-                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Submitted</dt><dd className="mt-1 font-bold">{formatDate(application.submittedAt) || "Recently"}</dd></div>
+                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Required area code</dt><dd className="mt-1 font-bold">{application.requestedAreaCode}</dd></div>
+                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Activated</dt><dd className="mt-1 font-bold">{formatDate(application.submittedAt) || "Recently"}</dd></div>
               </dl>
-              <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                <summary className="cursor-pointer text-xs font-black text-slate-800">View submitted business information</summary>
-                <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
-                  <div><p className="font-black uppercase text-slate-500">Service areas</p><p className="mt-1 leading-5">{application.serviceAreas.join(", ") || "None"}</p></div>
-                  <div><p className="font-black uppercase text-slate-500">Services</p><p className="mt-1 leading-5">{application.services.join(", ") || "None"}</p></div>
-                  <div><p className="font-black uppercase text-slate-500">Time zone</p><p className="mt-1 leading-5">{application.timeZone || "None"}</p></div>
-                  <div><p className="font-black uppercase text-slate-500">Estimate days</p><p className="mt-1 capitalize leading-5">{application.estimateWeekdays.join(", ") || "None selected"}</p></div>
-                  <div><p className="font-black uppercase text-slate-500">Estimate times</p><p className="mt-1 leading-5">{application.earliestEstimateStart && application.latestEstimateStart ? `${application.earliestEstimateStart} to ${application.latestEstimateStart}` : "No set hours"}</p></div>
-                  {application.businessInformation.length > 0 && <div className="sm:col-span-2"><p className="font-black uppercase text-slate-500">Additional information</p><div className="mt-1 space-y-1">{application.businessInformation.map((item) => <p key={`${item.title}:${item.info}`}><strong>{item.title}:</strong> {item.info}</p>)}</div></div>}
-                </div>
-              </details>
               <label className="mt-4 block"><span className="text-xs font-black text-slate-800">Receptionist number · must start with area code {application.requestedAreaCode}</span><input value={phoneNumbers[application.clientId] || ""} onChange={(event) => onPhoneChange(application.clientId, formatPhoneInput(event.target.value))} inputMode="tel" placeholder={`(${application.requestedAreaCode}) 555-0000`} className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none focus:border-slate-950" /></label>
-              <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" disabled={busy || !completePhone(phoneNumbers[application.clientId])} onClick={() => onAccept(application)} className="rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white disabled:opacity-40">{busy ? "Working…" : "Accept Person"}</button><button type="button" disabled={busy} onClick={() => onDecline(application)} className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs font-black text-red-700 disabled:opacity-40">Decline and Delete</button></div>
+              <button type="button" disabled={busy || !completePhone(phoneNumbers[application.clientId])} onClick={() => onAssign(application)} className="mt-3 w-full rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white disabled:opacity-40 sm:w-auto">{busy ? "Assigning…" : "Assign Number"}</button>
             </article>
           );
         })}
-        {applications.length === 0 && <p className="rounded-xl border border-slate-200 p-5 text-center text-sm font-semibold text-slate-500">No accounts are waiting for approval.</p>}
+        {applications.length === 0 && <p className="rounded-xl border border-slate-200 p-5 text-center text-sm font-semibold text-slate-500">No active accounts need a number.</p>}
       </div>
     </section>
   );
@@ -385,39 +371,21 @@ export default function ConnectionsPage() {
     }
   }
 
-  async function acceptApplication(application) {
+  async function assignNumber(application) {
     if (applicationBusy) return;
     setApplicationBusy(application.clientId);
     setError("");
     setMessage("");
     try {
-      await adminFetch("/api/admin/signup-applications", {
+      const result = await adminFetch("/api/admin/signup-applications", {
         method: "POST",
-        body: JSON.stringify({ clientId: application.clientId, action: "accept", receptionistPhone: applicationPhones[application.clientId] || "" }),
+        body: JSON.stringify({ clientId: application.clientId, receptionistPhone: applicationPhones[application.clientId] || "" }),
       });
       setApplicationPhones((current) => { const next = { ...current }; delete next[application.clientId]; return next; });
       await loadBusinesses(application.clientId);
-      setMessage(`${application.businessName} was accepted and activated.`);
-    } catch (approvalError) {
-      setError(approvalError.message);
-    } finally {
-      setApplicationBusy("");
-    }
-  }
-
-  async function declineApplication(application) {
-    if (applicationBusy) return;
-    const confirmed = await requestAppConfirmation({ title: `Decline ${application.businessName}?`, message: "The pending account, saved payment method, and submitted data will be permanently deleted.", confirmLabel: "Decline and Delete" });
-    if (!confirmed) return;
-    setApplicationBusy(application.clientId);
-    setError("");
-    setMessage("");
-    try {
-      await adminFetch("/api/admin/signup-applications", { method: "POST", body: JSON.stringify({ clientId: application.clientId, action: "decline" }) });
-      await loadBusinesses();
-      setMessage(`${application.businessName} was declined and deleted.`);
-    } catch (approvalError) {
-      setError(approvalError.message);
+      setMessage(result.notificationStatus === "sent" ? `${application.businessName}'s receptionist number was assigned and the owner was texted.` : `${application.businessName}'s receptionist number was assigned, but the owner text did not send. Contact the owner manually.`);
+    } catch (assignmentError) {
+      setError(assignmentError.message);
     } finally {
       setApplicationBusy("");
     }
@@ -435,7 +403,7 @@ export default function ConnectionsPage() {
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {message && <div className="mb-4 rounded-xl border border-slate-300 bg-white p-3 text-sm font-bold text-slate-800">{message}</div>}
 
-        {!showCreate && !selectedId && <ApprovalSection applications={applications} phoneNumbers={applicationPhones} busyId={applicationBusy} onPhoneChange={(clientId, value) => setApplicationPhones((current) => ({ ...current, [clientId]: value }))} onAccept={acceptApplication} onDecline={declineApplication} />}
+        {!showCreate && !selectedId && <NumberAssignmentSection applications={applications} phoneNumbers={applicationPhones} busyId={applicationBusy} onPhoneChange={(clientId, value) => setApplicationPhones((current) => ({ ...current, [clientId]: value }))} onAssign={assignNumber} />}
 
         {showCreate && (
           <form onSubmit={createCustomer} className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8">

@@ -258,7 +258,7 @@ async function alignExistingSubscription({ stripe, subscription, priceIds, metad
   });
 }
 
-export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId, persist = true }) {
+export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId, subscriptionIdempotencyKey = "", persist = true }) {
   const catalog = await ensureStripeBillingCatalog({ stripe, db });
   const priceIds = expectedPriceIds(catalog);
   const metadata = {
@@ -285,7 +285,7 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
       items: priceIds.map((price) => ({ price })),
       payment_behavior: "error_if_incomplete",
       metadata,
-    });
+    }, subscriptionIdempotencyKey ? { idempotencyKey: subscriptionIdempotencyKey } : undefined);
 
   const update = {
     billingPlan: BILLING_PLAN_KEY,

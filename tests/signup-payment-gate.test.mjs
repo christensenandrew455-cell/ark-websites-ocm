@@ -261,23 +261,20 @@ test("employees skip owner-only onboarding, payment, and referrals", async () =>
   assert.ok(shellSource.includes("setupPage && user && (isAdmin || isEmployee)"));
 });
 
-test("admin approval starts billing before activating the account or qualifying a referral", async () => {
-  const [finalizeSource, approvalSource, referralSource, billingSource] = await Promise.all([
+test("Stripe return starts billing before immediate activation and referral qualification", async () => {
+  const [finalizeSource, referralSource, billingSource] = await Promise.all([
     readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/admin/signup-applications/route.js", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/referrals.js", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/stripeUsageBilling.js", import.meta.url), "utf8"),
   ]);
-  assert.ok(finalizeSource.includes('status: "pending_admin_approval"'));
-  assert.equal(finalizeSource.includes("ensureCustomerBillingSubscription"), false);
-  assert.equal(finalizeSource.includes("qualifyReferralAfterActivation"), false);
-  const subscriptionCreated = approvalSource.indexOf("const subscription = await ensureCustomerBillingSubscription");
-  const activeAccount = approvalSource.indexOf('status: "active"', subscriptionCreated);
-  const referralQualified = approvalSource.indexOf("qualifyReferralAfterActivation", activeAccount);
-  assert.ok(subscriptionCreated >= 0 && referralQualified > subscriptionCreated);
-  assert.ok(activeAccount > subscriptionCreated && referralQualified > activeAccount);
-  assert.ok(approvalSource.includes('subscription.status !== "active"'));
-  assert.ok(approvalSource.includes("Accept Person") === false);
+  const subscriptionCreated = finalizeSource.indexOf("const subscription = await ensureCustomerBillingSubscription");
+  const activeAccount = finalizeSource.indexOf('status: "active"', subscriptionCreated);
+  const referralQualified = finalizeSource.indexOf("qualifyReferralAfterActivation", activeAccount);
+  assert.ok(subscriptionCreated >= 0 && activeAccount > subscriptionCreated && referralQualified > activeAccount);
+  assert.ok(finalizeSource.includes('subscription.status !== "active"'));
+  assert.ok(finalizeSource.includes("subscriptionIdempotencyKey"));
+  assert.ok(finalizeSource.includes('numberAssignmentStatus: "needed"'));
+  assert.equal(finalizeSource.includes('status: "pending_admin_approval"'), false);
   assert.ok(billingSource.includes('payment_behavior: "error_if_incomplete"'));
   assert.ok(referralSource.includes('paymentSetupStatus !== "complete"'));
   assert.ok(referralSource.includes('subscriptionStatusForReferredAccount !== "active"'));
@@ -294,15 +291,94 @@ test("signup keeps the account-type choices but removes the blue instructional s
   assert.equal(source.includes("bg-indigo-50 p-4 text-sm"), false);
 });
 
-test("pending approvals require a same-area-code receptionist number", async () => {
+test("active accounts enter a same-area-code number assignment queue without approval", async () => {
   const [approvalSource, connectionsSource] = await Promise.all([
     readFile(new URL("../app/api/admin/signup-applications/route.js", import.meta.url), "utf8"),
     readFile(new URL("../app/connections/page.js", import.meta.url), "utf8"),
   ]);
-  assert.ok(approvalSource.includes("assignedAreaCode !== ownerAreaCode"));
+  assert.ok(approvalSource.includes('document.data().status === "active"'));
+  assert.ok(approvalSource.includes('document.data().numberAssignmentStatus === "needed"'));
+  assert.ok(approvalSource.includes("areaCode(receptionistPhoneNormalized) !== ownerAreaCode"));
   assert.ok(approvalSource.includes("connectionPhoneRegistry"));
-  assert.ok(connectionsSource.includes("Accept Person"));
-  assert.ok(connectionsSource.includes("View submitted business information"));
+  assert.ok(approvalSource.includes("sendSignupText"));
+  assert.ok(connectionsSource.includes("Needs a Number"));
+  assert.ok(connectionsSource.includes("Assign Number"));
+  assert.equal(connectionsSource.includes("Accept Person"), false);
+  assert.equal(connectionsSource.includes("Decline and Delete"), false);
+});
+
+test("pending signup details survive Stripe only as encrypted temporary Firebase data", async () => {
+  const [pendingSource, checkoutSource, completeSource] = await Promise.all([
+    readFile(new URL("../app/lib/pendingOwnerSignup.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/signup/complete/page.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(pendingSource.includes('createCipheriv("aes-256-gcm"'));
+  assert.ok(pendingSource.includes('const COLLECTION = "pendingOwnerSignups"'));
+  assert.ok(pendingSource.includes("OWNER_SIGNUP_DRAFT_MAX_AGE_MS"));
+  assert.ok(pendingSource.includes("handoffHash"));
+  assert.ok(checkoutSource.includes("savePendingOwnerSignup"));
+  assert.ok(checkoutSource.includes("randomBytes(32)"));
+  assert.ok(checkoutSource.includes("/signup/return?session_id={CHECKOUT_SESSION_ID}&handoff="));
+  assert.ok(completeSource.includes("JSON.stringify({ sessionId, handoff"));
+  assert.equal(completeSource.includes("unfinished signup was discarded"), false);
+});
+
+test("new owners must pass separate email and text codes before app APIs unlock", async () => {
+  const [verificationSource, gateSource, requestSource, rulesSource] = await Promise.all([
+    readFile(new URL("../app/lib/accountVerification.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AccountVerificationGate.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/authenticatedRequest.js", import.meta.url), "utf8"),
+    readFile(new URL("../firestore.rules", import.meta.url), "utf8"),
+  ]);
+  assert.ok(verificationSource.includes("randomInt(0, 10_000)"));
+  assert.ok(verificationSource.includes("https://api.resend.com/emails"));
+  assert.ok(verificationSource.includes("TELNYX_SIGNUP_FROM_NUMBER"));
+  assert.ok(verificationSource.includes('codeHash(uid, "email"'));
+  assert.ok(verificationSource.includes('codeHash(uid, "phone"'));
+  assert.ok(verificationSource.includes("emailCorrect && phoneCorrect") || verificationSource.includes("!emailCorrect || !phoneCorrect"));
+  assert.ok(gateSource.includes("Email code"));
+  assert.ok(gateSource.includes("Text code"));
+  assert.ok(gateSource.includes("Resend Codes"));
+  assert.ok(requestSource.includes("ACCOUNT_VERIFICATION_REQUIRED"));
+  assert.ok(rulesSource.includes("identityVerificationVerified"));
+});
+
+test("verified owners receive a blocking but skippable highlighted guided tour", async () => {
+  const [tourSource, shellSource, statsSource, settingsSource, referralSource] = await Promise.all([
+    readFile(new URL("../app/components/GuidedOnboarding.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AppShell.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/ClientStats.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/SettingsPanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/ReferralCenter.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(tourSource.includes("Skip Tour"));
+  assert.ok(tourSource.includes("yellow-300"));
+  assert.ok(tourSource.includes("backdrop-grayscale"));
+  assert.ok(tourSource.includes("/api/account/onboarding-tour"));
+  assert.ok(shellSource.includes("<GuidedOnboarding />"));
+  assert.ok(statsSource.includes('tourId="dashboard-leads"'));
+  assert.ok(settingsSource.includes('tourId="settings-section-back"'));
+  assert.ok(referralSource.includes('data-tour-id="referral-star"'));
+});
+
+test("native Stripe return links are registered and verification data joins account deletion", async () => {
+  const [returnSource, handlerSource, androidSource, iosSource, packageSource, lifecycleSource] = await Promise.all([
+    readFile(new URL("../app/signup/return/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AppUrlHandler.js", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/configure-android.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/configure-ios.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/customerLifecycle.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(returnSource.includes("arkclientcenter://open"));
+  assert.ok(returnSource.includes("window.location.replace"));
+  assert.ok(handlerSource.includes('App.addListener("appUrlOpen"'));
+  assert.ok(androidSource.includes('android:scheme="arkclientcenter"'));
+  assert.ok(iosSource.includes('addPlistUrlScheme(plist, "arkclientcenter")'));
+  assert.ok(packageSource.includes('"@capacitor/app"'));
+  assert.ok(lifecycleSource.includes('collection("accountVerificationChallenges")'));
+  assert.ok(lifecycleSource.includes('collection("pendingOwnerSignups")'));
 });
 
 test("owner deletion uses the shared full-account cascade and stores no deletion audit", async () => {

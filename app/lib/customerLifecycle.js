@@ -213,6 +213,7 @@ export async function deleteCustomerPermanently(clientId) {
     deleteQueryDocuments(db.collection("stripeWebhookEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("messagingComplianceEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("signupSessions").where("clientId", "==", clientId)),
+    text(business.stripeCustomerId) ? deleteQueryDocuments(db.collection("pendingOwnerSignups").where("stripeCustomerId", "==", text(business.stripeCustomerId))) : Promise.resolve(),
     deleteQueryDocuments(db.collection("deletedAccountAudit").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("businessNameRegistry").where("clientId", "==", clientId)),
   ]);
@@ -220,6 +221,7 @@ export async function deleteCustomerPermanently(clientId) {
   const batch = db.batch();
   batch.delete(db.collection("connections").doc(clientId));
   accountDocuments.forEach((document, accountUid) => batch.delete(db.collection("accounts").doc(accountUid)));
+  authUids.forEach((accountUid) => batch.delete(db.collection("accountVerificationChallenges").doc(accountUid)));
   if (uid) batch.delete(db.collection("accounts").doc(uid));
   if (businessNameKey) batch.delete(db.collection("businessNameRegistry").doc(businessNameKey));
   phoneRegistryIds.forEach((phoneId) => batch.delete(db.collection("accountPhoneRegistry").doc(phoneId)));

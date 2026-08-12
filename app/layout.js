@@ -5,6 +5,7 @@ import SignupFlowShell from "./components/SignupFlowShell";
 import ViewportMetrics from "./components/ViewportMetrics";
 import { AuthProvider } from "./components/AuthProvider";
 import GlobalConfirmDialog from "./components/GlobalConfirmDialog";
+import AppUrlHandler from "./components/AppUrlHandler";
 
 export const metadata = {
   title: "ARK Client Center",
@@ -40,6 +41,7 @@ export default function RootLayout({ children }) {
       <body>
         <ViewportMetrics />
         <AuthProvider>
+          <AppUrlHandler />
           <GlobalConfirmDialog />
           <SignupFlowShell>{children}</SignupFlowShell>
         </AuthProvider>

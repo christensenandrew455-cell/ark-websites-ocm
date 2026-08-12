@@ -39,6 +39,17 @@ Also add:
 
 Signup uses Stripe Checkout in `setup` mode. Stripe collects and stores the card information; ARK Client Center receives only the saved payment-method reference and card label.
 
+Signup details are encrypted on the server before Stripe opens and are retained in Firebase for no more than six hours. This lets Stripe return through the browser or native app without depending on that browser tab's session storage.
+
+Add the verification delivery variables:
+
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL=ARK Client Center <accounts@your-verified-domain.com>`
+- `TELNYX_API_KEY`
+- `TELNYX_SIGNUP_FROM_NUMBER=+1...`
+
+`TELNYX_SIGNUP_FROM_NUMBER` is the one central ARK number that sends signup codes and the later receptionist-number-ready message. Verify the sending domain in Resend and use a messaging-enabled Telnyx number.
+
 ## 4. Configure the ARK admin account
 
 Create your owner/admin user in **Firebase Authentication > Users**, using your email and password.
@@ -72,10 +83,13 @@ After the rules are published:
 1. The customer enters the business and owner information, password, and an optional referring account ID.
 2. The customer reviews the About page.
 3. Stripe Checkout collects the payment method.
-4. The server verifies that Stripe completed the SetupIntent and activates the existing Firebase account and business records.
-5. The owner finishes the receptionist business setup and opens ARK Client Center.
+4. Stripe returns through `arkclientcenter://open` in the native app, with a same-origin browser fallback.
+5. The server verifies the SetupIntent, starts the paid subscription, creates the active account, and qualifies any valid referral.
+6. The owner must enter separate four-digit codes delivered by email and text before the rest of the client center is accessible.
+7. The owner may complete or skip the guided app tour.
+8. The administrator sees the active account under **Needs a Number**, assigns a same-area-code receptionist number, and the owner receives a text when it is ready.
 
-If Stripe is canceled, the saved owner account returns to payment setup instead of being discarded.
+If Stripe is canceled, the native return link sends the owner back to signup status. The encrypted pending draft remains available until its six-hour expiration so signup can be retried safely.
 
 The standard billing model is $50 per monthly period, $2 per connected AI receptionist call, $1 per new chat plus $1 per 50 SMS parts, and $5 per active employee used at any time during the period. Deleting usage records does not reduce recorded billing. A lead saved from a counted call is not another charge. Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.
 
