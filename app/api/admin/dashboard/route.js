@@ -184,7 +184,7 @@ export async function GET(request) {
 
     const pendingAccounts = accountSnapshot.docs
       .map((document) => ({ id: document.id, ...document.data() }))
-      .filter((item) => item.status === "pending_verification" || item.status === "approved_pending_payment")
+      .filter((item) => ["pending_admin_approval", "pending_verification", "approved_pending_payment"].includes(item.status))
       .map((item) => ({
         uid: item.id,
         clientId: text(item.clientId),

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import BackButton from "./BackButton";
 import { useAuth } from "./AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -110,7 +111,7 @@ export default function HelpCenter() {
       setMessages((current) => [...current, makeMessage("assistant", data.answer, data.links || [])]);
       if (selfHelpKey) localStorage.setItem(selfHelpKey, String(Date.now()));
     } catch (requestError) {
-      setError(requestError.message || "AI help is unavailable right now.");
+      setError(ownerFacingError(requestError));
     } finally {
       setSending(false);
     }

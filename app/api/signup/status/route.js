@@ -28,8 +28,8 @@ export async function GET(request) {
   const account = snapshot.data();
   return NextResponse.json({
     ok: true,
-    status: String(account.status || "approved_pending_payment"),
-    verificationStatus: "not_required",
+    status: String(account.status || "pending_admin_approval"),
+    verificationStatus: String(account.verificationStatus || "pending"),
     paymentSetupStatus: String(account.paymentSetupStatus || "ready"),
     accountType: String(account.accountType || "owner"),
     billingPlan: "standard",

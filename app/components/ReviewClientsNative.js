@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
+import { ownerFacingError } from "../lib/userFacingError";
 import {
   leadContactFieldDeletionPatch,
   stripLeadContactFields,
@@ -363,7 +364,7 @@ export default function ReviewClientsNative() {
         setNotice(`${row.Name || "Lead"} was accepted.`);
       }
     } catch (acceptError) {
-      setError(acceptError.message || "Something went wrong.");
+      setError(ownerFacingError(acceptError));
     } finally {
       setBusy("");
     }
@@ -406,7 +407,7 @@ export default function ReviewClientsNative() {
       if (viewing?.id === row.id) setViewing(null);
       setPendingDelete(null);
     } catch (removeError) {
-      setError(removeError.message || "Something went wrong.");
+      setError(ownerFacingError(removeError));
     } finally {
       setBusy("");
     }

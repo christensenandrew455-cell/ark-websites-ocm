@@ -9,6 +9,7 @@ import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
 import { clearOwnerSignupDraft, loadOwnerSignupDraft, saveOwnerSignupDraft } from "../lib/ownerSignupStorage";
 import { dashBusinessName } from "../lib/valueUtils";
+import { publicFormError } from "../lib/userFacingError";
 
 function formatPhoneInput(value) {
   const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
@@ -78,7 +79,7 @@ export default function SignupPage() {
       const availabilityResponse = await fetch("/api/signup/availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountEmail: form.accountEmail, accountPhone: form.accountPhone }),
+        body: JSON.stringify({ businessName: employeeSignup ? "" : form.businessName, accountEmail: form.accountEmail, accountPhone: form.accountPhone }),
       });
       await readApiJson(availabilityResponse, "Unable to check whether that email and phone are available.");
 
@@ -139,7 +140,7 @@ export default function SignupPage() {
       await signInWithEmailAndPassword(auth, data.email, form.password);
       router.replace("/employee/pending");
     } catch (signupError) {
-      setError(signupError.message);
+      setError(publicFormError(signupError, "Unable to create the account right now."));
       setSubmitting(false);
     }
   }
@@ -152,8 +153,6 @@ export default function SignupPage() {
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Client Center</p>
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
         {!employeeSignup && <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 1 of 4 · Account information</p>}
-        <p className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-semibold leading-6 text-indigo-950">{employeeSignup ? "Enter your account information to request access to the business. The owner must approve the employee account before it can be used." : "Enter the business and account information below. Owner accounts continue through Business Information, About, and Add Payment Method. The account is created only after the payment method is added."}</p>
-
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
           <fieldset className="md:col-span-2">
             <legend className="text-sm font-black text-slate-950">Choose an account type</legend>
@@ -171,7 +170,6 @@ export default function SignupPage() {
           <label className="block"><span className="text-sm font-semibold text-slate-700">Confirm password</span><input required minLength={8} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           {!employeeSignup && <label className="block md:col-span-2"><span className="text-sm font-semibold text-slate-700">Account that referred you <span className="font-normal text-slate-500">(optional)</span></span><input name="referrerAccountId" autoComplete="off" value={form.referrerAccountId} onChange={updateField} placeholder="Business-Account-ID" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>}
 
-          {employeeSignup && <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><p className="text-sm font-black text-slate-950">Owner approval required</p><p className="mt-1 text-sm leading-6 text-slate-700">The business owner must approve your account before you can sign in.</p></div>}
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><input required type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-slate-950" /><span className="text-sm leading-6 text-slate-700">I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>.</span></label>
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 md:col-span-2">{error}</p>}
           <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">

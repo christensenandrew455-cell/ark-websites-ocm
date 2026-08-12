@@ -74,12 +74,11 @@ function AdminDashboard({ user }) {
       <div className="mx-auto max-w-7xl">
         <header className="mb-4 flex items-end justify-between gap-3 sm:mb-7"><div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center Admin</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Dashboard</h1></div><button type="button" onClick={load} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">Refresh</button></header>
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
-        {data?.stripe?.error && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-800">{data.stripe.error}</div>}
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
           <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">{REVENUE_RANGES.map((range) => <button key={range.key} type="button" onClick={() => setRevenueRange(range.key)} className={revenueRange === range.key ? "rounded-lg bg-white px-2 py-2.5 text-[11px] font-black text-slate-950 shadow-sm sm:text-sm" : "rounded-lg px-2 py-2.5 text-[11px] font-bold text-slate-500 sm:text-sm"}>{range.label}</button>)}</div>
           <div className="mt-5"><p className="text-4xl font-black tracking-tight sm:text-5xl">{formatMoney(selectedRevenue.amount, selectedRevenue.currency)}</p><h2 className="mt-1 text-sm font-black uppercase tracking-wide text-slate-700">{selectedRange.title}</h2><p className="mt-1 text-[10px] font-semibold text-slate-400 sm:text-xs">{revenueDetail}</p></div>
         </section>
-        <section className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:grid-cols-4 sm:gap-4"><SummaryCard label="Accounts" value={counts.customers || 0} href="/connections" /><SummaryCard label="App Help" value={counts.openRequests || 0} href="/messages" /><SummaryCard label="Website" value={counts.websiteRequests || 0} href="/website-requests" /><SummaryCard label="Needs Payment" value={counts.needsPayment || 0} href="/payment" /></section>
+        <section className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:grid-cols-5 sm:gap-4"><SummaryCard label="Accounts" value={counts.customers || 0} href="/connections" /><SummaryCard label="Approvals" value={counts.pendingAccounts || 0} href="/connections" /><SummaryCard label="App Help" value={counts.openRequests || 0} href="/messages" /><SummaryCard label="Website" value={counts.websiteRequests || 0} href="/website-requests" /><SummaryCard label="Needs Payment" value={counts.needsPayment || 0} href="/payment" /></section>
       </div>
     </main>
   );

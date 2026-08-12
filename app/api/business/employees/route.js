@@ -6,6 +6,7 @@ import { addEmployeeActivationToBatch } from "../../../lib/billingEmployeeUsage"
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
 import { PER_EMPLOYEE_CENTS } from "../../../lib/stripeUsageBilling";
+import { accountPhoneRegistryId } from "../../../lib/signupAvailability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -178,6 +179,8 @@ export async function POST(request) {
       batch.delete(access.db.collection("accounts").doc(employeeUid));
       const nameKey = text(employeeSnapshot.data().employeeNameKey);
       if (nameKey) batch.delete(businessRef.collection("employeeHandles").doc(nameKey));
+      const phoneRegistryId = accountPhoneRegistryId(employeeSnapshot.data().accountPhoneNormalized || employeeSnapshot.data().accountPhone);
+      if (phoneRegistryId) batch.delete(access.db.collection("accountPhoneRegistry").doc(phoneRegistryId));
       await batch.commit();
       await getAdminAuth().deleteUser(employeeUid).catch((error) => console.warn("Unable to delete employee authentication account", employeeUid, error));
       return NextResponse.json({ ok: true });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import BackButton from "./BackButton";
 import { useAuth } from "./AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 const VISIBILITY_LABELS = {
   name: "Lead name",
@@ -65,7 +66,7 @@ export default function EmployeeAccessSettings({ onBack = () => {}, embedded = f
       setEmployeeMessagingEnabled(nextAccess.employeeMessagingEnabled);
       setError("");
     } catch (loadError) {
-      setError(loadError.message);
+      setError(ownerFacingError(loadError));
     }
   }, [profile?.employeesEnabled, user]);
 
@@ -82,7 +83,7 @@ export default function EmployeeAccessSettings({ onBack = () => {}, embedded = f
         method: "POST",
         body: JSON.stringify({ action: "access", ...nextAccess }),
       }))
-      .catch((saveError) => setError(saveError.message))
+      .catch((saveError) => setError(ownerFacingError(saveError)))
       .finally(() => {
         queuedSavesRef.current -= 1;
         if (queuedSavesRef.current === 0) setSaving(false);

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY } from "../../../lib/accountTypes";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
 import {
   BILLING_VERSION,
   MESSAGE_PARTS_PER_BUNDLE,
@@ -38,7 +39,9 @@ export async function POST(request) {
     const accountEmail = trimmedText(body.accountEmail).toLowerCase();
     const temporaryPassword = String(body.temporaryPassword || "");
     const clientId = normalizeClientId(body.clientId || businessName);
+    const businessNameKey = normalizeClientId(businessName);
     const businessPhone = trimmedText(body.businessPhone);
+    const accountPhoneNormalized = normalizeSignupPhone(businessPhone);
     const notificationEmail = trimmedText(body.notificationEmail || accountEmail).toLowerCase();
     const notificationPhone = trimmedText(body.notificationPhone || businessPhone);
     const sourceLabel = trimmedText(body.sourceLabel || `${businessName} receptionist`);
@@ -53,12 +56,16 @@ export async function POST(request) {
     const db = getAdminDb();
     const auth = getAdminAuth();
     const businessRef = db.collection("businesses").doc(clientId);
-    const [businessSnapshot, existingUser, duplicatePhone] = await Promise.all([
+    if (!/^\+1\d{10}$/.test(accountPhoneNormalized)) return NextResponse.json({ error: "Enter a valid 10-digit customer phone number." }, { status: 400 });
+    const [businessSnapshot, existingUser, duplicatePhone, availability] = await Promise.all([
       businessRef.get(),
       auth.getUserByEmail(accountEmail).catch(() => null),
       receptionistPhoneNormalized ? db.collection("connections").where("receptionistPhoneNormalized", "==", receptionistPhoneNormalized).limit(1).get() : Promise.resolve({ empty: true }),
+      checkSignupAvailability({ auth, db, businessName, accountEmail, accountPhone: businessPhone }),
     ]);
     if (businessSnapshot.exists) return NextResponse.json({ error: "That client ID is already in use." }, { status: 409 });
+    const availabilityError = signupAvailabilityMessage(availability);
+    if (availabilityError) return NextResponse.json({ error: availabilityError }, { status: 409 });
     if (existingUser) return NextResponse.json({ error: "That login email already has an account." }, { status: 409 });
     if (!duplicatePhone.empty) return NextResponse.json({ error: "That connection phone number is already assigned to another account." }, { status: 409 });
 
@@ -75,10 +82,11 @@ export async function POST(request) {
       accountType: ACCOUNT_TYPES.OWNER,
       businessRole: "owner",
       businessName,
-      businessNameKey: clientId,
+      businessNameKey,
       ownerName,
       accountEmail,
       accountPhone: businessPhone,
+      accountPhoneNormalized,
       status: "active",
       verificationStatus: "not_required",
       businessSetupComplete: false,
@@ -109,7 +117,9 @@ export async function POST(request) {
     const batch = db.batch();
     batch.set(db.collection("accounts").doc(createdUser.uid), accountData);
     batch.set(businessRef, accountData);
-    batch.set(db.collection("businessNameRegistry").doc(clientId), { clientId, businessName, ownerUid: createdUser.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    batch.create(db.collection("businessNameRegistry").doc(businessNameKey), { clientId, businessName, ownerUid: createdUser.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    batch.create(db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(accountPhoneNormalized)), { uid: createdUser.uid, ownerUid: createdUser.uid, clientId, accountPhoneNormalized, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    if (receptionistPhoneNormalized) batch.create(db.collection("connectionPhoneRegistry").doc(accountPhoneRegistryId(receptionistPhoneNormalized)), { clientId, receptionistPhone, receptionistPhoneNormalized, assignedBy: admin.decodedToken.uid, assignedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     batch.set(db.collection("connections").doc(clientId), connectionData);
     batch.set(db.collection("ocmClients").doc(clientId), { businessName, ownerUid: createdUser.uid, status: "active", businessSetupComplete: false, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", billingPlanName: "ARK AI Receptionist", billingVersion: BILLING_VERSION, monthlyBaseCents: MONTHLY_BASE_CENTS, perLeadCents: PER_LEAD_CENTS, perCallCents: PER_CALL_CENTS, perChatCents: PER_CHAT_CENTS, perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, perEmployeeCents: PER_EMPLOYEE_CENTS, messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), { BusinessName: businessName, OwnerName: ownerName, AccountEmail: accountEmail, AccountPhone: businessPhone, NotificationEmail: notificationEmail, NotificationPhone: notificationPhone, BillingStatus: "Admin created", AccountType: ACCOUNT_TYPES.OWNER, BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", BillingVersion: BILLING_VERSION, MonthlyBaseCents: MONTHLY_BASE_CENTS, PerLeadCents: PER_LEAD_CENTS, PerCallCents: PER_CALL_CENTS, PerChatCents: PER_CHAT_CENTS, PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, PerEmployeeCents: PER_EMPLOYEE_CENTS, MessagesEnabled: false, EmployeesEnabled: false, EmployeeMessagingEnabled: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });

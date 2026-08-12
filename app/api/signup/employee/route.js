@@ -4,7 +4,7 @@ import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
-import { checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
+import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -51,6 +51,7 @@ export async function POST(request) {
     if (business.status !== "active" || business.employeesEnabled !== true) return NextResponse.json({ error: "That business is not accepting employee accounts. The owner must enable Employees first." }, { status: 409 });
     if (normalizePersonKey(business.ownerName) === employeeNameKey) return NextResponse.json({ error: "That name is already used by the account owner." }, { status: 409 });
     const handleRef = businessRef.collection("employeeHandles").doc(employeeNameKey);
+    const phoneRegistryRef = db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(phoneNormalized));
     if ((await handleRef.get()).exists) return NextResponse.json({ error: "An employee with that name already exists under this business." }, { status: 409 });
 
     createdUser = await auth.createUser({ email, password, displayName: name, emailVerified: false, disabled: false });
@@ -84,12 +85,14 @@ export async function POST(request) {
     };
 
     await db.runTransaction(async (transaction) => {
-      const [latestBusiness, latestHandle] = await Promise.all([transaction.get(businessRef), transaction.get(handleRef)]);
+      const [latestBusiness, latestHandle, phoneRegistry] = await Promise.all([transaction.get(businessRef), transaction.get(handleRef), transaction.get(phoneRegistryRef)]);
       if (!latestBusiness.exists || latestBusiness.data().status !== "active" || latestBusiness.data().employeesEnabled !== true) throw new Error("BUSINESS_UNAVAILABLE");
       if (latestHandle.exists) throw new Error("EMPLOYEE_NAME_TAKEN");
+      if (phoneRegistry.exists) throw new Error("PHONE_TAKEN");
       transaction.create(handleRef, { uid: createdUser.uid, email, employeeName: name, employeeNameKey, status: "pending", createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
       transaction.create(businessRef.collection("employees").doc(createdUser.uid), accountData);
       transaction.create(db.collection("accounts").doc(createdUser.uid), accountData);
+      transaction.create(phoneRegistryRef, { uid: createdUser.uid, clientId, accountPhoneNormalized: phoneNormalized, accountType: ACCOUNT_TYPES.EMPLOYEE, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     });
 
     await auth.setCustomUserClaims(createdUser.uid, {
@@ -112,6 +115,7 @@ export async function POST(request) {
     console.error("Unable to create employee account", error);
     if (createdUser?.uid) await getAdminAuth().deleteUser(createdUser.uid).catch(() => null);
     if (String(error?.message || "") === "EMPLOYEE_NAME_TAKEN") return NextResponse.json({ error: "An employee with that name already exists under this business." }, { status: 409 });
+    if (String(error?.message || "") === "PHONE_TAKEN") return NextResponse.json({ error: "That phone number is already registered." }, { status: 409 });
     if (String(error?.message || "") === "BUSINESS_UNAVAILABLE") return NextResponse.json({ error: "That business is not accepting employee accounts." }, { status: 409 });
     return NextResponse.json({ error: safeSignupError(error) }, { status: 500 });
   }

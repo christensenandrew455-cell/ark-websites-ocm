@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 const STATUS_LABELS = {
   new: "Submitted",
@@ -83,7 +84,7 @@ function CustomerMessages({ user, requests, onRefresh }) {
       setNotice("Help request sent. ARK can review it directly from the app.");
       await onRefresh();
     } catch (submitError) {
-      setError(submitError.message);
+      setError(ownerFacingError(submitError));
     } finally {
       setSending(false);
     }
@@ -254,11 +255,11 @@ export default function MessagesPage() {
       setRequests(data.requests || []);
       setError("");
     } catch (loadError) {
-      setError(loadError.message);
+      setError(isAdmin ? loadError.message : ownerFacingError(loadError));
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [isAdmin, user]);
 
   useEffect(() => {
     if (!loading && user) load();

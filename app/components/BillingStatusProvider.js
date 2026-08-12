@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 const DEFAULT_STATUS = {
   phase: "current",
@@ -52,7 +53,7 @@ export function BillingStatusProvider({ children }) {
       return nextStatus;
     } catch (refreshError) {
       console.error("Unable to refresh billing status", refreshError);
-      setError(refreshError.message || "Could not check payment status.");
+      setError(ownerFacingError(refreshError));
       return null;
     } finally {
       setLoading(false);
@@ -87,7 +88,7 @@ export function BillingStatusProvider({ children }) {
       if (!response.ok || !data.url) throw new Error(data.error || "Could not open secure billing settings.");
       window.location.assign(data.url);
     } catch (billingError) {
-      setError(billingError.message || "Could not open secure billing settings.");
+      setError(ownerFacingError(billingError));
       setOpeningBilling(false);
     }
   }, [openingBilling, user]);

@@ -4,6 +4,7 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
+import { accountPhoneRegistryId, normalizeSignupPhone } from "../../../lib/signupAvailability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,9 +134,20 @@ function validateProfile(profile) {
 async function validateConnectionPhone(db, clientId, phone) {
   const normalized = normalizePhone(phone);
   if (!normalized) return { normalized: "" };
-  const duplicate = await db.collection("connections").where("receptionistPhoneNormalized", "==", normalized).limit(2).get();
+  const [duplicate, registry] = await Promise.all([
+    db.collection("connections").where("receptionistPhoneNormalized", "==", normalized).limit(2).get(),
+    db.collection("connectionPhoneRegistry").doc(accountPhoneRegistryId(normalized)).get(),
+  ]);
   if (duplicate.docs.some((document) => document.id !== clientId)) return { error: "That connected phone number is already assigned to another account." };
+  if (registry.exists && normalizeClientId(registry.data().clientId) !== clientId) return { error: "That connected phone number is already assigned to another account." };
   return { normalized };
+}
+
+function updateConnectionPhoneRegistry(batch, db, clientId, oldPhone, newPhone, actorUid) {
+  const oldId = accountPhoneRegistryId(oldPhone);
+  const newId = accountPhoneRegistryId(newPhone);
+  if (oldId && oldId !== newId) batch.delete(db.collection("connectionPhoneRegistry").doc(oldId));
+  if (newId) batch.set(db.collection("connectionPhoneRegistry").doc(newId), { clientId, receptionistPhoneNormalized: newPhone, assignedBy: actorUid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 }
 
 async function validateBusinessName(db, clientId, value) {
@@ -178,6 +190,7 @@ export async function POST(request) {
     if (phoneCheck.error) return NextResponse.json({ error: phoneCheck.error }, { status: 400 });
     const connected = Boolean(phoneCheck.normalized);
     const batch = db.batch();
+    updateConnectionPhoneRegistry(batch, db, access.clientId, loaded.connection.receptionistPhoneNormalized || loaded.settings.receptionistPhoneNormalized, phoneCheck.normalized, access.user.decodedToken.uid);
     batch.set(loaded.connectionRef, { receptionistEnabled: connected, receptionistPhone: phone, receptionistPhoneNormalized: phoneCheck.normalized, updatedBy: access.user.decodedToken.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     batch.set(loaded.settingsRef, { receptionistPhone: phone, receptionistPhoneNormalized: phoneCheck.normalized, updatedBy: access.user.decodedToken.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     await batch.commit();
@@ -213,6 +226,12 @@ export async function POST(request) {
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
   const nameCheck = await validateBusinessName(db, access.clientId, profile.businessName);
   if (nameCheck.error) return NextResponse.json({ error: nameCheck.error }, { status: 409 });
+  const businessPhoneNormalized = normalizeSignupPhone(profile.businessPhone);
+  if (!/^\+1\d{10}$/.test(businessPhoneNormalized)) return NextResponse.json({ error: "Enter a valid 10-digit business phone number." }, { status: 400 });
+  const customerUid = text(loaded.business.ownerUid || loaded.business.uid);
+  const phoneRegistryId = accountPhoneRegistryId(businessPhoneNormalized);
+  const phoneRegistrySnapshot = await db.collection("accountPhoneRegistry").doc(phoneRegistryId).get();
+  if (phoneRegistrySnapshot.exists && text(phoneRegistrySnapshot.data().uid || phoneRegistrySnapshot.data().ownerUid) !== customerUid) return NextResponse.json({ error: "That phone number is already registered." }, { status: 409 });
 
   const settingsData = {
     clientId: access.clientId,
@@ -249,15 +268,22 @@ export async function POST(request) {
   };
 
   const batch = db.batch();
+  const oldNameKey = normalizeClientId(loaded.business.businessNameKey || loaded.business.businessName);
+  if (oldNameKey && oldNameKey !== nameCheck.businessNameKey) batch.delete(db.collection("businessNameRegistry").doc(oldNameKey));
+  const oldPhoneRegistryId = accountPhoneRegistryId(loaded.business.accountPhoneNormalized || loaded.business.accountPhone);
+  if (oldPhoneRegistryId && oldPhoneRegistryId !== phoneRegistryId) batch.delete(db.collection("accountPhoneRegistry").doc(oldPhoneRegistryId));
+  batch.set(db.collection("accountPhoneRegistry").doc(phoneRegistryId), { uid: customerUid, ownerUid: customerUid, clientId: access.clientId, accountPhoneNormalized: businessPhoneNormalized, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   batch.set(loaded.settingsRef, settingsData, { merge: true });
   batch.set(loaded.accountSettingsRef, { BusinessName: profile.businessName, OwnerName: profile.ownerName, AccountEmail: profile.businessEmail, AccountPhone: profile.businessPhone, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  batch.set(loaded.businessRef, { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  batch.set(loaded.businessRef, { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, accountPhoneNormalized: businessPhoneNormalized, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   batch.set(db.collection("businessNameRegistry").doc(nameCheck.businessNameKey), { clientId: access.clientId, businessName: profile.businessName, ownerUid: text(loaded.business.ownerUid || loaded.business.uid), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   batch.set(db.collection("ocmClients").doc(access.clientId), { businessName: profile.businessName, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-  const customerUid = text(loaded.business.ownerUid || loaded.business.uid);
-  if (customerUid) batch.set(db.collection("accounts").doc(customerUid), { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  if (access.isAdmin) batch.set(loaded.connectionRef, { receptionistEnabled: Boolean(profile.receptionistPhoneNormalized) && profile.enabled, receptionistPhone: profile.receptionistPhone, receptionistPhoneNormalized: profile.receptionistPhoneNormalized, updatedBy: access.user.decodedToken.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  if (customerUid) batch.set(db.collection("accounts").doc(customerUid), { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, accountPhoneNormalized: businessPhoneNormalized, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  if (access.isAdmin) {
+    updateConnectionPhoneRegistry(batch, db, access.clientId, loaded.connection.receptionistPhoneNormalized || loaded.settings.receptionistPhoneNormalized, profile.receptionistPhoneNormalized, access.user.decodedToken.uid);
+    batch.set(loaded.connectionRef, { receptionistEnabled: Boolean(profile.receptionistPhoneNormalized) && profile.enabled, receptionistPhone: profile.receptionistPhone, receptionistPhoneNormalized: profile.receptionistPhoneNormalized, updatedBy: access.user.decodedToken.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
   await batch.commit();
 
   if (loaded.business.billingPlan === "business") {

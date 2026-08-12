@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import { normalizeBusinessIdentifier } from "../lib/valueUtils";
+import { publicFormError } from "../lib/userFacingError";
 
 function EyeIcon({ hidden }) {
   return hidden
@@ -31,7 +32,7 @@ export default function LoginPage() {
       await login(businessName, password, { loginMode, personName });
       router.replace("/");
     } catch (loginError) {
-      setError(loginError.message);
+      setError(publicFormError(loginError, "Unable to sign in right now."));
     } finally {
       setSubmitting(false);
     }

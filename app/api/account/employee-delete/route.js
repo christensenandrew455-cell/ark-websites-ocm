@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { addEmployeeActivationToBatch } from "../../../lib/billingEmployeeUsage";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
+import { accountPhoneRegistryId } from "../../../lib/signupAvailability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +51,8 @@ export async function POST(request) {
     batch.delete(employeeRef);
     const nameKey = text(employeeSnapshot.exists ? employeeSnapshot.data().employeeNameKey : "");
     if (nameKey) batch.delete(businessRef.collection("employeeHandles").doc(nameKey));
+    const phoneRegistryId = accountPhoneRegistryId(employeeSnapshot.exists ? employeeSnapshot.data().accountPhoneNormalized || employeeSnapshot.data().accountPhone : "");
+    if (phoneRegistryId) batch.delete(db.collection("accountPhoneRegistry").doc(phoneRegistryId));
     await batch.commit();
     await auth.deleteUser(decoded.uid);
     return NextResponse.json({ ok: true });

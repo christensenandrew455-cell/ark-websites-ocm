@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import BackButton from "../components/BackButton";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../components/AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 async function employeeApi(user, options = {}) {
   const token = await user.getIdToken(true);
@@ -52,7 +53,7 @@ export default function EmployeesPage() {
       setWorkspace(await employeeApi(user));
       setError("");
     } catch (loadError) {
-      setError(loadError.message);
+      setError(ownerFacingError(loadError));
     }
   }, [isOwner, profile?.employeesEnabled, user]);
 
@@ -70,7 +71,7 @@ export default function EmployeesPage() {
       setNotice(message);
       await load();
     } catch (actionError) {
-      setError(actionError.message);
+      setError(ownerFacingError(actionError));
     } finally {
       setBusy("");
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 function percent(value) {
   return `${Math.min(50, Math.max(0, Number(value || 0)))}%`;
@@ -27,7 +28,7 @@ export default function ReferralCenter({ clientId = "" }) {
         if (!response.ok) throw new Error(data.error || "Could not load referral progress.");
         if (active) setStatus(data);
       })
-      .catch((loadError) => active && setError(loadError.message))
+      .catch((loadError) => active && setError(ownerFacingError(loadError)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [open, user]);

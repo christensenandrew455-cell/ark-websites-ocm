@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../components/BackButton";
 import { useAuth } from "../components/AuthProvider";
 import { requestAppConfirmation } from "../lib/appConfirmation";
+import { ownerFacingError } from "../lib/userFacingError";
 
 function TrashIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>;
@@ -51,9 +52,10 @@ export default function LeadMessagesPage() {
     if (!silent) setLoading(true);
     try {
       const query = leadId ? `?lead=${encodeURIComponent(leadId)}&collection=${encodeURIComponent(collectionKey)}` : "";
-      setData(await messageApi(user, query));
+      const next = await messageApi(user, query);
+      setData({ ...next, messages: (next.messages || []).map((item) => ({ ...item, providerError: item.providerError ? "Message could not be delivered." : "" })) });
       setError("");
-    } catch (loadError) { setError(loadError.message || "Something went wrong."); } finally { if (!silent) setLoading(false); }
+    } catch (loadError) { setError(ownerFacingError(loadError)); } finally { if (!silent) setLoading(false); }
   }, [featureEnabled, selectedCollection, selectedLead, user]);
 
   useEffect(() => { setSelectedLead(requestedLead); setSelectedCollection(requestedCollection); load(requestedLead, requestedCollection); }, [load, requestedCollection, requestedLead]);
@@ -82,9 +84,9 @@ export default function LeadMessagesPage() {
     try {
       const result = await messageApi(user, "", { method: "POST", body: JSON.stringify({ leadId: selectedLead, collectionKey: selectedCollection, message }) });
       setMessage("");
-      if (result.providerError || failedStatus(result.deliveryStatus)) setError(result.providerError || "The message could not be delivered."); else setNotice(result.notice || "Message queued.");
+      if (result.providerError || failedStatus(result.deliveryStatus)) setError("The message could not be delivered."); else setNotice(result.notice || "Message queued.");
       await load(selectedLead, selectedCollection);
-    } catch (sendError) { setError(sendError.message || "Something went wrong."); } finally { setSending(false); }
+    } catch (sendError) { setError(ownerFacingError(sendError)); } finally { setSending(false); }
   }
 
   async function deleteConversationRecord(leadId, collectionKey, leadName) {
@@ -105,7 +107,7 @@ export default function LeadMessagesPage() {
       if (selectedLead === leadId && selectedCollection === collectionKey) { setSelectedLead(""); setSelectedCollection("contactedMe"); setMessage(""); router.replace("/lead-messages"); }
       await load("", "contactedMe");
       setNotice(result.contactBlocked ? "Conversation deleted and this phone number was blocked in ARK." : "Conversation deleted.");
-    } catch (deleteError) { setError(deleteError.message || "Something went wrong."); } finally { setDeleting(""); }
+    } catch (deleteError) { setError(ownerFacingError(deleteError)); } finally { setDeleting(""); }
   }
 
   if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;

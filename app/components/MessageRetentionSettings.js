@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 const OPTIONS = [
   { value: 0, label: "Never delete" },
@@ -49,7 +50,7 @@ function RetentionSelect({ title, endpoint }) {
       setRetentionDays(Number(data.retentionDays || 0));
     } catch (saveError) {
       setRetentionDays(previous);
-      setError(saveError.message);
+      setError(ownerFacingError(saveError));
     } finally {
       setSaving(false);
     }

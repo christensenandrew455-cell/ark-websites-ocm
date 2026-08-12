@@ -4,7 +4,7 @@ import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
-const OWNER_STATUSES = new Set(["approved_pending_payment", "active", "disabled"]);
+const OWNER_STATUSES = new Set(["pending_admin_approval", "approved_pending_payment", "active", "disabled"]);
 const EMPLOYEE_STATUSES = new Set(["pending_owner_approval", "active", "disabled"]);
 
 async function resolveBusiness(db, identifier) {

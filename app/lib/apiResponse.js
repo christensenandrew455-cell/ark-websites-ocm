@@ -1,5 +1,4 @@
 export async function readApiJson(response, fallbackMessage = "The server could not complete this request.") {
-  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
   const rawBody = await response.text();
   let data = {};
 
@@ -7,18 +6,12 @@ export async function readApiJson(response, fallbackMessage = "The server could 
     try {
       data = JSON.parse(rawBody);
     } catch {
-      const isHtml = contentType.includes("text/html") || /^\s*</.test(rawBody);
-      const statusLabel = response.status ? ` (${response.status})` : "";
-      throw new Error(
-        isHtml
-          ? `The signup server returned an HTML error page${statusLabel}. The deployment or server configuration failed before the API could respond.`
-          : `${fallbackMessage}${statusLabel}`
-      );
+      throw new Error(fallbackMessage);
     }
   }
 
   if (!response.ok) {
-    throw new Error(data.error || `${fallbackMessage} (${response.status})`);
+    throw new Error(data.error || fallbackMessage);
   }
 
   return data;

@@ -26,7 +26,9 @@ export async function POST(request) {
     let email = normalizedIdentifier.toLowerCase();
     if (!email.includes("@")) {
       const clientId = cleanClientId(normalizedIdentifier);
-      const businessSnapshot = await db.collection("businesses").doc(clientId).get();
+      const registrySnapshot = await db.collection("businessNameRegistry").doc(clientId).get();
+      const resolvedClientId = cleanClientId(registrySnapshot.exists ? registrySnapshot.data().clientId : clientId);
+      const businessSnapshot = await db.collection("businesses").doc(resolvedClientId).get();
       if (!businessSnapshot.exists) {
         return NextResponse.json({ ok: true });
       }
@@ -35,7 +37,7 @@ export async function POST(request) {
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Firebase Authentication is not configured." }, { status: 500 });
+      return NextResponse.json({ error: "Unable to send the reset email right now." }, { status: 500 });
     }
 
     const resetResponse = await fetch(

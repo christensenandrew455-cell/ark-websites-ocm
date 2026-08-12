@@ -1,4 +1,4 @@
-import { trimmedText } from "./valueUtils.js";
+import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
 export function normalizeSignupEmail(value) {
   return trimmedText(value).toLowerCase();
@@ -9,6 +9,10 @@ export function normalizeSignupPhone(value) {
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
   return digits ? `+${digits}` : "";
+}
+
+export function accountPhoneRegistryId(value) {
+  return normalizeSignupPhone(value).replace(/\D/g, "");
 }
 
 export function signupPhoneVariants(value) {
@@ -43,9 +47,10 @@ function containsDifferentAccount(snapshot, allowedUid) {
   });
 }
 
-export async function checkSignupAvailability({ auth, db, accountEmail, accountPhone, allowedUid = "" }) {
+export async function checkSignupAvailability({ auth, db, businessName = "", accountEmail, accountPhone, allowedUid = "" }) {
   const email = normalizeSignupEmail(accountEmail);
   const phone = normalizeSignupPhone(accountPhone);
+  const businessNameKey = normalizeClientId(businessName);
   const phoneVariants = signupPhoneVariants(phone);
   const collections = [db.collection("accounts"), db.collection("businesses")];
 
@@ -59,24 +64,31 @@ export async function checkSignupAvailability({ auth, db, accountEmail, accountP
     ? collections.map((collection) => collection.where("accountPhone", "in", phoneVariants).limit(5).get())
     : [];
 
-  const [authUser, emailSnapshots, normalizedPhoneSnapshots, legacyPhoneSnapshots] = await Promise.all([
+  const [authUser, emailSnapshots, normalizedPhoneSnapshots, legacyPhoneSnapshots, businessSnapshot, registrySnapshot, phoneRegistrySnapshot] = await Promise.all([
     email ? auth.getUserByEmail(email).catch(() => null) : null,
     Promise.all(emailQueries),
     Promise.all(normalizedPhoneQueries),
     Promise.all(legacyPhoneQueries),
+    businessNameKey ? db.collection("businesses").doc(businessNameKey).get() : null,
+    businessNameKey ? db.collection("businessNameRegistry").doc(businessNameKey).get() : null,
+    phone ? db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(phone)).get() : null,
   ]);
 
   return {
     email,
     phone,
+    businessNameKey,
+    businessNameInUse: [businessSnapshot, registrySnapshot].some((snapshot) => snapshot?.exists && containsDifferentAccount({ docs: [snapshot] }, allowedUid)),
     emailInUse: Boolean(authUser && authUser.uid !== allowedUid)
       || emailSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid)),
     phoneInUse: normalizedPhoneSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid))
-      || legacyPhoneSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid)),
+      || legacyPhoneSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid))
+      || Boolean(phoneRegistrySnapshot?.exists && containsDifferentAccount({ docs: [phoneRegistrySnapshot] }, allowedUid)),
   };
 }
 
-export function signupAvailabilityMessage({ emailInUse, phoneInUse }) {
+export function signupAvailabilityMessage({ businessNameInUse, emailInUse, phoneInUse }) {
+  if (businessNameInUse) return "That business name is already registered. Use a different business name.";
   if (emailInUse && phoneInUse) return "That email address and phone number are already registered.";
   if (emailInUse) return "That email address is already registered.";
   if (phoneInUse) return "That phone number is already registered.";
