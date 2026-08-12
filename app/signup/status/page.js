@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { readApiJson } from "../../lib/apiResponse";
-import { DASHBOARD_ONBOARDING_KEY, validateOwnerSignup } from "../../lib/ownerSignup";
+import { validateOwnerSignup } from "../../lib/ownerSignup";
 import { clearOwnerSignupDraft, loadOwnerSignupDraft, saveOwnerSignupDraft } from "../../lib/ownerSignupStorage";
 import { publicFormError } from "../../lib/userFacingError";
 
@@ -55,7 +55,6 @@ export default function SignupStatusPage() {
           await user.getIdToken(true);
           await refreshProfile();
           window.localStorage.setItem(PHONE_SETUP_PENDING_KEY, "true");
-          window.localStorage.setItem(DASHBOARD_ONBOARDING_KEY, "pending");
           router.replace("/");
         }
       } catch (statusError) {
@@ -97,7 +96,7 @@ export default function SignupStatusPage() {
   }
 
   if (loading || checking || mode === "checking") return <main className="grid min-h-screen place-items-center bg-slate-950 p-6 text-sm font-semibold text-white">Opening payment method…</main>;
-  if (mode === "missing") return <main className="grid min-h-screen place-items-center bg-slate-950 p-5"><section className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl"><h1 className="text-2xl font-black">Signup was discarded</h1><p className="mt-3 text-sm leading-6 text-slate-600">There is no unfinished signup in this app session, and no account was created.</p><Link href="/signup" className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-black text-white">Start Signup</Link></section></main>;
+  if (mode === "missing") return <main className="grid min-h-screen place-items-center bg-slate-950 p-5"><section className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl"><h1 className="text-2xl font-black">Return to signup</h1><p className="mt-3 text-sm leading-6 text-slate-600">Open signup in the app to continue adding your payment method.</p><Link href="/signup" className="mt-6 inline-block rounded-xl bg-slate-950 px-5 py-3 font-black text-white">Open Signup</Link></section></main>;
 
   const pendingApproval = mode === "legacy" && application?.status === "pending_admin_approval";
   const ready = mode === "draft" ? Boolean(draft) && !validateOwnerSignup(draft) : application?.status === "approved_pending_payment";

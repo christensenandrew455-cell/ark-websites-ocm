@@ -2,7 +2,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "../../../lib/accountTypes";
+import { sendAccountVerificationCodes } from "../../../lib/accountVerification";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { qualifyReferralAfterActivation } from "../../../lib/referrals";
 import {
   BILLING_VERSION,
   MESSAGE_PARTS_PER_BUNDLE,
@@ -12,6 +14,7 @@ import {
   PER_EMPLOYEE_CENTS,
   PER_LEAD_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
+  ensureCustomerBillingSubscription,
 } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
@@ -81,11 +84,32 @@ export async function POST(request) {
     const messagesEnabled = account.messagesEnabled === true;
     const employeesEnabled = account.employeesEnabled === true;
     const employeeMessagingEnabled = messagesEnabled && employeesEnabled && account.employeeMessagingEnabled === true;
+    const subscription = await ensureCustomerBillingSubscription({
+      stripe,
+      db,
+      clientId,
+      customerId,
+      paymentMethodId,
+      businessName,
+      uid: authorization.decoded.uid,
+      existingSubscriptionId: text(account.stripeSubscriptionId),
+      subscriptionIdempotencyKey: `ark-owner-legacy-subscription-${sessionId}`,
+      persist: false,
+    });
+    if (subscription.status !== "active") return NextResponse.json({ error: "The first account payment was not completed." }, { status: 402 });
+
     const activeAccount = {
-      status: "pending_admin_approval",
+      status: "active",
       verificationStatus: "pending",
+      identityVerificationRequired: true,
+      identityVerificationVerified: false,
+      identityVerificationStatus: "pending",
+      emailVerificationStatus: "pending",
+      phoneVerificationStatus: "pending",
       paymentSetupStatus: "complete",
-      businessSetupComplete: false,
+      businessSetupComplete: true,
+      numberAssignmentStatus: "needed",
+      onboardingTourStatus: "pending",
       role: "customer",
       accountType: ACCOUNT_TYPES.OWNER,
       businessRole: "owner",
@@ -112,8 +136,11 @@ export async function POST(request) {
       stripeSetupIntentId: setupIntentId,
       stripePaymentMethodId: paymentMethodId,
       stripeCheckoutSessionId: sessionId,
+      stripeSubscriptionId: subscription.id,
+      stripeSubscriptionStatus: subscription.status,
       paymentMethodLabel,
-      submittedForApprovalAt: FieldValue.serverTimestamp(),
+      submittedForNumberAt: FieldValue.serverTimestamp(),
+      activatedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
 
@@ -126,8 +153,12 @@ export async function POST(request) {
     batch.set(clientRef, {
       businessName,
       ownerUid: authorization.decoded.uid,
-      status: "pending_admin_approval",
-      businessSetupComplete: false,
+      status: "active",
+      businessSetupComplete: true,
+      numberAssignmentStatus: "needed",
+      onboardingTourStatus: "pending",
+      identityVerificationRequired: true,
+      identityVerificationVerified: false,
       accountType: ACCOUNT_TYPES.OWNER,
       billingPlan: "standard",
       billingPlanName: "ARK AI Receptionist",
@@ -160,7 +191,7 @@ export async function POST(request) {
       AccountEmail: accountEmail,
       AccountPhone: accountPhone,
       BillingEmail: accountEmail,
-      BillingStatus: "Pending approval",
+      BillingStatus: "Active",
       AccountType: ACCOUNT_TYPES.OWNER,
       BillingPlan: "standard",
       BillingPlanName: "ARK AI Receptionist",
@@ -180,6 +211,10 @@ export async function POST(request) {
       EmployeeMessagingEnabled: employeeMessagingEnabled,
       PaymentMethodLabel: paymentMethodLabel,
       StripeCustomerId: customerId,
+      StripeSubscriptionId: subscription.id,
+      StripeSubscriptionStatus: subscription.status,
+      IdentityVerificationStatus: "Pending",
+      NumberAssignmentStatus: "Needed",
       TermsAccepted: account.termsAccepted === true,
       PrivacyAccepted: account.privacyAccepted === true,
       TermsVersion: text(account.termsVersion),
@@ -189,7 +224,7 @@ export async function POST(request) {
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    batch.set(receiptRef, { email: accountEmail, clientId, uid: authorization.decoded.uid, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", status: "pending_admin_approval", completed: true, createdAt: FieldValue.serverTimestamp() });
+    batch.set(receiptRef, { email: accountEmail, clientId, uid: authorization.decoded.uid, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", status: "active", stripeSubscriptionId: subscription.id, completed: true, createdAt: FieldValue.serverTimestamp() });
     await batch.commit();
 
     await getAdminAuth().setCustomUserClaims(authorization.decoded.uid, {
@@ -197,18 +232,24 @@ export async function POST(request) {
       accountType: ACCOUNT_TYPES.OWNER,
       businessRole: "owner",
       clientId,
-      accountStatus: "pending_admin_approval",
+      accountStatus: "active",
       billingPlan: "standard",
       messagesEnabled,
       employeesEnabled,
       employeeMessagingEnabled,
+      identityVerificationRequired: true,
+      identityVerificationVerified: false,
       termsAccepted: account.termsAccepted === true,
       privacyAccepted: account.privacyAccepted === true,
       termsVersion: text(account.termsVersion),
       privacyVersion: text(account.privacyVersion),
     });
-    if (customerId) await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId }, metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan: "standard", accountType: ACCOUNT_TYPES.OWNER, accountStatus: "pending_admin_approval" } }).catch((stripeError) => console.error("Unable to update Stripe customer metadata", stripeError));
-    return NextResponse.json({ email: accountEmail, clientId, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", status: "pending_admin_approval", completed: true });
+    if (customerId) await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId }, metadata: { uid: authorization.decoded.uid, clientId, businessName, billingPlan: "standard", accountType: ACCOUNT_TYPES.OWNER, accountStatus: "active" } }).catch((stripeError) => console.error("Unable to update Stripe customer metadata", stripeError));
+    let verificationDelivery = "sent";
+    try { await sendAccountVerificationCodes({ db, uid: authorization.decoded.uid, clientId, email: accountEmail, phone: accountPhone }); }
+    catch (deliveryError) { verificationDelivery = "needs_resend"; console.error("Unable to deliver initial verification codes", deliveryError); }
+    await qualifyReferralAfterActivation({ db, stripe, referredClientId: clientId, referredUid: authorization.decoded.uid }).catch((referralError) => console.error("Unable to qualify legacy signup referral", referralError));
+    return NextResponse.json({ email: accountEmail, clientId, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", status: "active", verificationRequired: true, verificationDelivery, numberAssignmentStatus: "needed", completed: true });
   } catch (error) {
     console.error("Unable to complete owner signup", error);
     return NextResponse.json({ error: safeSignupError(error) }, { status: 500 });

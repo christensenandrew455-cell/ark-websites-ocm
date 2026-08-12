@@ -182,16 +182,16 @@ export async function GET(request) {
     const websiteRequests = unresolvedRequests.filter((item) => item.type === "website" || item.source === "public-website");
     const openRequests = unresolvedRequests.filter((item) => item.type !== "website" && item.source !== "public-website");
 
-    const pendingAccounts = accountSnapshot.docs
+    const numberAssignments = accountSnapshot.docs
       .map((document) => ({ id: document.id, ...document.data() }))
-      .filter((item) => ["pending_admin_approval", "pending_verification", "approved_pending_payment"].includes(item.status))
+      .filter((item) => item.status === "active" && item.numberAssignmentStatus === "needed")
       .map((item) => ({
         uid: item.id,
         clientId: text(item.clientId),
         businessName: text(item.businessName || item.clientId),
         ownerName: text(item.ownerName),
         accountEmail: text(item.accountEmail).toLowerCase(),
-        status: text(item.status),
+        status: "needs_number",
         createdAt: iso(item.createdAt),
       }))
       .sort((a, b) => timestamp(a.createdAt) - timestamp(b.createdAt));
@@ -223,7 +223,7 @@ export async function GET(request) {
       generatedAt: new Date().toISOString(),
       openRequests,
       websiteRequests,
-      pendingAccounts,
+      numberAssignments,
       paymentIssues,
       deletionReview: paymentIssues.filter((item) => item.phase === "deletion-review"),
       stripe,
@@ -231,7 +231,7 @@ export async function GET(request) {
         customers: businesses.length,
         openRequests: openRequests.length,
         websiteRequests: websiteRequests.length,
-        pendingAccounts: pendingAccounts.length,
+        needsNumbers: numberAssignments.length,
         needsPayment: paymentIssues.length,
         deletionReview: paymentIssues.filter((item) => item.phase === "deletion-review").length,
       },

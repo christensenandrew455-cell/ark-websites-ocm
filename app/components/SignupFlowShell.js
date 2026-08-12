@@ -13,7 +13,7 @@ export default function SignupFlowShell({ children }) {
   const router = useRouter();
   const initialAuthenticatedRouteHandled = useRef(false);
   const { user, profile, isAdmin, isEmployee, loading } = useAuth();
-  const signupPage = routeMatches(pathname, ["/signup/status", "/signup/complete"]);
+  const signupPage = routeMatches(pathname, ["/signup/status", "/signup/complete", "/signup/return"]);
   const employeePendingPage = routeMatches(pathname, ["/employee/pending"]);
   const setupPage = routeMatches(pathname, ["/setup/business"]);
   const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/docs"]);

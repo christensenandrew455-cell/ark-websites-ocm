@@ -28,6 +28,11 @@ export async function requireAuthenticatedCustomer(request) {
         response: NextResponse.json({ error: "A customer account is required." }, { status: 403 }),
       };
     }
+    if (decodedToken.identityVerificationRequired === true && decodedToken.identityVerificationVerified !== true) {
+      return {
+        response: NextResponse.json({ error: "Verify your email and phone to continue.", code: "ACCOUNT_VERIFICATION_REQUIRED" }, { status: 403 }),
+      };
+    }
     return { decodedToken, clientId };
   } catch (error) {
     console.error("Unable to verify customer token", error);

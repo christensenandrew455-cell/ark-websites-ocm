@@ -55,5 +55,16 @@
 	<string>ARK Client Center can add customer appointments to your calendar when you choose.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>ARK Client Center can read and manage customer appointments in your calendar when you choose.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.arkwebsites.clientcenter</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>arkclientcenter</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

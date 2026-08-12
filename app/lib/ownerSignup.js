@@ -5,7 +5,6 @@ import { normalizeClientId, trimmedText } from "./valueUtils.js";
 export const OWNER_SIGNUP_DRAFT_KEY = "ark-owner-signup-draft-v2";
 export const OWNER_SIGNUP_DRAFT_VERSION = 2;
 export const OWNER_SIGNUP_DRAFT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-export const DASHBOARD_ONBOARDING_KEY = "ark-dashboard-onboarding-v1";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const PERIODS = new Set(["AM", "PM"]);

@@ -15,6 +15,13 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "AppPlugin",
+            dependencies: [
+                .product(name: "Capacitor", package: "capacitor-swift-pm")
+            ],
+            path: "Sources/AppPlugin"
+        ),
+        .target(
             name: "PushNotificationsPlugin",
             dependencies: [
                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
@@ -41,6 +48,7 @@ let package = Package(
         .target(
             name: "CapApp-SPM",
             dependencies: [
+                "AppPlugin",
                 "PushNotificationsPlugin",
                 "ContactsPlugin",
                 "CapacitorCalendarPlugin"

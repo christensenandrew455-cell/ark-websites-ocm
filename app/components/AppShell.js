@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import AccountVerificationGate from "./AccountVerificationGate";
+import GuidedOnboarding from "./GuidedOnboarding";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
 import HelpCenter from "./HelpCenter";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
@@ -87,7 +89,18 @@ function WorkspaceHeader({ profile, pathname, isEmployee, logout, admin = false 
   const subtitle = isEmployee && profile?.employeeName ? `${businessName} · ${profile.employeeName}` : businessName;
   const settingsHref = isEmployee ? "/employee/settings" : "/settings";
   const settingsActive = pathname.startsWith(settingsHref);
-  return <><header className="ark-workspace-header fixed inset-x-0 z-[60] border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-5 md:px-8 md:py-4"><div className="mx-auto flex max-w-6xl items-center justify-between gap-3"><div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{admin ? "Admin" : subtitle}</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5">Sign out</button>{!admin && <Link href={settingsHref} aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>}</div></div></header><div className="ark-workspace-header-spacer" aria-hidden="true" /></>;
+  return <>
+    <header className="ark-workspace-header fixed inset-x-0 z-[60] border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-5 md:px-8 md:py-4">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+        <div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{admin ? "Admin" : subtitle}</p></div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5">Sign out</button>
+          {!admin && <Link href={settingsHref} data-tour-id={!isEmployee ? "settings" : undefined} aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>}
+        </div>
+      </div>
+    </header>
+    <div className="ark-workspace-header-spacer" aria-hidden="true" />
+  </>;
 }
 
 function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout }) {
@@ -98,7 +111,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} isEmployee={false} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} isEmployee={false} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <GuidedOnboarding />}</>;
 }
 
 export default function AppShell({ children }) {
@@ -150,6 +163,7 @@ export default function AppShell({ children }) {
   if (!user && isPublic) return children;
   if (!user) return <LoadingScreen />;
   if (isAuthPublic) return children;
+  if (!isAdmin && !isEmployee && profile?.identityVerificationRequired === true && profile?.identityVerificationVerified !== true) return <AccountVerificationGate />;
 
   const signOutButton = <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">Sign out</button>;
 

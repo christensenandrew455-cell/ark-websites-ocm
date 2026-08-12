@@ -13,6 +13,11 @@ export async function requireUser(request) {
 
   try {
     const decodedToken = await getAdminAuth().verifyIdToken(token);
+    if (decodedToken.role === "customer" && decodedToken.identityVerificationRequired === true && decodedToken.identityVerificationVerified !== true) {
+      return {
+        response: NextResponse.json({ error: "Verify your email and phone to continue.", code: "ACCOUNT_VERIFICATION_REQUIRED" }, { status: 403 }),
+      };
+    }
     return { decodedToken };
   } catch (error) {
     console.error("Unable to verify user token", error);
