@@ -5,8 +5,8 @@ import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateOwnerSignup } from "../../../lib/ownerSignup";
 import { ownerSignupDigestMatches, ownerSignupUid } from "../../../lib/ownerSignupServer";
-import { pendingReferralFields, qualifyReferralAfterActivation, validateReferrerAccount } from "../../../lib/referrals";
-import { checkSignupAvailability, normalizeSignupPhone } from "../../../lib/signupAvailability";
+import { pendingReferralFields, validateReferrerAccount } from "../../../lib/referrals";
+import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupPhone } from "../../../lib/signupAvailability";
 import {
   BILLING_VERSION,
   MESSAGE_PARTS_PER_BUNDLE,
@@ -16,7 +16,6 @@ import {
   PER_EMPLOYEE_CENTS,
   PER_LEAD_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
-  ensureCustomerBillingSubscription,
 } from "../../../lib/stripeUsageBilling";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
@@ -33,13 +32,11 @@ function signupError(error) {
   if (message === "BUSINESS_TAKEN") return { status: 409, message: "That business name is already registered. Use a different business name." };
   if (message === "SELF_REFERRAL") return { status: 400, message: "A business cannot refer its own account." };
   if (message === "REFERRER_NOT_FOUND") return { status: 400, message: "That referral account ID is not an active ARK account." };
-  if (/private key|pem|credential|firebase admin/i.test(message)) return { status: 500, message: "Firebase Admin credentials are invalid. Check the Vercel Firebase variables, then redeploy." };
-  if (/stripe|api key|authentication|payment|card|invoice|subscription/i.test(message)) return { status: 500, message: "Stripe could not activate the monthly account. Check the payment method and Stripe configuration." };
   return { status: 500, message: "Unable to finish account setup right now." };
 }
 
 function compatibleReservation(snapshot, sessionId, uid) {
-  if (!snapshot.exists) return true;
+  if (!snapshot?.exists) return true;
   const data = snapshot.data();
   return text(data.signupSessionId) === sessionId || text(data.ownerUid || data.uid) === uid;
 }
@@ -51,12 +48,14 @@ async function existingCompletion({ auth, db, receiptRef, digest }) {
   if (text(receipt.signupDigest) !== digest) return { response: NextResponse.json({ error: "That payment session belongs to a different signup." }, { status: 403 }) };
   const uid = text(receipt.uid);
   const accountSnapshot = uid ? await db.collection("accounts").doc(uid).get() : null;
-  if (!uid || !accountSnapshot?.exists || accountSnapshot.data().status !== "active") return null;
+  if (!uid || !accountSnapshot?.exists) return null;
+  const account = accountSnapshot.data();
   return {
     response: NextResponse.json({
-      email: text(accountSnapshot.data().accountEmail),
-      clientId: text(accountSnapshot.data().clientId),
+      email: text(account.accountEmail),
+      clientId: text(account.clientId),
       token: await auth.createCustomToken(uid),
+      status: text(account.status),
       completed: true,
     }),
   };
@@ -66,7 +65,7 @@ export async function POST(request) {
   let createdUser = false;
   let createdUid = "";
   try {
-    if (!process.env.STRIPE_SECRET_KEY) return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 500 });
+    if (!process.env.STRIPE_SECRET_KEY) return NextResponse.json({ error: "Unable to finish account setup right now." }, { status: 500 });
     const { sessionId, signup: rawSignup } = await request.json();
     if (!sessionId || !rawSignup) return NextResponse.json({ error: "The payment session or signup information is missing." }, { status: 400 });
 
@@ -85,27 +84,29 @@ export async function POST(request) {
     const setupIntent = session.setup_intent;
     const setupIntentStatus = typeof setupIntent === "string" ? "" : text(setupIntent?.status);
     if (session.mode !== "setup" || session.status !== "complete" || !setupIntent || setupIntentStatus !== "succeeded") {
-      return NextResponse.json({ error: "Stripe has not confirmed the payment method." }, { status: 402 });
+      return NextResponse.json({ error: "The payment method has not been confirmed yet." }, { status: 402 });
     }
 
     const customerId = typeof session.customer === "string" ? session.customer : text(session.customer?.id);
-    const setupIntentId = typeof setupIntent === "string" ? setupIntent : text(setupIntent.id);
+    const setupIntentId = typeof setupIntent === "string" ? "" : text(setupIntent.id);
     const paymentMethodId = typeof setupIntent === "string"
       ? ""
       : typeof setupIntent.payment_method === "string"
         ? setupIntent.payment_method
         : text(setupIntent.payment_method?.id);
-    if (!customerId || !paymentMethodId) return NextResponse.json({ error: "Stripe did not return the saved payment method." }, { status: 402 });
+    if (!customerId || !paymentMethodId) return NextResponse.json({ error: "The saved payment method could not be confirmed." }, { status: 402 });
 
     const db = getAdminDb();
     const auth = getAdminAuth();
     const uid = ownerSignupUid(sessionId);
     createdUid = uid;
     const accountPhoneNormalized = normalizeSignupPhone(signup.accountPhone);
+    const phoneRegistryId = accountPhoneRegistryId(accountPhoneNormalized);
     const digest = text(metadata.signupDigest);
     const accountRef = db.collection("accounts").doc(uid);
     const businessRef = db.collection("businesses").doc(clientId);
     const registryRef = db.collection("businessNameRegistry").doc(clientId);
+    const phoneRegistryRef = db.collection("accountPhoneRegistry").doc(phoneRegistryId);
     const receiptRef = db.collection("signupSessions").doc(sessionId);
     const completed = await existingCompletion({ auth, db, receiptRef, digest });
     if (completed) return completed.response;
@@ -113,10 +114,11 @@ export async function POST(request) {
     const [businessSnapshot, registrySnapshot, availability, userByUid] = await Promise.all([
       businessRef.get(),
       registryRef.get(),
-      checkSignupAvailability({ auth, db, accountEmail: signup.accountEmail, accountPhone: signup.accountPhone, allowedUid: uid }),
+      checkSignupAvailability({ auth, db, businessName: signup.businessName, accountEmail: signup.accountEmail, accountPhone: signup.accountPhone, allowedUid: uid }),
       auth.getUser(uid).catch(() => null),
     ]);
     if (!compatibleReservation(businessSnapshot, sessionId, uid) || !compatibleReservation(registrySnapshot, sessionId, uid)) throw new Error("BUSINESS_TAKEN");
+    if (availability.businessNameInUse) throw new Error("BUSINESS_TAKEN");
     if (availability.emailInUse) throw new Error("EMAIL_TAKEN");
     if (availability.phoneInUse) throw new Error("PHONE_TAKEN");
     if (userByUid && text(userByUid.email).toLowerCase() !== signup.accountEmail) throw new Error("EMAIL_TAKEN");
@@ -128,8 +130,13 @@ export async function POST(request) {
     }
 
     await db.runTransaction(async (transaction) => {
-      const [business, registry] = await Promise.all([transaction.get(businessRef), transaction.get(registryRef)]);
+      const [business, registry, phoneRegistry] = await Promise.all([
+        transaction.get(businessRef),
+        transaction.get(registryRef),
+        transaction.get(phoneRegistryRef),
+      ]);
       if (!compatibleReservation(business, sessionId, uid) || !compatibleReservation(registry, sessionId, uid)) throw new Error("BUSINESS_TAKEN");
+      if (!compatibleReservation(phoneRegistry, sessionId, uid)) throw new Error("PHONE_TAKEN");
       const reservation = {
         uid,
         ownerUid: uid,
@@ -141,12 +148,15 @@ export async function POST(request) {
         accountPhone: signup.accountPhone,
         accountPhoneNormalized,
         signupSessionId: sessionId,
-        status: "activating",
+        status: "pending_admin_approval",
+        verificationStatus: "pending",
+        paymentSetupStatus: "complete",
         updatedAt: FieldValue.serverTimestamp(),
       };
       transaction.set(accountRef, reservation, { merge: true });
       transaction.set(businessRef, reservation, { merge: true });
       transaction.set(registryRef, { clientId, businessName: signup.businessName, ownerUid: uid, signupSessionId: sessionId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      transaction.set(phoneRegistryRef, { uid, ownerUid: uid, clientId, accountPhoneNormalized, signupSessionId: sessionId, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     });
 
     let paymentMethodLabel = "Card saved in Stripe";
@@ -156,18 +166,6 @@ export async function POST(request) {
       paymentMethodLabel = `${brand.charAt(0).toUpperCase()}${brand.slice(1)} ending in ${paymentMethod.card.last4}`;
     }
 
-    const accountSnapshot = await accountRef.get();
-    const subscription = await ensureCustomerBillingSubscription({
-      stripe,
-      db,
-      clientId,
-      customerId,
-      paymentMethodId,
-      businessName: signup.businessName,
-      uid,
-      existingSubscriptionId: text(accountSnapshot.exists ? accountSnapshot.data().stripeSubscriptionId : ""),
-      persist: false,
-    });
     const messagesEnabled = false;
     const employeesEnabled = false;
     const employeeMessagingEnabled = false;
@@ -207,8 +205,8 @@ export async function POST(request) {
       employeeMessagingEnabled,
       employeeVisibility: DEFAULT_EMPLOYEE_VISIBILITY,
       ...pendingReferralFields(referrer),
-      status: "active",
-      verificationStatus: "not_required",
+      status: "pending_admin_approval",
+      verificationStatus: "pending",
       paymentSetupStatus: "complete",
       businessSetupComplete: true,
       termsAccepted: true,
@@ -224,10 +222,8 @@ export async function POST(request) {
       stripeSetupIntentId: setupIntentId,
       stripePaymentMethodId: paymentMethodId,
       stripeCheckoutSessionId: sessionId,
-      stripeSubscriptionId: subscription.id,
-      stripeSubscriptionStatus: subscription.status,
       paymentMethodLabel,
-      activatedAt: FieldValue.serverTimestamp(),
+      submittedForApprovalAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -239,10 +235,11 @@ export async function POST(request) {
     batch.set(accountRef, accountData, { merge: true });
     batch.set(businessRef, accountData, { merge: true });
     batch.set(registryRef, { clientId, businessName: signup.businessName, ownerUid: uid, signupSessionId: sessionId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(phoneRegistryRef, { uid, ownerUid: uid, clientId, accountPhoneNormalized, signupSessionId: sessionId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     batch.set(clientRef, {
       businessName: signup.businessName,
       ownerUid: uid,
-      status: "active",
+      status: "pending_admin_approval",
       businessSetupComplete: true,
       accountType: ACCOUNT_TYPES.OWNER,
       ...billingFields,
@@ -264,7 +261,7 @@ export async function POST(request) {
       AccountEmail: signup.accountEmail,
       AccountPhone: signup.accountPhone,
       BillingEmail: signup.accountEmail,
-      BillingStatus: "Active",
+      BillingStatus: "Pending approval",
       AccountType: ACCOUNT_TYPES.OWNER,
       BillingPlan: "standard",
       BillingPlanName: "ARK AI Receptionist",
@@ -284,8 +281,6 @@ export async function POST(request) {
       EmployeeMessagingEnabled: employeeMessagingEnabled,
       PaymentMethodLabel: paymentMethodLabel,
       StripeCustomerId: customerId,
-      StripeSubscriptionId: subscription.id,
-      StripeSubscriptionStatus: subscription.status,
       TermsAccepted: true,
       PrivacyAccepted: true,
       TermsVersion: signup.termsVersion,
@@ -298,7 +293,7 @@ export async function POST(request) {
     batch.set(receptionistSettingsRef, {
       clientId,
       businessSetupComplete: true,
-      enabled: true,
+      enabled: false,
       businessName: signup.businessName,
       ownerName: signup.ownerName,
       businessPhone: signup.accountPhone,
@@ -317,41 +312,17 @@ export async function POST(request) {
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-
-    const adminClientId = text(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
-    if (adminClientId && clientId !== adminClientId) {
-      batch.set(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId), {
-        Name: signup.ownerName,
-        BusinessName: signup.businessName,
-        Phone: signup.accountPhone,
-        Email: signup.accountEmail,
-        Address: signup.businessName,
-        PropertyKey: `business-${clientId}`,
-        Job: "ARK AI Receptionist account",
-        BestContactMethod: signup.accountPhone ? "Call" : "Email",
-        Notes: `ARK AI Receptionist customer account for ${signup.businessName}.`,
-        source: "owner-signup",
-        RelatedBusinessClientId: clientId,
-        AccountStatus: "active",
-        BillingPlan: "standard",
-        BillingPlanName: "ARK AI Receptionist",
-        TermsAccepted: true,
-        PrivacyAccepted: true,
-        TermsVersion: signup.termsVersion,
-        PrivacyVersion: signup.privacyVersion,
-        LegalAcceptedAt: acceptedAt,
-        ContactNames: signup.ownerName ? [signup.ownerName] : [],
-        Phones: signup.accountPhone ? [signup.accountPhone] : [],
-        Emails: signup.accountEmail ? [signup.accountEmail] : [],
-        currentStage: "clients",
-        TotalJobs: 1,
-        RepeatJobs: 0,
-        createdAt: FieldValue.serverTimestamp(),
-        movedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
-    batch.set(receiptRef, { email: signup.accountEmail, clientId, uid, signupDigest: digest, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", completed: true, stripeSubscriptionId: subscription.id, createdAt: FieldValue.serverTimestamp() });
+    batch.set(receiptRef, {
+      email: signup.accountEmail,
+      clientId,
+      uid,
+      signupDigest: digest,
+      accountType: ACCOUNT_TYPES.OWNER,
+      billingPlan: "standard",
+      status: "pending_admin_approval",
+      completed: true,
+      createdAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     await batch.commit();
 
     await auth.setCustomUserClaims(uid, {
@@ -359,7 +330,7 @@ export async function POST(request) {
       accountType: ACCOUNT_TYPES.OWNER,
       businessRole: "owner",
       clientId,
-      accountStatus: "active",
+      accountStatus: "pending_admin_approval",
       billingPlan: "standard",
       messagesEnabled,
       employeesEnabled,
@@ -369,10 +340,12 @@ export async function POST(request) {
       termsVersion: signup.termsVersion,
       privacyVersion: signup.privacyVersion,
     });
-    await stripe.customers.update(customerId, { email: signup.accountEmail, name: signup.ownerName, phone: signup.accountPhone, metadata: { uid, clientId, businessName: signup.businessName, billingPlan: "standard", accountType: ACCOUNT_TYPES.OWNER } }).catch((error) => console.error("Unable to update Stripe customer metadata", error));
-    const referral = await qualifyReferralAfterActivation({ db, stripe, referredClientId: clientId, referredUid: uid }).catch((error) => {
-      console.error("Unable to qualify signup referral; daily billing sync will retry", error);
-      return { status: "pending_activation" };
+    await stripe.customers.update(customerId, {
+      email: signup.accountEmail,
+      name: signup.ownerName,
+      phone: signup.accountPhone,
+      invoice_settings: { default_payment_method: paymentMethodId },
+      metadata: { uid, clientId, businessName: signup.businessName, billingPlan: "standard", accountType: ACCOUNT_TYPES.OWNER, accountStatus: "pending_admin_approval" },
     });
 
     return NextResponse.json({
@@ -381,12 +354,13 @@ export async function POST(request) {
       token: await auth.createCustomToken(uid),
       accountType: ACCOUNT_TYPES.OWNER,
       billingPlan: "standard",
+      status: "pending_admin_approval",
       completed: true,
-      referralStatus: referral.status,
+      referralStatus: referrer.referrerClientId ? "pending_activation" : "none",
     });
   } catch (error) {
     console.error("Unable to finalize payment-gated owner signup", error);
-    if (createdUser && createdUid && String(error?.message || "") === "BUSINESS_TAKEN") await getAdminAuth().deleteUser(createdUid).catch(() => null);
+    if (createdUser && createdUid && ["BUSINESS_TAKEN", "PHONE_TAKEN", "EMAIL_TAKEN"].includes(String(error?.message || ""))) await getAdminAuth().deleteUser(createdUid).catch(() => null);
     const safe = signupError(error);
     return NextResponse.json({ error: safe.message }, { status: safe.status });
   }

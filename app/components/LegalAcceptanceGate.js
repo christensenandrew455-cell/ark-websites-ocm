@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
 import { useAuth } from "./AuthProvider";
+import { ownerFacingError } from "../lib/userFacingError";
 
 export default function LegalAcceptanceGate() {
   const { user, profile, refreshProfile, logout } = useAuth();
@@ -47,7 +48,7 @@ export default function LegalAcceptanceGate() {
       await refreshProfile();
     } catch (acceptanceError) {
       console.error(acceptanceError);
-      setError(acceptanceError.message || "The policy acceptance could not be saved. Try again.");
+      setError(ownerFacingError(acceptanceError));
     } finally {
       setSaving(false);
     }

@@ -7,10 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import { auth } from "../../lib/firebase";
 import { readApiJson } from "../../lib/apiResponse";
-import { DASHBOARD_ONBOARDING_KEY } from "../../lib/ownerSignup";
 import { clearOwnerSignupDraft, loadOwnerSignupDraft } from "../../lib/ownerSignupStorage";
-
-const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
+import { publicFormError } from "../../lib/userFacingError";
 
 export default function SignupCompletePage() {
   const router = useRouter();
@@ -23,7 +21,7 @@ export default function SignupCompletePage() {
   useEffect(() => {
     if (loading || started.current) return;
     const sessionId = new URLSearchParams(window.location.search).get("session_id");
-    if (!sessionId) { setError("Stripe did not return a payment-setup session."); return; }
+    if (!sessionId) { setError("Something went wrong. Reload and try again."); return; }
     const draft = loadOwnerSignupDraft();
     setHasDraft(Boolean(draft));
     if (!draft && !user) { setError("The unfinished signup was discarded before the payment method could create an account."); return; }
@@ -38,27 +36,24 @@ export default function SignupCompletePage() {
             body: JSON.stringify({ sessionId, signup: draft }),
           });
           const data = await readApiJson(response, "Unable to finish account setup.");
-          setStatus("Payment method saved. Creating your ARK account…");
+          setStatus("Payment method saved. Sending your account for approval…");
           const credential = await signInWithCustomToken(auth, data.token);
           await credential.user.getIdToken(true);
-          window.localStorage.setItem(PHONE_SETUP_PENDING_KEY, "true");
-          window.localStorage.setItem(DASHBOARD_ONBOARDING_KEY, "pending");
           clearOwnerSignupDraft();
           await refreshProfile();
-          router.replace("/");
+          router.replace("/signup/status");
           return;
         }
 
         const token = await user.getIdToken(true);
         const response = await fetch("/api/signup/complete", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ sessionId }) });
         await readApiJson(response, "Unable to finish account setup.");
-        setStatus("Payment method saved. Opening account setup…");
-        window.localStorage.setItem(PHONE_SETUP_PENDING_KEY, "true");
+        setStatus("Payment method saved. Sending your account for approval…");
         await user.getIdToken(true);
         await refreshProfile();
-        router.replace("/setup/business");
+        router.replace("/signup/status");
       } catch (completeError) {
-        setError(completeError.message);
+        setError(publicFormError(completeError, "Unable to finish account setup right now."));
       }
     })();
   }, [loading, refreshProfile, router, user]);

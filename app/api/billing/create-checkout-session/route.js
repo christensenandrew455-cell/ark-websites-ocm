@@ -18,9 +18,7 @@ function missingServerVariables() {
 }
 
 function safeConfigurationError(error) {
-  const message = String(error?.message || "");
-  if (/private key|pem|credential|firebase admin/i.test(message)) return "Firebase Admin credentials are invalid. Check the Vercel Firebase variables, then redeploy.";
-  if (/stripe|api key|authentication/i.test(message)) return "The Stripe secret key is invalid or belongs to the wrong Stripe mode. Check STRIPE_SECRET_KEY in Vercel, then redeploy.";
+  void error;
   return "Unable to start secure card setup right now.";
 }
 
@@ -144,13 +142,13 @@ async function startLegacySignup(request) {
 
 export async function GET() {
   const missing = missingServerVariables();
-  return NextResponse.json({ ok: missing.length === 0, service: "signup-checkout", missing }, { status: missing.length === 0 ? 200 : 503 });
+  return NextResponse.json({ ok: missing.length === 0, service: "signup-checkout" }, { status: missing.length === 0 ? 200 : 503 });
 }
 
 export async function POST(request) {
   try {
     const missing = missingServerVariables();
-    if (missing.length) return NextResponse.json({ error: `Server setup is incomplete. Missing Vercel variables: ${missing.join(", ")}.` }, { status: 503 });
+    if (missing.length) return NextResponse.json({ error: "Unable to start secure card setup right now." }, { status: 503 });
     const body = await request.json().catch(() => ({}));
     return await (body?.signup ? startPaymentGatedSignup(request, body.signup) : startLegacySignup(request));
   } catch (error) {

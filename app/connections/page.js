@@ -49,6 +49,17 @@ function formatMoney(amount = 0, currency = "usd") {
   }
 }
 
+function formatPhoneInput(value) {
+  const digits = String(value || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function completePhone(value) {
+  return String(value || "").replace(/\D/g, "").length === 10;
+}
+
 function Field({ label, hint = "", children, wide = false }) {
   return (
     <label className={wide ? "block md:col-span-2" : "block"}>
@@ -126,10 +137,54 @@ function AccountSection({ businesses, onOpen, searchQuery, onSearchChange }) {
   );
 }
 
+function ApprovalSection({ applications, phoneNumbers, busyId, onPhoneChange, onAccept, onDecline }) {
+  return (
+    <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mb-6 sm:rounded-3xl sm:p-6">
+      <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">Waiting for Approval</h2><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Review the submitted account, assign a receptionist number with the customer&apos;s area code, then accept it.</p></div><CountBadge value={applications.length} /></div>
+      <div className="mt-4 space-y-3">
+        {applications.map((application) => {
+          const busy = busyId === application.clientId;
+          return (
+            <article key={application.clientId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h3 className="text-lg font-black">{application.businessName}</h3><p className="mt-0.5 text-xs font-bold text-slate-500">{application.ownerName} · {application.clientId}</p></div>
+                <Pill>Card Added</Pill>
+              </div>
+              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Owner phone</dt><dd className="mt-1 text-lg font-black">{application.accountPhone}</dd></div>
+                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Email</dt><dd className="mt-1 break-all font-bold">{application.accountEmail}</dd></div>
+                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Payment method</dt><dd className="mt-1 font-bold">{application.paymentMethodLabel || "Card saved"}</dd></div>
+                <div><dt className="text-[10px] font-black uppercase tracking-wide text-slate-500">Submitted</dt><dd className="mt-1 font-bold">{formatDate(application.submittedAt) || "Recently"}</dd></div>
+              </dl>
+              <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                <summary className="cursor-pointer text-xs font-black text-slate-800">View submitted business information</summary>
+                <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+                  <div><p className="font-black uppercase text-slate-500">Service areas</p><p className="mt-1 leading-5">{application.serviceAreas.join(", ") || "None"}</p></div>
+                  <div><p className="font-black uppercase text-slate-500">Services</p><p className="mt-1 leading-5">{application.services.join(", ") || "None"}</p></div>
+                  <div><p className="font-black uppercase text-slate-500">Time zone</p><p className="mt-1 leading-5">{application.timeZone || "None"}</p></div>
+                  <div><p className="font-black uppercase text-slate-500">Estimate days</p><p className="mt-1 capitalize leading-5">{application.estimateWeekdays.join(", ") || "None selected"}</p></div>
+                  <div><p className="font-black uppercase text-slate-500">Estimate times</p><p className="mt-1 leading-5">{application.earliestEstimateStart && application.latestEstimateStart ? `${application.earliestEstimateStart} to ${application.latestEstimateStart}` : "No set hours"}</p></div>
+                  {application.businessInformation.length > 0 && <div className="sm:col-span-2"><p className="font-black uppercase text-slate-500">Additional information</p><div className="mt-1 space-y-1">{application.businessInformation.map((item) => <p key={`${item.title}:${item.info}`}><strong>{item.title}:</strong> {item.info}</p>)}</div></div>}
+                </div>
+              </details>
+              <label className="mt-4 block"><span className="text-xs font-black text-slate-800">Receptionist number · must start with area code {application.requestedAreaCode}</span><input value={phoneNumbers[application.clientId] || ""} onChange={(event) => onPhoneChange(application.clientId, formatPhoneInput(event.target.value))} inputMode="tel" placeholder={`(${application.requestedAreaCode}) 555-0000`} className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none focus:border-slate-950" /></label>
+              <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" disabled={busy || !completePhone(phoneNumbers[application.clientId])} onClick={() => onAccept(application)} className="rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white disabled:opacity-40">{busy ? "Working…" : "Accept Person"}</button><button type="button" disabled={busy} onClick={() => onDecline(application)} className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-xs font-black text-red-700 disabled:opacity-40">Decline and Delete</button></div>
+            </article>
+          );
+        })}
+        {applications.length === 0 && <p className="rounded-xl border border-slate-200 p-5 text-center text-sm font-semibold text-slate-500">No accounts are waiting for approval.</p>}
+      </div>
+    </section>
+  );
+}
+
 export default function ConnectionsPage() {
   const router = useRouter();
   const { user, isAdmin, loading } = useAuth();
   const [businesses, setBusinesses] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [applicationPhones, setApplicationPhones] = useState({});
+  const [applicationBusy, setApplicationBusy] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [form, setForm] = useState(EMPTY_ACCOUNT);
@@ -162,9 +217,15 @@ export default function ConnectionsPage() {
   }, [user]);
 
   const loadBusinesses = useCallback(async (preferredId = "") => {
-    const data = await adminFetch("/api/admin/connections");
+    const [data, applicationData] = await Promise.all([
+      adminFetch("/api/admin/connections"),
+      adminFetch("/api/admin/signup-applications"),
+    ]);
     const next = data.businesses || [];
     setBusinesses(next);
+    const nextApplications = applicationData.applications || [];
+    setApplications(nextApplications);
+    setApplicationPhones((current) => Object.fromEntries(nextApplications.map((application) => [application.clientId, current[application.clientId] || (application.requestedAreaCode ? `(${application.requestedAreaCode}) ` : "")])));
     const requested = preferredId || new URLSearchParams(window.location.search).get("clientId") || "";
     setSelectedId(requested && next.some((business) => business.clientId === requested) ? requested : "");
   }, [adminFetch]);
@@ -324,6 +385,44 @@ export default function ConnectionsPage() {
     }
   }
 
+  async function acceptApplication(application) {
+    if (applicationBusy) return;
+    setApplicationBusy(application.clientId);
+    setError("");
+    setMessage("");
+    try {
+      await adminFetch("/api/admin/signup-applications", {
+        method: "POST",
+        body: JSON.stringify({ clientId: application.clientId, action: "accept", receptionistPhone: applicationPhones[application.clientId] || "" }),
+      });
+      setApplicationPhones((current) => { const next = { ...current }; delete next[application.clientId]; return next; });
+      await loadBusinesses(application.clientId);
+      setMessage(`${application.businessName} was accepted and activated.`);
+    } catch (approvalError) {
+      setError(approvalError.message);
+    } finally {
+      setApplicationBusy("");
+    }
+  }
+
+  async function declineApplication(application) {
+    if (applicationBusy) return;
+    const confirmed = await requestAppConfirmation({ title: `Decline ${application.businessName}?`, message: "The pending account, saved payment method, and submitted data will be permanently deleted.", confirmLabel: "Decline and Delete" });
+    if (!confirmed) return;
+    setApplicationBusy(application.clientId);
+    setError("");
+    setMessage("");
+    try {
+      await adminFetch("/api/admin/signup-applications", { method: "POST", body: JSON.stringify({ clientId: application.clientId, action: "decline" }) });
+      await loadBusinesses();
+      setMessage(`${application.businessName} was declined and deleted.`);
+    } catch (approvalError) {
+      setError(approvalError.message);
+    } finally {
+      setApplicationBusy("");
+    }
+  }
+
   if (loading || isLoading || !isAdmin) return <main className="grid min-h-[70vh] place-items-center p-6 text-sm font-semibold text-slate-500">Opening accounts…</main>;
 
   return (
@@ -335,6 +434,8 @@ export default function ConnectionsPage() {
         </div>
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
         {message && <div className="mb-4 rounded-xl border border-slate-300 bg-white p-3 text-sm font-bold text-slate-800">{message}</div>}
+
+        {!showCreate && !selectedId && <ApprovalSection applications={applications} phoneNumbers={applicationPhones} busyId={applicationBusy} onPhoneChange={(clientId, value) => setApplicationPhones((current) => ({ ...current, [clientId]: value }))} onAccept={acceptApplication} onDecline={declineApplication} />}
 
         {showCreate && (
           <form onSubmit={createCustomer} className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8">

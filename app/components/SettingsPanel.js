@@ -13,6 +13,7 @@ import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistReque
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
 import { db } from "../lib/firebase";
 import { validateReceptionistBusinessInformation } from "../lib/ownerSignup";
+import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
 const DEFAULT_SETTINGS = { BillingStatus: "", PaymentMethodLabel: "", StripeCustomerId: "" };
 const THEME_KEY = "ark-theme-v1";
@@ -88,8 +89,8 @@ export default function SettingsPanel({ setupMode = false }) {
   }, [activeSection, setupMode]);
 
   useEffect(() => {
-    if (!clientId) { setError("This account does not have a business assigned yet."); setIsLoading(false); return undefined; }
-    return onSnapshot(doc(db, "ocmClients", clientId, "settings", "account"), (snapshot) => setAccountSettings({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) }), () => setError("Could not load this account's billing information."));
+    if (!clientId) { setError(ownerFacingError()); setIsLoading(false); return undefined; }
+    return onSnapshot(doc(db, "ocmClients", clientId, "settings", "account"), (snapshot) => setAccountSettings({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) }), (snapshotError) => setError(ownerFacingError(snapshotError)));
   }, [clientId]);
 
   useEffect(() => {
@@ -118,7 +119,7 @@ export default function SettingsPanel({ setupMode = false }) {
           canDisableMessages: featureData.canDisableMessages !== false,
         });
       }
-    }).catch((loadError) => active && setError(loadError.message)).finally(() => active && setIsLoading(false));
+    }).catch((loadError) => active && setError(ownerFacingError(loadError))).finally(() => active && setIsLoading(false));
     return () => { active = false; };
   }, [clientId, isAdmin, setupMode, user]);
 
@@ -133,7 +134,7 @@ export default function SettingsPanel({ setupMode = false }) {
       setBillingSummary(data);
       setError("");
     } catch (billingError) {
-      setError(billingError.message || "Could not refresh this month's billing estimate.");
+      setError(ownerFacingError(billingError));
     } finally {
       setIsLoadingBilling(false);
     }
@@ -172,7 +173,7 @@ export default function SettingsPanel({ setupMode = false }) {
       await refreshProfile();
       return true;
     } catch (saveError) {
-      setError(saveError.message);
+      setError(publicFormError(saveError));
       return false;
     } finally { setIsSaving(false); }
   }
@@ -219,7 +220,7 @@ export default function SettingsPanel({ setupMode = false }) {
       await refreshProfile();
       return true;
     } catch (featureError) {
-      setError(featureError.message);
+      setError(ownerFacingError(featureError));
       return false;
     } finally { setIsSavingCustomization(false); }
   }
@@ -236,7 +237,7 @@ export default function SettingsPanel({ setupMode = false }) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.url) throw new Error(data.error || "Could not open secure billing settings.");
       window.location.assign(data.url);
-    } catch (billingError) { setError(billingError.message || "Could not open secure billing settings."); setIsOpeningBilling(false); }
+    } catch (billingError) { setError(ownerFacingError(billingError)); setIsOpeningBilling(false); }
   }
   async function downloadClientData() {
     if (!user || isDownloading) return;
@@ -258,7 +259,7 @@ export default function SettingsPanel({ setupMode = false }) {
       const fileName = disposition.match(/filename="([^"]+)"/)?.[1] || suggestedName;
       const result = await saveClientFile({ blob, fileName, destination });
       if (result?.saved) setDownloadNotice("Client data saved.");
-    } catch (downloadError) { setError(downloadError.message || "Client data could not be downloaded."); }
+    } catch (downloadError) { setError(ownerFacingError(downloadError)); }
     finally { setIsDownloading(false); }
   }
   async function deleteAccount() {
@@ -271,7 +272,7 @@ export default function SettingsPanel({ setupMode = false }) {
       if (!response.ok) throw new Error(data.error || "Could not delete the account.");
       await logout().catch(() => null);
       router.replace("/signup");
-    } catch (deleteError) { setError(deleteError.message); setIsDeleting(false); }
+    } catch (deleteError) { setError(ownerFacingError(deleteError)); setIsDeleting(false); }
   }
 
   if (isAdmin) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening administrator dashboard…</main>;

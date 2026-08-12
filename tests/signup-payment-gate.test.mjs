@@ -7,7 +7,9 @@ import {
   validateOwnerSignup,
 } from "../app/lib/ownerSignup.js";
 import { businessInformationText, normalizeBusinessInformation } from "../app/lib/receptionistBusinessInformation.js";
+import { ownerFacingError, publicFormError } from "../app/lib/userFacingError.js";
 import {
+  accountPhoneRegistryId,
   normalizeSignupPhone,
   signupAvailabilityMessage,
   signupPhoneVariants,
@@ -135,9 +137,18 @@ test("signup detects equivalent phone formats and reports duplicate contacts cle
   const variants = signupPhoneVariants("+1 978 555 1212");
   assert.ok(variants.includes("(978) 555-1212"));
   assert.ok(variants.includes("978-555-1212"));
+  assert.equal(accountPhoneRegistryId("(978) 555-1212"), "19785551212");
+  assert.equal(signupAvailabilityMessage({ businessNameInUse: true, emailInUse: false, phoneInUse: false }), "That business name is already registered. Use a different business name.");
   assert.equal(signupAvailabilityMessage({ emailInUse: true, phoneInUse: false }), "That email address is already registered.");
   assert.equal(signupAvailabilityMessage({ emailInUse: false, phoneInUse: true }), "That phone number is already registered.");
   assert.equal(signupAvailabilityMessage({ emailInUse: true, phoneInUse: true }), "That email address and phone number are already registered.");
+});
+
+test("customer-facing errors never expose Firebase or deployment internals", () => {
+  assert.equal(ownerFacingError(new Error("Firebase: Error (auth/network-request-failed).")), "No internet connection. Reload and try again.");
+  assert.equal(ownerFacingError(new Error("Firebase permission-denied")), "Something went wrong. Reload and try again.");
+  assert.equal(publicFormError(new Error("Firebase Admin credentials are invalid"), "Unable to continue."), "Unable to continue.");
+  assert.equal(publicFormError(new Error("That email address is already registered.")), "That email address is already registered.");
 });
 
 test("the signed-out draft can reach business information without being forced to login", async () => {
@@ -250,17 +261,60 @@ test("employees skip owner-only onboarding, payment, and referrals", async () =>
   assert.ok(shellSource.includes("setupPage && user && (isAdmin || isEmployee)"));
 });
 
-test("a referral qualifies only after an active paid subscription exists", async () => {
-  const [finalizeSource, referralSource, billingSource] = await Promise.all([
+test("admin approval starts billing before activating the account or qualifying a referral", async () => {
+  const [finalizeSource, approvalSource, referralSource, billingSource] = await Promise.all([
     readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/signup-applications/route.js", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/referrals.js", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/stripeUsageBilling.js", import.meta.url), "utf8"),
   ]);
-  const subscriptionCreated = finalizeSource.indexOf("const subscription = await ensureCustomerBillingSubscription");
-  const referralQualified = finalizeSource.indexOf("qualifyReferralAfterActivation", subscriptionCreated);
+  assert.ok(finalizeSource.includes('status: "pending_admin_approval"'));
+  assert.equal(finalizeSource.includes("ensureCustomerBillingSubscription"), false);
+  assert.equal(finalizeSource.includes("qualifyReferralAfterActivation"), false);
+  const subscriptionCreated = approvalSource.indexOf("const subscription = await ensureCustomerBillingSubscription");
+  const activeAccount = approvalSource.indexOf('status: "active"', subscriptionCreated);
+  const referralQualified = approvalSource.indexOf("qualifyReferralAfterActivation", activeAccount);
   assert.ok(subscriptionCreated >= 0 && referralQualified > subscriptionCreated);
+  assert.ok(activeAccount > subscriptionCreated && referralQualified > activeAccount);
+  assert.ok(approvalSource.includes('subscription.status !== "active"'));
+  assert.ok(approvalSource.includes("Accept Person") === false);
   assert.ok(billingSource.includes('payment_behavior: "error_if_incomplete"'));
   assert.ok(referralSource.includes('paymentSetupStatus !== "complete"'));
   assert.ok(referralSource.includes('subscriptionStatusForReferredAccount !== "active"'));
   assert.ok(referralSource.includes('referralStatus: "pending_payment"'));
+});
+
+test("signup keeps the account-type choices but removes the blue instructional spiel", async () => {
+  const source = await readFile(new URL("../app/signup/page.js", import.meta.url), "utf8");
+  assert.ok(source.includes("Choose an account type"));
+  assert.ok(source.includes("Owner account"));
+  assert.ok(source.includes("Employee account"));
+  assert.equal(source.includes("Enter the business and account information below"), false);
+  assert.equal(source.includes("Owner approval required"), false);
+  assert.equal(source.includes("bg-indigo-50 p-4 text-sm"), false);
+});
+
+test("pending approvals require a same-area-code receptionist number", async () => {
+  const [approvalSource, connectionsSource] = await Promise.all([
+    readFile(new URL("../app/api/admin/signup-applications/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/connections/page.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(approvalSource.includes("assignedAreaCode !== ownerAreaCode"));
+  assert.ok(approvalSource.includes("connectionPhoneRegistry"));
+  assert.ok(connectionsSource.includes("Accept Person"));
+  assert.ok(connectionsSource.includes("View submitted business information"));
+});
+
+test("owner deletion uses the shared full-account cascade and stores no deletion audit", async () => {
+  const [ownerDeleteSource, lifecycleSource] = await Promise.all([
+    readFile(new URL("../app/api/account/delete/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/customerLifecycle.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(ownerDeleteSource.includes("deleteCustomerPermanently"));
+  assert.ok(lifecycleSource.includes("stripe.customers.del"));
+  assert.ok(lifecycleSource.includes("accountPhoneRegistry"));
+  assert.ok(lifecycleSource.includes("connectionPhoneRegistry"));
+  assert.ok(lifecycleSource.includes("messagingComplianceEvents"));
+  assert.ok(lifecycleSource.includes("db.recursiveDelete(businessRef)"));
+  assert.equal(ownerDeleteSource.includes("deletedAccountAudit"), false);
 });

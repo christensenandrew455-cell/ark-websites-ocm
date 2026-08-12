@@ -1,5 +1,9 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { getAdminAuth, getAdminDb } from "./firebase-admin";
+import Stripe from "stripe";
+import { getAdminAuth, getAdminBucket, getAdminDb } from "./firebase-admin";
+import { accountPhoneRegistryId } from "./signupAvailability";
+import { missingStripeResource } from "./stripeUsageBilling";
+import { normalizeClientId } from "./valueUtils";
 
 function text(value) {
   return String(value || "").trim();
@@ -101,29 +105,129 @@ async function deleteQueryDocuments(query) {
   }
 }
 
+async function deleteStripeAccount(business) {
+  const customerId = text(business.stripeCustomerId);
+  const subscriptionId = text(business.stripeSubscriptionId);
+  if (!customerId && !subscriptionId) return;
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error("Stripe is required to remove this account's billing data.");
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  if (customerId) {
+    try {
+      await stripe.customers.del(customerId);
+      return;
+    } catch (error) {
+      if (!missingStripeResource(error)) throw error;
+    }
+  }
+  if (subscriptionId) {
+    try {
+      await stripe.subscriptions.cancel(subscriptionId);
+    } catch (error) {
+      if (!missingStripeResource(error)) throw error;
+    }
+  }
+}
+
+async function deleteSupportRequests(db, clientId) {
+  const snapshot = await db.collection("supportRequests").where("clientId", "==", clientId).get();
+  const storagePaths = snapshot.docs
+    .map((document) => text(document.data()?.attachment?.storagePath))
+    .filter(Boolean);
+  if (storagePaths.length) {
+    const bucket = getAdminBucket();
+    await Promise.all(storagePaths.map((storagePath) => bucket.file(storagePath).delete({ ignoreNotFound: true })));
+  }
+  for (let index = 0; index < snapshot.docs.length; index += 400) {
+    const batch = db.batch();
+    snapshot.docs.slice(index, index + 400).forEach((document) => batch.delete(document.ref));
+    await batch.commit();
+  }
+}
+
+async function deleteReferralData(db, clientId) {
+  const [asReferrer, asReferred, ownedPeriods, creditedPeriods] = await Promise.all([
+    db.collection("referrals").where("referrerClientId", "==", clientId).get(),
+    db.collection("referrals").where("referredClientId", "==", clientId).get(),
+    db.collection("referralPeriods").where("referrerClientId", "==", clientId).get(),
+    db.collection("referralPeriods").where("referredClientIds", "array-contains", clientId).get(),
+  ]);
+  const deleteRefs = new Map();
+  [...asReferrer.docs, ...asReferred.docs, ...ownedPeriods.docs].forEach((document) => deleteRefs.set(document.ref.path, document.ref));
+  for (let index = 0; index < [...deleteRefs.values()].length; index += 350) {
+    const batch = db.batch();
+    [...deleteRefs.values()].slice(index, index + 350).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+  for (let index = 0; index < creditedPeriods.docs.length; index += 350) {
+    const documents = creditedPeriods.docs
+      .slice(index, index + 350)
+      .filter((document) => !deleteRefs.has(document.ref.path));
+    if (!documents.length) continue;
+    const batch = db.batch();
+    documents.forEach((document) => {
+      const current = Math.max(0, Number(document.data().qualifiedCount || 0));
+      batch.set(document.ref, {
+        referredClientIds: FieldValue.arrayRemove(clientId),
+        qualifiedCount: Math.max(0, current - 1),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+    await batch.commit();
+  }
+}
+
 export async function deleteCustomerPermanently(clientId) {
   const { db, businessRef, business } = await readCustomer(clientId);
-  const uid = text(business.uid);
+  const uid = text(business.uid || business.ownerUid);
   const adminClientId = text(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
+  const businessNameKey = normalizeClientId(business.businessNameKey || business.businessName || clientId);
+  const connectionSnapshot = await db.collection("connections").doc(clientId).get();
+  const accountSnapshots = await db.collection("accounts").where("clientId", "==", clientId).get();
+  const employeeSnapshots = await businessRef.collection("employees").get();
+  const accountDocuments = new Map();
+  accountSnapshots.docs.forEach((document) => accountDocuments.set(document.id, document));
+  employeeSnapshots.docs.forEach((document) => accountDocuments.set(document.id, document));
+  if (uid && !accountDocuments.has(uid)) {
+    const ownerSnapshot = await db.collection("accounts").doc(uid).get();
+    if (ownerSnapshot.exists) accountDocuments.set(uid, ownerSnapshot);
+  }
+  const authUids = [...new Set([uid, ...accountDocuments.keys()].filter(Boolean))];
+  const phoneRegistryIds = [...new Set([...accountDocuments.values(), { data: () => business }]
+    .map((document) => accountPhoneRegistryId(document.data()?.accountPhoneNormalized || document.data()?.accountPhone))
+    .filter(Boolean))];
+  const connectionPhoneIds = [...new Set([
+    accountPhoneRegistryId(connectionSnapshot.exists ? connectionSnapshot.data().receptionistPhoneNormalized || connectionSnapshot.data().receptionistPhone : ""),
+    accountPhoneRegistryId(business.approvalReservationPhoneNormalized),
+  ].filter(Boolean))];
+
+  await deleteStripeAccount(business);
+  await deleteSupportRequests(db, clientId);
+  await Promise.all(authUids.map((accountUid) => getAdminAuth().deleteUser(accountUid).catch((error) => {
+    if (error?.code !== "auth/user-not-found") throw error;
+  })));
+  await deleteReferralData(db, clientId);
 
   await Promise.all([
+    db.recursiveDelete(businessRef),
     db.recursiveDelete(db.collection("ocmClients").doc(clientId)),
-    deleteQueryDocuments(db.collection("supportRequests").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("stripeWebhookEvents").where("clientId", "==", clientId)),
+    deleteQueryDocuments(db.collection("messagingComplianceEvents").where("clientId", "==", clientId)),
+    deleteQueryDocuments(db.collection("signupSessions").where("clientId", "==", clientId)),
+    deleteQueryDocuments(db.collection("deletedAccountAudit").where("clientId", "==", clientId)),
+    deleteQueryDocuments(db.collection("businessNameRegistry").where("clientId", "==", clientId)),
   ]);
 
   const batch = db.batch();
-  batch.delete(businessRef);
   batch.delete(db.collection("connections").doc(clientId));
+  accountDocuments.forEach((document, accountUid) => batch.delete(db.collection("accounts").doc(accountUid)));
   if (uid) batch.delete(db.collection("accounts").doc(uid));
+  if (businessNameKey) batch.delete(db.collection("businessNameRegistry").doc(businessNameKey));
+  phoneRegistryIds.forEach((phoneId) => batch.delete(db.collection("accountPhoneRegistry").doc(phoneId)));
+  connectionPhoneIds.forEach((phoneId) => batch.delete(db.collection("connectionPhoneRegistry").doc(phoneId)));
   if (adminClientId && adminClientId !== clientId) {
     batch.delete(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId));
   }
   await batch.commit();
-
-  if (uid) await getAdminAuth().deleteUser(uid).catch((error) => {
-    if (error?.code !== "auth/user-not-found") throw error;
-  });
 
   return { clientId, deleted: true };
 }

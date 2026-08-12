@@ -16,6 +16,7 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const accountEmail = normalizeSignupEmail(body.accountEmail);
     const accountPhone = normalizeSignupPhone(body.accountPhone);
+    const businessName = String(body.businessName || "").trim();
     if (!/^\S+@\S+\.\S+$/.test(accountEmail)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     if (!/^\+1\d{10}$/.test(accountPhone)) return NextResponse.json({ error: "Enter a 10-digit phone number." }, { status: 400 });
 
@@ -26,6 +27,7 @@ export async function POST(request) {
     const availability = await checkSignupAvailability({
       auth: getAdminAuth(),
       db,
+      businessName,
       accountEmail,
       accountPhone,
     });
@@ -34,11 +36,12 @@ export async function POST(request) {
       return NextResponse.json({
         error,
         available: false,
+        businessNameInUse: availability.businessNameInUse,
         emailInUse: availability.emailInUse,
         phoneInUse: availability.phoneInUse,
       }, { status: 409 });
     }
-    return NextResponse.json({ available: true, emailInUse: false, phoneInUse: false });
+    return NextResponse.json({ available: true, businessNameInUse: false, emailInUse: false, phoneInUse: false });
   } catch (error) {
     console.error("Unable to check signup availability", error);
     return NextResponse.json({ error: "Unable to check whether that email and phone are available right now." }, { status: 500 });
