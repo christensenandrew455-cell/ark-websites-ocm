@@ -5,8 +5,10 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
 function DashboardCard({ value, label, description, onClick, disabled = false, tourId = "" }) {
+  const displayValue = typeof value === "number" ? value.toLocaleString("en-US") : String(value ?? "0");
   return (
     <button
       type="button"
@@ -22,7 +24,7 @@ function DashboardCard({ value, label, description, onClick, disabled = false, t
           <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{label}</h2>
           <p className="mt-2 text-sm font-semibold leading-5 text-slate-500">{description}</p>
         </div>
-        <p className="shrink-0 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">{Number(value || 0).toLocaleString("en-US")}</p>
+        <p className="shrink-0 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">{displayValue}</p>
       </div>
     </button>
   );
@@ -122,8 +124,8 @@ export default function ClientStats() {
         <section className="mt-3 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:mt-5 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
             <DashboardCard tourId="dashboard-leads" value={newLeads} label="Leads" description="Accept new leads and view your clients." onClick={() => router.push("/leads")} />
-            <DashboardCard tourId="dashboard-messages" value={unreadMessages} label="Messages" description="Text clients from your dedicated business number." disabled={profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
-            <DashboardCard tourId="dashboard-employees" value={pendingEmployees} label="Employees" description="Manage your employees." disabled={profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", profile?.employeesEnabled === true, "/employees")} />
+            <DashboardCard tourId="dashboard-messages" value={MESSAGES_AVAILABLE ? unreadMessages : "?"} label="Messages" description={MESSAGES_AVAILABLE ? "Text clients from your dedicated business number." : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE || profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", MESSAGES_AVAILABLE && profile?.messagesEnabled === true, "/lead-messages")} />
+            <DashboardCard tourId="dashboard-employees" value={EMPLOYEES_AVAILABLE ? pendingEmployees : "?"} label="Employees" description={EMPLOYEES_AVAILABLE ? "Manage your employees." : UPCOMING_FEATURE_LABEL} disabled={!EMPLOYEES_AVAILABLE || profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", EMPLOYEES_AVAILABLE && profile?.employeesEnabled === true, "/employees")} />
           </div>
         </section>
       </div>

@@ -3,18 +3,19 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 
 const TOUR_PENDING_KEY = "ark-guided-onboarding-pending-v1";
 const STEPS = [
   { path: "/", target: "settings", title: "Start with Settings", body: "Settings is where you manage business information, customization, payment, help, and the account.", activate: true },
   { path: "/settings", target: "settings-business", title: "Business Information", body: "This is the information your AI receptionist uses to answer callers. Tap it to look inside.", activate: true },
   { path: "/settings", target: "settings-section-back", title: "Your receptionist knowledge", body: "Update services, service areas, estimate availability, and other business facts here. Tap the highlighted back arrow when you are ready.", activate: true },
-  { path: "/settings", target: "settings-customization", title: "Customization", body: "Messages and Employees can be turned on or off here. Tap Customization to see those controls.", activate: true },
-  { path: "/settings", target: "settings-section-back", title: "Optional features", body: "Turn Messages and Employees on only when your business wants them. This section also contains app appearance and data options. Tap back.", activate: true },
+  { path: "/settings", target: "settings-customization", title: "Customization", body: "Customization contains app appearance and account data options. Tap it to look inside.", activate: true },
+  { path: "/settings", target: "settings-section-back", title: "Your app preferences", body: "Choose the app appearance and download your client data here. Tap back when you are ready.", activate: true },
   { path: "/settings", target: "settings-menu-back", title: "Back to the dashboard", body: "The back arrow returns to your main dashboard. Tap it now.", activate: true },
   { path: "/", target: "dashboard-leads", title: "Leads", body: "Open Leads to review new receptionist requests and the clients you accepted." },
-  { path: "/", target: "dashboard-messages", title: "Messages", body: "Messages lets you text clients when that feature is turned on in Customization." },
-  { path: "/", target: "dashboard-employees", title: "Employees", body: "Employees lets you approve and manage workers when that feature is turned on." },
+  ...(MESSAGES_AVAILABLE ? [{ path: "/", target: "dashboard-messages", title: "Messages", body: "Messages lets you text clients when that feature is turned on in Customization." }] : []),
+  ...(EMPLOYEES_AVAILABLE ? [{ path: "/", target: "dashboard-employees", title: "Employees", body: "Employees lets you approve and manage workers when that feature is turned on." }] : []),
   { path: "/", target: "referral-star", title: "Featured referral savings", body: "Tap the star to see your account ID and referral savings. This finishes the tour.", activate: true, finishAfter: true },
 ];
 

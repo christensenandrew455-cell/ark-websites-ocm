@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { MESSAGES_AVAILABLE } from "./launchFeatures";
 
 function text(value) {
   return String(value || "").trim();
@@ -91,6 +92,7 @@ export async function sendEstimateRequestStatusNotice({
   phone,
   status,
 }) {
+  if (!MESSAGES_AVAILABLE) return { ok: true, skipped: "feature-unavailable", sent: false };
   const normalizedPhone = normalizeStatusPhone(phone);
   const normalizedStatus = status === "accepted" ? "accepted" : "declined";
   if (!normalizedPhone) return { ok: true, skipped: "missing-phone", sent: false };

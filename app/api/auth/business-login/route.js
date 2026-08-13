@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
@@ -22,6 +23,7 @@ export async function POST(request) {
     const normalizedIdentifier = String(identifier || "").trim();
     const mode = String(loginMode || "owner").trim().toLowerCase() === "employee" ? "employee" : "owner";
     if (!normalizedIdentifier || !password) return NextResponse.json({ error: "Enter the required sign-in information." }, { status: 400 });
+    if (mode === "employee" && !EMPLOYEES_AVAILABLE) return NextResponse.json({ error: `Employee access is ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 });
 
     const db = getAdminDb();
     const rateLimit = await checkRequestRateLimit({ db, request, scope: "business-login", limit: 20, windowMs: 10 * 60 * 1000 });
@@ -69,8 +71,8 @@ export async function POST(request) {
     if (!isAdmin && mode === "owner" && isEmployee) return NextResponse.json({ error: "Use Employee Sign In for this account." }, { status: 409 });
     if (!isAdmin && isEmployee && (!business || business.status !== "active" || business.employeesEnabled !== true)) return NextResponse.json({ error: "The owner has turned off employee access." }, { status: 403 });
 
-    const messagesEnabled = business?.messagesEnabled === true || account.messagesEnabled === true;
-    const employeesEnabled = business?.employeesEnabled === true || account.employeesEnabled === true;
+    const messagesEnabled = MESSAGES_AVAILABLE && (business?.messagesEnabled === true || account.messagesEnabled === true);
+    const employeesEnabled = EMPLOYEES_AVAILABLE && (business?.employeesEnabled === true || account.employeesEnabled === true);
     const employeeMessagingEnabled = messagesEnabled && employeesEnabled && (business?.employeeMessagingEnabled === true || account.employeeMessagingEnabled === true);
     const claims = isAdmin
       ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizeEmployeeDirectoryVisibility, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { EMPLOYEES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { requireUser } from "../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -69,6 +70,7 @@ function employeeDirectory(employees, currentUid, visibility) {
 }
 
 export async function GET(request) {
+  if (!EMPLOYEES_AVAILABLE) return NextResponse.json({ error: `Employee access is ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 });
   const user = await requireUser(request);
   if (user.response) return user.response;
   const decoded = user.decodedToken;

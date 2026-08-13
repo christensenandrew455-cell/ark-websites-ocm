@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "../../../lib/accountTypes";
 import { sendAccountVerificationCodes } from "../../../lib/accountVerification";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { qualifyReferralAfterActivation } from "../../../lib/referrals";
 import {
   BILLING_VERSION,
@@ -105,7 +106,7 @@ export async function POST(request) {
       identityVerificationVerified: false,
       identityVerificationStatus: "pending",
       emailVerificationStatus: "pending",
-      phoneVerificationStatus: "pending",
+      phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "pending" : "not_required",
       paymentSetupStatus: "complete",
       businessSetupComplete: true,
       numberAssignmentStatus: "needed",
@@ -214,6 +215,8 @@ export async function POST(request) {
       StripeSubscriptionId: subscription.id,
       StripeSubscriptionStatus: subscription.status,
       IdentityVerificationStatus: "Pending",
+      EmailVerificationStatus: "Pending",
+      PhoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "Pending" : "Not Required",
       NumberAssignmentStatus: "Needed",
       TermsAccepted: account.termsAccepted === true,
       PrivacyAccepted: account.privacyAccepted === true,

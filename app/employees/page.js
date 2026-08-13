@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import BackButton from "../components/BackButton";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useAuth } from "../components/AuthProvider";
+import { EMPLOYEES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 
 async function employeeApi(user, options = {}) {
@@ -87,8 +88,8 @@ export default function EmployeesPage() {
   if (loading || (isOwner && profile?.employeesEnabled && !workspace && !error)) {
     return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Loading employees…</main>;
   }
-  if (!isOwner || profile?.employeesEnabled !== true) {
-    return <main className="grid min-h-[70vh] place-items-center bg-slate-50 p-6"><div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold text-amber-800">Turn on Employees in Settings.</div></main>;
+  if (!isOwner || !EMPLOYEES_AVAILABLE || profile?.employeesEnabled !== true) {
+    return <main className="grid min-h-[70vh] place-items-center bg-slate-50 p-6"><div className="rounded-2xl border border-slate-300 bg-slate-100 p-5 text-sm font-bold text-slate-700">{!EMPLOYEES_AVAILABLE ? `Employees are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` : "Turn on Employees in Settings."}</div></main>;
   }
 
   const employees = workspace?.employees || [];

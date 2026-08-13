@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { MESSAGES_AVAILABLE } from "../../../../lib/launchFeatures";
 import { addBillingMessageEventToTransaction } from "../../../../lib/billingMessageUsage";
 import { isMessageContactBlocked } from "../../../../lib/messageContactBlocks";
 import {
@@ -142,6 +143,7 @@ async function resolveConversation(db, clientId, fromPhone, suppliedConversation
 export async function POST(request) {
   const rawBody = await request.text();
   if (!secretMatches(request) && !telnyxSignatureMatches(request, rawBody)) return NextResponse.json({ error: "Invalid messaging webhook credentials." }, { status: 401 });
+  if (!MESSAGES_AVAILABLE) return NextResponse.json({ ok: true, ignored: true, reason: "feature-unavailable" });
   try {
     const body = JSON.parse(rawBody || "{}");
     const event = parsePayload(body);

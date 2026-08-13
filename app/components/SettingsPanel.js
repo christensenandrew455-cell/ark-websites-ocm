@@ -12,6 +12,7 @@ import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
 import { db } from "../lib/firebase";
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../lib/launchFeatures";
 import { validateReceptionistBusinessInformation } from "../lib/ownerSignup";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
@@ -288,11 +289,12 @@ export default function SettingsPanel({ setupMode = false }) {
     const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
     return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
       <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
-      <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
-      <label className={`${controlClass}${employeeBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Employees</FieldLabel><input type="checkbox" disabled={employeeBlocked} checked={features.employeesEnabled} onChange={(event) => updateFeature("employeesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
-      {features.messagesEnabled && <MessageRetentionSettings />}
-      <ClientDeclineNoticeSettings />
-      {features.employeesEnabled && <EmployeeAccessSettings embedded />}
+      {(!MESSAGES_AVAILABLE || !EMPLOYEES_AVAILABLE) && <div className="rounded-xl border border-slate-200 bg-slate-100 p-4"><p className="text-sm font-black text-slate-800">Coming soon</p><p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{UPCOMING_FEATURE_MESSAGE}</p></div>}
+      {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
+      {EMPLOYEES_AVAILABLE && <label className={`${controlClass}${employeeBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Employees</FieldLabel><input type="checkbox" disabled={employeeBlocked} checked={features.employeesEnabled} onChange={(event) => updateFeature("employeesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
+      {MESSAGES_AVAILABLE && features.messagesEnabled && <MessageRetentionSettings />}
+      {MESSAGES_AVAILABLE && <ClientDeclineNoticeSettings />}
+      {EMPLOYEES_AVAILABLE && features.employeesEnabled && <EmployeeAccessSettings embedded />}
       <div id="account-data" className="border-t border-slate-200 pt-6"><FieldLabel>Client data</FieldLabel><button type="button" onClick={downloadClientData} disabled={isDownloading} className="w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></div>
     </div></SectionPanel></>;
   }
@@ -306,9 +308,9 @@ export default function SettingsPanel({ setupMode = false }) {
       <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 sm:px-5">
         <div className={rowClass}><span className="text-sm font-bold text-slate-700">Monthly account</span><strong>{billingSummary ? money(billingSummary.monthlyBaseCents) : "—"}</strong></div>
         <div className={rowClass}><span className="text-sm font-bold text-slate-700">New leads <small className="block font-semibold text-slate-500">{Number(billingSummary?.leadCount || 0)} × {money(billingSummary?.perLeadCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.leadUsageCents) : "—"}</strong></div>
-        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Chats <small className="block font-semibold text-slate-500">{Number(billingSummary?.chatCount || 0)} × {money(billingSummary?.perChatCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.chatUsageCents) : "—"}</strong></div>
-        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} added this period · {Number(billingSummary?.messagePartBlockCount || 0)} × {money(billingSummary?.perMessagePartBlockCents || 0)}</small><small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartRemainder || 0)}/50 toward the next $1 charge</small></span><strong>{billingSummary ? money(billingSummary.messagePartUsageCents) : "—"}</strong></div>
-        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Employees <small className="block font-semibold text-slate-500">{Number(billingSummary?.employeeCount || 0)} × {money(billingSummary?.perEmployeeCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.employeeUsageCents) : "—"}</strong></div>
+        {MESSAGES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Chats <small className="block font-semibold text-slate-500">{Number(billingSummary?.chatCount || 0)} × {money(billingSummary?.perChatCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.chatUsageCents) : "—"}</strong></div>}
+        {MESSAGES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} added this period · {Number(billingSummary?.messagePartBlockCount || 0)} × {money(billingSummary?.perMessagePartBlockCents || 0)}</small><small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartRemainder || 0)}/50 toward the next $1 charge</small></span><strong>{billingSummary ? money(billingSummary.messagePartUsageCents) : "—"}</strong></div>}
+        {EMPLOYEES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Employees <small className="block font-semibold text-slate-500">{Number(billingSummary?.employeeCount || 0)} × {money(billingSummary?.perEmployeeCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.employeeUsageCents) : "—"}</strong></div>}
         <div className={rowClass}><span className="text-sm font-black text-slate-950">Subtotal</span><strong>{billingSummary ? money(subtotal) : "—"}</strong></div>
         {savings > 0 && <div className={rowClass}><span className="text-sm font-black text-green-700">Referral savings ({discount}%)</span><strong className="text-green-700">−{money(savings)}</strong></div>}
       </div>

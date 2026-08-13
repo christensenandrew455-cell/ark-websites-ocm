@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { ACCOUNT_TYPES, normalizePersonKey } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { EMPLOYEES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
@@ -18,6 +19,7 @@ function safeSignupError(error) {
 
 export async function POST(request) {
   let createdUser = null;
+  if (!EMPLOYEES_AVAILABLE) return NextResponse.json({ error: `Employee accounts are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 });
   try {
     const { businessName, employeeName, accountEmail, accountPhone, password, acceptedTerms, acceptedPrivacy, termsVersion, privacyVersion } = await request.json();
     const requestedBusinessKey = normalizeClientId(businessName);

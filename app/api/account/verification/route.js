@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { readAccountVerificationStatus, sendAccountVerificationCodes, verifyAccountCodes } from "../../../lib/accountVerification";
+import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 export const runtime = "nodejs";
@@ -26,11 +27,11 @@ async function authorize(request) {
 function verificationError(error) {
   const message = text(error?.message);
   if (message === "VERIFICATION_RESEND_COOLDOWN") return { status: 429, error: "Please wait before requesting another code.", resendAvailableAt: error.resendAvailableAt?.toISOString?.() || "" };
-  if (message === "VERIFICATION_CODE_INVALID") return { status: 400, error: "Enter both four-digit codes." };
-  if (message === "VERIFICATION_CODE_EXPIRED") return { status: 400, error: "Those codes expired. Request new codes." };
-  if (message === "VERIFICATION_CODE_INCORRECT") return { status: 400, error: "One or both codes are incorrect.", emailCorrect: error.emailCorrect === true, phoneCorrect: error.phoneCorrect === true };
+  if (message === "VERIFICATION_CODE_INVALID") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "Enter both four-digit codes." : "Enter the four-digit email code." };
+  if (message === "VERIFICATION_CODE_EXPIRED") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "Those codes expired. Request new codes." : "That code expired. Request a new code." };
+  if (message === "VERIFICATION_CODE_INCORRECT") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "One or both codes are incorrect." : "That email code is incorrect.", emailCorrect: error.emailCorrect === true, phoneCorrect: error.phoneCorrect === true };
   if (message === "VERIFICATION_TOO_MANY_ATTEMPTS") return { status: 429, error: "Too many incorrect attempts. Request new codes." };
-  if (message === "VERIFICATION_DELIVERY_FAILED") return { status: 502, error: "One or both codes could not be delivered. Check your connection and try Resend.", delivery: error.delivery };
+  if (message === "VERIFICATION_DELIVERY_FAILED") return { status: 502, error: PHONE_VERIFICATION_REQUIRED ? "One or both codes could not be delivered. Check your connection and try Resend." : "The email code could not be delivered. Check your connection and try Resend.", delivery: error.delivery };
   if (message.startsWith("ACCOUNT_VERIFICATION_NOT_CONFIGURED")) return { status: 503, error: "Account verification is not available right now." };
   return { status: 500, error: "Something went wrong. Reload and try again." };
 }

@@ -50,7 +50,9 @@ export default function AccountVerificationGate() {
 
   async function verify(event) {
     event.preventDefault();
-    if (!/^\d{4}$/.test(emailCode) || !/^\d{4}$/.test(phoneCode)) return setError("Enter both four-digit codes.");
+    if (!/^\d{4}$/.test(emailCode) || (status?.phoneRequired && !/^\d{4}$/.test(phoneCode))) {
+      return setError(status?.phoneRequired ? "Enter both four-digit codes." : "Enter the four-digit email code.");
+    }
     setBusy(true);
     setError("");
     try {
@@ -85,16 +87,16 @@ export default function AccountVerificationGate() {
   return <main className="fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto bg-slate-950 px-4 py-8">
     <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">One last step</p>
-      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">Verify your contact information</h1>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">We sent separate four-digit codes to your email and phone. Enter both before using the client center.</p>
+      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">Verify your email</h1>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{status?.phoneRequired ? "We sent separate four-digit codes to your email and phone. Enter both before using the client center." : "We sent a four-digit code to your email. Enter it before using the client center."}</p>
       <form onSubmit={verify} className="mt-6 space-y-4">
         <label className="block"><span className="text-xs font-black text-slate-800">Email code · {status?.email || "your email"}</span><input value={emailCode} onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" autoComplete="one-time-code" placeholder="0000" className="mt-2 h-14 w-full rounded-xl border border-slate-300 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-indigo-700" /></label>
-        <label className="block"><span className="text-xs font-black text-slate-800">Text code · {status?.phone || "your phone"}</span><input value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" autoComplete="one-time-code" placeholder="0000" className="mt-2 h-14 w-full rounded-xl border border-slate-300 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-indigo-700" /></label>
+        {status?.phoneRequired && <label className="block"><span className="text-xs font-black text-slate-800">Text code · {status?.phone || "your phone"}</span><input value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" autoComplete="one-time-code" placeholder="0000" className="mt-2 h-14 w-full rounded-xl border border-slate-300 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-indigo-700" /></label>}
         {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{error}</p>}
-        {(status?.emailDeliveryStatus === "failed" || status?.phoneDeliveryStatus === "failed") && !error && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">One code may not have arrived. Use Resend Codes below.</p>}
-        <button type="submit" disabled={busy || emailCode.length !== 4 || phoneCode.length !== 4} className="h-13 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{busy ? "Checking…" : "Submit Codes"}</button>
+        {(status?.emailDeliveryStatus === "failed" || (status?.phoneRequired && status?.phoneDeliveryStatus === "failed")) && !error && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">The code may not have arrived. Use Resend Code below.</p>}
+        <button type="submit" disabled={busy || emailCode.length !== 4 || (status?.phoneRequired && phoneCode.length !== 4)} className="h-13 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{busy ? "Checking…" : status?.phoneRequired ? "Submit Codes" : "Submit Code"}</button>
       </form>
-      <button type="button" onClick={resend} disabled={busy || wait > 0} className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-xs font-black text-slate-700 disabled:opacity-40">{wait > 0 ? `Resend Codes in ${wait}s` : "Resend Codes"}</button>
+      <button type="button" onClick={resend} disabled={busy || wait > 0} className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-xs font-black text-slate-700 disabled:opacity-40">{wait > 0 ? `Resend ${status?.phoneRequired ? "Codes" : "Code"} in ${wait}s` : `Resend ${status?.phoneRequired ? "Codes" : "Code"}`}</button>
       <button type="button" onClick={() => signOut(auth)} className="mt-5 w-full text-xs font-bold text-slate-500 underline">Sign out</button>
     </section>
   </main>;
