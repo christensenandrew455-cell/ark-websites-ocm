@@ -46,7 +46,7 @@ Add the verification delivery variables:
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL=ARK Client Center <accounts@your-verified-domain.com>`
 - `TELNYX_API_KEY`
-- `TELNYX_SIGNUP_FROM_NUMBER=+1...`
+- `TELNYX_SIGNUP_FROM_NUMBER=+17742316164`
 
 `TELNYX_SIGNUP_FROM_NUMBER` is the one central ARK number that sends signup codes and the later receptionist-number-ready message. Verify the sending domain in Resend and use a messaging-enabled Telnyx number.
 

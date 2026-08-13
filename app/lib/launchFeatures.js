@@ -2,7 +2,7 @@
 export const RELEASE_SWITCHES = Object.freeze({
   messages: "off",
   employees: "off",
-  phoneVerification: "off",
+  phoneVerification: "on",
 });
 
 export const MESSAGES_AVAILABLE = RELEASE_SWITCHES.messages === "on";
