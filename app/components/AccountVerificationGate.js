@@ -87,7 +87,7 @@ export default function AccountVerificationGate() {
   return <main className="fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto bg-slate-950 px-4 py-8">
     <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">One last step</p>
-      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">Verify your email</h1>
+      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
       <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{status?.phoneRequired ? "We sent separate four-digit codes to your email and phone. Enter both before using the client center." : "We sent a four-digit code to your email. Enter it before using the client center."}</p>
       <form onSubmit={verify} className="mt-6 space-y-4">
         <label className="block"><span className="text-xs font-black text-slate-800">Email code · {status?.email || "your email"}</span><input value={emailCode} onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" autoComplete="one-time-code" placeholder="0000" className="mt-2 h-14 w-full rounded-xl border border-slate-300 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-indigo-700" /></label>

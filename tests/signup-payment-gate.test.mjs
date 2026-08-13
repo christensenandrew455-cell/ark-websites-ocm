@@ -324,16 +324,18 @@ test("pending signup details survive Stripe only as encrypted temporary Firebase
   assert.equal(completeSource.includes("unfinished signup was discarded"), false);
 });
 
-test("launch owners verify email only while phone verification remains switchable", async () => {
-  const [launchSource, verificationSource, gateSource, checkoutSource, requestSource, rulesSource] = await Promise.all([
+test("launch owners verify separate email and text codes sent from the central ARK number", async () => {
+  const [launchSource, envSource, verificationSource, gateSource, checkoutSource, requestSource, rulesSource] = await Promise.all([
     readFile(new URL("../app/lib/launchFeatures.js", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/accountVerification.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/AccountVerificationGate.js", import.meta.url), "utf8"),
     readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/authenticatedRequest.js", import.meta.url), "utf8"),
     readFile(new URL("../firestore.rules", import.meta.url), "utf8"),
   ]);
-  assert.ok(launchSource.includes('phoneVerification: "off"'));
+  assert.ok(launchSource.includes('phoneVerification: "on"'));
+  assert.ok(envSource.includes("TELNYX_SIGNUP_FROM_NUMBER=+17742316164"));
   assert.ok(verificationSource.includes("randomInt(0, 10_000)"));
   assert.ok(verificationSource.includes("https://api.resend.com/emails"));
   assert.ok(verificationSource.includes("TELNYX_SIGNUP_FROM_NUMBER"));
@@ -342,8 +344,9 @@ test("launch owners verify email only while phone verification remains switchabl
   assert.ok(verificationSource.includes('codeHash(uid, "phone"'));
   assert.ok(verificationSource.includes("!PHONE_VERIFICATION_REQUIRED || challenge.phoneVerified"));
   assert.ok(checkoutSource.includes("missingAccountVerificationConfiguration()"));
-  assert.ok(gateSource.includes("Verify your email"));
+  assert.ok(gateSource.includes('status?.phoneRequired ? "Verify your email and phone" : "Verify your email"'));
   assert.ok(gateSource.includes("Email code"));
+  assert.ok(gateSource.includes("Text code"));
   assert.ok(gateSource.includes("status?.phoneRequired && <label"));
   assert.ok(gateSource.includes("Use Resend Code below."));
   assert.ok(requestSource.includes("ACCOUNT_VERIFICATION_REQUIRED"));
