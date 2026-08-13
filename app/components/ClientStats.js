@@ -10,10 +10,11 @@ function DashboardCard({ value, label, description, onClick, disabled = false, t
   return (
     <button
       type="button"
-      onClick={onClick}
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
       data-tour-id={tourId || undefined}
       className={disabled
-        ? "min-h-28 w-full rounded-2xl border border-slate-300 bg-slate-200 p-5 text-left opacity-70 shadow-sm sm:min-h-32 sm:rounded-3xl sm:p-6"
+        ? "min-h-28 w-full cursor-not-allowed rounded-2xl border border-slate-300 bg-slate-200 p-5 text-left opacity-70 shadow-sm sm:min-h-32 sm:rounded-3xl sm:p-6"
         : "min-h-28 w-full rounded-2xl border border-slate-300 bg-slate-50 p-5 text-left shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6"}
     >
       <div className="flex h-full items-start justify-between gap-4">

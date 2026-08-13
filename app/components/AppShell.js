@@ -12,6 +12,7 @@ import HelpCenter from "./HelpCenter";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
 import ReferralCenter from "./ReferralCenter";
+import { billingPaymentDeadline } from "../lib/billingNotice";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
 const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/employee/pending", "/forgot-password", "/about", "/docs"];
@@ -70,18 +71,47 @@ function PullToRefresh({ children }) {
 }
 
 function formatDeadline(value) {
-  if (!value) return "the deadline shown in your billing notice";
+  if (!value) return "";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "the deadline shown in your billing notice" : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(date);
+}
+
+function formatAmount(value, currency = "usd") {
+  const amount = Number(value || 0);
+  if (!(amount > 0)) return "";
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: String(currency || "usd").toUpperCase() }).format(amount / 100);
+  } catch {
+    return `$${(amount / 100).toFixed(2)}`;
+  }
+}
+
+function BillingRefreshProblem({ refresh, loading, compact = false }) {
+  return <div role="status" aria-live="polite" className={compact ? "flex items-center gap-3 rounded-xl border border-slate-300/80 bg-white/80 px-3 py-2.5" : "mx-auto flex max-w-6xl items-center gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-sm"}><span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-200 text-xs font-black text-slate-700">!</span><div className="min-w-0 flex-1"><p className="text-xs font-black text-slate-800">Payment status couldn’t refresh</p><p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">Connect to the internet, then try again.</p></div><button type="button" disabled={loading} onClick={refresh} className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-black text-slate-800 disabled:opacity-50">{loading ? "Checking…" : "Try again"}</button></div>;
 }
 
 function PaymentNotice() {
-  const { status, error, openBillingPortal, openingBilling } = useBillingStatus();
+  const { status, error, refresh, loading } = useBillingStatus();
   if (!status.showNotice && !error) return null;
+  if (!status.showNotice) return <section className="border-b border-slate-200 bg-slate-100 px-3 py-3"><BillingRefreshProblem refresh={refresh} loading={loading} /></section>;
+
   const restricted = status.restricted;
   const title = status.phase === "deletion-review" ? "Payment required — account under review" : restricted ? "Payment-restricted mode is active" : "Payment required";
-  const body = status.phase === "deletion-review" ? "The balance is still unpaid and the account is waiting for manual review. Payment restores full access automatically when Stripe confirms it." : restricted ? `You can continue receiving new leads and accept them into Clients. Other features are unavailable until payment is completed. Review date: ${formatDeadline(status.reviewAt)}.` : `We have not received the scheduled payment. Update the payment method by ${formatDeadline(status.graceEndsAt)} to keep full access.`;
-  return <section className={restricted ? "border-b border-red-300 bg-red-50 px-3 py-4" : "border-b border-amber-300 bg-amber-50 px-3 py-4"}><div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className={restricted ? "text-sm font-black text-red-900" : "text-sm font-black text-amber-950"}>{title}</p><p className={restricted ? "mt-1 text-xs font-semibold leading-5 text-red-800" : "mt-1 text-xs font-semibold leading-5 text-amber-900"}>{body}</p>{error && <p className="mt-1 text-xs font-bold text-red-700">{error}</p>}</div><div className="grid shrink-0 grid-cols-2 gap-2"><button type="button" disabled={openingBilling} onClick={openBillingPortal} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">{openingBilling ? "Opening…" : "Update Payment"}</button><Link href="/terms#payment-enforcement" className="rounded-xl border border-slate-400 bg-white px-4 py-2.5 text-center text-xs font-black text-slate-800">Learn More</Link></div></div></section>;
+  const body = status.phase === "deletion-review"
+    ? "Payment is overdue and the account is under review. Full access returns automatically after Stripe confirms payment."
+    : restricted
+      ? "Payment is overdue. Leads remain available, but the rest of the account is temporarily limited."
+      : "The scheduled payment did not go through. Complete it before the deadline below to keep full access.";
+  const deadlineValue = billingPaymentDeadline(status);
+  const deadline = formatDeadline(deadlineValue);
+  const amount = formatAmount(status.amountDue, status.currency);
+  const overdue = status.phase !== "grace";
+  const sectionClass = restricted ? "border-b border-red-200 bg-red-50 px-3 py-4" : "border-b border-amber-200 bg-amber-50 px-3 py-4";
+  const accentClass = restricted ? "bg-red-700 text-white" : "bg-amber-500 text-amber-950";
+  const titleClass = restricted ? "text-red-950" : "text-amber-950";
+  const bodyClass = restricted ? "text-red-900" : "text-amber-900";
+
+  return <section className={sectionClass}><div className="mx-auto max-w-6xl"><div className="flex items-start gap-3"><span aria-hidden="true" className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg font-black shadow-sm ${accentClass}`}>!</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-base font-black ${titleClass}`}>{title}</h2>{overdue && <span className="rounded-full bg-red-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Overdue</span>}</div><p className={`mt-1 text-xs font-semibold leading-5 ${bodyClass}`}>{body}</p></div></div><div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><div className="rounded-2xl border border-white/90 bg-white/80 px-4 py-3 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{overdue ? "Payment was due" : "Payment due"}</p>{deadline ? <time dateTime={deadlineValue} className="mt-1 block text-base font-black text-slate-950">{deadline}</time> : <p className="mt-1 text-sm font-black text-slate-700">Checking the exact deadline…</p>}{amount && <p className="mt-1 text-xs font-bold text-slate-600">Amount due: {amount}</p>}</div><Link href="/terms#payment-enforcement" className="grid min-h-12 place-items-center rounded-xl border border-slate-400 bg-white px-5 py-3 text-center text-xs font-black text-slate-800 shadow-sm">Learn More</Link></div>{error && <div className="mt-2"><BillingRefreshProblem refresh={refresh} loading={loading} compact /></div>}</div></section>;
 }
 
 function WorkspaceHeader({ profile, pathname, isEmployee, logout, admin = false }) {

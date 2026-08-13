@@ -4,14 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../components/AuthProvider";
+import PasswordInput from "../components/PasswordInput";
 import { normalizeBusinessIdentifier } from "../lib/valueUtils";
 import { publicFormError } from "../lib/userFacingError";
-
-function EyeIcon({ hidden }) {
-  return hidden
-    ? <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3l18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9 8 9 8a17.5 17.5 0 0 1-2.1 3.3" /><path d="M6.6 6.6C4.4 8.1 3 12 3 12s3.5 8 9 8a9.8 9.8 0 0 0 4-.8" /></svg>
-    : <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12s3.5-8 9-8 9 8 9 8-3.5 8-9 8-9-8-9-8Z" /><circle cx="12" cy="12" r="2.5" /></svg>;
-}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +15,6 @@ export default function LoginPage() {
   const [businessName, setBusinessName] = useState("");
   const [personName, setPersonName] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -66,12 +60,7 @@ export default function LoginPage() {
 
           <label className="block">
             <span className="text-sm font-semibold text-slate-700">Password</span>
-            <div className="relative mt-2">
-              <input required type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-12 outline-none focus:border-slate-950" placeholder="Your password" />
-              <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} className="absolute inset-y-0 right-1 grid w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950">
-                <EyeIcon hidden={showPassword} />
-              </button>
-            </div>
+            <PasswordInput required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your password" />
           </label>
 
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
