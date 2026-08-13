@@ -10,6 +10,27 @@ test("disabled owner dashboard features are real disabled buttons", async () => 
   assert.ok(source.includes("cursor-not-allowed"));
 });
 
+test("launch switches disable messaging and employees across UI and APIs", async () => {
+  const [switches, dashboard, settings, signup, messagingApi, employeeApi] = await Promise.all([
+    readFile(new URL("../app/lib/launchFeatures.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/ClientStats.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/SettingsPanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/business/lead-messages/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/business/employees/route.js", import.meta.url), "utf8"),
+  ]);
+
+  assert.ok(switches.includes('messages: "off"'));
+  assert.ok(switches.includes('employees: "off"'));
+  assert.ok(dashboard.includes('value={MESSAGES_AVAILABLE ? unreadMessages : "?"}'));
+  assert.ok(dashboard.includes('value={EMPLOYEES_AVAILABLE ? pendingEmployees : "?"}'));
+  assert.ok(settings.includes("MESSAGES_AVAILABLE && <label"));
+  assert.ok(settings.includes("EMPLOYEES_AVAILABLE && <label"));
+  assert.ok(signup.includes("EMPLOYEES_AVAILABLE && <fieldset"));
+  assert.ok(messagingApi.includes("if (!MESSAGES_AVAILABLE)"));
+  assert.ok(employeeApi.includes("if (!EMPLOYEES_AVAILABLE)"));
+});
+
 test("login and both signup password fields use tappable visibility controls", async () => {
   const [inputSource, loginSource, signupSource] = await Promise.all([
     readFile(new URL("../app/components/PasswordInput.js", import.meta.url), "utf8"),

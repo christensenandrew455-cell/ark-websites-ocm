@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../components/BackButton";
 import { useAuth } from "../components/AuthProvider";
 import { requestAppConfirmation } from "../lib/appConfirmation";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 
 function TrashIcon() {
@@ -46,7 +47,7 @@ export default function LeadMessagesPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const featureEnabled = isEmployee ? profile?.employeeMessagingEnabled === true : profile?.messagesEnabled === true;
+  const featureEnabled = MESSAGES_AVAILABLE && (isEmployee ? profile?.employeeMessagingEnabled === true : profile?.messagesEnabled === true);
   const load = useCallback(async (leadId = selectedLead, collectionKey = selectedCollection, silent = false) => {
     if (!user || !featureEnabled) return;
     if (!silent) setLoading(true);
@@ -110,7 +111,7 @@ export default function LeadMessagesPage() {
     } catch (deleteError) { setError(ownerFacingError(deleteError)); } finally { setDeleting(""); }
   }
 
-  if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-bold leading-6 text-amber-800">{isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
+  if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-2xl border border-slate-300 bg-slate-100 p-5 text-sm font-bold leading-6 text-slate-700">{!MESSAGES_AVAILABLE ? `Messages are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` : isEmployee ? "The owner has not enabled Messages for employees." : "You do not currently have Messages turned on. Open Settings to enable it."}</div></div></main>;
 
   if (selectedLead) {
     const deleteKey = `${selectedCollection}:${selectedLead}`;

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import PasswordInput from "../components/PasswordInput";
+import { EMPLOYEES_AVAILABLE } from "../lib/launchFeatures";
 import { normalizeBusinessIdentifier } from "../lib/valueUtils";
 import { publicFormError } from "../lib/userFacingError";
 
@@ -37,13 +38,13 @@ export default function LoginPage() {
       <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <h1 className="text-3xl font-bold text-slate-950">Welcome to ARK Client Center</h1>
 
-        <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+        {EMPLOYEES_AVAILABLE && <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
           {[["owner", "Owner"], ["employee", "Employee"]].map(([value, label]) => (
             <button key={value} type="button" onClick={() => { setLoginMode(value); setError(""); }} className={loginMode === value ? "rounded-lg bg-white px-3 py-2.5 text-sm font-black text-slate-950 shadow-sm" : "rounded-lg px-3 py-2.5 text-sm font-bold text-slate-500"}>
               {label} Sign In
             </button>
           ))}
-        </div>
+        </div>}
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <label className="block">
@@ -51,7 +52,7 @@ export default function LoginPage() {
             <input required autoComplete="organization" value={businessName} onChange={(event) => setBusinessName(normalizeBusinessIdentifier(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your business name" />
           </label>
 
-          {loginMode === "employee" && (
+          {EMPLOYEES_AVAILABLE && loginMode === "employee" && (
             <label className="block">
               <span className="text-sm font-semibold text-slate-700">Employee name</span>
               <input required autoComplete="name" value={personName} onChange={(event) => setPersonName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your employee name" />

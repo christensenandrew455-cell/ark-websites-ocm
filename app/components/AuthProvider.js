@@ -5,6 +5,7 @@ import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/aut
 import { doc, getDoc } from "firebase/firestore";
 import { ACCOUNT_TYPES } from "../lib/accountTypes";
 import { auth, db } from "../lib/firebase";
+import { availableAccountFeatures } from "../lib/launchFeatures";
 import { readApiJson } from "../lib/apiResponse";
 import { normalizeClientId } from "../lib/valueUtils";
 
@@ -40,6 +41,11 @@ export function AuthProvider({ children }) {
     const billingPlan = "standard";
     const accountType = account.accountType || String(tokenResult.claims.accountType || "") || (role === "employee" ? ACCOUNT_TYPES.EMPLOYEE : ACCOUNT_TYPES.OWNER);
     const businessRole = account.businessRole || String(tokenResult.claims.businessRole || (role === "employee" ? "employee" : "owner"));
+    const availableFeatures = availableAccountFeatures({
+      messagesEnabled: account.messagesEnabled === true || tokenResult.claims.messagesEnabled === true,
+      employeesEnabled: account.employeesEnabled === true || tokenResult.claims.employeesEnabled === true,
+      employeeMessagingEnabled: account.employeeMessagingEnabled === true || tokenResult.claims.employeeMessagingEnabled === true,
+    });
 
     const nextProfile = {
       ...account,
@@ -52,9 +58,7 @@ export function AuthProvider({ children }) {
       billingPlan,
       clientId,
       status,
-      messagesEnabled: account.messagesEnabled === true || tokenResult.claims.messagesEnabled === true,
-      employeesEnabled: account.employeesEnabled === true || tokenResult.claims.employeesEnabled === true,
-      employeeMessagingEnabled: account.employeeMessagingEnabled === true || tokenResult.claims.employeeMessagingEnabled === true,
+      ...availableFeatures,
       paymentSetupStatus: account.paymentSetupStatus || (status === "active" && role !== "employee" ? "complete" : ""),
       identityVerificationRequired: account.identityVerificationRequired === true || tokenResult.claims.identityVerificationRequired === true,
       identityVerificationVerified: account.identityVerificationVerified === true || tokenResult.claims.identityVerificationVerified === true,

@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "../../../lib/accountTypes";
 import { sendAccountVerificationCodes } from "../../../lib/accountVerification";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { normalizeOwnerSignup, validateOwnerSignup } from "../../../lib/ownerSignup";
 import { ownerSignupDigestMatches, ownerSignupUid } from "../../../lib/ownerSignupServer";
 import { deletePendingOwnerSignup, loadPendingOwnerSignup, pendingOwnerSignupHandoffHash, pendingOwnerSignupHandoffMatches } from "../../../lib/pendingOwnerSignup";
@@ -195,7 +196,7 @@ export async function POST(request) {
       identityVerificationVerified: false,
       identityVerificationStatus: "pending",
       emailVerificationStatus: "pending",
-      phoneVerificationStatus: "pending",
+      phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "pending" : "not_required",
     };
     const billingFields = {
       billingPlan: "standard",
@@ -302,6 +303,8 @@ export async function POST(request) {
       StripeSubscriptionId: subscription.id,
       StripeSubscriptionStatus: subscription.status,
       IdentityVerificationStatus: "Pending",
+      EmailVerificationStatus: "Pending",
+      PhoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "Pending" : "Not Required",
       NumberAssignmentStatus: "Needed",
       TermsAccepted: true,
       PrivacyAccepted: true,

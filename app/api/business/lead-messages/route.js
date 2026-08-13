@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { addBillingConversationEventToBatch, isBillableConversationData } from "../../../lib/billingConversationUsage";
 import { addBillingMessageEventToBatch } from "../../../lib/billingMessageUsage";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
@@ -51,6 +52,7 @@ function normalizeLead(document, collectionKey) {
 }
 
 async function authorizeMessaging(request) {
+  if (!MESSAGES_AVAILABLE) return { response: NextResponse.json({ error: `Messages are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 }) };
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;

@@ -1,5 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
+import { PHONE_VERIFICATION_REQUIRED } from "./launchFeatures";
 
 const COLLECTION = "accountVerificationChallenges";
 export const ACCOUNT_VERIFICATION_TTL_MS = 10 * 60 * 1000;
@@ -44,8 +45,10 @@ export function missingAccountVerificationConfiguration() {
   const values = [
     ["RESEND_API_KEY", text(process.env.RESEND_API_KEY)],
     ["RESEND_FROM_EMAIL", validEmailSender(process.env.RESEND_FROM_EMAIL)],
-    ["TELNYX_API_KEY", text(process.env.TELNYX_API_KEY)],
-    ["TELNYX_SIGNUP_FROM_NUMBER", /^\+1\d{10}$/.test(normalizedPhone(process.env.TELNYX_SIGNUP_FROM_NUMBER))],
+    ...(PHONE_VERIFICATION_REQUIRED ? [
+      ["TELNYX_API_KEY", text(process.env.TELNYX_API_KEY)],
+      ["TELNYX_SIGNUP_FROM_NUMBER", /^\+1\d{10}$/.test(normalizedPhone(process.env.TELNYX_SIGNUP_FROM_NUMBER))],
+    ] : []),
   ];
   return values.filter(([, configured]) => !configured).map(([name]) => name);
 }
@@ -90,17 +93,21 @@ function maskPhone(phone) {
 
 export function publicAccountVerificationStatus({ account = {}, challenge = {} }) {
   const emailVerified = account.emailVerificationStatus === "verified" || challenge.emailVerified === true;
-  const phoneVerified = account.phoneVerificationStatus === "verified" || challenge.phoneVerified === true;
+  const phoneVerified = !PHONE_VERIFICATION_REQUIRED
+    || account.phoneVerificationStatus === "verified"
+    || account.phoneVerificationStatus === "not_required"
+    || challenge.phoneVerified === true;
   const resendAt = asDate(challenge.resendAvailableAt);
   return {
     required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
     verified: account.identityVerificationVerified === true || (emailVerified && phoneVerified),
     emailVerified,
     phoneVerified,
+    phoneRequired: PHONE_VERIFICATION_REQUIRED,
     email: maskEmail(account.accountEmail || challenge.email),
-    phone: maskPhone(account.accountPhone || challenge.phone),
+    phone: PHONE_VERIFICATION_REQUIRED ? maskPhone(account.accountPhone || challenge.phone) : "",
     emailDeliveryStatus: text(challenge.emailDeliveryStatus || "pending"),
-    phoneDeliveryStatus: text(challenge.phoneDeliveryStatus || "pending"),
+    phoneDeliveryStatus: PHONE_VERIFICATION_REQUIRED ? text(challenge.phoneDeliveryStatus || "pending") : "not_required",
     resendAvailableAt: resendAt?.toISOString() || "",
   };
 }
@@ -128,7 +135,7 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
       throw error;
     }
     const emailCode = current.emailVerified === true ? "" : verificationCode();
-    const phoneCode = current.phoneVerified === true ? "" : verificationCode();
+    const phoneCode = PHONE_VERIFICATION_REQUIRED && current.phoneVerified !== true ? verificationCode() : "";
     const expiresAt = new Date(Date.now() + ACCOUNT_VERIFICATION_TTL_MS);
     const nextResendAt = new Date(Date.now() + ACCOUNT_VERIFICATION_RESEND_MS);
     transaction.set(ref, {
@@ -138,6 +145,7 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
       phone: normalizedPhone(phone),
       ...(emailCode ? { emailCodeHash: codeHash(uid, "email", emailCode), emailVerified: false, emailAttempts: 0, emailDeliveryStatus: "sending" } : {}),
       ...(phoneCode ? { phoneCodeHash: codeHash(uid, "phone", phoneCode), phoneVerified: false, phoneAttempts: 0, phoneDeliveryStatus: "sending" } : {}),
+      ...(!PHONE_VERIFICATION_REQUIRED ? { phoneVerified: true, phoneAttempts: 0, phoneDeliveryStatus: "not_required" } : {}),
       deliveryStatus: "sending",
       expiresAt,
       resendAvailableAt: nextResendAt,
@@ -154,10 +162,10 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
     phoneCode ? sendTelnyxText({ phone, message: `Your ARK Client Center text verification code is ${phoneCode}. It expires in 10 minutes. Do not share this code.` }) : Promise.resolve(),
   ]);
   const emailDeliveryStatus = emailResult.status === "fulfilled" ? "sent" : "failed";
-  const phoneDeliveryStatus = phoneResult.status === "fulfilled" ? "sent" : "failed";
-  const deliveryStatus = emailDeliveryStatus === "sent" && phoneDeliveryStatus === "sent" ? "sent" : "partial";
+  const phoneDeliveryStatus = PHONE_VERIFICATION_REQUIRED ? (phoneResult.status === "fulfilled" ? "sent" : "failed") : "not_required";
+  const deliveryStatus = emailDeliveryStatus === "sent" && (!PHONE_VERIFICATION_REQUIRED || phoneDeliveryStatus === "sent") ? "sent" : "partial";
   await ref.set({ emailDeliveryStatus, phoneDeliveryStatus, deliveryStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  if (emailResult.status === "rejected" || phoneResult.status === "rejected") {
+  if (emailResult.status === "rejected" || (PHONE_VERIFICATION_REQUIRED && phoneResult.status === "rejected")) {
     const error = new Error("VERIFICATION_DELIVERY_FAILED");
     error.delivery = { email: emailDeliveryStatus, phone: phoneDeliveryStatus };
     throw error;
@@ -167,8 +175,8 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
 
 export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCode, phoneCode: rawPhoneCode }) {
   const emailCode = validCode(rawEmailCode);
-  const phoneCode = validCode(rawPhoneCode);
-  if (!emailCode || !phoneCode) throw new Error("VERIFICATION_CODE_INVALID");
+  const phoneCode = PHONE_VERIFICATION_REQUIRED ? validCode(rawPhoneCode) : "";
+  if (!emailCode || (PHONE_VERIFICATION_REQUIRED && !phoneCode)) throw new Error("VERIFICATION_CODE_INVALID");
   const ref = db.collection(COLLECTION).doc(uid);
   const accountRef = db.collection("accounts").doc(uid);
   const verification = await db.runTransaction(async (transaction) => {
@@ -180,20 +188,20 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     if (!expiresAt || expiresAt.getTime() <= Date.now()) throw new Error("VERIFICATION_CODE_EXPIRED");
     const emailAttempts = Number(challenge.emailAttempts || 0);
     const phoneAttempts = Number(challenge.phoneAttempts || 0);
-    if (emailAttempts >= ACCOUNT_VERIFICATION_MAX_ATTEMPTS || phoneAttempts >= ACCOUNT_VERIFICATION_MAX_ATTEMPTS) throw new Error("VERIFICATION_TOO_MANY_ATTEMPTS");
+    if (emailAttempts >= ACCOUNT_VERIFICATION_MAX_ATTEMPTS || (PHONE_VERIFICATION_REQUIRED && phoneAttempts >= ACCOUNT_VERIFICATION_MAX_ATTEMPTS)) throw new Error("VERIFICATION_TOO_MANY_ATTEMPTS");
     const emailCorrect = challenge.emailVerified === true || codeMatches(uid, "email", emailCode, challenge.emailCodeHash);
-    const phoneCorrect = challenge.phoneVerified === true || codeMatches(uid, "phone", phoneCode, challenge.phoneCodeHash);
+    const phoneCorrect = !PHONE_VERIFICATION_REQUIRED || challenge.phoneVerified === true || codeMatches(uid, "phone", phoneCode, challenge.phoneCodeHash);
     transaction.set(ref, {
       emailVerified: emailCorrect,
       phoneVerified: phoneCorrect,
       emailAttempts: emailCorrect ? emailAttempts : emailAttempts + 1,
-      phoneAttempts: phoneCorrect ? phoneAttempts : phoneAttempts + 1,
+      phoneAttempts: !PHONE_VERIFICATION_REQUIRED || phoneCorrect ? phoneAttempts : phoneAttempts + 1,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
     return { emailCorrect, phoneCorrect, clientId: text(accountSnapshot.data().clientId || challenge.clientId) };
   });
   const { emailCorrect, phoneCorrect } = verification;
-  if (!emailCorrect || !phoneCorrect) {
+  if (!emailCorrect || (PHONE_VERIFICATION_REQUIRED && !phoneCorrect)) {
     const error = new Error("VERIFICATION_CODE_INCORRECT");
     error.emailCorrect = emailCorrect;
     error.phoneCorrect = phoneCorrect;
@@ -206,7 +214,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     identityVerificationVerified: true,
     identityVerificationStatus: "verified",
     emailVerificationStatus: "verified",
-    phoneVerificationStatus: "verified",
+    phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "verified" : "not_required",
     identityVerifiedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -218,7 +226,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), {
       IdentityVerificationStatus: "Verified",
       EmailVerificationStatus: "Verified",
-      PhoneVerificationStatus: "Verified",
+      PhoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "Verified" : "Not Required",
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   }

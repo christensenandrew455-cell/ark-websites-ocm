@@ -8,6 +8,7 @@ import PasswordInput from "../components/PasswordInput";
 import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 import { PRIVACY_VERSION, TERMS_VERSION } from "../lib/legal";
+import { EMPLOYEES_AVAILABLE } from "../lib/launchFeatures";
 import { clearOwnerSignupDraft, loadOwnerSignupDraft, saveOwnerSignupDraft } from "../lib/ownerSignupStorage";
 import { dashBusinessName } from "../lib/valueUtils";
 import { publicFormError } from "../lib/userFacingError";
@@ -74,7 +75,7 @@ export default function SignupPage() {
     if (form.password.length < 8) return setError("Use a password with at least 8 characters.");
     if (form.password !== form.confirmPassword) return setError("The two passwords do not match.");
     if (!acceptedLegal) return setError("You must agree to the Terms of Use and Privacy Policy before continuing.");
-    const employeeSignup = accountType === "employee";
+    const employeeSignup = EMPLOYEES_AVAILABLE && accountType === "employee";
     setSubmitting(true);
     try {
       const availabilityResponse = await fetch("/api/signup/availability", {
@@ -146,7 +147,7 @@ export default function SignupPage() {
     }
   }
 
-  const employeeSignup = accountType === "employee";
+  const employeeSignup = EMPLOYEES_AVAILABLE && accountType === "employee";
 
   return (
     <main className="min-h-screen bg-slate-950 px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
@@ -155,13 +156,13 @@ export default function SignupPage() {
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
         {!employeeSignup && <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 1 of 4 · Account information</p>}
         <form onSubmit={handleSubmit} className="mt-7 grid gap-4 md:grid-cols-2">
-          <fieldset className="md:col-span-2">
+          {EMPLOYEES_AVAILABLE && <fieldset className="md:col-span-2">
             <legend className="text-sm font-black text-slate-950">Choose an account type</legend>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <ChoiceButton selected={accountType === "owner"} title="Owner account" priceLabel="Paid" description="Make an account as a business owner." onClick={() => { setAccountType("owner"); setError(""); }} />
               <ChoiceButton selected={accountType === "employee"} title="Employee account" priceLabel="Free" description="Make an account as an employee and join your business." onClick={() => { setAccountType("employee"); setError(""); }} />
             </div>
-          </fieldset>
+          </fieldset>}
 
           <label className="block md:col-span-2"><span className="text-sm font-semibold text-slate-700">Business name</span><input required name="businessName" autoComplete="organization" value={form.businessName} onChange={updateField} placeholder="Your business name" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block md:col-span-2"><span className="text-sm font-semibold text-slate-700">{employeeSignup ? "Employee name" : "Owner name"}</span><input required name="personName" autoComplete="name" value={form.personName} onChange={updateField} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>

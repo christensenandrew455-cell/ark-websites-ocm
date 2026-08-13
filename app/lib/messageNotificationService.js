@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminMessaging } from "./firebase-admin";
+import { MESSAGES_AVAILABLE } from "./launchFeatures";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
 
 function text(value) { return String(value || "").trim(); }
@@ -8,6 +9,7 @@ function invalidToken(error) {
 }
 
 export async function sendInboundMessageNotification({ db, clientId, conversationId, conversation }) {
+  if (!MESSAGES_AVAILABLE) return { attempted: 0, sent: 0, failed: 0 };
   const businessSnapshot = await db.collection("businesses").doc(clientId).get();
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   if (business.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };

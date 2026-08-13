@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 import {
   leadContactFieldDeletionPatch,
@@ -291,10 +292,10 @@ function ClientModal({ row, clientId, messagesEnabled, employeesEnabled, activeE
     </div>
     <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span><textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label><label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span><textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
     <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
-      <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>
+      {MESSAGES_AVAILABLE && <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>}
       <button type="button" onClick={onAddContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>
       <button type="button" onClick={() => onDate({ ...row, ...form })} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add to Calendar</button>
-      <button type="button" disabled={!canManageEmployees} onClick={onManageEmployee} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:bg-slate-200 disabled:text-slate-400">Manage Employee</button>
+      {EMPLOYEES_AVAILABLE && <button type="button" disabled={!canManageEmployees} onClick={onManageEmployee} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:bg-slate-200 disabled:text-slate-400">Manage Employee</button>}
     </div>
   </Modal>;
 }
@@ -305,8 +306,8 @@ export default function ReviewClientsNative() {
   const { user, profile } = useAuth();
   const clientId = profile?.clientId || "";
   const businessName = profile?.businessName || "Your Business";
-  const messagesEnabled = profile?.messagesEnabled === true;
-  const employeesEnabled = profile?.employeesEnabled === true;
+  const messagesEnabled = MESSAGES_AVAILABLE && profile?.messagesEnabled === true;
+  const employeesEnabled = EMPLOYEES_AVAILABLE && profile?.employeesEnabled === true;
   const [contacted, setContacted] = useState([]);
   const [clients, setClients] = useState([]);
   const [employeeWorkspace, setEmployeeWorkspace] = useState(null);
@@ -379,7 +380,7 @@ export default function ReviewClientsNative() {
       const token = await user.getIdToken(true);
       let declineResult = null;
 
-      if (row.collectionKey === "contactedMe") {
+      if (MESSAGES_AVAILABLE && row.collectionKey === "contactedMe") {
         const declineResponse = await fetch("/api/business/leads/client-decline-notice", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

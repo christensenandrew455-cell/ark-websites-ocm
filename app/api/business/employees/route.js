@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { normalizeEmployeeDirectoryVisibility, normalizeEmployeeVisibility } from "../../../lib/accountTypes";
 import { addEmployeeActivationToBatch } from "../../../lib/billingEmployeeUsage";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { EMPLOYEES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { requireUser } from "../../../lib/userRequest";
 import { PER_EMPLOYEE_CENTS } from "../../../lib/stripeUsageBilling";
 import { accountPhoneRegistryId } from "../../../lib/signupAvailability";
@@ -22,6 +23,7 @@ function iso(value) {
 function conversationId(clientId, collectionKey, leadId) { return createHash("sha256").update(`${clientId}:${collectionKey}:${leadId}`).digest("hex").slice(0, 48); }
 
 async function authorizeOwner(request) {
+  if (!EMPLOYEES_AVAILABLE) return { response: NextResponse.json({ error: `Employees are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 }) };
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;

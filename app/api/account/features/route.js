@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE, availableAccountFeatures } from "../../../lib/launchFeatures";
 import { requireUser } from "../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -19,11 +20,7 @@ async function authorizeOwner(request) {
 }
 
 function flags(data = {}) {
-  return {
-    messagesEnabled: data.messagesEnabled === true,
-    employeesEnabled: data.employeesEnabled === true,
-    employeeMessagingEnabled: data.employeeMessagingEnabled === true && data.messagesEnabled === true && data.employeesEnabled === true,
-  };
+  return availableAccountFeatures(data);
 }
 
 function realConversationCount(snapshot) {
@@ -62,8 +59,11 @@ export async function POST(request) {
   if (access.response) return access.response;
   try {
     const body = await request.json();
-    const messagesEnabled = body.messagesEnabled === true;
-    const employeesEnabled = body.employeesEnabled === true;
+    if ((!MESSAGES_AVAILABLE && body.messagesEnabled === true) || (!EMPLOYEES_AVAILABLE && body.employeesEnabled === true)) {
+      return NextResponse.json({ error: UPCOMING_FEATURE_MESSAGE }, { status: 409 });
+    }
+    const messagesEnabled = MESSAGES_AVAILABLE && body.messagesEnabled === true;
+    const employeesEnabled = EMPLOYEES_AVAILABLE && body.employeesEnabled === true;
     const businessRef = access.db.collection("businesses").doc(access.clientId);
     const root = access.db.collection("ocmClients").doc(access.clientId);
     const [businessSnapshot, employeesSnapshot, conversationsSnapshot] = await Promise.all([

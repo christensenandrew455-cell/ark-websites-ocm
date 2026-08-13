@@ -1,4 +1,6 @@
-export const HELP_LINKS = [
+import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL, UPCOMING_FEATURE_MESSAGE } from "./launchFeatures";
+
+const ALL_HELP_LINKS = [
   { label: "Dashboard", href: "/" },
   { label: "Leads", href: "/leads" },
   { label: "Messages", href: "/lead-messages" },
@@ -17,17 +19,22 @@ export const HELP_LINKS = [
   { label: "Privacy Policy", href: "/privacy" },
 ];
 
-export const HELP_SECTIONS = [
+export const HELP_LINKS = ALL_HELP_LINKS.filter((link) => {
+  if (!MESSAGES_AVAILABLE && link.label === "Messages") return false;
+  if (!EMPLOYEES_AVAILABLE && ["Employees", "Employee Terms"].includes(link.label)) return false;
+  return true;
+});
+
+const ALL_HELP_SECTIONS = [
   {
     id: "overview",
     title: "What ARK Client Center does",
-    summary: "ARK Client Center receives AI receptionist leads, organizes clients, supports optional customer messaging, tracks usage billing, and provides optional employee routing.",
+    summary: MESSAGES_AVAILABLE && EMPLOYEES_AVAILABLE ? "ARK Client Center receives AI receptionist leads, organizes clients, supports optional customer messaging, tracks usage billing, and provides optional employee routing." : `ARK Client Center receives AI receptionist leads, organizes clients, and tracks usage billing. ${UPCOMING_FEATURE_MESSAGE}`,
     points: [
-      "The Dashboard is the main page after sign-in and focuses on three statistics: Leads, Messages, and Employees.",
+      MESSAGES_AVAILABLE && EMPLOYEES_AVAILABLE ? "The Dashboard is the main page after sign-in and focuses on three statistics: Leads, Messages, and Employees." : "The Dashboard opens Leads now. Messages and Employees appear as disabled upcoming workspaces.",
       "The header shows ARK Client Center, the business name, Settings, and Sign out, without a permanent navigation bar.",
-      "Leads, Messages, Employees, and Settings open as focused pages with a Back to Dashboard control.",
-      "There is one owner account type and one separate employee account type.",
-      "Employee accounts use a restricted workspace and cannot open owner billing or receptionist settings.",
+      MESSAGES_AVAILABLE && EMPLOYEES_AVAILABLE ? "Leads, Messages, Employees, and Settings open as focused pages with a Back to Dashboard control." : "Leads and Settings open as focused pages with a Back to Dashboard control.",
+      ...(EMPLOYEES_AVAILABLE ? ["There is one owner account type and one separate employee account type.", "Employee accounts use a restricted workspace and cannot open owner billing or receptionist settings."] : []),
     ],
     links: ["Dashboard", "Settings", "About the App"],
   },
@@ -38,8 +45,8 @@ export const HELP_SECTIONS = [
     points: [
       "The owner account is $50 per monthly billing period.",
       "Each new lead is $2 in the period when it arrives. Keeping or deleting the lead later does not count it again or remove the original event.",
-      "When Messages is enabled, each new chat is $1 once, then combined inbound and outbound SMS usage is $1 whenever the rolling counter completes another 50 parts. Partial progress carries across periods.",
-      "When Employees is enabled, each approved active employee used at any time during the billing period is $5, even if the employee is later disabled or deleted.",
+      ...(MESSAGES_AVAILABLE ? ["When Messages is enabled, each new chat is $1 once, then combined inbound and outbound SMS usage is $1 whenever the rolling counter completes another 50 parts. Partial progress carries across periods."] : []),
+      ...(EMPLOYEES_AVAILABLE ? ["When Employees is enabled, each approved active employee used at any time during the billing period is $5, even if the employee is later disabled or deleted."] : []),
       "Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.",
       "Settings → Payment shows the current counts, subtotal, referral savings, payment method, and estimated total. Stripe's finalized invoice controls the final amount charged.",
     ],
@@ -51,14 +58,15 @@ export const HELP_SECTIONS = [
     summary: "The Dashboard shows operational statistics instead of billing details.",
     points: [
       "Leads shows the current combined number of new leads and accepted clients and opens the separate Leads page.",
-      "Messages shows the current conversation count and opens the phone-style inbox when enabled.",
-      "Employees shows the current active-employee count and opens employee management when enabled.",
-      "When Messages or Employees is off, tapping its statistic explains that it must be enabled in Settings.",
+      MESSAGES_AVAILABLE ? "Messages shows the current conversation count and opens the phone-style inbox when enabled." : `Messages is disabled and marked ${UPCOMING_FEATURE_LABEL.toLowerCase()}.`,
+      EMPLOYEES_AVAILABLE ? "Employees shows the current active-employee count and opens employee management when enabled." : `Employees is disabled and marked ${UPCOMING_FEATURE_LABEL.toLowerCase()}.`,
+      MESSAGES_AVAILABLE || EMPLOYEES_AVAILABLE ? "When an available optional feature is off, enable it in Settings before using its workspace." : "The upcoming workspace cards cannot be opened during the current launch.",
     ],
-    links: ["Dashboard", "Leads", "Messages", "Employees", "Settings"],
+    links: ["Dashboard", "Leads", ...(MESSAGES_AVAILABLE ? ["Messages"] : []), ...(EMPLOYEES_AVAILABLE ? ["Employees"] : []), "Settings"],
   },
   {
     id: "lead-messages",
+    launchFeature: "messages",
     title: "Customer Messages",
     summary: "Messages works like a normal phone inbox for conversations with leads and clients.",
     points: [
@@ -86,10 +94,11 @@ export const HELP_SECTIONS = [
       "Confirm Date remains available from the client detail view and creates a calendar event after a date is entered.",
       "Moving, assigning, editing, or deleting a record does not reverse usage already recorded.",
     ],
-    links: ["Leads", "Messages", "Employees"],
+    links: ["Leads", ...(MESSAGES_AVAILABLE ? ["Messages"] : []), ...(EMPLOYEES_AVAILABLE ? ["Employees"] : [])],
   },
   {
     id: "employees",
+    launchFeature: "employees",
     title: "Employee accounts",
     summary: "The owner can turn on Employees, approve accounts, control visible fields, and assign work.",
     points: [
@@ -102,6 +111,7 @@ export const HELP_SECTIONS = [
   },
   {
     id: "assignments",
+    launchFeature: "employees",
     title: "Assigning work",
     summary: "Owners route each lead or client from the Employees workspace.",
     points: [
@@ -119,7 +129,7 @@ export const HELP_SECTIONS = [
     summary: "Settings opens to four compact blocks and shows only one full section after a block is tapped.",
     points: [
       "Business Information contains business details, services, service areas, optional estimate availability, and optional titled information the AI receptionist can use during calls.",
-      "Customization contains Dark Mode, Messages, Employees, Messages for Employees, AI timing, and Download Client Data.",
+      MESSAGES_AVAILABLE || EMPLOYEES_AVAILABLE ? "Customization contains Dark Mode, available optional feature controls, AI timing, and Download Client Data." : "Customization contains Dark Mode, AI timing, Download Client Data, and a notice that Messages and Employees are available next month.",
       "Payment contains a live usage breakdown, subtotal, referral savings, estimated total, payment method, Refresh, and Manage Payment Method.",
       "Help & Account contains Help, Documentation, Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.",
       "Use Back to Settings inside a section to return to the four-block menu.",
@@ -139,6 +149,22 @@ export const HELP_SECTIONS = [
     ],
     links: ["Privacy Policy", "Settings", "Public Support"],
   },
+];
+
+export const HELP_SECTIONS = [
+  ...(!MESSAGES_AVAILABLE || !EMPLOYEES_AVAILABLE ? [{
+    id: "upcoming-features",
+    title: "Features coming next month",
+    summary: "Messages and Employees are not available in the current launch version.",
+    points: [
+      "Messages, client texting actions, employee signup, employee access, and work assignment are disabled.",
+      "The dashboard keeps disabled Messages and Employees cards so their upcoming location is clear.",
+      "No messaging or employee usage charges apply while those features are unavailable.",
+    ],
+    links: ["Dashboard", "About the App"],
+  }] : []),
+  ...ALL_HELP_SECTIONS.filter((section) => section.launchFeature !== "messages" || MESSAGES_AVAILABLE)
+    .filter((section) => section.launchFeature !== "employees" || EMPLOYEES_AVAILABLE),
 ];
 
 export const HELP_KNOWLEDGE = HELP_SECTIONS.map((section) => {
