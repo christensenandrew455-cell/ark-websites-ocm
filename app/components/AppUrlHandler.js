@@ -1,6 +1,7 @@
 "use client";
 
 import { App } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Capacitor } from "@capacitor/core";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -28,7 +29,12 @@ export default function AppUrlHandler() {
   const router = useRouter();
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
-    const open = ({ url } = {}) => { const path = appPath(url); if (path) router.replace(path); };
+    const open = async ({ url } = {}) => {
+      const path = appPath(url);
+      if (!path) return;
+      await Browser.close().catch(() => null);
+      router.replace(path);
+    };
     let listener;
     App.getLaunchUrl().then((result) => open(result || {})).catch(() => null);
     App.addListener("appUrlOpen", open).then((handle) => { listener = handle; }).catch(() => null);

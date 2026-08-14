@@ -1,5 +1,7 @@
 "use client";
 
+import { Browser } from "@capacitor/browser";
+import { Capacitor } from "@capacitor/core";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -73,7 +75,8 @@ export default function SignupStatusPage() {
     setBilling(true);
     setError("");
     try {
-      const headers = { "Content-Type": "application/json" };
+      const nativeApp = Capacitor.isNativePlatform();
+      const headers = { "Content-Type": "application/json", ...(nativeApp ? { "X-ARK-Native-App": "1" } : {}) };
       let body = "{}";
       if (mode === "draft") {
         body = JSON.stringify({ signup: saveOwnerSignupDraft(draft) });
@@ -83,7 +86,16 @@ export default function SignupStatusPage() {
       }
       const response = await fetch("/api/billing/create-checkout-session", { method: "POST", headers, body });
       const data = await readApiJson(response, "Unable to open secure payment setup.");
-      window.location.assign(data.url);
+      if (nativeApp) {
+        try {
+          await Browser.open({ url: data.url, presentationStyle: "fullscreen" });
+          setBilling(false);
+        } catch {
+          window.location.assign(data.url);
+        }
+      } else {
+        window.location.assign(data.url);
+      }
     } catch (billingError) {
       setError(publicFormError(billingError, "Unable to open secure payment setup."));
       setBilling(false);
