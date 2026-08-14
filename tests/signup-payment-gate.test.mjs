@@ -363,6 +363,31 @@ test("launch owners verify separate email and text codes sent from the central A
   assert.ok(rulesSource.includes("identityVerificationVerified"));
 });
 
+test("unverified owner signups lock at one hour and enter the full deletion cascade", async () => {
+  const [deadlineSource, cleanupSource, verificationSource, finalizeSource, completeSource, workflowSource, gateSource, operationsSource] = await Promise.all([
+    readFile(new URL("../app/lib/accountVerificationDeadline.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/accountVerificationCleanup.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/accountVerification.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/signup/complete/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/cron/workflow/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/AccountVerificationGate.js", import.meta.url), "utf8"),
+    readFile(new URL("../.github/workflows/ark-operations.yml", import.meta.url), "utf8"),
+  ]);
+  assert.ok(deadlineSource.includes("60 * 60 * 1000"));
+  assert.ok(deadlineSource.includes('account.accountType !== "employee"'));
+  assert.ok(finalizeSource.includes("newAccountVerificationDeadline()"));
+  assert.ok(completeSource.includes("newAccountVerificationDeadline()"));
+  assert.ok(verificationSource.includes('throw new Error("ACCOUNT_VERIFICATION_EXPIRED")'));
+  assert.ok(verificationSource.includes("assertAccountVerificationOpen(latestAccountSnapshot.data())"));
+  assert.ok(cleanupSource.includes('verificationCleanupStatus: "deleting"'));
+  assert.ok(cleanupSource.includes("deleteCustomerPermanently"));
+  assert.ok(workflowSource.includes("purgeExpiredUnverifiedAccounts({ db, now })"));
+  assert.ok(gateSource.includes("Finish both verifications within"));
+  assert.ok(gateSource.includes("scheduled for permanent deletion"));
+  assert.ok(operationsSource.includes('cron: "*/15 * * * *"'));
+});
+
 test("verified owners receive a blocking but skippable highlighted guided tour", async () => {
   const [tourSource, shellSource, statsSource, settingsSource, referralSource] = await Promise.all([
     readFile(new URL("../app/components/GuidedOnboarding.js", import.meta.url), "utf8"),

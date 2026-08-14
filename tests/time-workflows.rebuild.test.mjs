@@ -8,6 +8,13 @@ import {
   resolveEstimateSchedule,
 } from "../app/lib/businessTime.js";
 import {
+  ACCOUNT_VERIFICATION_DEADLINE_MS,
+  accountVerificationDeadline,
+  accountVerificationExpired,
+  newAccountVerificationDeadline,
+  ownerAccountNeedsIdentityVerification,
+} from "../app/lib/accountVerificationDeadline.js";
+import {
   DAY_MS,
   estimateRequestLifecycle,
 } from "../app/lib/estimateRequestLifecycle.js";
@@ -25,6 +32,24 @@ import {
   subscriptionPeriodWindow,
   validTimeZone,
 } from "../app/lib/timeWindows.js";
+
+test("owner identity verification expires at exactly one hour without resetting", () => {
+  const activatedAt = new Date("2026-08-13T12:00:00.000Z");
+  const account = {
+    role: "customer",
+    accountType: "owner",
+    identityVerificationRequired: true,
+    identityVerificationVerified: false,
+    activatedAt,
+  };
+  assert.equal(ACCOUNT_VERIFICATION_DEADLINE_MS, 3_600_000);
+  assert.equal(newAccountVerificationDeadline(activatedAt).toISOString(), "2026-08-13T13:00:00.000Z");
+  assert.equal(accountVerificationDeadline(account).toISOString(), "2026-08-13T13:00:00.000Z");
+  assert.equal(accountVerificationExpired(account, "2026-08-13T12:59:59.999Z"), false);
+  assert.equal(accountVerificationExpired(account, "2026-08-13T13:00:00.000Z"), true);
+  assert.equal(ownerAccountNeedsIdentityVerification({ ...account, accountType: "employee", role: "employee" }), false);
+  assert.equal(accountVerificationExpired({ ...account, identityVerificationVerified: true }, "2026-08-13T14:00:00.000Z"), false);
+});
 
 test("estimate requests are red only during day seven and expire after seven full days", () => {
   const createdAt = Date.parse("2026-08-01T12:00:00.000Z");
