@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { readAccountVerificationStatus, sendAccountVerificationCodes, verifyAccountCodes } from "../../../lib/accountVerification";
+import { readAccountVerificationStatus, sendAccountVerificationCodes, updateAccountVerificationContact, verifyAccountCodes } from "../../../lib/accountVerification";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
@@ -26,11 +26,17 @@ async function authorize(request) {
 
 function verificationError(error) {
   const message = text(error?.message);
+  if (message === "ACCOUNT_EMAIL_INVALID") return { status: 400, error: "Enter a valid email address." };
+  if (message === "ACCOUNT_PHONE_INVALID") return { status: 400, error: "Enter a valid 10-digit U.S. phone number." };
+  if (message === "EMAIL_TAKEN") return { status: 409, error: "That email address is already registered." };
+  if (message === "PHONE_TAKEN") return { status: 409, error: "That phone number is already registered." };
+  if (message === "ACCOUNT_ALREADY_VERIFIED") return { status: 409, error: "This account is already verified." };
   if (message === "VERIFICATION_RESEND_COOLDOWN") return { status: 429, error: "Please wait before requesting another code.", resendAvailableAt: error.resendAvailableAt?.toISOString?.() || "" };
   if (message === "VERIFICATION_CODE_INVALID") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "Enter both four-digit codes." : "Enter the four-digit email code." };
   if (message === "VERIFICATION_CODE_EXPIRED") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "Those codes expired. Request new codes." : "That code expired. Request a new code." };
   if (message === "VERIFICATION_CODE_INCORRECT") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "One or both codes are incorrect." : "That email code is incorrect.", emailCorrect: error.emailCorrect === true, phoneCorrect: error.phoneCorrect === true };
   if (message === "VERIFICATION_TOO_MANY_ATTEMPTS") return { status: 429, error: "Too many incorrect attempts. Request new codes." };
+  if (message === "VERIFICATION_CONTACT_CHANGED") return { status: 409, error: "Your email or phone changed. Enter the newest codes." };
   if (message === "VERIFICATION_DELIVERY_FAILED") return { status: 502, error: PHONE_VERIFICATION_REQUIRED ? "One or both codes could not be delivered. Check your connection and try Resend." : "The email code could not be delivered. Check your connection and try Resend.", delivery: error.delivery };
   if (message.startsWith("ACCOUNT_VERIFICATION_NOT_CONFIGURED")) return { status: 503, error: "Account verification is not available right now." };
   return { status: 500, error: "Something went wrong. Reload and try again." };
@@ -53,10 +59,17 @@ export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
     const db = getAdminDb();
-    const scope = text(body.action).toLowerCase() === "resend" ? "account-verification-resend" : "account-verification-check";
-    const rateLimit = await checkRequestRateLimit({ db, request, scope: `${scope}:${authorization.decoded.uid}`, limit: scope.endsWith("resend") ? 6 : 10, windowMs: scope.endsWith("resend") ? 60 * 60 * 1000 : 10 * 60 * 1000 });
+    const action = text(body.action).toLowerCase();
+    const limits = {
+      resend: { scope: "account-verification-resend", limit: 6, windowMs: 60 * 60 * 1000 },
+      verify: { scope: "account-verification-check", limit: 10, windowMs: 10 * 60 * 1000 },
+      "update-contact": { scope: "account-verification-contact", limit: 4, windowMs: 60 * 60 * 1000 },
+    };
+    const selectedLimit = limits[action];
+    if (!selectedLimit) return NextResponse.json({ error: "Choose a verification action." }, { status: 400 });
+    const rateLimit = await checkRequestRateLimit({ db, request, scope: `${selectedLimit.scope}:${authorization.decoded.uid}`, limit: selectedLimit.limit, windowMs: selectedLimit.windowMs });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
-    if (text(body.action).toLowerCase() === "resend") {
+    if (action === "resend") {
       return NextResponse.json(await sendAccountVerificationCodes({
         db,
         uid: authorization.decoded.uid,
@@ -65,7 +78,15 @@ export async function POST(request) {
         phone: text(authorization.account.accountPhone),
       }));
     }
-    if (text(body.action).toLowerCase() !== "verify") return NextResponse.json({ error: "Choose a verification action." }, { status: 400 });
+    if (action === "update-contact") {
+      return NextResponse.json(await updateAccountVerificationContact({
+        db,
+        auth: getAdminAuth(),
+        uid: authorization.decoded.uid,
+        email: body.email,
+        phone: body.phone,
+      }));
+    }
     return NextResponse.json(await verifyAccountCodes({
       db,
       auth: getAdminAuth(),

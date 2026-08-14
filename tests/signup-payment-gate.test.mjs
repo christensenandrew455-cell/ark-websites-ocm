@@ -325,10 +325,11 @@ test("pending signup details survive Stripe only as encrypted temporary Firebase
 });
 
 test("launch owners verify separate email and text codes sent from the central ARK number", async () => {
-  const [launchSource, envSource, verificationSource, gateSource, checkoutSource, requestSource, rulesSource] = await Promise.all([
+  const [launchSource, envSource, verificationSource, verificationRouteSource, gateSource, checkoutSource, requestSource, rulesSource] = await Promise.all([
     readFile(new URL("../app/lib/launchFeatures.js", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/accountVerification.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/account/verification/route.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/AccountVerificationGate.js", import.meta.url), "utf8"),
     readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/authenticatedRequest.js", import.meta.url), "utf8"),
@@ -349,6 +350,15 @@ test("launch owners verify separate email and text codes sent from the central A
   assert.ok(gateSource.includes("Text code"));
   assert.ok(gateSource.includes("status?.phoneRequired && <label"));
   assert.ok(gateSource.includes("Use Resend Code below."));
+  assert.ok(gateSource.includes("Edit email or phone"));
+  assert.ok(gateSource.includes('action: "update-contact"'));
+  assert.ok(verificationRouteSource.includes('"account-verification-contact"'));
+  assert.ok(verificationRouteSource.includes("updateAccountVerificationContact"));
+  assert.ok(verificationSource.includes("checkSignupAvailability"));
+  assert.ok(verificationSource.includes("accountPhoneRegistry"));
+  assert.ok(verificationSource.includes("transaction.delete(oldPhoneRegistryRef)"));
+  assert.ok(verificationSource.includes("auth.updateUser(uid, { email, emailVerified: true })"));
+  assert.ok(verificationSource.includes("stripe.customers.update"));
   assert.ok(requestSource.includes("ACCOUNT_VERIFICATION_REQUIRED"));
   assert.ok(rulesSource.includes("identityVerificationVerified"));
 });
@@ -372,9 +382,11 @@ test("verified owners receive a blocking but skippable highlighted guided tour",
 });
 
 test("native Stripe return links are registered and verification data joins account deletion", async () => {
-  const [returnSource, handlerSource, androidSource, iosSource, packageSource, lifecycleSource] = await Promise.all([
+  const [returnSource, handlerSource, checkoutSource, statusSource, androidSource, iosSource, packageSource, lifecycleSource] = await Promise.all([
     readFile(new URL("../app/signup/return/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/AppUrlHandler.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/signup/status/page.js", import.meta.url), "utf8"),
     readFile(new URL("../scripts/configure-android.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/configure-ios.mjs", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -382,10 +394,18 @@ test("native Stripe return links are registered and verification data joins acco
   ]);
   assert.ok(returnSource.includes("arkclientcenter://open"));
   assert.ok(returnSource.includes("window.location.replace"));
+  assert.ok(returnSource.includes("intent://"));
+  assert.ok(returnSource.includes("Open ARK Client Center"));
   assert.ok(handlerSource.includes('App.addListener("appUrlOpen"'));
+  assert.ok(handlerSource.includes("Browser.close()"));
+  assert.ok(checkoutSource.includes('return explicitNativeRequest || appUserAgent ? "&native=1" : ""'));
+  assert.ok(statusSource.includes("Browser.open"));
+  assert.ok(statusSource.includes('"X-ARK-Native-App": "1"'));
+  assert.ok(statusSource.includes("window.location.assign(data.url)"));
   assert.ok(androidSource.includes('android:scheme="arkclientcenter"'));
   assert.ok(iosSource.includes('addPlistUrlScheme(plist, "arkclientcenter")'));
   assert.ok(packageSource.includes('"@capacitor/app"'));
+  assert.ok(packageSource.includes('"@capacitor/browser"'));
   assert.ok(lifecycleSource.includes('collection("accountVerificationChallenges")'));
   assert.ok(lifecycleSource.includes('collection("pendingOwnerSignups")'));
 });

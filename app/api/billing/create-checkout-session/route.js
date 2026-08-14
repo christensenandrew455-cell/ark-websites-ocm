@@ -29,6 +29,12 @@ function applicationUrl(request) {
   return new URL(request.url).origin;
 }
 
+function nativeReturnSuffix(request) {
+  const explicitNativeRequest = text(request.headers.get("x-ark-native-app")) === "1";
+  const appUserAgent = /ARKClientCenter\//i.test(text(request.headers.get("user-agent")));
+  return explicitNativeRequest || appUserAgent ? "&native=1" : "";
+}
+
 async function authorize(request) {
   const header = String(request.headers.get("authorization") || "");
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
@@ -84,8 +90,8 @@ async function startPaymentGatedSignup(request, rawSignup) {
     payment_method_types: ["card"],
     client_reference_id: digest,
     expires_at: Math.floor(Date.now() / 1000) + 6 * 60 * 60,
-    success_url: `${appUrl}/signup/return?session_id={CHECKOUT_SESSION_ID}&handoff=${encodeURIComponent(handoff)}`,
-    cancel_url: `${appUrl}/signup/return?canceled=1`,
+    success_url: `${appUrl}/signup/return?session_id={CHECKOUT_SESSION_ID}&handoff=${encodeURIComponent(handoff)}${nativeReturnSuffix(request)}`,
+    cancel_url: `${appUrl}/signup/return?canceled=1${nativeReturnSuffix(request)}`,
     metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId, billingPlan: "standard", planName: plan.name },
     setup_intent_data: { metadata: { signupFlow: "payment-gated-v2", signupDigest: digest, clientId } },
   });
@@ -133,8 +139,8 @@ async function startLegacySignup(request) {
     mode: "setup",
     customer: customerId,
     payment_method_types: ["card"],
-    success_url: `${appUrl}/signup/return?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/signup/return?canceled=1`,
+    success_url: `${appUrl}/signup/return?session_id={CHECKOUT_SESSION_ID}${nativeReturnSuffix(request)}`,
+    cancel_url: `${appUrl}/signup/return?canceled=1${nativeReturnSuffix(request)}`,
     metadata: { uid: authorization.decoded.uid, clientId, businessName, ownerName, accountEmail: email, accountPhone, billingPlan: "standard", planName: plan.name },
   });
   await accountRef.set({ billingPlan: "standard", billingPlanName: plan.name, stripeCheckoutSessionId: session.id, paymentSetupStatus: "in_progress", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
