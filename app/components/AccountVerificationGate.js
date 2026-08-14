@@ -14,6 +14,13 @@ function secondsUntil(value) {
   return Number.isFinite(time) ? Math.max(0, Math.ceil((time - Date.now()) / 1000)) : 0;
 }
 
+function formatRemaining(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+}
+
 function editablePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
@@ -32,6 +39,7 @@ export default function AccountVerificationGate() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [wait, setWait] = useState(0);
+  const [deadlineWait, setDeadlineWait] = useState(null);
 
   const request = useCallback(async (body) => {
     const token = await user.getIdToken(true);
@@ -56,6 +64,16 @@ export default function AccountVerificationGate() {
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [status?.resendAvailableAt]);
+
+  useEffect(() => {
+    if (!status?.deadlineAt) return setDeadlineWait(null);
+    const tick = () => setDeadlineWait(secondsUntil(status.deadlineAt));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [status?.deadlineAt]);
+
+  const expired = status?.expired === true || (Boolean(status?.deadlineAt) && deadlineWait === 0);
 
   async function verify(event) {
     event.preventDefault();
@@ -141,8 +159,11 @@ export default function AccountVerificationGate() {
   return <main className="fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto bg-slate-950 px-4 py-8">
     <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">One last step</p>
-      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
-      {editingContact ? <>
+      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{expired ? "Verification time expired" : editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
+      {!expired && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
+      {expired ? <>
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold leading-6 text-red-800" role="alert">The one-hour verification window ended. This account is locked and scheduled for permanent deletion. Sign out and start signup again.</p>
+      </> : editingContact ? <>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Update a typo here. Saving will make the old codes stop working and send fresh codes to both entries.</p>
         <form onSubmit={saveContact} className="mt-6 space-y-4">
           <label className="block"><span className="text-xs font-black text-slate-800">Email address</span><input type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value.slice(0, 254))} autoComplete="email" className="mt-2 h-13 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold outline-none focus:border-indigo-700" /></label>

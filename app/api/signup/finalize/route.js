@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "../../../lib/accountTypes";
 import { sendAccountVerificationCodes } from "../../../lib/accountVerification";
+import { newAccountVerificationDeadline } from "../../../lib/accountVerificationDeadline";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { normalizeOwnerSignup, validateOwnerSignup } from "../../../lib/ownerSignup";
@@ -190,11 +191,13 @@ export async function POST(request) {
     const employeesEnabled = false;
     const employeeMessagingEnabled = false;
     const acceptedAt = new Date();
+    const identityVerificationDeadlineAt = newAccountVerificationDeadline();
     const verificationFields = {
       verificationStatus: "pending",
       identityVerificationRequired: true,
       identityVerificationVerified: false,
       identityVerificationStatus: "pending",
+      identityVerificationDeadlineAt,
       emailVerificationStatus: "pending",
       phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "pending" : "not_required",
     };
@@ -303,6 +306,7 @@ export async function POST(request) {
       StripeSubscriptionId: subscription.id,
       StripeSubscriptionStatus: subscription.status,
       IdentityVerificationStatus: "Pending",
+      IdentityVerificationDeadlineAt: identityVerificationDeadlineAt,
       EmailVerificationStatus: "Pending",
       PhoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "Pending" : "Not Required",
       NumberAssignmentStatus: "Needed",

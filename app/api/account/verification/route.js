@@ -31,6 +31,7 @@ function verificationError(error) {
   if (message === "EMAIL_TAKEN") return { status: 409, error: "That email address is already registered." };
   if (message === "PHONE_TAKEN") return { status: 409, error: "That phone number is already registered." };
   if (message === "ACCOUNT_ALREADY_VERIFIED") return { status: 409, error: "This account is already verified." };
+  if (message === "ACCOUNT_VERIFICATION_EXPIRED") return { status: 410, error: "The one-hour verification window expired. This account is locked and will be deleted. Sign out and start signup again." };
   if (message === "VERIFICATION_RESEND_COOLDOWN") return { status: 429, error: "Please wait before requesting another code.", resendAvailableAt: error.resendAvailableAt?.toISOString?.() || "" };
   if (message === "VERIFICATION_CODE_INVALID") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "Enter both four-digit codes." : "Enter the four-digit email code." };
   if (message === "VERIFICATION_CODE_EXPIRED") return { status: 400, error: PHONE_VERIFICATION_REQUIRED ? "Those codes expired. Request new codes." : "That code expired. Request a new code." };

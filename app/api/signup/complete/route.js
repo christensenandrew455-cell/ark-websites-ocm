@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY, normalizePersonKey } from "../../../lib/accountTypes";
 import { sendAccountVerificationCodes } from "../../../lib/accountVerification";
+import { newAccountVerificationDeadline } from "../../../lib/accountVerificationDeadline";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { qualifyReferralAfterActivation } from "../../../lib/referrals";
@@ -99,12 +100,14 @@ export async function POST(request) {
     });
     if (subscription.status !== "active") return NextResponse.json({ error: "The first account payment was not completed." }, { status: 402 });
 
+    const identityVerificationDeadlineAt = newAccountVerificationDeadline();
     const activeAccount = {
       status: "active",
       verificationStatus: "pending",
       identityVerificationRequired: true,
       identityVerificationVerified: false,
       identityVerificationStatus: "pending",
+      identityVerificationDeadlineAt,
       emailVerificationStatus: "pending",
       phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "pending" : "not_required",
       paymentSetupStatus: "complete",
@@ -160,6 +163,7 @@ export async function POST(request) {
       onboardingTourStatus: "pending",
       identityVerificationRequired: true,
       identityVerificationVerified: false,
+      identityVerificationDeadlineAt,
       accountType: ACCOUNT_TYPES.OWNER,
       billingPlan: "standard",
       billingPlanName: "ARK AI Receptionist",
@@ -215,6 +219,7 @@ export async function POST(request) {
       StripeSubscriptionId: subscription.id,
       StripeSubscriptionStatus: subscription.status,
       IdentityVerificationStatus: "Pending",
+      IdentityVerificationDeadlineAt: identityVerificationDeadlineAt,
       EmailVerificationStatus: "Pending",
       PhoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "Pending" : "Not Required",
       NumberAssignmentStatus: "Needed",

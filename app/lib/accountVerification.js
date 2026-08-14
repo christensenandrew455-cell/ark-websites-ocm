@@ -1,6 +1,7 @@
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
+import { accountVerificationDeadline, accountVerificationExpired } from "./accountVerificationDeadline";
 import { PHONE_VERIFICATION_REQUIRED } from "./launchFeatures";
 import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
 
@@ -15,6 +16,11 @@ function asDate(value) {
   if (typeof value.toDate === "function") return value.toDate();
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+function assertAccountVerificationOpen(account) {
+  if (["deleting", "retry_pending"].includes(text(account.verificationCleanupStatus)) || accountVerificationExpired(account)) {
+    throw new Error("ACCOUNT_VERIFICATION_EXPIRED");
+  }
 }
 function verificationSecret() {
   const value = text(process.env.STRIPE_SECRET_KEY);
@@ -112,6 +118,7 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
   const resendAt = asDate(challenge.resendAvailableAt);
   const email = validContactEmail(challenge.email || account.accountEmail) || normalizeSignupEmail(challenge.email || account.accountEmail);
   const phone = validContactPhone(challenge.phone || account.accountPhone) || normalizedPhone(challenge.phone || account.accountPhone);
+  const deadline = accountVerificationDeadline(account);
   return {
     required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
     verified: account.identityVerificationVerified === true || (emailVerified && phoneVerified),
@@ -125,6 +132,8 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
     emailDeliveryStatus: text(challenge.emailDeliveryStatus || "pending"),
     phoneDeliveryStatus: PHONE_VERIFICATION_REQUIRED ? text(challenge.phoneDeliveryStatus || "pending") : "not_required",
     resendAvailableAt: resendAt?.toISOString() || "",
+    deadlineAt: deadline?.toISOString() || "",
+    expired: accountVerificationExpired(account),
   };
 }
 
@@ -141,9 +150,14 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
   const missing = missingAccountVerificationConfiguration();
   if (missing.length) throw new Error(`ACCOUNT_VERIFICATION_NOT_CONFIGURED:${missing.join(",")}`);
   const ref = db.collection(COLLECTION).doc(uid);
+  const accountRef = db.collection("accounts").doc(uid);
   const challengeId = randomUUID();
   const prepared = await db.runTransaction(async (transaction) => {
-    const currentSnapshot = await transaction.get(ref);
+    const [currentSnapshot, accountSnapshot] = await Promise.all([transaction.get(ref), transaction.get(accountRef)]);
+    if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    const account = accountSnapshot.data();
+    if (account.identityVerificationVerified === true) throw new Error("ACCOUNT_ALREADY_VERIFIED");
+    assertAccountVerificationOpen(account);
     const current = currentSnapshot.exists ? currentSnapshot.data() : {};
     const resendAvailableAt = asDate(current.resendAvailableAt);
     if (!ignoreCooldown && resendAvailableAt && resendAvailableAt.getTime() > Date.now() && ["sending", "sent"].includes(text(current.deliveryStatus))) {
@@ -205,6 +219,7 @@ export async function updateAccountVerificationContact({ db, auth, uid, email: r
   if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
   const account = accountSnapshot.data();
   if (account.identityVerificationVerified === true) throw new Error("ACCOUNT_ALREADY_VERIFIED");
+  assertAccountVerificationOpen(account);
 
   const availability = await checkSignupAvailability({ auth, db, accountEmail: email, accountPhone: phone, allowedUid: uid });
   if (availability.emailInUse) throw new Error("EMAIL_TAKEN");
@@ -230,6 +245,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
   const verification = await db.runTransaction(async (transaction) => {
     const [challengeSnapshot, accountSnapshot] = await Promise.all([transaction.get(ref), transaction.get(accountRef)]);
     if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    assertAccountVerificationOpen(accountSnapshot.data());
     if (!challengeSnapshot.exists) throw new Error("VERIFICATION_CODE_EXPIRED");
     const challenge = challengeSnapshot.data();
     const expiresAt = asDate(challenge.expiresAt);
@@ -311,6 +327,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
         oldPhoneRegistryRef ? transaction.get(oldPhoneRegistryRef) : Promise.resolve(null),
       ]);
       if (!latestChallengeSnapshot.exists || !latestAccountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+      assertAccountVerificationOpen(latestAccountSnapshot.data());
       const latestChallenge = latestChallengeSnapshot.data();
       if (text(latestChallenge.challengeId) !== challengeId || latestChallenge.emailVerified !== true || (PHONE_VERIFICATION_REQUIRED && latestChallenge.phoneVerified !== true)) {
         throw new Error("VERIFICATION_CONTACT_CHANGED");
