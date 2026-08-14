@@ -33,6 +33,7 @@
 	"packageClassList": [
 		"ContactsPlugin",
 		"AppPlugin",
+		"CAPBrowserPlugin",
 		"PushNotificationsPlugin",
 		"CapacitorCalendarPlugin"
 	]
