@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { getAdminDb } from "../../../lib/firebase-admin";
+import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
 import {
   findBusinessForStripeCustomer,
   registerPaymentFailure,
@@ -31,6 +32,26 @@ export async function POST(request) {
     const rawBody = await request.text();
     const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     const db = getAdminDb();
+
+    if (event.type === "setup_intent.succeeded") {
+      const setupIntent = event.data.object;
+      const uid = text(setupIntent.metadata?.uid);
+      if (!uid) return NextResponse.json({ received: true, ignored: true });
+      try {
+        await completeOwnerPaymentSetup({
+          db,
+          auth: getAdminAuth(),
+          stripe,
+          uid,
+          setupIntentId: setupIntent.id,
+        });
+      } catch (setupError) {
+        const nonActionable = new Set(["ACCOUNT_NOT_FOUND", "OWNER_ACCOUNT_REQUIRED", "PAYMENT_SETUP_FORBIDDEN"]);
+        if (!nonActionable.has(text(setupError?.message))) throw setupError;
+        console.warn("Ignoring stale or unowned Stripe payment-method setup event", setupIntent.id);
+        return NextResponse.json({ received: true, ignored: true });
+      }
+    }
 
     if (event.type === "invoice.payment_failed") {
       const invoice = event.data.object;

@@ -5,7 +5,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { db } from "../lib/firebase";
-import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
 function DashboardCard({ value, label, description, onClick, disabled = false, tourId = "" }) {
   const displayValue = typeof value === "number" ? value.toLocaleString("en-US") : String(value ?? "0");
@@ -43,7 +43,6 @@ export default function ClientStats() {
   const clientId = profile?.clientId || "";
   const [newLeads, setNewLeads] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  const [pendingEmployees, setPendingEmployees] = useState(0);
   const [receptionistPhone, setReceptionistPhone] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -74,21 +73,12 @@ export default function ClientStats() {
       } else {
         setUnreadMessages(0);
       }
-      if (profile?.employeesEnabled === true) {
-        requests.push(fetch("/api/business/employees", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
-          .then(async (response) => response.ok ? response.json() : {})
-          .then((data) => setPendingEmployees((Array.isArray(data.employees) ? data.employees : []).filter((employee) => employee.status === "pending_owner_approval").length))
-          .catch(() => setPendingEmployees(0)));
-      } else {
-        setPendingEmployees(0);
-      }
       await Promise.all(requests);
     } catch {
       setUnreadMessages(0);
-      setPendingEmployees(0);
       setReceptionistPhone("");
     }
-  }, [profile?.employeesEnabled, profile?.messagesEnabled, user]);
+  }, [profile?.messagesEnabled, user]);
 
   useEffect(() => {
     loadNewCounts();
@@ -122,10 +112,9 @@ export default function ClientStats() {
           <p className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{receptionistPhone ? displayPhone(receptionistPhone) : "Not assigned yet"}</p>
         </section>
         <section className="mt-3 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:mt-5 sm:p-5">
-          <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
             <DashboardCard tourId="dashboard-leads" value={newLeads} label="Leads" description="Accept new leads and view your clients." onClick={() => router.push("/leads")} />
             <DashboardCard tourId="dashboard-messages" value={MESSAGES_AVAILABLE ? unreadMessages : "?"} label="Messages" description={MESSAGES_AVAILABLE ? "Text clients from your dedicated business number." : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE || profile?.messagesEnabled !== true} onClick={() => openFeature("Messages", MESSAGES_AVAILABLE && profile?.messagesEnabled === true, "/lead-messages")} />
-            <DashboardCard tourId="dashboard-employees" value={EMPLOYEES_AVAILABLE ? pendingEmployees : "?"} label="Employees" description={EMPLOYEES_AVAILABLE ? "Manage your employees." : UPCOMING_FEATURE_LABEL} disabled={!EMPLOYEES_AVAILABLE || profile?.employeesEnabled !== true} onClick={() => openFeature("Employees", EMPLOYEES_AVAILABLE && profile?.employeesEnabled === true, "/employees")} />
           </div>
         </section>
       </div>

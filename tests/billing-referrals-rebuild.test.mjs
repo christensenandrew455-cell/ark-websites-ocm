@@ -13,7 +13,6 @@ import {
 } from "../app/lib/billingMessageUsage.js";
 import { billingLeadEventId } from "../app/lib/billingLeadUsage.js";
 import { billingConversationEventId, isBillableConversationData } from "../app/lib/billingConversationUsage.js";
-import { billingEmployeeActivationId } from "../app/lib/billingEmployeeUsage.js";
 import { messageContactBlockId, normalizeMessagePhone } from "../app/lib/messageContactBlocks.js";
 import {
   ensureCustomerBillingSubscription,
@@ -21,7 +20,7 @@ import {
 } from "../app/lib/stripeUsageBilling.js";
 import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
 
-test("billing uses exact base, lead, chat, completed SMS-part block, and employee prices", () => {
+test("billing uses exact base, lead, chat, and completed SMS-part block prices", () => {
   const summary = calculateBillingSummary({
     leadCount: 4,
     chatCount: 3,
@@ -29,7 +28,6 @@ test("billing uses exact base, lead, chat, completed SMS-part block, and employe
     messagePartBlockCount: 1,
     messagePartRemainder: 1,
     messageCount: 7,
-    employeeCount: 3,
   });
   assert.equal(summary.monthlyBaseCents, 5000);
   assert.equal(summary.leadUsageCents, 800);
@@ -38,9 +36,8 @@ test("billing uses exact base, lead, chat, completed SMS-part block, and employe
   assert.equal(summary.messagePartRemainder, 1);
   assert.equal(summary.messagePartUsageCents, 100);
   assert.equal(summary.messageUsageCents, 400);
-  assert.equal(summary.employeeUsageCents, 1500);
-  assert.equal(summary.subtotalCents, 7700);
-  assert.equal(summary.amountDue, 7700);
+  assert.equal(summary.subtotalCents, 6200);
+  assert.equal(summary.amountDue, 6200);
 });
 
 test("SMS billing charges only when a rolling 50-part threshold is reached", () => {
@@ -71,8 +68,6 @@ test("durable billing ledger IDs are deterministic and do not expose source valu
   assert.equal(messageId, billingMessageEventId("sample-business", "inbound", "provider-secret-id"));
   assert.equal(messageId.length, 48);
   assert.equal(messageId.includes("provider-secret-id"), false);
-  const employeeId = billingEmployeeActivationId("sample-business", "employee-user", "activation-1");
-  assert.equal(employeeId.length, 48);
   const leadId = billingLeadEventId("sample-business", "lead-1");
   assert.equal(leadId, billingLeadEventId("sample-business", "lead-1"));
   assert.equal(leadId.length, 48);
@@ -105,8 +100,8 @@ test("deleted-chat contact blocks normalize and hash phone numbers", () => {
   assert.equal(id, messageContactBlockId("sample-business", "+1 978 660 3255"));
 });
 
-test("employee assignment placeholders are not billed as chats", () => {
-  assert.equal(isBillableConversationData({ assignedEmployeeUid: "employee", updatedAt: new Date() }), false);
+test("metadata-only conversation placeholders are not billed as chats", () => {
+  assert.equal(isBillableConversationData({ updatedAt: new Date() }), false);
   assert.equal(isBillableConversationData({ createdAt: new Date() }), true);
   assert.equal(isBillableConversationData({ billingConversationSourceId: "chat:event" }), true);
 });
@@ -131,9 +126,6 @@ test("a transient subscription lookup failure cannot create a duplicate subscrip
     messageProductId: "prod_message",
     messageMeterId: "meter_message",
     messagePriceId: "price_message",
-    employeeProductId: "prod_employee",
-    employeeMeterId: "meter_employee",
-    employeePriceId: "price_employee",
   };
   const configDocument = {
     async get() { return { exists: true, data: () => catalog }; },
@@ -147,6 +139,11 @@ test("a transient subscription lookup failure cannot create a duplicate subscrip
   };
   const stripe = {
     customers: { async update() {} },
+    prices: {
+      async retrieve(id) {
+        return { id, active: true, currency: "usd", unit_amount: 5000, recurring: { interval: "month" }, product: "prod_base" };
+      },
+    },
     subscriptions: {
       async retrieve() {
         const error = new Error("temporary network failure");

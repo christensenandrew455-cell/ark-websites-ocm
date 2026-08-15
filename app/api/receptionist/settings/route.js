@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { getAdminDb } from "../../../lib/firebase-admin";
+import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
@@ -183,6 +183,10 @@ export async function POST(request) {
   const db = getAdminDb();
   const loaded = await loadProfile(db, access.clientId);
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
+  const onboarding = body.onboarding === true && !access.isAdmin;
+  if (onboarding && !["pending_business_setup", "pending_payment"].includes(text(loaded.business.status))) {
+    return NextResponse.json({ error: "This account is not waiting for business information." }, { status: 409 });
+  }
 
   if (access.isAdmin && body.connectionOnly === true) {
     const phone = text(body.receptionistPhone);
@@ -200,10 +204,10 @@ export async function POST(request) {
   const current = profilePayload(access.clientId, loaded.business, loaded.account, loaded.settings, loaded.connection, loaded.configured);
   const profile = {
     ...current,
-    businessName: text(body.businessName ?? current.businessName),
-    ownerName: text(body.ownerName ?? current.ownerName),
-    businessPhone: text(body.businessPhone ?? current.businessPhone),
-    businessEmail: text(body.businessEmail ?? current.businessEmail).toLowerCase(),
+    businessName: onboarding ? current.businessName : text(body.businessName ?? current.businessName),
+    ownerName: onboarding ? current.ownerName : text(body.ownerName ?? current.ownerName),
+    businessPhone: onboarding ? current.businessPhone : text(body.businessPhone ?? current.businessPhone),
+    businessEmail: onboarding ? current.businessEmail : text(body.businessEmail ?? current.businessEmail).toLowerCase(),
     timeZone: text(body.timeZone ?? current.timeZone),
     estimateDays: text(body.estimateDays ?? current.estimateDays),
     estimateWeekdays: list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
@@ -275,24 +279,30 @@ export async function POST(request) {
   batch.set(db.collection("accountPhoneRegistry").doc(phoneRegistryId), { uid: customerUid, ownerUid: customerUid, clientId: access.clientId, accountPhoneNormalized: businessPhoneNormalized, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   batch.set(loaded.settingsRef, settingsData, { merge: true });
   batch.set(loaded.accountSettingsRef, { BusinessName: profile.businessName, OwnerName: profile.ownerName, AccountEmail: profile.businessEmail, AccountPhone: profile.businessPhone, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  batch.set(loaded.businessRef, { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, accountPhoneNormalized: businessPhoneNormalized, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const onboardingStatus = onboarding ? { status: "pending_payment", paymentSetupStatus: "ready" } : {};
+  batch.set(loaded.businessRef, { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, accountPhoneNormalized: businessPhoneNormalized, businessSetupComplete: true, ...onboardingStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   batch.set(db.collection("businessNameRegistry").doc(nameCheck.businessNameKey), { clientId: access.clientId, businessName: profile.businessName, ownerUid: text(loaded.business.ownerUid || loaded.business.uid), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  batch.set(db.collection("ocmClients").doc(access.clientId), { businessName: profile.businessName, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  batch.set(db.collection("ocmClients").doc(access.clientId), { businessName: profile.businessName, businessSetupComplete: true, ...onboardingStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-  if (customerUid) batch.set(db.collection("accounts").doc(customerUid), { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, accountPhoneNormalized: businessPhoneNormalized, businessSetupComplete: true, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  if (customerUid) batch.set(db.collection("accounts").doc(customerUid), { businessName: profile.businessName, businessNameKey: nameCheck.businessNameKey, ownerName: profile.ownerName, accountPhone: profile.businessPhone, accountPhoneNormalized: businessPhoneNormalized, businessSetupComplete: true, ...onboardingStatus, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   if (access.isAdmin) {
     updateConnectionPhoneRegistry(batch, db, access.clientId, loaded.connection.receptionistPhoneNormalized || loaded.settings.receptionistPhoneNormalized, profile.receptionistPhoneNormalized, access.user.decodedToken.uid);
     batch.set(loaded.connectionRef, { receptionistEnabled: Boolean(profile.receptionistPhoneNormalized) && profile.enabled, receptionistPhone: profile.receptionistPhone, receptionistPhoneNormalized: profile.receptionistPhoneNormalized, updatedBy: access.user.decodedToken.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   }
   await batch.commit();
 
-  if (loaded.business.billingPlan === "business") {
-    const employees = await loaded.businessRef.collection("employees").get();
-    await Promise.all(employees.docs.map((document) => Promise.all([
-      document.ref.set({ businessName: profile.businessName, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
-      db.collection("accounts").doc(document.id).set({ businessName: profile.businessName, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
-    ])));
+  if (onboarding && customerUid) {
+    const auth = getAdminAuth();
+    const userRecord = await auth.getUser(customerUid);
+    await auth.setCustomUserClaims(customerUid, {
+      ...(userRecord.customClaims || {}),
+      role: "customer",
+      clientId: access.clientId,
+      accountStatus: "pending_payment",
+      identityVerificationRequired: false,
+      identityVerificationVerified: true,
+    });
   }
 
-  return NextResponse.json({ profile: profilePayload(access.clientId, { ...loaded.business, businessName: profile.businessName, ownerName: profile.ownerName, accountPhone: profile.businessPhone }, { ...loaded.account, BusinessName: profile.businessName, OwnerName: profile.ownerName, AccountEmail: profile.businessEmail, AccountPhone: profile.businessPhone }, settingsData, { ...loaded.connection, receptionistPhone: profile.receptionistPhone, receptionistPhoneNormalized: profile.receptionistPhoneNormalized }, true) });
+  return NextResponse.json({ profile: profilePayload(access.clientId, { ...loaded.business, businessName: profile.businessName, ownerName: profile.ownerName, accountPhone: profile.businessPhone }, { ...loaded.account, BusinessName: profile.businessName, OwnerName: profile.ownerName, AccountEmail: profile.businessEmail, AccountPhone: profile.businessPhone }, settingsData, { ...loaded.connection, receptionistPhone: profile.receptionistPhone, receptionistPhoneNormalized: profile.receptionistPhoneNormalized }, true), ...(onboarding ? { nextPath: "/signup/payment" } : {}) });
 }

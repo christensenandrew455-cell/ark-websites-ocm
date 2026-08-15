@@ -119,6 +119,14 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
   const email = validContactEmail(challenge.email || account.accountEmail) || normalizeSignupEmail(challenge.email || account.accountEmail);
   const phone = validContactPhone(challenge.phone || account.accountPhone) || normalizedPhone(challenge.phone || account.accountPhone);
   const deadline = accountVerificationDeadline(account);
+  const accountStatus = text(account.status);
+  const nextPath = accountStatus === "pending_verification"
+    ? "/signup/verify"
+    : accountStatus === "pending_business_setup"
+      ? "/setup/business"
+      : accountStatus === "pending_payment"
+        ? "/signup/payment"
+        : "/";
   return {
     required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
     verified: account.identityVerificationVerified === true || (emailVerified && phoneVerified),
@@ -134,6 +142,8 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
     resendAvailableAt: resendAt?.toISOString() || "",
     deadlineAt: deadline?.toISOString() || "",
     expired: accountVerificationExpired(account),
+    accountStatus,
+    nextPath,
   };
 }
 
@@ -273,7 +283,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
       previousEmail: validContactEmail(account.accountEmail),
       previousPhone: validContactPhone(account.accountPhone),
       stripeCustomerId: text(account.stripeCustomerId),
-      signupSessionId: text(account.signupSessionId || account.stripeCheckoutSessionId),
+      accountStatus: text(account.status),
     };
   });
   const { emailCorrect, phoneCorrect } = verification;
@@ -301,7 +311,11 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     throw error;
   }
 
+  const nextAccountStatus = verification.accountStatus === "pending_verification"
+    ? "pending_business_setup"
+    : verification.accountStatus || "active";
   const verifiedUpdate = {
+    status: nextAccountStatus,
     verificationStatus: "verified",
     identityVerificationRequired: false,
     identityVerificationVerified: true,
@@ -363,9 +377,6 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
       }
-      if (verification.signupSessionId) {
-        transaction.set(db.collection("signupSessions").doc(verification.signupSessionId), { email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      }
       transaction.set(ref, {
         ...contactUpdate,
         email,
@@ -387,7 +398,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     ...(user.customClaims || {}),
     role: "customer",
     clientId,
-    accountStatus: "active",
+    accountStatus: nextAccountStatus,
     identityVerificationRequired: false,
     identityVerificationVerified: true,
   });

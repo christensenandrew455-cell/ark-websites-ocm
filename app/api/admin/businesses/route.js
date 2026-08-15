@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { ACCOUNT_TYPES, DEFAULT_EMPLOYEE_VISIBILITY } from "../../../lib/accountTypes";
+import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
@@ -11,7 +11,6 @@ import {
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
   PER_CHAT_CENTS,
-  PER_EMPLOYEE_CENTS,
   PER_LEAD_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
 } from "../../../lib/stripeUsageBilling";
@@ -70,7 +69,7 @@ export async function POST(request) {
     if (!duplicatePhone.empty) return NextResponse.json({ error: "That connection phone number is already assigned to another account." }, { status: 409 });
 
     createdUser = await auth.createUser({ email: accountEmail, password: temporaryPassword, displayName: ownerName, emailVerified: false });
-    const claims = { role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId, accountStatus: "active", billingPlan: "standard", messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false };
+    const claims = { role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId, accountStatus: "active", billingPlan: "standard", messagesEnabled: false };
     await auth.setCustomUserClaims(createdUser.uid, claims);
 
     const connectionKey = randomBytes(24).toString("hex");
@@ -97,17 +96,12 @@ export async function POST(request) {
       monthlyBaseCents: MONTHLY_BASE_CENTS,
       includedLeads: 0,
       includedConversations: 0,
-      includedEmployees: 0,
       perLeadCents: PER_LEAD_CENTS,
       perCallCents: PER_CALL_CENTS,
       perChatCents: PER_CHAT_CENTS,
       perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
       messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
-      perEmployeeCents: PER_EMPLOYEE_CENTS,
       messagesEnabled: false,
-      employeesEnabled: false,
-      employeeMessagingEnabled: false,
-      employeeVisibility: DEFAULT_EMPLOYEE_VISIBILITY,
       createdBy: admin.decodedToken.uid,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -121,8 +115,8 @@ export async function POST(request) {
     batch.create(db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(accountPhoneNormalized)), { uid: createdUser.uid, ownerUid: createdUser.uid, clientId, accountPhoneNormalized, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     if (receptionistPhoneNormalized) batch.create(db.collection("connectionPhoneRegistry").doc(accountPhoneRegistryId(receptionistPhoneNormalized)), { clientId, receptionistPhone, receptionistPhoneNormalized, assignedBy: admin.decodedToken.uid, assignedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
     batch.set(db.collection("connections").doc(clientId), connectionData);
-    batch.set(db.collection("ocmClients").doc(clientId), { businessName, ownerUid: createdUser.uid, status: "active", businessSetupComplete: false, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", billingPlanName: "ARK AI Receptionist", billingVersion: BILLING_VERSION, monthlyBaseCents: MONTHLY_BASE_CENTS, perLeadCents: PER_LEAD_CENTS, perCallCents: PER_CALL_CENTS, perChatCents: PER_CHAT_CENTS, perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, perEmployeeCents: PER_EMPLOYEE_CENTS, messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), { BusinessName: businessName, OwnerName: ownerName, AccountEmail: accountEmail, AccountPhone: businessPhone, NotificationEmail: notificationEmail, NotificationPhone: notificationPhone, BillingStatus: "Admin created", AccountType: ACCOUNT_TYPES.OWNER, BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", BillingVersion: BILLING_VERSION, MonthlyBaseCents: MONTHLY_BASE_CENTS, PerLeadCents: PER_LEAD_CENTS, PerCallCents: PER_CALL_CENTS, PerChatCents: PER_CHAT_CENTS, PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, PerEmployeeCents: PER_EMPLOYEE_CENTS, MessagesEnabled: false, EmployeesEnabled: false, EmployeeMessagingEnabled: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection("ocmClients").doc(clientId), { businessName, ownerUid: createdUser.uid, status: "active", businessSetupComplete: false, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", billingPlanName: "ARK AI Receptionist", billingVersion: BILLING_VERSION, monthlyBaseCents: MONTHLY_BASE_CENTS, perLeadCents: PER_LEAD_CENTS, perCallCents: PER_CALL_CENTS, perChatCents: PER_CHAT_CENTS, perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, messagesEnabled: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), { BusinessName: businessName, OwnerName: ownerName, AccountEmail: accountEmail, AccountPhone: businessPhone, NotificationEmail: notificationEmail, NotificationPhone: notificationPhone, BillingStatus: "Admin created", AccountType: ACCOUNT_TYPES.OWNER, BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", BillingVersion: BILLING_VERSION, MonthlyBaseCents: MONTHLY_BASE_CENTS, PerLeadCents: PER_LEAD_CENTS, PerCallCents: PER_LEAD_CENTS, PerChatCents: PER_CHAT_CENTS, PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, MessagesEnabled: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
     const adminClientId = trimmedText(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
     if (adminClientId && adminClientId !== clientId) {

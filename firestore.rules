@@ -50,14 +50,6 @@ service cloud.firestore {
       }
     }
 
-    match /signupSessions/{sessionId} {
-      allow read, write: if false;
-    }
-
-    match /pendingOwnerSignups/{sessionId} {
-      allow read, write: if false;
-    }
-
     match /accountVerificationChallenges/{uid} {
       allow read, write: if false;
     }

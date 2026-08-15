@@ -183,10 +183,8 @@ export async function deleteCustomerPermanently(clientId) {
   const businessNameKey = normalizeClientId(business.businessNameKey || business.businessName || clientId);
   const connectionSnapshot = await db.collection("connections").doc(clientId).get();
   const accountSnapshots = await db.collection("accounts").where("clientId", "==", clientId).get();
-  const employeeSnapshots = await businessRef.collection("employees").get();
   const accountDocuments = new Map();
   accountSnapshots.docs.forEach((document) => accountDocuments.set(document.id, document));
-  employeeSnapshots.docs.forEach((document) => accountDocuments.set(document.id, document));
   if (uid && !accountDocuments.has(uid)) {
     const ownerSnapshot = await db.collection("accounts").doc(uid).get();
     if (ownerSnapshot.exists) accountDocuments.set(uid, ownerSnapshot);
@@ -212,8 +210,6 @@ export async function deleteCustomerPermanently(clientId) {
     db.recursiveDelete(db.collection("ocmClients").doc(clientId)),
     deleteQueryDocuments(db.collection("stripeWebhookEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("messagingComplianceEvents").where("clientId", "==", clientId)),
-    deleteQueryDocuments(db.collection("signupSessions").where("clientId", "==", clientId)),
-    text(business.stripeCustomerId) ? deleteQueryDocuments(db.collection("pendingOwnerSignups").where("stripeCustomerId", "==", text(business.stripeCustomerId))) : Promise.resolve(),
     deleteQueryDocuments(db.collection("deletedAccountAudit").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("businessNameRegistry").where("clientId", "==", clientId)),
   ]);

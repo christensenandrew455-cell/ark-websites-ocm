@@ -8,7 +8,6 @@ import {
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
   PER_CHAT_CENTS,
-  PER_EMPLOYEE_CENTS,
   PER_LEAD_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
 } from "./billingPricing.js";
@@ -20,7 +19,6 @@ export {
   MONTHLY_BASE_CENTS,
   PER_CALL_CENTS,
   PER_CHAT_CENTS,
-  PER_EMPLOYEE_CENTS,
   PER_LEAD_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
 };
@@ -30,15 +28,12 @@ export const INCLUDED_LEADS = 0;
 export const INCLUDED_CONVERSATIONS = 0;
 export const BUSINESS_INCLUDED_LEADS = 0;
 export const BUSINESS_INCLUDED_CONVERSATIONS = 0;
-export const BUSINESS_INCLUDED_EMPLOYEES = 0;
 export const PER_OVERAGE_CENTS = PER_CALL_CENTS;
-export const PER_EMPLOYEE_OVERAGE_CENTS = PER_EMPLOYEE_CENTS;
 export const PER_MESSAGE_CONVERSATION_CENTS = PER_CHAT_CENTS;
 
 export const LEAD_METER_EVENT = "ark_account_lead_v7";
 export const MESSAGE_BUNDLE_METER_EVENT = "ark_account_message_bundle_v5";
 export const CONVERSATION_METER_EVENT = "ark_account_chat_v6";
-export const EMPLOYEE_METER_EVENT = "ark_account_employee_v5";
 export const BILLABLE_LEAD_EVENT = LEAD_METER_EVENT;
 
 export const BILLING_PLANS = Object.freeze({
@@ -48,9 +43,7 @@ export const BILLING_PLANS = Object.freeze({
     monthlyBaseCents: MONTHLY_BASE_CENTS,
     includedLeads: 0,
     includedConversations: 0,
-    includedEmployees: 0,
     conversationsEnabled: true,
-    employeesEnabled: true,
   }),
 });
 
@@ -143,53 +136,46 @@ async function createMeteredPrice({ stripe, productId, meterId, nickname, compon
 }
 
 export async function ensureStripeBillingCatalog({ stripe, db }) {
-  const configRef = db.collection("systemConfig").doc("stripeOneAccountV5");
-  const snapshot = await configRef.get();
-  const saved = snapshot.exists ? snapshot.data() : {};
+  const configRef = db.collection("systemConfig").doc("stripeOneAccountV8");
+  const legacyConfigRef = db.collection("systemConfig").doc("stripeOneAccountV5");
+  const [snapshot, legacySnapshot] = await Promise.all([configRef.get(), legacyConfigRef.get()]);
+  const saved = snapshot.exists ? snapshot.data() : legacySnapshot.exists ? legacySnapshot.data() : {};
   let plansProductId = text(saved.plansProductId);
   let leadProductId = text(saved.leadProductId);
   let chatProductId = text(saved.chatProductId);
   let messageProductId = text(saved.messageProductId);
-  let employeeProductId = text(saved.employeeProductId);
   let leadMeterId = text(saved.leadMeterId);
   let chatMeterId = text(saved.chatMeterId);
   let messageMeterId = text(saved.messageMeterId);
-  let employeeMeterId = text(saved.employeeMeterId);
   let basePriceId = configuredPrice("STRIPE_ACCOUNT_BASE_PRICE_ID") || text(saved.basePriceId);
   let leadPriceId = configuredPrice("STRIPE_ACCOUNT_LEAD_PRICE_ID") || text(saved.leadPriceId);
   let chatPriceId = configuredPrice("STRIPE_ACCOUNT_CHAT_PRICE_ID") || text(saved.chatPriceId);
   let messagePriceId = configuredPrice("STRIPE_ACCOUNT_MESSAGE_PRICE_ID") || text(saved.messagePriceId);
-  let employeePriceId = configuredPrice("STRIPE_ACCOUNT_EMPLOYEE_PRICE_ID") || text(saved.employeePriceId);
 
-  if (!plansProductId) {
-    plansProductId = (await stripe.products.create({
-      name: BILLING_PLAN_NAME,
-      description: "$50 monthly account with usage-based leads, chats, SMS parts, and employees.",
-      metadata: { ark_billing_component: "account", ark_billing_version: BILLING_VERSION },
-    })).id;
+  if (!basePriceId) throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID is required before recurring billing can start.");
+  const basePrice = await stripe.prices.retrieve(basePriceId);
+  const baseProductId = typeof basePrice.product === "string" ? basePrice.product : text(basePrice.product?.id);
+  const configuredProductId = configuredPrice("STRIPE_ACCOUNT_PRODUCT_ID");
+  if (
+    basePrice.active === false
+    || text(basePrice.currency).toLowerCase() !== "usd"
+    || Number(basePrice.unit_amount) !== MONTHLY_BASE_CENTS
+    || !basePrice.recurring
+    || text(basePrice.recurring.interval) !== "month"
+  ) throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID must be the active $50 USD monthly recurring Price.");
+  if (!baseProductId || (configuredProductId && baseProductId !== configuredProductId)) {
+    throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID does not belong to STRIPE_ACCOUNT_PRODUCT_ID.");
   }
-  if (!basePriceId) {
-    basePriceId = (await stripe.prices.create({
-      product: plansProductId,
-      currency: "usd",
-      unit_amount: MONTHLY_BASE_CENTS,
-      recurring: { interval: "month" },
-      nickname: "ARK AI Receptionist monthly account",
-      metadata: { ark_billing_component: "base_account", ark_billing_plan: BILLING_PLAN_KEY, ark_billing_version: BILLING_VERSION },
-    })).id;
-  }
+  plansProductId = baseProductId;
   if (!leadMeterId) leadMeterId = (await createMeter(stripe, "ARK new leads", LEAD_METER_EVENT)).id;
   if (!chatMeterId) chatMeterId = (await createMeter(stripe, "ARK chats", CONVERSATION_METER_EVENT)).id;
   if (!messageMeterId) messageMeterId = (await createMeter(stripe, "ARK SMS parts", MESSAGE_BUNDLE_METER_EVENT)).id;
-  if (!employeeMeterId) employeeMeterId = (await createMeter(stripe, "ARK employee activations", EMPLOYEE_METER_EVENT)).id;
   if (!leadProductId) leadProductId = (await stripe.products.create({ name: "ARK new leads", description: "$2 for each new lead received during its billing period.", metadata: { ark_billing_component: "lead_usage", ark_billing_version: BILLING_VERSION } })).id;
   if (!chatProductId) chatProductId = (await stripe.products.create({ name: "ARK chats", description: "$1 when each new customer chat is created.", metadata: { ark_billing_component: "chat_usage", ark_billing_version: BILLING_VERSION } })).id;
   if (!messageProductId) messageProductId = (await stripe.products.create({ name: "ARK SMS usage", description: "$1 for each 50 inbound and outbound SMS parts.", metadata: { ark_billing_component: "message_usage", ark_billing_version: BILLING_VERSION } })).id;
-  if (!employeeProductId) employeeProductId = (await stripe.products.create({ name: "ARK employee accounts", description: "$5 for each employee active during a billing period.", metadata: { ark_billing_component: "employee_usage", ark_billing_version: BILLING_VERSION } })).id;
   if (!leadPriceId) leadPriceId = (await createMeteredPrice({ stripe, productId: leadProductId, meterId: leadMeterId, nickname: "ARK leads at $2 each", component: "lead_usage", unitAmount: PER_LEAD_CENTS })).id;
   if (!chatPriceId) chatPriceId = (await createMeteredPrice({ stripe, productId: chatProductId, meterId: chatMeterId, nickname: "ARK chats at $1 each", component: "chat_usage", unitAmount: PER_CHAT_CENTS })).id;
   if (!messagePriceId) messagePriceId = (await createMeteredPrice({ stripe, productId: messageProductId, meterId: messageMeterId, nickname: "ARK SMS parts at $1 per 50 parts", component: "message_usage", unitAmount: PER_MESSAGE_BUNDLE_CENTS })).id;
-  if (!employeePriceId) employeePriceId = (await createMeteredPrice({ stripe, productId: employeeProductId, meterId: employeeMeterId, nickname: "ARK employees at $5 each", component: "employee_usage", unitAmount: PER_EMPLOYEE_CENTS })).id;
 
   await configRef.set({
     billingVersion: BILLING_VERSION,
@@ -207,23 +193,18 @@ export async function ensureStripeBillingCatalog({ stripe, db }) {
     messageMeterId,
     messageEventName: MESSAGE_BUNDLE_METER_EVENT,
     messagePriceId,
-    employeeProductId,
-    employeeMeterId,
-    employeeEventName: EMPLOYEE_METER_EVENT,
-    employeePriceId,
     monthlyBaseCents: MONTHLY_BASE_CENTS,
     perLeadCents: PER_LEAD_CENTS,
     perChatCents: PER_CHAT_CENTS,
     perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
     messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
-    perEmployeeCents: PER_EMPLOYEE_CENTS,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  return { basePriceId, leadPriceId, chatPriceId, messagePriceId, employeePriceId };
+  return { basePriceId, leadPriceId, chatPriceId, messagePriceId };
 }
 
 function expectedPriceIds(catalog) {
-  return [catalog.basePriceId, catalog.leadPriceId, catalog.chatPriceId, catalog.messagePriceId, catalog.employeePriceId];
+  return [catalog.basePriceId, catalog.leadPriceId, catalog.chatPriceId, catalog.messagePriceId];
 }
 
 function subscriptionHasPrices(subscription, priceIds) {
@@ -258,7 +239,7 @@ async function alignExistingSubscription({ stripe, subscription, priceIds, metad
   });
 }
 
-export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId, subscriptionIdempotencyKey = "", persist = true }) {
+export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId, subscriptionIdempotencyKey = "", persist = true, createIfMissing = false }) {
   const catalog = await ensureStripeBillingCatalog({ stripe, db });
   const priceIds = expectedPriceIds(catalog);
   const metadata = {
@@ -276,6 +257,7 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
   const storedSubscription = await retrieveUsableSubscription(stripe, text(existingSubscriptionId));
   const existing = storedSubscription
     || await findUsableCustomerSubscription(stripe, customerId, clientId);
+  if (!existing && !createIfMissing) return null;
   const subscription = existing
     ? await alignExistingSubscription({ stripe, subscription: existing, priceIds, metadata, paymentMethodId })
     : await stripe.subscriptions.create({
@@ -294,20 +276,17 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
     monthlyBaseCents: MONTHLY_BASE_CENTS,
     includedLeads: 0,
     includedConversations: 0,
-    includedEmployees: 0,
     perLeadCents: PER_LEAD_CENTS,
     perCallCents: PER_LEAD_CENTS,
     perChatCents: PER_CHAT_CENTS,
     perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
     messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
-    perEmployeeCents: PER_EMPLOYEE_CENTS,
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
     stripeBasePriceId: catalog.basePriceId,
     stripeLeadPriceId: catalog.leadPriceId,
     stripeChatPriceId: catalog.chatPriceId,
     stripeMessagePriceId: catalog.messagePriceId,
-    stripeEmployeePriceId: catalog.employeePriceId,
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (persist) {
@@ -321,13 +300,11 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
         MonthlyBaseCents: MONTHLY_BASE_CENTS,
         IncludedLeads: 0,
         IncludedConversations: 0,
-        IncludedEmployees: 0,
         PerLeadCents: PER_LEAD_CENTS,
         PerCallCents: PER_LEAD_CENTS,
         PerChatCents: PER_CHAT_CENTS,
         PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
         MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
-        PerEmployeeCents: PER_EMPLOYEE_CENTS,
         StripeSubscriptionId: subscription.id,
         StripeSubscriptionStatus: subscription.status,
         updatedAt: FieldValue.serverTimestamp(),
@@ -425,10 +402,6 @@ export async function reportBillableConversation({ stripe, customerId, clientId,
   return reportMeterEvent({ stripe, eventName: CONVERSATION_METER_EVENT, identifier: usageIdentifier("ark-v6-chat", clientId, conversationId), customerId, occurredAt });
 }
 
-export async function reportBillableEmployee({ stripe, customerId, clientId, employeeId, billingPeriodKey, occurredAt }) {
-  return reportMeterEvent({ stripe, eventName: EMPLOYEE_METER_EVENT, identifier: usageIdentifier("ark-v5-employee", clientId, `${billingPeriodKey}:${employeeId}`), customerId, occurredAt });
-}
-
 function billingUsageRecordId(clientId, sourceId) {
   return createHash("sha256").update(`${clientId}:${sourceId}`).digest("hex").slice(0, 48);
 }
@@ -443,7 +416,6 @@ export async function syncStripeUsage({
   leads,
   conversations = [],
   messageUsage,
-  employeeIds,
 }) {
   const root = db.collection("ocmClients").doc(clientId);
   let leadsSynced = 0;
@@ -525,31 +497,5 @@ export async function syncStripeUsage({
     }
   }
 
-  let employeesSynced = 0;
-  for (const employeeId of employeeIds) {
-    const eventKey = `${window.monthKey}:${employeeId}`;
-    const recordRef = root.collection("billingEmployeeEvents")
-      .doc(billingUsageRecordId(clientId, eventKey));
-    const record = await recordRef.get();
-    if (record.exists && record.data().stripeReported === true) continue;
-    await reportBillableEmployee({
-      stripe,
-      customerId,
-      clientId,
-      employeeId,
-      billingPeriodKey: window.monthKey,
-      occurredAt: Date.now(),
-    });
-    await recordRef.set({
-      employeeUid: employeeId,
-      billingPeriodKey: window.monthKey,
-      stripeReported: true,
-      stripePricingVersion: BILLING_VERSION,
-      stripeCustomerId: customerId,
-      stripeSubscriptionId: subscription.id,
-      reportedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    employeesSynced += 1;
-  }
-  return { leadsSynced, callsSynced: 0, chatsSynced, messagePartsSynced, employeesSynced };
+  return { leadsSynced, callsSynced: 0, chatsSynced, messagePartsSynced };
 }

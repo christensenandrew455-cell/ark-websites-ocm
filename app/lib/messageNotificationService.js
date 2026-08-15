@@ -14,14 +14,11 @@ export async function sendInboundMessageNotification({ db, clientId, conversatio
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   if (business.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };
 
-  const assignedEmployeeUid = text(conversation.assignedEmployeeUid);
-  const notifyAssignedEmployee = business.employeesEnabled === true && business.employeeMessagingEnabled === true && assignedEmployeeUid;
-
   const devicesSnapshot = await db.collection("ocmClients").doc(clientId).collection("notificationDevices").get();
   const devices = devicesSnapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token))
-    .filter((device) => text(device.role) === "customer" || (notifyAssignedEmployee && text(device.uid) === assignedEmployeeUid));
+    .filter((device) => text(device.role) === "customer");
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
   const collectionKey = text(conversation.collectionKey) === "clients" ? "clients" : "contactedMe";

@@ -39,12 +39,10 @@ export function AuthProvider({ children }) {
     const claimedStatus = String(tokenResult.claims.accountStatus || "");
     const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
     const billingPlan = "standard";
-    const accountType = account.accountType || String(tokenResult.claims.accountType || "") || (role === "employee" ? ACCOUNT_TYPES.EMPLOYEE : ACCOUNT_TYPES.OWNER);
-    const businessRole = account.businessRole || String(tokenResult.claims.businessRole || (role === "employee" ? "employee" : "owner"));
+    const accountType = account.accountType || String(tokenResult.claims.accountType || "") || ACCOUNT_TYPES.OWNER;
+    const businessRole = account.businessRole || String(tokenResult.claims.businessRole || "owner");
     const availableFeatures = availableAccountFeatures({
       messagesEnabled: account.messagesEnabled === true || tokenResult.claims.messagesEnabled === true,
-      employeesEnabled: account.employeesEnabled === true || tokenResult.claims.employeesEnabled === true,
-      employeeMessagingEnabled: account.employeeMessagingEnabled === true || tokenResult.claims.employeeMessagingEnabled === true,
     });
 
     const nextProfile = {
@@ -59,7 +57,7 @@ export function AuthProvider({ children }) {
       clientId,
       status,
       ...availableFeatures,
-      paymentSetupStatus: account.paymentSetupStatus || (status === "active" && role !== "employee" ? "complete" : ""),
+      paymentSetupStatus: account.paymentSetupStatus || (status === "active" && role === "customer" ? "complete" : ""),
       identityVerificationRequired: account.identityVerificationRequired === true || tokenResult.claims.identityVerificationRequired === true,
       identityVerificationVerified: account.identityVerificationVerified === true || tokenResult.claims.identityVerificationVerified === true,
       identityVerificationStatus: account.identityVerificationStatus || "",
@@ -97,18 +95,18 @@ export function AuthProvider({ children }) {
       await loadProfile(nextUser);
     } catch (error) {
       console.error("Unable to load account profile", error);
-      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", billingPlan: "standard", clientId: "", status: "", messagesEnabled: false, employeesEnabled: false, employeeMessagingEnabled: false, paymentSetupStatus: "", identityVerificationRequired: false, identityVerificationVerified: false, identityVerificationStatus: "", emailVerificationStatus: "", phoneVerificationStatus: "", onboardingTourStatus: "", numberAssignmentStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
+      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", billingPlan: "standard", clientId: "", status: "", messagesEnabled: false, paymentSetupStatus: "", identityVerificationRequired: false, identityVerificationVerified: false, identityVerificationStatus: "", emailVerificationStatus: "", phoneVerificationStatus: "", onboardingTourStatus: "", numberAssignmentStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
       setActiveClientId("");
     } finally {
       setLoading(false);
     }
   }), [loadProfile]);
 
-  const login = useCallback(async (identifier, password, options = {}) => {
+  const login = useCallback(async (identifier, password) => {
     const response = await fetch("/api/auth/business-login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier, password, loginMode: options.loginMode || "owner", personName: options.personName || "" }),
+      body: JSON.stringify({ identifier, password }),
     });
     const data = await readApiJson(response, "Unable to sign in.");
     return signInWithCustomToken(auth, data.token);
@@ -144,9 +142,8 @@ export function AuthProvider({ children }) {
     refreshProfile,
     selectClientId,
     isAdmin: profile?.role === "admin",
-    isEmployee: profile?.role === "employee" || profile?.accountType === ACCOUNT_TYPES.EMPLOYEE,
-    isOwner: profile?.role === "customer" && profile?.accountType !== ACCOUNT_TYPES.EMPLOYEE,
-    isBusinessOwner: profile?.role === "customer" && profile?.accountType !== ACCOUNT_TYPES.EMPLOYEE,
+    isOwner: profile?.role === "customer",
+    isBusinessOwner: profile?.role === "customer",
   }), [user, profile, activeClientId, loading, login, logout, refreshProfile, selectClientId]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -15,8 +15,8 @@ export async function POST(request) {
   const user = await requireUser(request);
   if (user.response) return user.response;
   const decoded = user.decodedToken;
-  const clientId = cleanClientId(decoded.role === "employee" ? decoded.businessClientId || decoded.clientId : decoded.clientId);
-  if (!["customer", "employee"].includes(decoded.role) || !clientId) return NextResponse.json({ error: "An owner or employee account is required." }, { status: 403 });
+  const clientId = cleanClientId(decoded.clientId);
+  if (decoded.role !== "customer" || !clientId) return NextResponse.json({ error: "An owner account is required." }, { status: 403 });
 
   try {
     const body = await request.json();
