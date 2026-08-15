@@ -2,7 +2,6 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { loadBillingConversationUsage } from "../../../lib/billingConversationUsage";
-import { loadBillingEmployeeUsage } from "../../../lib/billingEmployeeUsage";
 import { loadBillingLeads } from "../../../lib/billingLeadUsage";
 import { loadBillingMessageUsage } from "../../../lib/billingMessageUsage";
 import { BILLING_PLAN_NAME, BILLING_VERSION, calculateBillingSummary } from "../../../lib/billingPricing";
@@ -29,11 +28,6 @@ function authorized(request) {
   const secret = text(process.env.CRON_SECRET);
   return Boolean(secret) && text(request.headers.get("authorization")) === `Bearer ${secret}`;
 }
-async function activeEmployees(db, clientId) {
-  const snapshot = await db.collection("businesses").doc(clientId).collection("employees")
-    .where("status", "==", "active").get();
-  return snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
-}
 function storedSummary(summary, window) {
   return {
     billingPlan: summary.billingPlan,
@@ -52,11 +46,9 @@ function storedSummary(summary, window) {
     currentMonthMessagePartBlockCount: summary.messagePartBlockCount,
     currentMessagePartRemainder: summary.messagePartRemainder,
     currentMonthMessagePartUsageCents: summary.messagePartUsageCents,
-    currentMonthEmployeeCount: summary.employeeCount,
     currentMonthCallUsageCents: summary.leadUsageCents,
     currentMonthLeadUsageCents: summary.leadUsageCents,
     currentMonthMessageUsageCents: summary.messageUsageCents,
-    currentMonthEmployeeUsageCents: summary.employeeUsageCents,
     currentMonthUsageCents: summary.usageCents,
     currentMonthSubtotalCents: summary.subtotalCents,
     currentMonthReferralCount: summary.referralCount,
@@ -94,16 +86,12 @@ async function handle(request) {
         || "America/New_York";
       const subscriptionId = text(business.stripeSubscriptionId || account.stripeSubscriptionId);
       const window = await resolveBillingWindow({ stripe, subscriptionId, timeZone });
-      const [leads, currentActiveEmployees, conversationUsage, messageUsage, referralCount] = await Promise.all([
+      const [leads, conversationUsage, messageUsage, referralCount] = await Promise.all([
         loadBillingLeads({ db, clientId, startMs: window.startMs, endMs: window.endMs }),
-        activeEmployees(db, clientId),
         loadBillingConversationUsage({ db, clientId, startMs: window.startMs, endMs: window.endMs }),
         loadBillingMessageUsage({ db, clientId, startMs: window.startMs, endMs: window.endMs }),
         referralCountForPeriod({ db, clientId, billingPeriodKey: window.monthKey }),
       ]);
-      const employeeUsage = await loadBillingEmployeeUsage({
-        db, clientId, window, activeEmployees: currentActiveEmployees,
-      });
       const summary = calculateBillingSummary({
         leadCount: leads.length,
         chatCount: conversationUsage.count,
@@ -111,7 +99,6 @@ async function handle(request) {
         messagePartCount: messageUsage.parts,
         messagePartBlockCount: messageUsage.blocks,
         messagePartRemainder: messageUsage.remainder,
-        employeeCount: employeeUsage.count,
         referralCount,
       });
 
@@ -121,7 +108,7 @@ async function handle(request) {
         accountRef ? accountRef.set(storedSummary(summary, window), { merge: true }) : Promise.resolve(),
       ]);
 
-      let sync = { status: stripe ? "not-synced" : "not-configured", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0, employeesSynced: 0 };
+      let sync = { status: stripe ? "not-synced" : "not-configured", leadsSynced: 0, chatsSynced: 0, messagePartsSynced: 0 };
       const customerId = text(business.stripeCustomerId || account.stripeCustomerId);
       const acceptedCurrentTerms = account.termsAccepted === true && text(account.termsVersion) === TERMS_VERSION;
       if (stripe && customerId && acceptedCurrentTerms) {
@@ -130,7 +117,7 @@ async function handle(request) {
             stripe, db, clientId, uid, customerId, subscriptionId,
             fallbackPaymentMethodId: text(business.stripePaymentMethodId || account.stripePaymentMethodId),
           });
-          if (refreshed.paymentMethodId) {
+          if (refreshed.paymentMethodId && subscriptionId) {
             const subscription = await ensureCustomerBillingSubscription({
               stripe,
               db,
@@ -140,17 +127,17 @@ async function handle(request) {
               businessName: text(business.businessName || account.businessName || clientId),
               uid,
               existingSubscriptionId: subscriptionId,
+              createIfMissing: false,
             });
-            sync = {
+            sync = subscription ? {
               status: subscription.status,
               ...(await syncStripeUsage({
                 db, stripe, clientId, customerId, subscription, window, leads,
                 conversations: conversationUsage.conversations, messageUsage,
-                employeeIds: employeeUsage.employeeIds,
               })),
-            };
+            } : { ...sync, status: "subscription-pending" };
           } else {
-            sync.status = "payment-method-required";
+            sync.status = refreshed.paymentMethodId ? "subscription-pending" : "payment-method-required";
           }
         } catch (stripeError) {
           console.error(`Stripe billing sync failed for ${clientId}`, stripeError);
@@ -163,7 +150,6 @@ async function handle(request) {
         leads: summary.leadCount,
         chats: summary.chatCount,
         messageParts: summary.messagePartCount,
-        employees: summary.employeeCount,
         referralDiscountPercent: summary.referralDiscountPercent,
         amountDue: summary.amountDue,
         ...sync,

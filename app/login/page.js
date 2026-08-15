@@ -5,16 +5,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import PasswordInput from "../components/PasswordInput";
-import { EMPLOYEES_AVAILABLE } from "../lib/launchFeatures";
 import { normalizeBusinessIdentifier } from "../lib/valueUtils";
 import { publicFormError } from "../lib/userFacingError";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
-  const [loginMode, setLoginMode] = useState("owner");
   const [businessName, setBusinessName] = useState("");
-  const [personName, setPersonName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +21,7 @@ export default function LoginPage() {
     setError("");
     setSubmitting(true);
     try {
-      await login(businessName, password, { loginMode, personName });
+      await login(businessName, password);
       router.replace("/");
     } catch (loginError) {
       setError(publicFormError(loginError, "Unable to sign in right now."));
@@ -37,41 +34,13 @@ export default function LoginPage() {
     <main className="grid min-h-screen place-items-center bg-slate-950 p-5">
       <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
         <h1 className="text-3xl font-bold text-slate-950">Welcome to ARK Client Center</h1>
-
-        {EMPLOYEES_AVAILABLE && <div className="mt-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-          {[["owner", "Owner"], ["employee", "Employee"]].map(([value, label]) => (
-            <button key={value} type="button" onClick={() => { setLoginMode(value); setError(""); }} className={loginMode === value ? "rounded-lg bg-white px-3 py-2.5 text-sm font-black text-slate-950 shadow-sm" : "rounded-lg px-3 py-2.5 text-sm font-bold text-slate-500"}>
-              {label} Sign In
-            </button>
-          ))}
-        </div>}
-
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-700">Business name</span>
-            <input required autoComplete="organization" value={businessName} onChange={(event) => setBusinessName(normalizeBusinessIdentifier(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your business name" />
-          </label>
-
-          {EMPLOYEES_AVAILABLE && loginMode === "employee" && (
-            <label className="block">
-              <span className="text-sm font-semibold text-slate-700">Employee name</span>
-              <input required autoComplete="name" value={personName} onChange={(event) => setPersonName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your employee name" />
-            </label>
-          )}
-
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-700">Password</span>
-            <PasswordInput required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your password" />
-          </label>
-
+          <label className="block"><span className="text-sm font-semibold text-slate-700">Business name</span><input required autoComplete="organization" value={businessName} onChange={(event) => setBusinessName(normalizeBusinessIdentifier(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your business name" /></label>
+          <label className="block"><span className="text-sm font-semibold text-slate-700">Password</span><PasswordInput required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your password" /></label>
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
-          <button type="submit" disabled={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Signing in…" : `Sign in as ${loginMode === "employee" ? "Employee" : "Owner"}`}</button>
+          <button type="submit" disabled={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Signing in…" : "Sign in"}</button>
         </form>
-
-        <div className="mt-5 flex items-center justify-between gap-3 text-sm">
-          <Link href="/forgot-password" className="font-semibold text-slate-600 hover:text-slate-950">Forgot password?</Link>
-          <Link href="/signup" className="font-bold text-slate-950 hover:underline">Make an account</Link>
-        </div>
+        <div className="mt-5 flex items-center justify-between gap-3 text-sm"><Link href="/forgot-password" className="font-semibold text-slate-600 hover:text-slate-950">Forgot password?</Link><Link href="/signup" className="font-bold text-slate-950 hover:underline">Make an account</Link></div>
       </div>
     </main>
   );

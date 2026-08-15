@@ -2,9 +2,7 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
-export const OWNER_SIGNUP_DRAFT_KEY = "ark-owner-signup-draft-v2";
-export const OWNER_SIGNUP_DRAFT_VERSION = 2;
-export const OWNER_SIGNUP_DRAFT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+export const OWNER_SIGNUP_VERSION = 3;
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const PERIODS = new Set(["AM", "PM"]);
@@ -91,7 +89,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const ownerName = cleanText(value.ownerName || value.personName || receptionist.ownerName, 120);
   const accountEmail = cleanText(value.accountEmail || receptionist.businessEmail, 254).toLowerCase();
   const accountPhone = cleanText(value.accountPhone || receptionist.businessPhone, 30);
-  // Keep legacy business-hour values in the signed draft shape so an already-open Stripe setup session can still finish. New forms neither collect nor store them.
+  // Retain older business-hour values only for normalizing preexisting records. New forms neither collect nor store them.
   const businessWeekdays = weekdayList(receptionist.businessWeekdays);
   const estimateWeekdays = weekdayList(receptionist.estimateWeekdays);
   const businessStartHour = hour(receptionist.businessStartHour);
@@ -109,7 +107,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const businessInformation = normalizeBusinessInformation(receptionist.businessInformation);
 
   return {
-    version: OWNER_SIGNUP_DRAFT_VERSION,
+    version: OWNER_SIGNUP_VERSION,
     businessName,
     ownerName,
     accountEmail,
@@ -150,7 +148,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   };
 }
 
-export function validateOwnerSignup(value = {}, { requirePassword = true } = {}) {
+export function validateOwnerAccountInformation(value = {}, { requirePassword = true } = {}) {
   const signup = normalizeOwnerSignup(value, { includePassword: true });
   if (!normalizeClientId(signup.businessName)) return "Enter the business name.";
   if (!signup.ownerName) return "Enter the owner name.";
@@ -159,7 +157,13 @@ export function validateOwnerSignup(value = {}, { requirePassword = true } = {})
   if (requirePassword && signup.password.length < 8) return "Use a password with at least 8 characters.";
   if (!signup.acceptedTerms || !signup.acceptedPrivacy) return "Agree to the Terms of Use and Privacy Policy before continuing.";
   if (signup.termsVersion !== TERMS_VERSION || signup.privacyVersion !== PRIVACY_VERSION) return "The legal policies were updated. Start signup again and review the current versions.";
-  return validateReceptionistBusinessInformation(signup.receptionist);
+  return "";
+}
+
+export function validateOwnerSignup(value = {}, { requirePassword = true } = {}) {
+  const signup = normalizeOwnerSignup(value, { includePassword: true });
+  return validateOwnerAccountInformation(signup, { requirePassword })
+    || validateReceptionistBusinessInformation(signup.receptionist);
 }
 
 export function validateReceptionistBusinessInformation(value = {}) {
@@ -178,10 +182,4 @@ export function validateReceptionistBusinessInformation(value = {}) {
   if (!receptionist.serviceAreas.length) return "Add at least one service area.";
   if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";
-}
-
-export function ownerSignupDigestInput(value = {}) {
-  const signup = normalizeOwnerSignup(value, { includePassword: true });
-  delete signup.businessInformationCompleted;
-  return JSON.stringify(signup);
 }

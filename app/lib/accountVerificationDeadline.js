@@ -23,7 +23,6 @@ export function accountVerificationDeadline(account = {}) {
 
 export function ownerAccountNeedsIdentityVerification(account = {}) {
   return account.role === "customer"
-    && account.accountType !== "employee"
     && account.identityVerificationRequired === true
     && account.identityVerificationVerified !== true;
 }

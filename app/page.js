@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./components/AuthProvider";
 import ClientStats from "./components/ClientStats";
-import EmployeeDashboard from "./components/EmployeeDashboard";
 
 const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
 const PHONE_PERMISSION_REFRESH_KEY = "ark-phone-permission-refresh-v2";
@@ -100,9 +99,8 @@ function CustomerHome() {
 }
 
 export default function HomePage() {
-  const { user, isAdmin, isEmployee, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth();
   if (loading || !user) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Loading dashboard…</main>;
   if (isAdmin) return <AdminDashboard user={user} />;
-  if (isEmployee) return <EmployeeDashboard />;
   return <CustomerHome />;
 }

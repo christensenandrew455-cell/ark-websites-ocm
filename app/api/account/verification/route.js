@@ -17,7 +17,8 @@ async function authorize(request) {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
     const accountSnapshot = await getAdminDb().collection("accounts").doc(decoded.uid).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : null;
-    if (!account || account.role !== "customer" || account.status !== "active") return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
+    const allowedStatuses = new Set(["pending_verification", "pending_business_setup", "pending_payment", "active"]);
+    if (!account || account.role !== "customer" || !allowedStatuses.has(String(account.status || ""))) return { response: NextResponse.json({ error: "An owner account in setup is required." }, { status: 403 }) };
     return { decoded, account };
   } catch {
     return { response: NextResponse.json({ error: "Your sign-in expired. Sign in again." }, { status: 401 }) };

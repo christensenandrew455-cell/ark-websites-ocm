@@ -8,8 +8,6 @@ function destinationLabel(href) {
     const url = new URL(href, window.location.origin);
     if (url.pathname === "/") return "Dashboard";
     if (url.pathname === "/settings") return "Settings";
-    if (url.pathname === "/employee/settings") return "Employee Settings";
-    if (url.pathname === "/employee/leads") return "Leads";
     if (url.pathname === "/lead-messages") return "Messages";
     return "the previous page";
   } catch {

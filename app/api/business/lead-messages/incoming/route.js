@@ -246,7 +246,6 @@ export async function POST(request) {
       ]);
       if (existingEvent?.exists) return true;
       const latestData = latestConversation.exists ? latestConversation.data() : {};
-      const assignedEmployeeUid = text(latestData.assignedEmployeeUid || conversation.assignedEmployeeUid);
       transaction.set(messageRef, messageData);
       addBillingMessageEventToTransaction(transaction, db, {
         clientId,
@@ -258,11 +257,9 @@ export async function POST(request) {
       transaction.set(resolved.ref, {
         ...conversationUpdate,
         ...(!keyword ? { ownerUnreadCount: Number(latestData.ownerUnreadCount || 0) + 1 } : {}),
-        ...(!keyword && assignedEmployeeUid ? { employeeUnreadCount: Number(latestData.employeeUnreadCount || 0) + 1 } : {}),
         ...(!latestConversation.exists ? {
           createdAt: FieldValue.serverTimestamp(),
           ownerUnreadCount: keyword ? 0 : 1,
-          employeeUnreadCount: !keyword && assignedEmployeeUid ? 1 : 0,
         } : {}),
       }, { merge: true });
       if (complianceEventRef && complianceEventData) transaction.set(complianceEventRef, complianceEventData);

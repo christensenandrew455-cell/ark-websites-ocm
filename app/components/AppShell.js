@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import AccountVerificationGate from "./AccountVerificationGate";
 import GuidedOnboarding from "./GuidedOnboarding";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
 import HelpCenter from "./HelpCenter";
@@ -13,10 +12,9 @@ import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
 import ReferralCenter from "./ReferralCenter";
 import { billingPaymentDeadline } from "../lib/billingNotice";
-import { EMPLOYEES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
-const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/employee/pending", "/forgot-password", "/about", "/docs"];
+const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/about", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const ADMIN_NAV_ITEMS = [
   { label: "Dashboard", mobileLabel: "Dash", href: "/" },
@@ -115,10 +113,10 @@ function PaymentNotice() {
   return <section className={sectionClass}><div className="mx-auto max-w-6xl"><div className="flex items-start gap-3"><span aria-hidden="true" className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg font-black shadow-sm ${accentClass}`}>!</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-base font-black ${titleClass}`}>{title}</h2>{overdue && <span className="rounded-full bg-red-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Overdue</span>}</div><p className={`mt-1 text-xs font-semibold leading-5 ${bodyClass}`}>{body}</p></div></div><div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><div className="rounded-2xl border border-white/90 bg-white/80 px-4 py-3 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{overdue ? "Payment was due" : "Payment due"}</p>{deadline ? <time dateTime={deadlineValue} className="mt-1 block text-base font-black text-slate-950">{deadline}</time> : <p className="mt-1 text-sm font-black text-slate-700">Checking the exact deadline…</p>}{amount && <p className="mt-1 text-xs font-bold text-slate-600">Amount due: {amount}</p>}</div><Link href="/terms#payment-enforcement" className="grid min-h-12 place-items-center rounded-xl border border-slate-400 bg-white px-5 py-3 text-center text-xs font-black text-slate-800 shadow-sm">Learn More</Link></div>{error && <div className="mt-2"><BillingRefreshProblem refresh={refresh} loading={loading} compact /></div>}</div></section>;
 }
 
-function WorkspaceHeader({ profile, pathname, isEmployee, logout, admin = false }) {
+function WorkspaceHeader({ profile, pathname, logout, admin = false }) {
   const businessName = profile?.businessName || "Your Business";
-  const subtitle = isEmployee && profile?.employeeName ? `${businessName} · ${profile.employeeName}` : businessName;
-  const settingsHref = isEmployee ? "/employee/settings" : "/settings";
+  const subtitle = businessName;
+  const settingsHref = "/settings";
   const settingsActive = pathname.startsWith(settingsHref);
   return <>
     <header className="ark-workspace-header fixed inset-x-0 z-[60] border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-5 md:px-8 md:py-4">
@@ -126,7 +124,7 @@ function WorkspaceHeader({ profile, pathname, isEmployee, logout, admin = false 
         <div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{admin ? "Admin" : subtitle}</p></div>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5">Sign out</button>
-          {!admin && <Link href={settingsHref} data-tour-id={!isEmployee ? "settings" : undefined} aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>}
+          {!admin && <Link href={settingsHref} data-tour-id="settings" aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>}
         </div>
       </div>
     </header>
@@ -142,13 +140,13 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} isEmployee={false} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <GuidedOnboarding />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <GuidedOnboarding />}</>;
 }
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, isAdmin, isEmployee, loading, logout, selectClientId } = useAuth();
+  const { user, profile, isAdmin, loading, logout, selectClientId } = useAuth();
   const isAuthPublic = matchesPath(pathname, AUTH_PUBLIC_PATHS);
   const isPolicyPublic = matchesPath(pathname, POLICY_PUBLIC_PATHS);
   const isPublic = isAuthPublic || isPolicyPublic;
@@ -194,13 +192,10 @@ export default function AppShell({ children }) {
   if (!user && isPublic) return children;
   if (!user) return <LoadingScreen />;
   if (isAuthPublic) return children;
-  if (!isAdmin && !isEmployee && profile?.identityVerificationRequired === true && profile?.identityVerificationVerified !== true) return <AccountVerificationGate />;
 
   const signOutButton = <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">Sign out</button>;
 
   if (isAdmin) return <><header className="ark-admin-header fixed inset-x-0 z-[60] border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur md:px-8 md:py-4"><div className="mx-auto flex max-w-7xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"><div className="flex min-w-0 items-center justify-between gap-3"><div className="min-w-0 leading-tight"><p className="truncate text-base font-black tracking-tight text-slate-950 sm:text-xl">ARK Client Center</p><p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Admin</p></div><div className="sm:hidden">{signOutButton}</div></div><div className="flex min-w-0 items-center gap-2"><nav className="grid min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:flex sm:flex-none" style={{ gridTemplateColumns: `repeat(${ADMIN_NAV_ITEMS.length}, minmax(0, 1fr))` }}>{ADMIN_NAV_ITEMS.map((item) => { const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href); return <Link key={item.href} href={item.href} className={active ? "min-w-0 rounded-lg bg-white px-1 py-2 text-center text-[9px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm" : "min-w-0 rounded-lg px-1 py-2 text-center text-[9px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}><span className="sm:hidden">{item.mobileLabel}</span><span className="hidden sm:inline">{item.label}</span></Link>; })}</nav><div className="hidden sm:block">{signOutButton}</div></div></div></header><div className="ark-admin-header-spacer" aria-hidden="true" />{children}</>;
 
-  if (isEmployee && !EMPLOYEES_AVAILABLE) return <main className="grid min-h-screen place-items-center bg-slate-950 p-5"><section className="w-full max-w-md rounded-3xl bg-white p-8 text-center shadow-2xl"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Coming soon</p><h1 className="mt-2 text-3xl font-black text-slate-950">Employee access</h1><p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Employee accounts are {UPCOMING_FEATURE_LABEL.toLowerCase()}.</p><button type="button" onClick={logout} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Sign out</button></section></main>;
-  if (isEmployee) return <><WorkspaceHeader profile={profile} pathname={pathname} isEmployee logout={logout} /><PullToRefresh><NativeAppSetup />{children}</PullToRefresh></>;
   return <BillingStatusProvider><CustomerWorkspace pathname={pathname} isPolicyPublic={isPolicyPublic} profile={profile} logout={logout}>{children}</CustomerWorkspace></BillingStatusProvider>;
 }

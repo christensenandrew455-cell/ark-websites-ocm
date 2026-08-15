@@ -45,8 +45,6 @@ function normalizeLead(document, collectionKey) {
     phoneNormalized: normalizePhone(phone),
     job: text(data.Job || data.job || data.service || data.projectType),
     address: text(data.Address || data.address),
-    assignedEmployeeUid: text(data.assignedEmployeeUid),
-    assignedEmployeeName: text(data.assignedEmployeeName),
     lastActivityAt: iso(data.updatedAt || data.acceptedAt || data.createdAt),
   };
 }
@@ -56,8 +54,8 @@ async function authorizeMessaging(request) {
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
-  if (!["customer", "employee"].includes(decoded.role)) return { response: NextResponse.json({ error: "An owner or approved employee account is required." }, { status: 403 }) };
-  const clientId = text(decoded.role === "employee" ? decoded.businessClientId || decoded.clientId : decoded.clientId);
+  if (decoded.role !== "customer") return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
+  const clientId = text(decoded.clientId);
   if (!clientId) return { response: NextResponse.json({ error: "This account does not have a business workspace." }, { status: 403 }) };
   const db = getAdminDb();
   const [accountSnapshot, businessSnapshot, connectionSnapshot, receptionistSnapshot] = await Promise.all([
@@ -71,14 +69,12 @@ async function authorizeMessaging(request) {
   const business = businessSnapshot.data();
   const connection = connectionSnapshot.exists ? connectionSnapshot.data() : {};
   const receptionist = receptionistSnapshot.exists ? receptionistSnapshot.data() : {};
-  const isEmployee = decoded.role === "employee" || account.role === "employee";
   if (text(account.clientId) !== clientId) return { response: NextResponse.json({ error: "This account does not match the requested workspace." }, { status: 403 }) };
-  if (account.status !== "active") return { response: NextResponse.json({ error: isEmployee ? "The owner has not approved this employee account." : "This account is not active." }, { status: 403 }) };
+  if (account.role !== "customer" || account.status !== "active") return { response: NextResponse.json({ error: "This account is not active." }, { status: 403 }) };
   if (business.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
-  if (isEmployee && (business.employeesEnabled !== true || business.employeeMessagingEnabled !== true)) return { response: NextResponse.json({ error: "The owner has not enabled messaging for employees." }, { status: 403 }) };
   const fromPhone = normalizePhone(connection.receptionistPhoneNormalized || receptionist.receptionistPhoneNormalized || connection.receptionistPhone || receptionist.receptionistPhone);
   const businessName = text(business.businessName || business.name || account.businessName || receptionist.businessName) || "the business";
-  return { db, decoded, account, business, businessName, clientId, isEmployee, fromPhone };
+  return { db, decoded, account, business, businessName, clientId, fromPhone };
 }
 
 async function loadLead(access, collectionKey, leadId) {
@@ -87,7 +83,6 @@ async function loadLead(access, collectionKey, leadId) {
   const snapshot = await ref.get();
   if (!snapshot.exists) return null;
   const lead = normalizeLead(snapshot, key);
-  if (access.isEmployee && lead.assignedEmployeeUid !== access.decoded.uid) return null;
   return { ref, lead };
 }
 
@@ -95,7 +90,7 @@ async function loadAvailableLeads(access) {
   const root = access.db.collection("ocmClients").doc(access.clientId);
   const collections = ["contactedMe", "clients"];
   const [snapshots, blockedSnapshot] = await Promise.all([
-    Promise.all(collections.map((key) => access.isEmployee ? root.collection(key).where("assignedEmployeeUid", "==", access.decoded.uid).get() : root.collection(key).get())),
+    Promise.all(collections.map((key) => root.collection(key).get())),
     root.collection("blockedMessageContacts").get(),
   ]);
   const blockedIds = new Set(blockedSnapshot.docs.map((document) => document.id));
@@ -140,7 +135,7 @@ async function purgeOrphanConversations(access) {
 
 async function loadConversations(access) {
   const ref = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations");
-  const snapshot = access.isEmployee ? await ref.where("assignedEmployeeUid", "==", access.decoded.uid).get() : await ref.get();
+  const snapshot = await ref.get();
   return snapshot.docs.map((document) => {
     const data = document.data();
     return {
@@ -149,12 +144,10 @@ async function loadConversations(access) {
       collectionKey: text(data.collectionKey || "contactedMe"),
       leadName: text(data.leadName) || "Unnamed lead",
       leadPhone: text(data.leadPhone),
-      assignedEmployeeUid: text(data.assignedEmployeeUid),
-      assignedEmployeeName: text(data.assignedEmployeeName),
       lastMessage: text(data.lastMessage),
       lastMessageDirection: text(data.lastMessageDirection),
       messagingOptedOut: data.messagingOptedOut === true,
-      unreadCount: access.isEmployee ? Number(data.employeeUnreadCount || 0) : Number(data.ownerUnreadCount || 0),
+      unreadCount: Number(data.ownerUnreadCount || 0),
       lastMessageAt: iso(data.lastMessageAt || data.updatedAt || data.createdAt),
       createdAt: iso(data.createdAt),
     };
@@ -187,7 +180,7 @@ export async function GET(request) {
     const url = new URL(request.url);
     const selectedLeadId = text(url.searchParams.get("lead"));
     const selectedCollection = url.searchParams.get("collection") === "clients" ? "clients" : "contactedMe";
-    if (!access.isEmployee) await purgeOrphanConversations(access);
+    await purgeOrphanConversations(access);
     const [availableLeads, conversations] = await Promise.all([loadAvailableLeads(access), loadConversations(access)]);
     let selectedConversation = null;
     let messages = [];
@@ -196,16 +189,16 @@ export async function GET(request) {
       if (!loaded) return NextResponse.json({ error: "That lead is not available to this account." }, { status: 404 });
       if (await isMessageContactBlocked(access.db, access.clientId, loaded.lead.phoneNormalized)) return NextResponse.json({ error: "Messaging with this phone number was blocked when its conversation was deleted." }, { status: 409 });
       const key = conversationId(access.clientId, selectedCollection, selectedLeadId);
-      selectedConversation = conversations.find((item) => item.id === key) || { id: key, leadId: selectedLeadId, collectionKey: selectedCollection, leadName: loaded.lead.name, leadPhone: loaded.lead.phone, assignedEmployeeUid: loaded.lead.assignedEmployeeUid, assignedEmployeeName: loaded.lead.assignedEmployeeName, messagingOptedOut: false, newConversation: true };
+      selectedConversation = conversations.find((item) => item.id === key) || { id: key, leadId: selectedLeadId, collectionKey: selectedCollection, leadName: loaded.lead.name, leadPhone: loaded.lead.phone, messagingOptedOut: false, newConversation: true };
       const conversationRef = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations").doc(key);
       const conversationSnapshot = await conversationRef.get();
       if (conversationSnapshot.exists) {
         messages = await loadMessages(access, key);
-        await conversationRef.set(access.isEmployee ? { employeeUnreadCount: 0, employeeLastReadAt: FieldValue.serverTimestamp() } : { ownerUnreadCount: 0, ownerLastReadAt: FieldValue.serverTimestamp() }, { merge: true });
+        await conversationRef.set({ ownerUnreadCount: 0, ownerLastReadAt: FieldValue.serverTimestamp() }, { merge: true });
       }
     }
     return NextResponse.json({
-      role: access.isEmployee ? "employee" : "owner",
+      role: "owner",
       messagingConnected: Boolean(process.env.TELNYX_API_KEY && access.fromPhone),
       messagingPhone: access.fromPhone,
       availableLeads,
@@ -362,8 +355,8 @@ export async function POST(request) {
       body: messageBody,
       provider,
       senderUid: access.decoded.uid,
-      senderName: text(access.account.employeeName || access.account.ownerName || access.account.accountEmail),
-      senderRole: access.isEmployee ? "employee" : "owner",
+      senderName: text(access.account.ownerName || access.account.accountEmail),
+      senderRole: "owner",
       messageType: "conversation",
       from: access.fromPhone,
       to: loaded.lead.phoneNormalized,
@@ -397,15 +390,13 @@ export async function POST(request) {
       leadPhone: loaded.lead.phone,
       leadPhoneNormalized: loaded.lead.phoneNormalized,
       businessPhone: access.fromPhone,
-      assignedEmployeeUid: loaded.lead.assignedEmployeeUid || null,
-      assignedEmployeeName: loaded.lead.assignedEmployeeName || null,
       messagingOptedOut: false,
       smsParts: FieldValue.increment(addedParts),
       lastMessage: messageBody,
       lastMessageDirection: "outbound",
       lastMessageAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      ...(isNewConversation ? { billingConversationSourceId, optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: access.isEmployee ? "employee" : "owner", ownerUnreadCount: 0, employeeUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
+      ...(isNewConversation ? { billingConversationSourceId, optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: "owner", ownerUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
     }, { merge: true });
     await batch.commit();
 

@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE } from "../lib/launchFeatures";
+import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 
 const TOUR_PENDING_KEY = "ark-guided-onboarding-pending-v1";
 const STEPS = [
@@ -15,7 +15,6 @@ const STEPS = [
   { path: "/settings", target: "settings-menu-back", title: "Back to the dashboard", body: "The back arrow returns to your main dashboard. Tap it now.", activate: true },
   { path: "/", target: "dashboard-leads", title: "Leads", body: "Open Leads to review new receptionist requests and the clients you accepted." },
   ...(MESSAGES_AVAILABLE ? [{ path: "/", target: "dashboard-messages", title: "Messages", body: "Messages lets you text clients when that feature is turned on in Customization." }] : []),
-  ...(EMPLOYEES_AVAILABLE ? [{ path: "/", target: "dashboard-employees", title: "Employees", body: "Employees lets you approve and manage workers when that feature is turned on." }] : []),
   { path: "/", target: "referral-star", title: "Featured referral savings", body: "Tap the star to see your account ID and referral savings. This finishes the tour.", activate: true, finishAfter: true },
 ];
 

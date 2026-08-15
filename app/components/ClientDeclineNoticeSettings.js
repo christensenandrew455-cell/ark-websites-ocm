@@ -7,14 +7,14 @@ import { ownerFacingError } from "../lib/userFacingError";
 const LABEL_CLASS = "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
 
 export default function ClientDeclineNoticeSettings() {
-  const { user, isAdmin, isEmployee } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!user || isAdmin || isEmployee) return;
+    if (!user || isAdmin) return;
     let active = true;
     setLoading(true);
     user.getIdToken(true)
@@ -29,7 +29,7 @@ export default function ClientDeclineNoticeSettings() {
       .catch((loadError) => active && setError(ownerFacingError(loadError)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [isAdmin, isEmployee, user]);
+  }, [isAdmin, user]);
 
   async function update(checked) {
     if (!user || saving) return;

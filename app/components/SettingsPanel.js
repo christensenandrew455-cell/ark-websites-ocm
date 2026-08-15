@@ -6,14 +6,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
-import EmployeeAccessSettings from "./EmployeeAccessSettings";
 import MessageRetentionSettings from "./MessageRetentionSettings";
 import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
 import { db } from "../lib/firebase";
-import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../lib/launchFeatures";
-import { validateReceptionistBusinessInformation } from "../lib/ownerSignup";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
 const DEFAULT_SETTINGS = { BillingStatus: "", PaymentMethodLabel: "", StripeCustomerId: "" };
@@ -41,11 +39,11 @@ function FieldLabel({ children }) {
   return <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{children}</span>;
 }
 function featureValues(data = {}) {
-  return { messagesEnabled: data.messagesEnabled === true, employeesEnabled: data.employeesEnabled === true, employeeMessagingEnabled: data.employeeMessagingEnabled === true };
+  return { messagesEnabled: data.messagesEnabled === true };
 }
 function profileKey(value) { return JSON.stringify(receptionistRequestPayload(value || {})); }
 
-export default function SettingsPanel({ setupMode = false }) {
+export default function SettingsPanel() {
   const router = useRouter();
   const { user, profile, isAdmin, isOwner, refreshProfile, logout } = useAuth();
   const clientId = profile?.clientId || "";
@@ -55,7 +53,7 @@ export default function SettingsPanel({ setupMode = false }) {
   const [savedReceptionist, setSavedReceptionist] = useState(null);
   const [features, setFeatures] = useState(featureValues(profile));
   const [savedFeatures, setSavedFeatures] = useState(null);
-  const [featureState, setFeatureState] = useState({ employeeCount: 0, conversationCount: 0, canDisableEmployees: true, canDisableMessages: true });
+  const [featureState, setFeatureState] = useState({ conversationCount: 0, canDisableMessages: true });
   const [billingSummary, setBillingSummary] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [savedDarkMode, setSavedDarkMode] = useState(false);
@@ -83,11 +81,11 @@ export default function SettingsPanel({ setupMode = false }) {
   }, []);
 
   useEffect(() => {
-    const stiffSettingsMenu = !setupMode && !activeSection;
+    const stiffSettingsMenu = !activeSection;
     if (stiffSettingsMenu) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.documentElement.classList.toggle("ark-stiff-settings", stiffSettingsMenu);
     return () => document.documentElement.classList.remove("ark-stiff-settings");
-  }, [activeSection, setupMode]);
+  }, [activeSection]);
 
   useEffect(() => {
     if (!clientId) { setError(ownerFacingError()); setIsLoading(false); return undefined; }
@@ -99,7 +97,7 @@ export default function SettingsPanel({ setupMode = false }) {
     let active = true;
     user.getIdToken(true).then(async (token) => {
       const [receptionistResponse, featureResponse] = await Promise.all([
-        fetch(setupMode ? "/api/receptionist/settings?onboarding=1" : "/api/receptionist/settings", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
+        fetch("/api/receptionist/settings", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
         fetch("/api/account/features", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }),
       ]);
       const receptionistData = await receptionistResponse.json().catch(() => ({}));
@@ -107,22 +105,20 @@ export default function SettingsPanel({ setupMode = false }) {
       if (!receptionistResponse.ok) throw new Error(receptionistData.error || "Could not load AI receptionist information.");
       if (!featureResponse.ok) throw new Error(featureData.error || "Could not load account features.");
       if (active) {
-        const prepared = prepareReceptionistProfile(receptionistData.profile, { requireExplicitSelections: setupMode });
+        const prepared = prepareReceptionistProfile(receptionistData.profile);
         const nextFeatures = featureValues(featureData);
         setReceptionist(prepared);
         setSavedReceptionist(prepared);
         setFeatures(nextFeatures);
         setSavedFeatures(nextFeatures);
         setFeatureState({
-          employeeCount: Number(featureData.employeeCount || 0),
           conversationCount: Number(featureData.conversationCount || 0),
-          canDisableEmployees: featureData.canDisableEmployees !== false,
           canDisableMessages: featureData.canDisableMessages !== false,
         });
       }
     }).catch((loadError) => active && setError(ownerFacingError(loadError))).finally(() => active && setIsLoading(false));
     return () => { active = false; };
-  }, [clientId, isAdmin, setupMode, user]);
+  }, [clientId, isAdmin, user]);
 
   const refreshBillingSummary = useCallback(async () => {
     if (!user || isAdmin) return;
@@ -156,16 +152,12 @@ export default function SettingsPanel({ setupMode = false }) {
     const response = await fetch("/api/receptionist/settings", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(receptionistRequestPayload(receptionist)) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Could not save AI receptionist information.");
-    const prepared = prepareReceptionistProfile(data.profile, { requireExplicitSelections: setupMode });
+    const prepared = prepareReceptionistProfile(data.profile);
     setReceptionist(prepared);
     return { token, prepared };
   }
   async function saveBusinessInformation() {
     if (!user || !receptionist || isSaving) return true;
-    if (setupMode) {
-      const validationError = validateReceptionistBusinessInformation(receptionist);
-      if (validationError) { setError(validationError); return false; }
-    }
     if (!businessDirty) return true;
     setIsSaving(true); setError("");
     try {
@@ -180,19 +172,11 @@ export default function SettingsPanel({ setupMode = false }) {
   }
   function updateFeature(key, checked) {
     setError("");
-    if (key === "employeesEnabled" && !checked && !featureState.canDisableEmployees) {
-      setError(`Delete all ${featureState.employeeCount} employee account${featureState.employeeCount === 1 ? "" : "s"} before turning Employees off.`);
-      return;
-    }
     if (key === "messagesEnabled" && !checked && !featureState.canDisableMessages) {
       setError(`Delete all ${featureState.conversationCount} conversation${featureState.conversationCount === 1 ? "" : "s"} before turning Messages off.`);
       return;
     }
-    setFeatures((current) => {
-      const next = { ...current, [key]: checked };
-      if (!next.messagesEnabled || !next.employeesEnabled) next.employeeMessagingEnabled = false;
-      return next;
-    });
+    setFeatures((current) => ({ ...current, [key]: checked }));
   }
   function updateTheme(checked) {
     setDarkMode(checked);
@@ -211,9 +195,7 @@ export default function SettingsPanel({ setupMode = false }) {
       setSavedFeatures(nextFeatures);
       setSavedReceptionist(result.prepared);
       setFeatureState({
-        employeeCount: Number(data.employeeCount || 0),
         conversationCount: Number(data.conversationCount || 0),
-        canDisableEmployees: data.canDisableEmployees !== false,
         canDisableMessages: data.canDisableMessages !== false,
       });
       try { window.localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light"); } catch {}
@@ -285,16 +267,13 @@ export default function SettingsPanel({ setupMode = false }) {
   }
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;
-    const employeeBlocked = features.employeesEnabled && !featureState.canDisableEmployees;
     const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
     return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
       <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
-      {(!MESSAGES_AVAILABLE || !EMPLOYEES_AVAILABLE) && <div className="rounded-xl border border-slate-200 bg-slate-100 p-4"><p className="text-sm font-black text-slate-800">Coming soon</p><p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{UPCOMING_FEATURE_MESSAGE}</p></div>}
+      {!MESSAGES_AVAILABLE && <div className="rounded-xl border border-slate-200 bg-slate-100 p-4"><p className="text-sm font-black text-slate-800">Coming soon</p><p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{UPCOMING_FEATURE_MESSAGE}</p></div>}
       {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
-      {EMPLOYEES_AVAILABLE && <label className={`${controlClass}${employeeBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Employees</FieldLabel><input type="checkbox" disabled={employeeBlocked} checked={features.employeesEnabled} onChange={(event) => updateFeature("employeesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
       {MESSAGES_AVAILABLE && features.messagesEnabled && <MessageRetentionSettings />}
       {MESSAGES_AVAILABLE && <ClientDeclineNoticeSettings />}
-      {EMPLOYEES_AVAILABLE && features.employeesEnabled && <EmployeeAccessSettings embedded />}
       <div id="account-data" className="border-t border-slate-200 pt-6"><FieldLabel>Client data</FieldLabel><button type="button" onClick={downloadClientData} disabled={isDownloading} className="w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></div>
     </div></SectionPanel></>;
   }
@@ -310,7 +289,6 @@ export default function SettingsPanel({ setupMode = false }) {
         <div className={rowClass}><span className="text-sm font-bold text-slate-700">New leads <small className="block font-semibold text-slate-500">{Number(billingSummary?.leadCount || 0)} × {money(billingSummary?.perLeadCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.leadUsageCents) : "—"}</strong></div>
         {MESSAGES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Chats <small className="block font-semibold text-slate-500">{Number(billingSummary?.chatCount || 0)} × {money(billingSummary?.perChatCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.chatUsageCents) : "—"}</strong></div>}
         {MESSAGES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} added this period · {Number(billingSummary?.messagePartBlockCount || 0)} × {money(billingSummary?.perMessagePartBlockCents || 0)}</small><small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartRemainder || 0)}/50 toward the next $1 charge</small></span><strong>{billingSummary ? money(billingSummary.messagePartUsageCents) : "—"}</strong></div>}
-        {EMPLOYEES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Employees <small className="block font-semibold text-slate-500">{Number(billingSummary?.employeeCount || 0)} × {money(billingSummary?.perEmployeeCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.employeeUsageCents) : "—"}</strong></div>}
         <div className={rowClass}><span className="text-sm font-black text-slate-950">Subtotal</span><strong>{billingSummary ? money(subtotal) : "—"}</strong></div>
         {savings > 0 && <div className={rowClass}><span className="text-sm font-black text-green-700">Referral savings ({discount}%)</span><strong className="text-green-700">−{money(savings)}</strong></div>}
       </div>
@@ -320,17 +298,16 @@ export default function SettingsPanel({ setupMode = false }) {
     </SectionPanel></>;
   }
   function accountSection() {
-    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-2 sm:grid-cols-2"><Link href="/help" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Open Help</Link><Link href="/docs" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Documentation</Link><Link href="/terms" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">This cancels the subscription and permanently deletes the owner account, employees, leads, clients, assignments, and conversations. Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
+    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-2 sm:grid-cols-2"><Link href="/help" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Open Help</Link><Link href="/docs" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Documentation</Link><Link href="/terms" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">This cancels the subscription and permanently deletes the owner account, leads, clients, and conversations. Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
   }
 
   return (
     <main className="ark-settings-page min-h-screen bg-transparent px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-4xl">
-        {(setupMode || !activeSection) && <header className="mb-4 sm:mb-7">{!setupMode && <BackButton href="/" className="mb-4" tourId="settings-menu-back" />}{setupMode && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Final account step</p>}<h1 className="text-3xl font-black tracking-tight sm:text-4xl">{setupMode ? "Finish Account Setup" : "Settings"}</h1></header>}
+        {!activeSection && <header className="mb-4 sm:mb-7"><BackButton href="/" className="mb-4" tourId="settings-menu-back" /><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Settings</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         {downloadNotice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700">{downloadNotice}</div>}
-        {setupMode ? <SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading setup…</p> : <form onSubmit={async (event) => { event.preventDefault(); if (await saveBusinessInformation()) router.replace("/"); }}><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} onboardingMode /><button type="submit" disabled={isSaving} className="mt-7 w-full rounded-xl bg-slate-950 px-6 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">{isSaving ? "Saving…" : "Save and Open Client Center"}</button></form>}</SectionPanel>
-          : isOwner && !activeSection ? <div className="rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} tourId={`settings-${block.key}`} onClick={() => setActiveSection(block.key)} />)}</div></div>
+        {isOwner && !activeSection ? <div className="rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} tourId={`settings-${block.key}`} onClick={() => setActiveSection(block.key)} />)}</div></div>
             : isOwner && activeSection === "business" ? businessSection()
               : isOwner && activeSection === "customization" ? customizationSection()
                 : isOwner && activeSection === "payment" ? paymentSection()

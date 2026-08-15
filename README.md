@@ -50,7 +50,7 @@ scripts/                 Cross-platform mobile setup and asset generators
 ## Messaging compliance flow
 
 - The receptionist records verbal contact consent before a lead is saved.
-- The first outbound chat sends an automatic consent confirmation before the employee or owner message.
+- The first outbound chat sends an automatic consent confirmation before the owner's message.
 - Telnyx profile keyword responses provide the configured STOP, START, and HELP confirmations.
 - The inbound webhook mirrors those keywords into Firestore so STOP locks the ARK Client Center composer, START restores it, and HELP/REPORT creates a platform compliance event.
 - The public reporting path is configured with `ARK_CLIENT_CENTER_SUPPORT_URL` and defaults to `https://arkwebsites.com/support`.

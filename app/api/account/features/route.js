@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { EMPLOYEES_AVAILABLE, MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE, availableAccountFeatures } from "../../../lib/launchFeatures";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE, availableAccountFeatures } from "../../../lib/launchFeatures";
 import { requireUser } from "../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -19,10 +19,6 @@ async function authorizeOwner(request) {
   return { db, decoded, accountRef, account: accountSnapshot.data(), clientId: String(decoded.clientId) };
 }
 
-function flags(data = {}) {
-  return availableAccountFeatures(data);
-}
-
 function realConversationCount(snapshot) {
   return snapshot.docs.filter((document) => {
     const data = document.data();
@@ -31,18 +27,11 @@ function realConversationCount(snapshot) {
 }
 
 async function featureState(db, clientId, source = {}) {
-  const businessRef = db.collection("businesses").doc(clientId);
-  const root = db.collection("ocmClients").doc(clientId);
-  const [employeesSnapshot, conversationsSnapshot] = await Promise.all([
-    businessRef.collection("employees").get(),
-    root.collection("leadConversations").get(),
-  ]);
+  const conversationsSnapshot = await db.collection("ocmClients").doc(clientId).collection("leadConversations").get();
   const conversationCount = realConversationCount(conversationsSnapshot);
   return {
-    ...flags(source),
-    employeeCount: employeesSnapshot.size,
+    ...availableAccountFeatures(source),
     conversationCount,
-    canDisableEmployees: employeesSnapshot.empty,
     canDisableMessages: conversationCount === 0,
   };
 }
@@ -59,67 +48,31 @@ export async function POST(request) {
   if (access.response) return access.response;
   try {
     const body = await request.json();
-    if ((!MESSAGES_AVAILABLE && body.messagesEnabled === true) || (!EMPLOYEES_AVAILABLE && body.employeesEnabled === true)) {
-      return NextResponse.json({ error: UPCOMING_FEATURE_MESSAGE }, { status: 409 });
-    }
+    if (!MESSAGES_AVAILABLE && body.messagesEnabled === true) return NextResponse.json({ error: UPCOMING_FEATURE_MESSAGE }, { status: 409 });
     const messagesEnabled = MESSAGES_AVAILABLE && body.messagesEnabled === true;
-    const employeesEnabled = EMPLOYEES_AVAILABLE && body.employeesEnabled === true;
     const businessRef = access.db.collection("businesses").doc(access.clientId);
     const root = access.db.collection("ocmClients").doc(access.clientId);
-    const [businessSnapshot, employeesSnapshot, conversationsSnapshot] = await Promise.all([
+    const [businessSnapshot, conversationsSnapshot] = await Promise.all([
       businessRef.get(),
-      businessRef.collection("employees").get(),
       root.collection("leadConversations").get(),
     ]);
-    const current = flags(businessSnapshot.exists ? businessSnapshot.data() : access.account);
+    const current = availableAccountFeatures(businessSnapshot.exists ? businessSnapshot.data() : access.account);
     const conversationCount = realConversationCount(conversationsSnapshot);
-
-    if (current.employeesEnabled && !employeesEnabled && !employeesSnapshot.empty) {
-      return NextResponse.json({ error: `Delete all ${employeesSnapshot.size} employee account${employeesSnapshot.size === 1 ? "" : "s"} before turning Employees off.` }, { status: 409 });
-    }
     if (current.messagesEnabled && !messagesEnabled && conversationCount > 0) {
       return NextResponse.json({ error: `Delete all ${conversationCount} conversation${conversationCount === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
     }
 
-    const employeeMessagingEnabled = current.employeeMessagingEnabled && messagesEnabled && employeesEnabled;
-    const update = { messagesEnabled, employeesEnabled, employeeMessagingEnabled, updatedAt: FieldValue.serverTimestamp() };
+    const update = { messagesEnabled, updatedAt: FieldValue.serverTimestamp() };
     const batch = access.db.batch();
     batch.set(businessRef, update, { merge: true });
     batch.set(access.accountRef, update, { merge: true });
-    batch.set(root.collection("settings").doc("account"), {
-      MessagesEnabled: messagesEnabled,
-      EmployeesEnabled: employeesEnabled,
-      EmployeeMessagingEnabled: employeeMessagingEnabled,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    for (const employee of employeesSnapshot.docs) {
-      batch.set(employee.ref, update, { merge: true });
-      batch.set(access.db.collection("accounts").doc(employee.id), update, { merge: true });
-    }
+    batch.set(root.collection("settings").doc("account"), { MessagesEnabled: messagesEnabled, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     await batch.commit();
 
     const auth = getAdminAuth();
     const ownerRecord = await auth.getUser(access.decoded.uid);
-    await auth.setCustomUserClaims(access.decoded.uid, { ...(ownerRecord.customClaims || {}), messagesEnabled, employeesEnabled, employeeMessagingEnabled });
-    await Promise.all(employeesSnapshot.docs.map(async (employee) => {
-      try {
-        const record = await auth.getUser(employee.id);
-        await auth.setCustomUserClaims(employee.id, { ...(record.customClaims || {}), messagesEnabled, employeesEnabled, employeeMessagingEnabled });
-      } catch (error) {
-        console.warn("Unable to refresh employee feature claims", employee.id, error);
-      }
-    }));
-
-    return NextResponse.json({
-      ok: true,
-      messagesEnabled,
-      employeesEnabled,
-      employeeMessagingEnabled,
-      employeeCount: employeesSnapshot.size,
-      conversationCount,
-      canDisableEmployees: employeesSnapshot.empty,
-      canDisableMessages: conversationCount === 0,
-    });
+    await auth.setCustomUserClaims(access.decoded.uid, { ...(ownerRecord.customClaims || {}), messagesEnabled });
+    return NextResponse.json({ ok: true, messagesEnabled, conversationCount, canDisableMessages: conversationCount === 0 });
   } catch (error) {
     console.error("Unable to update account features", error);
     return NextResponse.json({ error: "Could not update account features." }, { status: 500 });

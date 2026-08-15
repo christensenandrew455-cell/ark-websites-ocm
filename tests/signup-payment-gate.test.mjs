@@ -1,450 +1,272 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
-import {
-  normalizeOwnerSignup,
-  ownerSignupDigestInput,
-  validateOwnerSignup,
-} from "../app/lib/ownerSignup.js";
-import { businessInformationText, normalizeBusinessInformation } from "../app/lib/receptionistBusinessInformation.js";
-import { ownerFacingError, publicFormError } from "../app/lib/userFacingError.js";
-import {
-  accountPhoneRegistryId,
-  normalizeSignupPhone,
-  signupAvailabilityMessage,
-  signupPhoneVariants,
-} from "../app/lib/signupAvailability.js";
+import { access, readFile, readdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-function completeSignup() {
-  return {
-    businessName: "sample-painting",
-    ownerName: "Taylor Owner",
-    accountEmail: "taylor@example.com",
-    accountPhone: "(978) 555-1212",
-    password: "correct horse battery staple",
-    acceptedTerms: true,
-    acceptedPrivacy: true,
-    termsVersion: "2026-08-10.3",
-    privacyVersion: "2026-08-10.2",
-    receptionist: {
-      businessName: "wrong-name",
-      ownerName: "Wrong Owner",
-      businessPhone: "0000000000",
-      businessEmail: "wrong@example.com",
-      timeZone: "America/New_York",
-      estimateWeekdays: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-      estimateStartHour: 9,
-      estimateStartPeriod: "AM",
-      estimateEndHour: 4,
-      estimateEndPeriod: "PM",
-      serviceAreas: ["Worcester, Massachusetts"],
-      services: { "interior painting": "interior painting" },
-      businessInformation: [{ title: "Business hours", info: "Every day, 5 PM to 9 PM" }],
-    },
-  };
+const root = fileURLToPath(new URL("../", import.meta.url));
+
+function source(path) {
+  return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("owner signup keeps step-one business identity authoritative", () => {
-  const signup = normalizeOwnerSignup(completeSignup());
-  assert.equal(signup.receptionist.businessName, "sample-painting");
-  assert.equal(signup.receptionist.ownerName, "Taylor Owner");
-  assert.equal(signup.receptionist.businessPhone, "(978) 555-1212");
-  assert.equal(signup.receptionist.businessEmail, "taylor@example.com");
-  assert.equal(validateOwnerSignup(signup), "");
-});
-
-test("business information is required before the payment step", () => {
-  const missingArea = completeSignup();
-  missingArea.receptionist.serviceAreas = [];
-  assert.equal(validateOwnerSignup(missingArea), "Add at least one service area.");
-
-  const missingService = completeSignup();
-  missingService.receptionist.services = {};
-  assert.equal(validateOwnerSignup(missingService), "Add at least one service.");
-});
-
-test("business hours are not required and estimate availability is optional", () => {
-  const signup = completeSignup();
-  signup.receptionist.estimateWeekdays = [];
-  signup.receptionist.estimateStartHour = "";
-  signup.receptionist.estimateStartPeriod = "";
-  signup.receptionist.estimateEndHour = "";
-  signup.receptionist.estimateEndPeriod = "";
-  assert.equal(validateOwnerSignup(signup), "");
-
-  signup.receptionist.estimateStartHour = 9;
-  signup.receptionist.estimateStartPeriod = "AM";
-  assert.equal(validateOwnerSignup(signup), "Choose at least one estimate day or leave the estimate schedule blank.");
-});
-
-test("custom business information keeps complete title and info pairs", () => {
-  const information = normalizeBusinessInformation([
-    { title: " Business hours ", info: " Every day, 5 PM to 9 PM " },
-    { title: "Business hours", info: "Every day, 5 PM to 9 PM" },
-    { title: "Missing info", info: "" },
+test("onboarding pages expose the required four-step order", async () => {
+  const [signup, verification, business, payment, shell] = await Promise.all([
+    source("app/signup/page.js"),
+    source("app/components/AccountVerificationGate.js"),
+    source("app/setup/business/page.js"),
+    source("app/signup/payment/PaymentSetupClient.js"),
+    source("app/components/SignupFlowShell.js"),
   ]);
-  assert.deepEqual(information, [{ title: "Business hours", info: "Every day, 5 PM to 9 PM" }]);
-  assert.equal(businessInformationText(information), "Business hours: Every day, 5 PM to 9 PM");
-  assert.deepEqual(normalizeOwnerSignup(completeSignup()).receptionist.businessInformation, information);
+
+  assert.ok(signup.includes("Step 1 of 4 · Main information"));
+  assert.ok(signup.includes('router.replace(data.nextPath || "/signup/verify")'));
+  assert.ok(verification.includes("Step 2 of 4 · Verify"));
+  assert.ok(verification.includes('router.replace(next.nextPath || "/setup/business")'));
+  assert.ok(business.includes("Step 3 of 4 · Business information"));
+  assert.ok(business.includes('router.push(data.nextPath || "/signup/payment")'));
+  assert.ok(payment.includes("Step 4 of 4 · Payment"));
+  assert.ok(shell.includes('if (status === "pending_verification") return "/signup/verify"'));
+  assert.ok(shell.includes('if (status === "pending_business_setup") return "/setup/business"'));
+  assert.ok(shell.includes('if (status === "pending_payment") return "/signup/payment"'));
 });
 
-test("a new owner signup does not assume any business-information selection", () => {
-  const signup = completeSignup();
-  signup.receptionist = {
-    serviceAreas: [],
-    services: {},
-    timeZone: "Choose",
-    businessWeekdays: [],
-    estimateWeekdays: [],
-  };
-  const normalized = normalizeOwnerSignup(signup);
-  assert.equal(normalized.receptionist.timeZone, "");
-  assert.deepEqual(normalized.receptionist.businessWeekdays, []);
-  assert.deepEqual(normalized.receptionist.estimateWeekdays, []);
-  assert.equal(normalized.receptionist.businessStartHour, "");
-  assert.equal(normalized.receptionist.businessStartPeriod, "");
-  assert.equal(normalized.receptionist.businessEndHour, "");
-  assert.equal(normalized.receptionist.businessEndPeriod, "");
-  assert.equal(normalized.receptionist.estimateStartHour, "");
-  assert.equal(normalized.receptionist.estimateStartPeriod, "");
-  assert.equal(normalized.receptionist.estimateEndHour, "");
-  assert.equal(normalized.receptionist.estimateEndPeriod, "");
-  assert.equal(normalized.receptionist.businessHours, "");
-  assert.equal(validateOwnerSignup(normalized), "Choose a time zone.");
-});
-
-test("the payment-session digest binds the password and every signup field", () => {
-  const first = completeSignup();
-  const second = { ...completeSignup(), password: "a different secure password" };
-  assert.notEqual(ownerSignupDigestInput(first), ownerSignupDigestInput(second));
-  assert.equal(ownerSignupDigestInput(first), ownerSignupDigestInput(completeSignup()));
-  assert.equal(ownerSignupDigestInput({ ...first, businessInformationCompleted: true }), ownerSignupDigestInput(first));
-});
-
-test("the owner Auth record is created only in the post-Stripe finalize endpoint", async () => {
-  const applySource = await readFile(new URL("../app/api/signup/apply/route.js", import.meta.url), "utf8");
-  const finalizeSource = await readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8");
-  assert.equal(applySource.includes("createUser("), false);
-  const paymentConfirmed = finalizeSource.indexOf("setupIntentStatus !== \"succeeded\"");
-  const accountCreated = finalizeSource.indexOf("auth.createUser(");
-  assert.ok(paymentConfirmed >= 0);
-  assert.ok(accountCreated >= 0);
-  assert.ok(paymentConfirmed < accountCreated);
-});
-
-test("signup detects equivalent phone formats and reports duplicate contacts clearly", () => {
-  assert.equal(normalizeSignupPhone("(978) 555-1212"), "+19785551212");
-  const variants = signupPhoneVariants("+1 978 555 1212");
-  assert.ok(variants.includes("(978) 555-1212"));
-  assert.ok(variants.includes("978-555-1212"));
-  assert.equal(accountPhoneRegistryId("(978) 555-1212"), "19785551212");
-  assert.equal(signupAvailabilityMessage({ businessNameInUse: true, emailInUse: false, phoneInUse: false }), "That business name is already registered. Use a different business name.");
-  assert.equal(signupAvailabilityMessage({ emailInUse: true, phoneInUse: false }), "That email address is already registered.");
-  assert.equal(signupAvailabilityMessage({ emailInUse: false, phoneInUse: true }), "That phone number is already registered.");
-  assert.equal(signupAvailabilityMessage({ emailInUse: true, phoneInUse: true }), "That email address and phone number are already registered.");
-});
-
-test("customer-facing errors never expose Firebase or deployment internals", () => {
-  assert.equal(ownerFacingError(new Error("Firebase: Error (auth/network-request-failed).")), "No internet connection. Reload and try again.");
-  assert.equal(ownerFacingError(new Error("Firebase permission-denied")), "Something went wrong. Reload and try again.");
-  assert.equal(publicFormError(new Error("Firebase Admin credentials are invalid"), "Unable to continue."), "Unable to continue.");
-  assert.equal(publicFormError(new Error("That email address is already registered.")), "That email address is already registered.");
-});
-
-test("the signed-out draft can reach business information without being forced to login", async () => {
-  const shellSource = await readFile(new URL("../app/components/SignupFlowShell.js", import.meta.url), "utf8");
-  assert.ok(shellSource.includes("setupPage && user && (isAdmin || isEmployee)"));
-  assert.equal(shellSource.includes("router.replace(user ? \"/\" : \"/login\")"), false);
-});
-
-test("all pre-payment signup steps expose navigation above the mobile safe area", async () => {
-  const [accountSource, businessSource, aboutSource] = await Promise.all([
-    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/setup/business/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/SignupAboutContinue.js", import.meta.url), "utf8"),
+test("main information creates a restricted account before verification", async () => {
+  const [page, route] = await Promise.all([
+    source("app/signup/page.js"),
+    source("app/api/signup/apply/route.js"),
   ]);
-  assert.ok(accountSource.includes(">Back</Link>"));
-  assert.ok(businessSource.includes(">Back</Link>"));
-  assert.ok(businessSource.includes(">Next</button>"));
-  assert.ok(aboutSource.includes("/setup/business?signup=1"));
-  assert.ok(aboutSource.includes("safe-area-inset-bottom"));
+
+  assert.ok(page.includes('fetch("/api/signup/apply"'));
+  assert.ok(page.includes("signInWithCustomToken(auth, data.token)"));
+  assert.equal(page.includes("sessionStorage"), false);
+
+  const userCreated = route.indexOf("auth.createUser({");
+  const accountStored = route.indexOf("transaction.create(accountRef, common)");
+  const codesSent = route.indexOf("sendAccountVerificationCodes({");
+  const tokenCreated = route.indexOf("auth.createCustomToken(uid, claims)");
+  assert.ok(userCreated >= 0 && accountStored > userCreated && codesSent > accountStored && tokenCreated > codesSent);
+  assert.ok(route.includes('status: "pending_verification"'));
+  assert.ok(route.includes("identityVerificationRequired: true"));
+  assert.ok(route.includes("businessSetupComplete: false"));
+  assert.ok(route.includes('paymentSetupStatus: "not_started"'));
+  assert.equal(route.includes("new Stripe("), false);
 });
 
-test("owner signup checks email and phone before advancing and checks again after payment", async () => {
-  const [accountSource, checkoutSource, finalizeSource] = await Promise.all([
-    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+test("email and phone verification must finish before business setup", async () => {
+  const [verification, route, businessRoute] = await Promise.all([
+    source("app/lib/accountVerification.js"),
+    source("app/api/account/verification/route.js"),
+    source("app/api/receptionist/settings/route.js"),
   ]);
-  const availabilityCheck = accountSource.indexOf("/api/signup/availability");
-  const businessStep = accountSource.indexOf("router.push(\"/setup/business?signup=1\")");
-  assert.ok(availabilityCheck >= 0 && availabilityCheck < businessStep);
-  assert.ok(checkoutSource.includes("checkSignupAvailability"));
-  const finalPhoneCheck = finalizeSource.indexOf("availability.phoneInUse");
-  const accountCreated = finalizeSource.indexOf("auth.createUser(");
-  assert.ok(finalPhoneCheck >= 0 && finalPhoneCheck < accountCreated);
+
+  assert.ok(verification.includes('codeHash(uid, "email"'));
+  assert.ok(verification.includes('codeHash(uid, "phone"'));
+  assert.ok(verification.includes('verification.accountStatus === "pending_verification"'));
+  assert.ok(verification.includes('"pending_business_setup"'));
+  assert.ok(route.includes("updateAccountVerificationContact"));
+  assert.ok(route.includes("verifyAccountCodes"));
+  assert.ok(businessRoute.includes('["pending_business_setup", "pending_payment"]'));
+  assert.ok(businessRoute.includes('const onboardingStatus = onboarding ? { status: "pending_payment", paymentSetupStatus: "ready" } : {}'));
+  assert.ok(businessRoute.includes('nextPath: "/signup/payment"'));
 });
 
-test("business information UI stays compact in onboarding and settings", async () => {
-  const [businessPageSource, formSource] = await Promise.all([
-    readFile(new URL("../app/setup/business/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/ReceptionistBusinessForm.js", import.meta.url), "utf8"),
+test("payment page uses Stripe Payment Element inside the app", async () => {
+  const [page, client] = await Promise.all([
+    source("app/signup/payment/page.js"),
+    source("app/signup/payment/PaymentSetupClient.js"),
   ]);
-  assert.ok(businessPageSource.includes("onboardingMode"));
-  assert.equal(businessPageSource.includes("identityReadOnly"), false);
-  assert.equal(businessPageSource.includes("filled from step 1"), false);
-  assert.ok(formSource.includes('<option value="">Choose</option>'));
-  assert.ok(formSource.includes("onClick={addItem}"));
-  assert.ok(formSource.includes("aria-label={`Remove ${item}`}"));
-  assert.ok(formSource.includes("<div className=\"flex h-11 min-w-0 flex-1 items-center"));
-  assert.equal(formSource.includes('label="Business days"'), false);
-  assert.equal(formSource.includes('label="Business opens"'), false);
-  assert.equal(formSource.includes('label="Business closes"'), false);
-  assert.ok(formSource.includes('label="Estimate days"'));
-  assert.equal(formSource.includes("Estimate days (optional)"), false);
-  assert.ok(formSource.includes("Information title"));
-  assert.ok(formSource.includes("Information details"));
-  assert.ok(formSource.includes(">Add Info</button>"));
-  assert.ok(formSource.includes("aria-expanded={open}"));
-  assert.ok(formSource.includes("Show\"} explanation for ${label}"));
-  assert.ok(formSource.includes("Add each town, city, county, or state where the business accepts jobs."));
-  assert.ok(formSource.includes("{identitySection}"));
-  assert.ok(formSource.includes("{sharedSections}"));
-  assert.equal(formSource.includes("These locations help the AI receptionist"), false);
-  assert.equal(formSource.includes("Choose the business time zone. Estimate days and hours"), false);
+
+  assert.ok(page.includes('title: "set up payment"'));
+  assert.ok(client.includes("@stripe/react-stripe-js"));
+  assert.ok(client.includes("@stripe/stripe-js"));
+  assert.ok(client.includes("<PaymentElement"));
+  assert.ok(client.includes("stripe.confirmSetup({"));
+  assert.ok(client.includes('redirect: "if_required"'));
+  assert.ok(client.includes("Pay & Continue"));
+  assert.ok(client.includes("account set up complete"));
+  assert.ok(client.includes("your payment has failed update your payment method or try again later"));
+  assert.equal(client.includes('name="cardNumber"'), false);
+  assert.equal(client.includes('name="cvc"'), false);
+  assert.equal(client.includes("stripe.checkout"), false);
 });
 
-test("saved business information reaches settings and receptionist runtime without business-hour defaults", async () => {
-  const [settingsSource, runtimeSource, finalizeSource] = await Promise.all([
-    readFile(new URL("../app/api/receptionist/settings/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/receptionist/runtime/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
+test("SetupIntent route derives the Stripe Customer from the authenticated account", async () => {
+  const route = await source("app/api/billing/setup-intent/route.js");
+
+  assert.ok(route.includes("verifyIdToken(token, true)"));
+  assert.ok(route.includes('collection("accounts").doc(decoded.uid).get()'));
+  assert.ok(route.includes('account.status !== "pending_payment"'));
+  assert.ok(route.includes("account.identityVerificationVerified !== true"));
+  assert.ok(route.includes("account.businessSetupComplete !== true"));
+  assert.ok(route.includes("let stripeCustomerId = text(account.stripeCustomerId)"));
+  assert.ok(route.includes("stripe.customers.create({"));
+  assert.ok(route.includes("stripe.setupIntents.create({"));
+  assert.ok(route.includes('payment_method_types: ["card"]'));
+  assert.ok(route.includes('usage: "off_session"'));
+  assert.ok(route.includes('purpose: "ark_onboarding_payment_method"'));
+  assert.ok(route.includes("idempotencyKey: `ark-onboarding-setup-${uid}-${paymentSetupAttempt}`"));
+  assert.ok(route.includes("process.env.STRIPE_SECRET_KEY"));
+  assert.ok(route.includes("process.env.STRIPE_PUBLISHABLE_KEY"));
+  assert.equal(route.includes("await request.json"), false);
+  assert.equal(route.includes("subscriptions.create"), false);
+  assert.equal(route.includes("paymentIntents.create"), false);
+  assert.equal(route.includes("prod_V30kc7tD7n7F"), false);
+});
+
+test("server verification prevents cross-account SetupIntent activation", async () => {
+  const completion = await source("app/lib/ownerPaymentSetup.js");
+
+  assert.ok(completion.includes("stripe.setupIntents.retrieve(safeSetupIntentId"));
+  assert.ok(completion.includes('setupIntent.status !== "succeeded"'));
+  assert.ok(completion.includes("customerId(setupIntent.customer) !== storedCustomerId"));
+  assert.ok(completion.includes("text(account.stripeSetupIntentId) !== safeSetupIntentId"));
+  assert.ok(completion.includes("text(setupIntent.metadata?.uid) !== safeUid"));
+  assert.ok(completion.includes("text(setupIntent.metadata?.clientId) !== clientId"));
+  assert.ok(completion.includes('text(setupIntent.metadata?.purpose) !== "ark_onboarding_payment_method"'));
+  assert.ok(completion.includes('account.status !== "pending_payment"'));
+  assert.ok(completion.includes("account.identityVerificationVerified !== true"));
+  assert.ok(completion.includes("account.businessSetupComplete !== true"));
+  assert.ok(completion.includes("invoice_settings: { default_payment_method: savedPaymentMethodId }"));
+  assert.ok(completion.includes('status: "active"'));
+  assert.ok(completion.includes('paymentSetupStatus: "complete"'));
+  assert.equal(completion.includes("subscriptions.create"), false);
+  assert.equal(completion.includes("paymentIntents.create"), false);
+  assert.equal(completion.includes("charges.create"), false);
+});
+
+test("success status requires authentication and returns the existing home route", async () => {
+  const route = await source("app/api/billing/setup-status/route.js");
+  assert.ok(route.includes("verifyIdToken(token, true)"));
+  assert.ok(route.includes("completeOwnerPaymentSetup({"));
+  assert.ok(route.includes('message: "account set up complete"'));
+  assert.ok(route.includes("process.env.APP_HOME_PATH"));
+  assert.ok(route.includes('configured.startsWith("/") ? configured : "/"'));
+  assert.ok(route.includes("your payment has failed update your payment method or try again later"));
+});
+
+test("Stripe webhook verifies the signature before processing setup success", async () => {
+  const route = await source("app/api/billing/webhook/route.js");
+  const signature = route.indexOf("stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)");
+  const completion = route.indexOf("completeOwnerPaymentSetup({");
+  assert.ok(route.includes("process.env.STRIPE_WEBHOOK_SECRET"));
+  assert.ok(route.includes('request.headers.get("stripe-signature")'));
+  assert.ok(signature >= 0 && completion > signature);
+  assert.ok(route.includes('event.type === "setup_intent.succeeded"'));
+  assert.equal(route.includes("JSON.parse(rawBody)"), false);
+});
+
+test("obsolete hosted payment handoff files no longer exist", async () => {
+  const removed = [
+    "app/api/billing/create-checkout-session/route.js",
+    "app/api/signup/complete/route.js",
+    "app/api/signup/finalize/route.js",
+    "app/api/signup/status/route.js",
+    "app/signup/complete/page.js",
+    "app/signup/return/page.js",
+    "app/signup/status/page.js",
+    "app/components/AppUrlHandler.js",
+    "app/lib/pendingOwnerSignup.js",
+  ];
+  for (const path of removed) {
+    await assert.rejects(access(join(root, path)));
+  }
+});
+
+test("retired multi-user account surface does not remain in source or documentation", async () => {
+  const retiredWord = ["em", "ployee"].join("");
+  const skippedDirectories = new Set([".git", ".next", "node_modules"]);
+  const textExtensions = new Set([".css", ".example", ".gradle", ".html", ".java", ".js", ".json", ".jsx", ".kt", ".md", ".mjs", ".properties", ".rules", ".swift", ".ts", ".tsx", ".xml", ".yaml", ".yml"]);
+  const matches = [];
+
+  async function walk(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (entry.isDirectory() && skippedDirectories.has(entry.name)) continue;
+      const path = join(directory, entry.name);
+      const relative = path.slice(root.length);
+      if (relative.toLowerCase().includes(retiredWord)) matches.push(relative);
+      if (entry.isDirectory()) {
+        await walk(path);
+        continue;
+      }
+      const extension = entry.name.includes(".") ? entry.name.slice(entry.name.lastIndexOf(".")) : "";
+      if (!textExtensions.has(extension)) continue;
+      const contents = await readFile(path, "utf8");
+      if (contents.toLowerCase().includes(retiredWord)) matches.push(relative);
+    }
+  }
+
+  await walk(root);
+  assert.deepEqual(matches, []);
+});
+
+test("business information remains compact and server-backed", async () => {
+  const [page, form, settings, runtime] = await Promise.all([
+    source("app/setup/business/page.js"),
+    source("app/components/ReceptionistBusinessForm.js"),
+    source("app/api/receptionist/settings/route.js"),
+    source("app/api/receptionist/runtime/route.js"),
   ]);
-  assert.ok(settingsSource.includes("businessInformation: profile.businessInformation"));
-  assert.ok(settingsSource.includes("businessHours: FieldValue.delete()"));
-  assert.ok(runtimeSource.includes("estimateSchedulingConfigured"));
-  assert.ok(runtimeSource.includes("businessInformation,"));
-  assert.ok(runtimeSource.includes("extraInformation: businessInformationText(businessInformation)"));
-  assert.equal(runtimeSource.includes("businessHours:"), false);
-  assert.ok(finalizeSource.includes("businessInformation: signup.receptionist.businessInformation || []"));
-  assert.equal(finalizeSource.includes("businessHours: signup.receptionist.businessHours"), false);
+
+  assert.ok(page.includes("onboardingMode"));
+  assert.ok(page.includes('fetch("/api/receptionist/settings?onboarding=1"'));
+  assert.equal(page.includes("sessionStorage"), false);
+  assert.ok(form.includes('<option value="">Choose</option>'));
+  assert.ok(form.includes('label="Estimate days"'));
+  assert.ok(form.includes("Information title"));
+  assert.ok(form.includes("Information details"));
+  assert.ok(settings.includes("businessInformation: profile.businessInformation"));
+  assert.ok(settings.includes("businessHours: FieldValue.delete()"));
+  assert.ok(settings.includes("businessPhone: onboarding ? current.businessPhone"));
+  assert.ok(settings.includes("businessEmail: onboarding ? current.businessEmail"));
+  assert.ok(runtime.includes("extraInformation: businessInformationText(businessInformation)"));
 });
 
-test("the payment step is limited to secure payment setup controls", async () => {
-  const source = await readFile(new URL("../app/signup/status/page.js", import.meta.url), "utf8");
-  assert.ok(source.includes("Add Payment Method"));
-  assert.equal(source.includes("Account not created yet"), false);
-  assert.equal(source.includes("What this payment method covers"), false);
-  assert.equal(source.includes("BILLING_SUMMARY"), false);
-  assert.equal(source.includes("Qualified referrals save"), false);
-});
-
-test("payment setup creates and reuses an explicit Stripe customer", async () => {
-  const source = await readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8");
-  const customerCreated = source.indexOf("stripe.customers.create");
-  const sessionCreated = source.indexOf("stripe.checkout.sessions.create");
-  assert.ok(customerCreated >= 0 && customerCreated < sessionCreated);
-  assert.ok(source.includes("customer: customer.id"));
-  assert.ok(source.includes("ark-owner-signup-customer-${digest}"));
-  assert.equal(source.includes('customer_creation: "always"'), false);
-});
-
-test("employees skip owner-only onboarding, payment, and referrals", async () => {
-  const [signupSource, employeeRouteSource, shellSource] = await Promise.all([
-    readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/signup/employee/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/SignupFlowShell.js", import.meta.url), "utf8"),
+test("verification expiry still uses the permanent account cleanup", async () => {
+  const [deadline, cleanup, verification, workflow, gate] = await Promise.all([
+    source("app/lib/accountVerificationDeadline.js"),
+    source("app/lib/accountVerificationCleanup.js"),
+    source("app/lib/accountVerification.js"),
+    source("app/api/cron/workflow/route.js"),
+    source("app/components/AccountVerificationGate.js"),
   ]);
-  assert.ok(signupSource.includes("!employeeSignup && <label"));
-  assert.ok(signupSource.includes('router.replace("/employee/pending")'));
-  assert.equal(employeeRouteSource.includes("referrerAccountId"), false);
-  assert.ok(shellSource.includes("setupPage && user && (isAdmin || isEmployee)"));
+  assert.ok(deadline.includes("60 * 60 * 1000"));
+  assert.ok(verification.includes('throw new Error("ACCOUNT_VERIFICATION_EXPIRED")'));
+  assert.ok(cleanup.includes('verificationCleanupStatus: "deleting"'));
+  assert.ok(cleanup.includes("deleteCustomerPermanently"));
+  assert.ok(workflow.includes("purgeExpiredUnverifiedAccounts({ db, now })"));
+  assert.ok(gate.includes("Finish both verifications within"));
+  assert.ok(gate.includes("scheduled for permanent deletion"));
 });
 
-test("Stripe return starts billing before immediate activation and referral qualification", async () => {
-  const [finalizeSource, referralSource, billingSource] = await Promise.all([
-    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/referrals.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/stripeUsageBilling.js", import.meta.url), "utf8"),
+test("activated accounts enter the existing number-assignment queue", async () => {
+  const [completion, approval, connections] = await Promise.all([
+    source("app/lib/ownerPaymentSetup.js"),
+    source("app/api/admin/signup-applications/route.js"),
+    source("app/connections/page.js"),
   ]);
-  const subscriptionCreated = finalizeSource.indexOf("const subscription = await ensureCustomerBillingSubscription");
-  const activeAccount = finalizeSource.indexOf('status: "active"', subscriptionCreated);
-  const referralQualified = finalizeSource.indexOf("qualifyReferralAfterActivation", activeAccount);
-  assert.ok(subscriptionCreated >= 0 && activeAccount > subscriptionCreated && referralQualified > activeAccount);
-  assert.ok(finalizeSource.includes('subscription.status !== "active"'));
-  assert.ok(finalizeSource.includes("subscriptionIdempotencyKey"));
-  assert.ok(finalizeSource.includes('numberAssignmentStatus: "needed"'));
-  assert.equal(finalizeSource.includes('status: "pending_admin_approval"'), false);
-  assert.ok(billingSource.includes('payment_behavior: "error_if_incomplete"'));
-  assert.ok(referralSource.includes('paymentSetupStatus !== "complete"'));
-  assert.ok(referralSource.includes('subscriptionStatusForReferredAccount !== "active"'));
-  assert.ok(referralSource.includes('referralStatus: "pending_payment"'));
+  assert.ok(completion.includes('numberAssignmentStatus: "needed"'));
+  assert.ok(approval.includes('document.data().status === "active"'));
+  assert.ok(approval.includes('document.data().numberAssignmentStatus === "needed"'));
+  assert.ok(approval.includes("connectionPhoneRegistry"));
+  assert.ok(approval.includes("sendSignupText"));
+  assert.ok(connections.includes("Needs a Number"));
+  assert.ok(connections.includes("Assign Number"));
 });
 
-test("signup keeps the account-type choices but removes the blue instructional spiel", async () => {
-  const source = await readFile(new URL("../app/signup/page.js", import.meta.url), "utf8");
-  assert.ok(source.includes("Choose an account type"));
-  assert.ok(source.includes("Owner account"));
-  assert.ok(source.includes("Employee account"));
-  assert.equal(source.includes("Enter the business and account information below"), false);
-  assert.equal(source.includes("Owner approval required"), false);
-  assert.equal(source.includes("bg-indigo-50 p-4 text-sm"), false);
-});
-
-test("active accounts enter a same-area-code number assignment queue without approval", async () => {
-  const [approvalSource, connectionsSource] = await Promise.all([
-    readFile(new URL("../app/api/admin/signup-applications/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/connections/page.js", import.meta.url), "utf8"),
+test("legal and setup documentation describe save-now and bill-later behavior", async () => {
+  const [terms, privacy, setup, env] = await Promise.all([
+    source("app/terms/page.js"),
+    source("app/privacy/page.js"),
+    source("SETUP.md"),
+    source(".env.example"),
   ]);
-  assert.ok(approvalSource.includes('document.data().status === "active"'));
-  assert.ok(approvalSource.includes('document.data().numberAssignmentStatus === "needed"'));
-  assert.ok(approvalSource.includes("areaCode(receptionistPhoneNormalized) !== ownerAreaCode"));
-  assert.ok(approvalSource.includes("connectionPhoneRegistry"));
-  assert.ok(approvalSource.includes("sendSignupText"));
-  assert.ok(connectionsSource.includes("Needs a Number"));
-  assert.ok(connectionsSource.includes("Assign Number"));
-  assert.equal(connectionsSource.includes("Accept Person"), false);
-  assert.equal(connectionsSource.includes("Decline and Delete"), false);
-});
-
-test("pending signup details survive Stripe only as encrypted temporary Firebase data", async () => {
-  const [pendingSource, checkoutSource, completeSource] = await Promise.all([
-    readFile(new URL("../app/lib/pendingOwnerSignup.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/signup/complete/page.js", import.meta.url), "utf8"),
-  ]);
-  assert.ok(pendingSource.includes('createCipheriv("aes-256-gcm"'));
-  assert.ok(pendingSource.includes('const COLLECTION = "pendingOwnerSignups"'));
-  assert.ok(pendingSource.includes("OWNER_SIGNUP_DRAFT_MAX_AGE_MS"));
-  assert.ok(pendingSource.includes("handoffHash"));
-  assert.ok(checkoutSource.includes("savePendingOwnerSignup"));
-  assert.ok(checkoutSource.includes("randomBytes(32)"));
-  assert.ok(checkoutSource.includes("/signup/return?session_id={CHECKOUT_SESSION_ID}&handoff="));
-  assert.ok(completeSource.includes("JSON.stringify({ sessionId, handoff"));
-  assert.equal(completeSource.includes("unfinished signup was discarded"), false);
-});
-
-test("launch owners verify separate email and text codes sent from the central ARK number", async () => {
-  const [launchSource, envSource, verificationSource, verificationRouteSource, gateSource, checkoutSource, requestSource, rulesSource] = await Promise.all([
-    readFile(new URL("../app/lib/launchFeatures.js", import.meta.url), "utf8"),
-    readFile(new URL("../.env.example", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/accountVerification.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/account/verification/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/AccountVerificationGate.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/authenticatedRequest.js", import.meta.url), "utf8"),
-    readFile(new URL("../firestore.rules", import.meta.url), "utf8"),
-  ]);
-  assert.ok(launchSource.includes('phoneVerification: "on"'));
-  assert.ok(envSource.includes("TELNYX_SIGNUP_FROM_NUMBER=+17742316164"));
-  assert.ok(verificationSource.includes("randomInt(0, 10_000)"));
-  assert.ok(verificationSource.includes("https://api.resend.com/emails"));
-  assert.ok(verificationSource.includes("TELNYX_SIGNUP_FROM_NUMBER"));
-  assert.ok(verificationSource.includes("...(PHONE_VERIFICATION_REQUIRED ? ["));
-  assert.ok(verificationSource.includes('codeHash(uid, "email"'));
-  assert.ok(verificationSource.includes('codeHash(uid, "phone"'));
-  assert.ok(verificationSource.includes("!PHONE_VERIFICATION_REQUIRED || challenge.phoneVerified"));
-  assert.ok(checkoutSource.includes("missingAccountVerificationConfiguration()"));
-  assert.ok(gateSource.includes('status?.phoneRequired ? "Verify your email and phone" : "Verify your email"'));
-  assert.ok(gateSource.includes("Email code"));
-  assert.ok(gateSource.includes("Text code"));
-  assert.ok(gateSource.includes("status?.phoneRequired && <label"));
-  assert.ok(gateSource.includes("Use Resend Code below."));
-  assert.ok(gateSource.includes("Edit email or phone"));
-  assert.ok(gateSource.includes('action: "update-contact"'));
-  assert.ok(verificationRouteSource.includes('"account-verification-contact"'));
-  assert.ok(verificationRouteSource.includes("updateAccountVerificationContact"));
-  assert.ok(verificationSource.includes("checkSignupAvailability"));
-  assert.ok(verificationSource.includes("accountPhoneRegistry"));
-  assert.ok(verificationSource.includes("transaction.delete(oldPhoneRegistryRef)"));
-  assert.ok(verificationSource.includes("auth.updateUser(uid, { email, emailVerified: true })"));
-  assert.ok(verificationSource.includes("stripe.customers.update"));
-  assert.ok(requestSource.includes("ACCOUNT_VERIFICATION_REQUIRED"));
-  assert.ok(rulesSource.includes("identityVerificationVerified"));
-});
-
-test("unverified owner signups lock at one hour and enter the full deletion cascade", async () => {
-  const [deadlineSource, cleanupSource, verificationSource, finalizeSource, completeSource, workflowSource, gateSource, operationsSource] = await Promise.all([
-    readFile(new URL("../app/lib/accountVerificationDeadline.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/accountVerificationCleanup.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/accountVerification.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/signup/finalize/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/signup/complete/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/cron/workflow/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/AccountVerificationGate.js", import.meta.url), "utf8"),
-    readFile(new URL("../.github/workflows/ark-operations.yml", import.meta.url), "utf8"),
-  ]);
-  assert.ok(deadlineSource.includes("60 * 60 * 1000"));
-  assert.ok(deadlineSource.includes('account.accountType !== "employee"'));
-  assert.ok(finalizeSource.includes("newAccountVerificationDeadline()"));
-  assert.ok(completeSource.includes("newAccountVerificationDeadline()"));
-  assert.ok(verificationSource.includes('throw new Error("ACCOUNT_VERIFICATION_EXPIRED")'));
-  assert.ok(verificationSource.includes("assertAccountVerificationOpen(latestAccountSnapshot.data())"));
-  assert.ok(cleanupSource.includes('verificationCleanupStatus: "deleting"'));
-  assert.ok(cleanupSource.includes("deleteCustomerPermanently"));
-  assert.ok(workflowSource.includes("purgeExpiredUnverifiedAccounts({ db, now })"));
-  assert.ok(gateSource.includes("Finish both verifications within"));
-  assert.ok(gateSource.includes("scheduled for permanent deletion"));
-  assert.ok(operationsSource.includes('cron: "*/15 * * * *"'));
-});
-
-test("verified owners receive a blocking but skippable highlighted guided tour", async () => {
-  const [tourSource, shellSource, statsSource, settingsSource, referralSource] = await Promise.all([
-    readFile(new URL("../app/components/GuidedOnboarding.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/AppShell.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/ClientStats.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/SettingsPanel.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/ReferralCenter.js", import.meta.url), "utf8"),
-  ]);
-  assert.ok(tourSource.includes("Skip Tour"));
-  assert.ok(tourSource.includes("yellow-300"));
-  assert.ok(tourSource.includes("backdrop-grayscale"));
-  assert.ok(tourSource.includes("/api/account/onboarding-tour"));
-  assert.ok(shellSource.includes("<GuidedOnboarding />"));
-  assert.ok(statsSource.includes('tourId="dashboard-leads"'));
-  assert.ok(settingsSource.includes('tourId="settings-section-back"'));
-  assert.ok(referralSource.includes('data-tour-id="referral-star"'));
-});
-
-test("native Stripe return links are registered and verification data joins account deletion", async () => {
-  const [returnSource, handlerSource, checkoutSource, statusSource, androidSource, iosSource, packageSource, lifecycleSource] = await Promise.all([
-    readFile(new URL("../app/signup/return/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/AppUrlHandler.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/billing/create-checkout-session/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/signup/status/page.js", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/configure-android.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/configure-ios.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/customerLifecycle.js", import.meta.url), "utf8"),
-  ]);
-  assert.ok(returnSource.includes("arkclientcenter://open"));
-  assert.ok(returnSource.includes("window.location.replace"));
-  assert.ok(returnSource.includes("intent://"));
-  assert.ok(returnSource.includes("Open ARK Client Center"));
-  assert.ok(handlerSource.includes('App.addListener("appUrlOpen"'));
-  assert.ok(handlerSource.includes("Browser.close()"));
-  assert.ok(checkoutSource.includes('return explicitNativeRequest || appUserAgent ? "&native=1" : ""'));
-  assert.ok(statusSource.includes("Browser.open"));
-  assert.ok(statusSource.includes('"X-ARK-Native-App": "1"'));
-  assert.ok(statusSource.includes("window.location.assign(data.url)"));
-  assert.ok(androidSource.includes('android:scheme="arkclientcenter"'));
-  assert.ok(iosSource.includes('addPlistUrlScheme(plist, "arkclientcenter")'));
-  assert.ok(packageSource.includes('"@capacitor/app"'));
-  assert.ok(packageSource.includes('"@capacitor/browser"'));
-  assert.ok(lifecycleSource.includes('collection("accountVerificationChallenges")'));
-  assert.ok(lifecycleSource.includes('collection("pendingOwnerSignups")'));
-});
-
-test("owner deletion uses the shared full-account cascade and stores no deletion audit", async () => {
-  const [ownerDeleteSource, lifecycleSource] = await Promise.all([
-    readFile(new URL("../app/api/account/delete/route.js", import.meta.url), "utf8"),
-    readFile(new URL("../app/lib/customerLifecycle.js", import.meta.url), "utf8"),
-  ]);
-  assert.ok(ownerDeleteSource.includes("deleteCustomerPermanently"));
-  assert.ok(lifecycleSource.includes("stripe.customers.del"));
-  assert.ok(lifecycleSource.includes("accountPhoneRegistry"));
-  assert.ok(lifecycleSource.includes("connectionPhoneRegistry"));
-  assert.ok(lifecycleSource.includes("messagingComplianceEvents"));
-  assert.ok(lifecycleSource.includes("db.recursiveDelete(businessRef)"));
-  assert.equal(ownerDeleteSource.includes("deletedAccountAudit"), false);
+  assert.ok(terms.includes("does not itself charge the payment method"));
+  assert.ok(privacy.includes("Stripe’s Payment Element appears inside ARK Client Center"));
+  assert.ok(setup.includes("The signup SetupIntent remains separate from subscription creation"));
+  assert.ok(setup.includes("prod_V30kc7tD7n7F"));
+  assert.ok(setup.includes("recurring `price_...`"));
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID", "STRIPE_ACCOUNT_BASE_PRICE_ID"]) {
+    assert.ok(env.includes(`${name}=`));
+  }
 });

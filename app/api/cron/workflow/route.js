@@ -9,7 +9,6 @@ import {
 import { sendEstimateRequestStatusNotice } from "../../../lib/estimateRequestStatusNotice";
 import { cleanupExpiredLeads, normalizeLeadRetentionDays } from "../../../lib/leadRetention";
 import { validTimeZone } from "../../../lib/timeWindows";
-import { purgeExpiredPendingOwnerSignups } from "../../../lib/pendingOwnerSignup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -179,7 +178,6 @@ async function runWorkflow(request) {
   try {
     const now = new Date();
     const db = getAdminDb();
-    const expiredPendingSignupsDeleted = await purgeExpiredPendingOwnerSignups({ db });
     const expiredUnverifiedAccounts = await purgeExpiredUnverifiedAccounts({ db, now });
     const activeBusinesses = await listActiveBusinesses(db);
     const businesses = [];
@@ -210,7 +208,6 @@ async function runWorkflow(request) {
     return Response.json({
       ok: true,
       checkedAt: now.toISOString(),
-      expiredPendingSignupsDeleted,
       expiredUnverifiedAccounts,
       businesses,
     });
