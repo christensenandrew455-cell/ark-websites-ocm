@@ -3,7 +3,16 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateReceptionistBusinessInformation } from "../../../lib/ownerSignup";
-import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
+import {
+  deletePendingOwnerSignup,
+  pendingOwnerSignupAccount,
+  pendingOwnerSignupBusiness,
+  pendingOwnerSignupExpired,
+  pendingOwnerSignupLegal,
+  pendingOwnerSignupVerified,
+  readPendingOwnerSignup,
+  retiredPendingOwnerSignupFieldDeletes,
+} from "../../../lib/pendingOwnerSignup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +43,7 @@ async function authorize(request) {
       await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
       return { response: expiredResponse() };
     }
-    if (pending.data.identityVerificationVerified !== true || !["pending_business_setup", "pending_payment"].includes(text(pending.data.stage))) {
+    if (!pendingOwnerSignupVerified(pending.data) || !["pending_business_setup", "pending_payment"].includes(text(pending.data.stage))) {
       return { response: NextResponse.json({ error: "Verify your email and phone before entering business information.", nextPath: "/signup/verify" }, { status: 403 }) };
     }
     return { auth, db, decoded, pending };
@@ -45,21 +54,20 @@ async function authorize(request) {
 }
 
 function profileFromPending(data = {}) {
-  const account = data.account || data;
-  const business = data.business || data;
+  const account = pendingOwnerSignupAccount(data);
+  const business = pendingOwnerSignupBusiness(data);
   return {
-    configured: data.businessSetupComplete === true,
+    configured: text(data.stage) === "pending_payment",
     clientId: text(data.clientId),
     businessName: text(account.businessName || business.businessName),
     ownerName: text(account.ownerName || business.ownerName),
     businessEmail: text(account.accountEmail || business.businessEmail).toLowerCase(),
     businessPhone: text(account.accountPhone || business.businessPhone),
     timeZone: text(business.timeZone),
-    estimateDays: text(business.estimateDays),
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
     earliestEstimateStart: text(business.earliestEstimateStart),
     latestEstimateStart: text(business.latestEstimateStart),
-    businessBase: text(business.businessBase),
+    businessType: text(business.businessType || business.businessBase),
     serviceAreas: Array.isArray(business.serviceAreas) ? business.serviceAreas : [],
     services: business.services && typeof business.services === "object" && !Array.isArray(business.services) ? business.services : {},
     businessInformation: Array.isArray(business.businessInformation) ? business.businessInformation : [],
@@ -79,7 +87,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const account = access.pending.data.account || access.pending.data;
+    const account = pendingOwnerSignupAccount(access.pending.data);
     const normalized = normalizeOwnerSignup({
       businessName: account.businessName,
       ownerName: account.ownerName,
@@ -96,28 +104,27 @@ export async function POST(request) {
     const validationError = validateReceptionistBusinessInformation(normalized.receptionist);
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
-    const business = {
-      ...normalized.receptionist,
-      businessName: text(account.businessName),
-      ownerName: text(account.ownerName),
-      businessEmail: text(account.accountEmail).toLowerCase(),
-      businessPhone: text(account.accountPhone),
+    const business = normalized.receptionist;
+    const businessUpdate = {
+      timeZone: text(business.timeZone),
+      businessType: text(business.businessType),
+      estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
+      earliestEstimateStart: text(business.earliestEstimateStart),
+      latestEstimateStart: text(business.latestEstimateStart),
+      serviceAreas: Array.isArray(business.serviceAreas) ? business.serviceAreas : [],
+      services: business.services && typeof business.services === "object" && !Array.isArray(business.services) ? business.services : {},
+      businessInformation: Array.isArray(business.businessInformation) ? business.businessInformation : [],
+      extraInformation: text(business.extraInformation),
     };
-    const businessUpdate = { ...business };
-    delete businessUpdate.businessName;
-    delete businessUpdate.ownerName;
-    delete businessUpdate.businessEmail;
-    delete businessUpdate.businessPhone;
-    await access.pending.ref.set({
+    await access.pending.ref.update({
       stage: "pending_payment",
-      ...businessUpdate,
-      businessSetupComplete: true,
-      payment: {
-        ...(access.pending.data.payment || {}),
-        status: "ready",
-      },
+      account,
+      legal: pendingOwnerSignupLegal(access.pending.data),
+      business: businessUpdate,
+      payment: { status: "ready" },
+      ...retiredPendingOwnerSignupFieldDeletes(),
       updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    });
 
     const userRecord = await access.auth.getUser(access.decoded.uid);
     const claims = {
@@ -129,7 +136,7 @@ export async function POST(request) {
     await access.auth.setCustomUserClaims(access.decoded.uid, claims);
 
     return NextResponse.json({
-      profile: { ...profileFromPending({ ...access.pending.data, ...businessUpdate, businessSetupComplete: true }), configured: true },
+      profile: { ...profileFromPending({ ...access.pending.data, stage: "pending_payment", account, business: businessUpdate }), configured: true },
       nextPath: "/signup/payment",
       continuationToken: await access.auth.createCustomToken(access.decoded.uid, claims),
     });

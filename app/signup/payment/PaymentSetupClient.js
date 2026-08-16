@@ -2,10 +2,12 @@
 
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
+import { signOut } from "firebase/auth";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiJson } from "../../lib/apiResponse";
 import { useAuth } from "../../components/AuthProvider";
+import { auth } from "../../lib/firebase";
 
 const FAILURE_MESSAGE = "your payment has failed update your payment method or try again later";
 
@@ -14,7 +16,12 @@ function visibleSetupError(error) {
   return message.startsWith("Stripe is connected, but live payments are not enabled") ? message : FAILURE_MESSAGE;
 }
 
-function PaymentForm({ clientSecret, returnUrl, onSucceeded }) {
+function cardWasDeclined(error) {
+  const values = [error?.code, error?.decline_code].map((value) => String(value || "").toLowerCase());
+  return values.some((value) => value === "card_declined" || Boolean(value && value.includes("declin")));
+}
+
+function PaymentForm({ clientSecret, returnUrl, onSucceeded, onDeclined }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -38,6 +45,16 @@ function PaymentForm({ clientSecret, returnUrl, onSucceeded }) {
       await onSucceeded(result.setupIntent.id);
     } catch (setupError) {
       console.error("Stripe payment-method setup failed", setupError);
+      if (cardWasDeclined(setupError)) {
+        try {
+          await onDeclined();
+        } catch (cleanupError) {
+          console.error("Unable to remove declined temporary signup", cleanupError);
+          setError(FAILURE_MESSAGE);
+          setSubmitting(false);
+        }
+        return;
+      }
       setError(FAILURE_MESSAGE);
       setSubmitting(false);
     }
@@ -61,6 +78,22 @@ export default function PaymentSetupClient() {
   const [checking, setChecking] = useState(false);
   const completionStarted = useRef(false);
 
+  const leaveCanceledSignup = useCallback(async () => {
+    await signOut(auth).catch((signOutError) => console.warn("Unable to clear the canceled temporary sign-in", signOutError));
+    window.location.replace("/signup");
+  }, []);
+
+  const cancelDeclinedSignup = useCallback(async () => {
+    if (!user) throw new Error(FAILURE_MESSAGE);
+    const token = await user.getIdToken(true);
+    const response = await fetch("/api/signup/draft", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await readApiJson(response, FAILURE_MESSAGE);
+    await leaveCanceledSignup();
+  }, [leaveCanceledSignup, user]);
+
   const completeSetup = useCallback(async (setupIntentId) => {
     if (!user || completionStarted.current) return;
     completionStarted.current = true;
@@ -82,11 +115,15 @@ export default function PaymentSetupClient() {
         .catch((refreshError) => console.warn("Payment setup completed, but the local account state could not refresh before redirect.", refreshError));
     } catch (setupError) {
       console.error("Unable to verify payment-method setup", setupError);
+      if (setupError?.data?.signupCanceled === true) {
+        await leaveCanceledSignup();
+        return;
+      }
       setError(FAILURE_MESSAGE);
       setChecking(false);
       completionStarted.current = false;
     }
-  }, [refreshProfile, user]);
+  }, [leaveCanceledSignup, refreshProfile, user]);
 
   useEffect(() => {
     if (loading) return;
@@ -151,7 +188,7 @@ export default function PaymentSetupClient() {
       <section className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment</p>
-        {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">account set up complete</p> : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment method…</p> : configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} onSucceeded={completeSetup} /></Elements></div> : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Opening secure payment fields…</p> : null}
+        {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">account set up complete</p> : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment method…</p> : configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div> : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Opening secure payment fields…</p> : null}
         {error && <p id="error-message" className="mt-7 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
       </section>
     </main>

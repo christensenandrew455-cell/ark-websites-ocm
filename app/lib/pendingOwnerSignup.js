@@ -5,8 +5,58 @@ import { accountCollection, pendingSignupCollection } from "./firestoreLayout.js
 export const PENDING_OWNER_SIGNUP_COLLECTION = "pendingOwnerSignups";
 export const PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000;
 
+const RETIRED_PENDING_SIGNUP_FIELDS = [
+  "moveToRegularAfterPayment",
+  "verificationStatus",
+  "identityVerificationRequired",
+  "identityVerificationVerified",
+  "identityVerificationStatus",
+  "identityVerificationDeadlineAt",
+  "emailVerificationStatus",
+  "phoneVerificationStatus",
+  "identityVerifiedAt",
+  "businessName",
+  "businessNameKey",
+  "ownerName",
+  "accountEmail",
+  "accountPhone",
+  "accountPhoneNormalized",
+  "referrerAccountId",
+  "termsAccepted",
+  "privacyAccepted",
+  "termsVersion",
+  "privacyVersion",
+  "legalAcceptedAt",
+  "businessSetupComplete",
+  "timeZone",
+  "businessWeekdays",
+  "businessStartHour",
+  "businessStartPeriod",
+  "businessEndHour",
+  "businessEndPeriod",
+  "businessHours",
+  "estimateDays",
+  "estimateWeekdays",
+  "estimateStartHour",
+  "estimateStartPeriod",
+  "estimateEndHour",
+  "estimateEndPeriod",
+  "earliestEstimateStart",
+  "latestEstimateStart",
+  "businessBase",
+  "businessType",
+  "serviceAreas",
+  "services",
+  "businessInformation",
+  "extraInformation",
+];
+
 function text(value) {
   return String(value || "").trim();
+}
+
+function object(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
 function asDate(value) {
@@ -23,6 +73,44 @@ export function pendingOwnerSignupRef(db, clientId) {
 export function pendingOwnerSignupExpired(data = {}, now = Date.now()) {
   const expiresAt = asDate(data.expiresAt);
   return !expiresAt || expiresAt.getTime() <= Number(now);
+}
+
+export function pendingOwnerSignupAccount(data = {}) {
+  const nested = object(data.account);
+  if (Object.keys(nested).length) return nested;
+  return {
+    businessName: text(data.businessName),
+    ownerName: text(data.ownerName),
+    accountEmail: text(data.accountEmail).toLowerCase(),
+    accountPhone: text(data.accountPhoneNormalized || data.accountPhone),
+    referrerAccountId: text(data.referrerAccountId),
+  };
+}
+
+export function pendingOwnerSignupBusiness(data = {}) {
+  const nested = object(data.business);
+  return Object.keys(nested).length ? nested : data;
+}
+
+export function pendingOwnerSignupLegal(data = {}) {
+  const nested = object(data.legal);
+  if (Object.keys(nested).length) return nested;
+  const account = object(data.account);
+  return {
+    termsAccepted: account.termsAccepted === true || data.termsAccepted === true,
+    privacyAccepted: account.privacyAccepted === true || data.privacyAccepted === true,
+    termsVersion: text(account.termsVersion || data.termsVersion),
+    privacyVersion: text(account.privacyVersion || data.privacyVersion),
+    acceptedAt: account.legalAcceptedAt || data.legalAcceptedAt || null,
+  };
+}
+
+export function pendingOwnerSignupVerified(data = {}) {
+  return object(data.verification).verified === true || data.identityVerificationVerified === true;
+}
+
+export function retiredPendingOwnerSignupFieldDeletes() {
+  return Object.fromEntries(RETIRED_PENDING_SIGNUP_FIELDS.map((field) => [field, FieldValue.delete()]));
 }
 
 export async function readPendingOwnerSignup({ db, uid, clientId = "", allowExpired = false }) {
@@ -48,35 +136,29 @@ export async function createPendingOwnerSignup({ db, uid, clientId, signup, refe
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PENDING_OWNER_SIGNUP_TTL_MS);
   const stage = initialStage === "pending_verification" ? "pending_verification" : "pending_business_setup";
+  const accountPhone = text(signup.accountPhoneNormalized || signup.accountPhone);
   const data = {
     uid,
     clientId,
     stage,
-    moveToRegularAfterPayment: true,
     expiresAt,
-    verificationStatus: "pending",
-    identityVerificationRequired: true,
-    identityVerificationVerified: false,
-    identityVerificationStatus: "pending",
-    identityVerificationDeadlineAt: expiresAt,
-    emailVerificationStatus: "pending",
-    phoneVerificationStatus: "pending",
-    businessName: signup.businessName,
-    businessNameKey: clientId,
-    ownerName: signup.ownerName,
-    accountEmail: signup.accountEmail,
-    accountPhone: signup.accountPhone,
-    accountPhoneNormalized: signup.accountPhoneNormalized,
-    referrerAccountId: signup.referrerAccountId || "",
-    termsAccepted: true,
-    privacyAccepted: true,
-    termsVersion: signup.termsVersion,
-    privacyVersion: signup.privacyVersion,
-    legalAcceptedAt: now,
+    account: {
+      businessName: text(signup.businessName),
+      ownerName: text(signup.ownerName),
+      accountEmail: text(signup.accountEmail).toLowerCase(),
+      accountPhone,
+      referrerAccountId: text(signup.referrerAccountId),
+    },
+    legal: {
+      termsAccepted: true,
+      privacyAccepted: true,
+      termsVersion: text(signup.termsVersion),
+      privacyVersion: text(signup.privacyVersion),
+      acceptedAt: now,
+    },
     ...(referrer ? { referral: referrer } : {}),
-    serviceAreas: [],
-    services: {},
-    businessInformation: [],
+    verification: { verified: stage !== "pending_verification" },
+    business: {},
     payment: { status: "not_started" },
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -88,10 +170,10 @@ export async function createPendingOwnerSignup({ db, uid, clientId, signup, refe
     const [regularName, temporaryName, regularPhone, temporaryPhone, regularEmail, temporaryEmail] = await Promise.all([
       transaction.get(accounts.doc(clientId)),
       transaction.get(pendingRef),
-      transaction.get(accounts.where("accountPhoneNormalized", "==", signup.accountPhoneNormalized).limit(1)),
-      transaction.get(pending.where("accountPhoneNormalized", "==", signup.accountPhoneNormalized).limit(1)),
+      transaction.get(accounts.where("accountPhone", "==", accountPhone).limit(1)),
+      transaction.get(pending.where("account.accountPhone", "==", accountPhone).limit(1)),
       transaction.get(accounts.where("accountEmail", "==", signup.accountEmail).limit(1)),
-      transaction.get(pending.where("accountEmail", "==", signup.accountEmail).limit(1)),
+      transaction.get(pending.where("account.accountEmail", "==", signup.accountEmail).limit(1)),
     ]);
     if (regularName.exists || temporaryName.exists || !regularPhone.empty || !temporaryPhone.empty || !regularEmail.empty || !temporaryEmail.empty) {
       const error = new Error("SIGNUP_IDENTITY_ALREADY_EXISTS");

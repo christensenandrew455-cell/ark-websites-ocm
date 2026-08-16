@@ -5,7 +5,14 @@ import { ACCOUNT_ROLES } from "./accountRoles";
 import { accountVerificationDeadline, accountVerificationExpired } from "./accountVerificationDeadline";
 import { accountPrivateRef, accountRef as regularAccountRef } from "./firestoreLayout.js";
 import { PHONE_VERIFICATION_REQUIRED } from "./launchFeatures";
-import { pendingOwnerSignupExpired, readPendingOwnerSignup } from "./pendingOwnerSignup";
+import {
+  pendingOwnerSignupAccount,
+  pendingOwnerSignupExpired,
+  pendingOwnerSignupLegal,
+  pendingOwnerSignupVerified,
+  readPendingOwnerSignup,
+  retiredPendingOwnerSignupFieldDeletes,
+} from "./pendingOwnerSignup";
 import { checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
 
 export const ACCOUNT_VERIFICATION_TTL_MS = 10 * 60 * 1000;
@@ -108,8 +115,9 @@ function maskPhone(phone) {
 }
 
 export function publicAccountVerificationStatus({ account = {}, challenge = {}, deadlineAt = null, expired = null, nextPath = "" }) {
-  const emailVerified = account.emailVerificationStatus === "verified" || challenge.emailVerified === true;
-  const phoneVerified = !PHONE_VERIFICATION_REQUIRED
+  const identityVerified = account.identityVerificationVerified === true || challenge.verified === true;
+  const emailVerified = identityVerified || account.emailVerificationStatus === "verified" || challenge.emailVerified === true;
+  const phoneVerified = identityVerified || !PHONE_VERIFICATION_REQUIRED
     || account.phoneVerificationStatus === "verified"
     || account.phoneVerificationStatus === "not_required"
     || challenge.phoneVerified === true;
@@ -126,11 +134,11 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {}, 
         ? "/signup/payment"
         : "/");
   return {
-    required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
+    required: !identityVerified && (account.identityVerificationRequired === true || accountStatus === "pending_verification"),
     // Matching both challenge codes is only the first half of verification. The
     // signup is verified only after the server has committed the verified
     // identity fields and advanced the temporary signup to its next stage.
-    verified: account.identityVerificationVerified === true,
+    verified: identityVerified,
     emailVerified,
     phoneVerified,
     phoneRequired: PHONE_VERIFICATION_REQUIRED,
@@ -171,7 +179,9 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
     assertAccountVerificationOpen(account);
     const current = currentSnapshot.exists ? currentSnapshot.data() : {};
     const resendAvailableAt = asDate(current.resendAvailableAt);
-    if (!ignoreCooldown && resendAvailableAt && resendAvailableAt.getTime() > Date.now() && ["sending", "sent"].includes(text(current.deliveryStatus))) {
+    const recentlyDelivered = ["sending", "sent"].includes(text(current.emailDeliveryStatus))
+      && (!PHONE_VERIFICATION_REQUIRED || ["sending", "sent", "not_required"].includes(text(current.phoneDeliveryStatus)));
+    if (!ignoreCooldown && resendAvailableAt && resendAvailableAt.getTime() > Date.now() && recentlyDelivered) {
       const error = new Error("VERIFICATION_RESEND_COOLDOWN");
       error.resendAvailableAt = resendAvailableAt;
       throw error;
@@ -223,7 +233,7 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
 function pendingSignupStatus(pending) {
   const data = pending?.data || pending || {};
   return publicAccountVerificationStatus({
-    account: { ...data, status: text(data.stage) },
+    account: { ...pendingOwnerSignupAccount(data), status: text(data.stage) },
     challenge: data.verification || {},
     deadlineAt: data.expiresAt,
     expired: pendingOwnerSignupExpired(data),
@@ -232,7 +242,7 @@ function pendingSignupStatus(pending) {
 
 function assertPendingSignupVerificationOpen(data = {}) {
   if (pendingOwnerSignupExpired(data)) throw new Error("ACCOUNT_VERIFICATION_EXPIRED");
-  if (data.identityVerificationVerified === true) throw new Error("ACCOUNT_ALREADY_VERIFIED");
+  if (pendingOwnerSignupVerified(data)) throw new Error("ACCOUNT_ALREADY_VERIFIED");
   if (!["pending_verification", "pending_business_setup"].includes(text(data.stage))) throw new Error("ACCOUNT_NOT_FOUND");
 }
 
@@ -255,17 +265,20 @@ export async function sendPendingSignupVerificationCodes({ db, uid, clientId = "
     const snapshot = await transaction.get(pending.ref);
     if (!snapshot.exists || text(snapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
     const account = snapshot.data();
+    const accountInformation = pendingOwnerSignupAccount(account);
     assertPendingSignupVerificationOpen(account);
     const current = account.verification || {};
     const resendAvailableAt = asDate(current.resendAvailableAt);
-    if (!ignoreCooldown && resendAvailableAt && resendAvailableAt.getTime() > Date.now() && ["sending", "sent"].includes(text(current.deliveryStatus))) {
+    const recentlyDelivered = ["sending", "sent"].includes(text(current.emailDeliveryStatus))
+      && (!PHONE_VERIFICATION_REQUIRED || ["sending", "sent", "not_required"].includes(text(current.phoneDeliveryStatus)));
+    if (!ignoreCooldown && resendAvailableAt && resendAvailableAt.getTime() > Date.now() && recentlyDelivered) {
       const error = new Error("VERIFICATION_RESEND_COOLDOWN");
       error.resendAvailableAt = resendAvailableAt;
       throw error;
     }
 
-    const targetEmail = validContactEmail(resetVerification ? email : current.email || email || account.accountEmail);
-    const targetPhone = validContactPhone(resetVerification ? phone : current.phone || phone || account.accountPhone);
+    const targetEmail = validContactEmail(resetVerification ? email : current.email || email || accountInformation.accountEmail);
+    const targetPhone = validContactPhone(resetVerification ? phone : current.phone || phone || accountInformation.accountPhone);
     if (!targetEmail) throw new Error("ACCOUNT_EMAIL_INVALID");
     if (!targetPhone) throw new Error("ACCOUNT_PHONE_INVALID");
     const emailCode = !resetVerification && current.emailVerified === true ? "" : verificationCode();
@@ -273,8 +286,6 @@ export async function sendPendingSignupVerificationCodes({ db, uid, clientId = "
     const expiresAt = new Date(Date.now() + ACCOUNT_VERIFICATION_TTL_MS);
     const nextResendAt = new Date(Date.now() + ACCOUNT_VERIFICATION_RESEND_MS);
     const challenge = {
-      uid: text(uid),
-      clientId: text(account.clientId || clientId),
       challengeId,
       email: targetEmail,
       phone: targetPhone,
@@ -286,7 +297,6 @@ export async function sendPendingSignupVerificationCodes({ db, uid, clientId = "
       phoneAttempts: phoneCode ? 0 : Number(current.phoneAttempts || 0),
       emailDeliveryStatus: emailCode ? "sending" : text(current.emailDeliveryStatus || "sent"),
       phoneDeliveryStatus: PHONE_VERIFICATION_REQUIRED ? (phoneCode ? "sending" : text(current.phoneDeliveryStatus || "sent")) : "not_required",
-      deliveryStatus: "sending",
       expiresAt,
       resendAvailableAt: nextResendAt,
       sentAt: FieldValue.serverTimestamp(),
@@ -295,12 +305,6 @@ export async function sendPendingSignupVerificationCodes({ db, uid, clientId = "
     };
     transaction.set(pending.ref, {
       verification: challenge,
-      verificationStatus: "pending",
-      identityVerificationRequired: true,
-      identityVerificationVerified: false,
-      identityVerificationStatus: "pending",
-      emailVerificationStatus: challenge.emailVerified ? "verified" : "pending",
-      phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? (challenge.phoneVerified ? "verified" : "pending") : "not_required",
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
     return { emailCode, phoneCode, targetEmail, targetPhone };
@@ -312,11 +316,9 @@ export async function sendPendingSignupVerificationCodes({ db, uid, clientId = "
   ]);
   const emailDeliveryStatus = emailResult.status === "fulfilled" ? "sent" : "failed";
   const phoneDeliveryStatus = PHONE_VERIFICATION_REQUIRED ? (phoneResult.status === "fulfilled" ? "sent" : "failed") : "not_required";
-  const deliveryStatus = emailDeliveryStatus === "sent" && (!PHONE_VERIFICATION_REQUIRED || phoneDeliveryStatus === "sent") ? "sent" : "partial";
   await pending.ref.update({
     "verification.emailDeliveryStatus": emailDeliveryStatus,
     "verification.phoneDeliveryStatus": phoneDeliveryStatus,
-    "verification.deliveryStatus": deliveryStatus,
     "verification.updatedAt": FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -357,9 +359,10 @@ export async function verifyPendingSignupCodes({ db, auth, uid, clientId = "", e
   const verification = await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(pending.ref);
     if (!snapshot.exists || text(snapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
-    const account = snapshot.data();
-    assertPendingSignupVerificationOpen(account);
-    const challenge = account.verification || {};
+    const temporary = snapshot.data();
+    const account = pendingOwnerSignupAccount(temporary);
+    assertPendingSignupVerificationOpen(temporary);
+    const challenge = temporary.verification || {};
     const expiresAt = asDate(challenge.expiresAt);
     if (!expiresAt || expiresAt.getTime() <= Date.now()) throw new Error("VERIFICATION_CODE_EXPIRED");
     const emailAttempts = Number(challenge.emailAttempts || 0);
@@ -382,7 +385,7 @@ export async function verifyPendingSignupCodes({ db, auth, uid, clientId = "", e
       emailCorrect,
       phoneCorrect,
       challengeId: text(challenge.challengeId),
-      clientId: text(account.clientId || clientId),
+      clientId: text(temporary.clientId || clientId),
       email: validContactEmail(challenge.email || account.accountEmail),
       phone: validContactPhone(challenge.phone || account.accountPhone),
       previousEmail: validContactEmail(account.accountEmail),
@@ -421,25 +424,20 @@ export async function verifyPendingSignupCodes({ db, auth, uid, clientId = "", e
       if (text(challenge.challengeId) !== verification.challengeId || challenge.emailVerified !== true || (PHONE_VERIFICATION_REQUIRED && challenge.phoneVerified !== true)) {
         throw new Error("VERIFICATION_CONTACT_CHANGED");
       }
-      transaction.set(pending.ref, {
+      const account = pendingOwnerSignupAccount(latest);
+      const legal = pendingOwnerSignupLegal(latest);
+      transaction.update(pending.ref, {
         stage: "pending_business_setup",
-        accountEmail: verification.email,
-        accountPhone: verification.phone,
-        accountPhoneNormalized: verification.phone,
-        verificationStatus: "verified",
-        identityVerificationRequired: false,
-        identityVerificationVerified: true,
-        identityVerificationStatus: "verified",
-        emailVerificationStatus: "verified",
-        phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "verified" : "not_required",
-        identityVerifiedAt: FieldValue.serverTimestamp(),
-        verification: {
-          ...challenge,
-          completedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
+        account: {
+          ...account,
+          accountEmail: verification.email,
+          accountPhone: verification.phone,
         },
+        legal,
+        verification: { verified: true, completedAt: FieldValue.serverTimestamp() },
+        ...retiredPendingOwnerSignupFieldDeletes(),
         updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      });
     });
   } catch (error) {
     if (previousAuthEmail) {
@@ -568,7 +566,6 @@ export async function verifyAccountCodes({ db, auth, uid, clientId, emailCode: r
   const contactUpdate = {
     accountEmail: email,
     accountPhone: phone,
-    accountPhoneNormalized: phone,
     businessEmail: email,
     businessPhone: phone,
   };

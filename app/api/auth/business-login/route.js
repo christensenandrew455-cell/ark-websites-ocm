@@ -4,7 +4,13 @@ import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
 import { accountCollection, accountRef, pendingSignupCollection } from "../../../lib/firestoreLayout";
 import { MESSAGES_AVAILABLE } from "../../../lib/launchFeatures";
-import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
+import {
+  deletePendingOwnerSignup,
+  pendingOwnerSignupAccount,
+  pendingOwnerSignupExpired,
+  pendingOwnerSignupVerified,
+  readPendingOwnerSignup,
+} from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
@@ -35,7 +41,7 @@ async function resolveBusiness(db, identifier) {
     data: {
       ...data,
       status: stage,
-      accountEmail: String(data.accountEmail || data.account?.accountEmail || "").trim().toLowerCase(),
+      accountEmail: String(pendingOwnerSignupAccount(data).accountEmail || "").trim().toLowerCase(),
     },
   };
 }
@@ -97,6 +103,7 @@ export async function POST(request) {
         return NextResponse.json({ error: "This temporary signup expired. Start signup again." }, { status: 403 });
       }
       if (String(pending.uid || "") === userRecord.uid && ["pending_verification", "pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
+        const verified = pendingOwnerSignupVerified(pending);
         const claims = {
           role: ACCOUNT_ROLES.STANDARD,
           accountType: ACCOUNT_TYPES.OWNER,
@@ -104,8 +111,8 @@ export async function POST(request) {
           clientId: pending.clientId,
           accountStatus: pending.stage,
           temporaryAccount: true,
-          identityVerificationRequired: pending.identityVerificationVerified !== true,
-          identityVerificationVerified: pending.identityVerificationVerified === true,
+          identityVerificationRequired: !verified,
+          identityVerificationVerified: verified,
         };
         await auth.setCustomUserClaims(userRecord.uid, claims);
         return NextResponse.json({ token: await auth.createCustomToken(userRecord.uid, claims), role: ACCOUNT_ROLES.STANDARD, accountType: ACCOUNT_TYPES.OWNER, status: pending.stage });

@@ -35,6 +35,14 @@ function servicesObject(value) {
   }).filter(([name]) => name));
 }
 
+function weekdaySummary(days) {
+  const labels = days.map((day) => `${day.charAt(0).toUpperCase()}${day.slice(1)}`);
+  if (labels.length === 7) return "every day";
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return labels.length ? `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}` : "";
+}
+
 function telnyxSignatureMatches(request, rawBody) {
   const configuredKey = text(process.env.TELNYX_PUBLIC_KEY);
   const signature = text(request.headers.get("telnyx-signature-ed25519"));
@@ -95,7 +103,8 @@ function buildProfile(clientId, account) {
   const serviceAreas = list(account.serviceAreas);
   const services = servicesObject(account.services);
   const businessInformation = normalizeBusinessInformation(account.businessInformation);
-  const businessBase = text(account.businessBase) || serviceAreas[0] || "the local service area";
+  const businessType = text(account.businessType || account.businessBase);
+  const businessBase = serviceAreas[0] || "the local service area";
   const normalizedServiceAreas = serviceAreas.length ? serviceAreas : [businessBase];
   const savedEstimateWeekdays = list(account.estimateWeekdays).map((day) => day.toLowerCase());
   const earliestEstimateStart = text(account.earliestEstimateStart);
@@ -108,10 +117,11 @@ function buildProfile(clientId, account) {
     ownerName: text(account.ownerName),
     timeZone: text(account.timeZone || "America/New_York"),
     estimateSchedulingConfigured,
-    estimateDays: estimateSchedulingConfigured ? text(account.estimateDays) : "",
+    estimateDays: estimateSchedulingConfigured ? weekdaySummary(savedEstimateWeekdays) : "",
     estimateWeekdays: estimateSchedulingConfigured ? savedEstimateWeekdays : [],
     earliestEstimateStart: estimateSchedulingConfigured ? earliestEstimateStart : "",
     latestEstimateStart: estimateSchedulingConfigured ? latestEstimateStart : "",
+    businessType,
     businessBase,
     serviceAreas: normalizedServiceAreas,
     services,

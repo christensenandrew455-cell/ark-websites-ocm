@@ -11,7 +11,10 @@ export async function readApiJson(response, fallbackMessage = "The server could 
   }
 
   if (!response.ok) {
-    throw new Error(data.error || fallbackMessage);
+    const error = new Error(data.error || fallbackMessage);
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
 
   return data;

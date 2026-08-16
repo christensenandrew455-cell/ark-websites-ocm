@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
+import {
+  deletePendingOwnerSignup,
+  pendingOwnerSignupAccount,
+  pendingOwnerSignupExpired,
+  pendingOwnerSignupVerified,
+  readPendingOwnerSignup,
+} from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { ensureStripeBillingCatalog, ensureStripeUsagePrice, missingStripeResource } from "../../../lib/stripeUsageBilling";
 
@@ -63,7 +69,7 @@ async function authorize(request) {
       await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
       return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
     }
-    if (!pending || pending.data.identityVerificationVerified !== true || pending.data.businessSetupComplete !== true || text(pending.data.stage) !== "pending_payment") {
+    if (!pending || !pendingOwnerSignupVerified(pending.data) || text(pending.data.stage) !== "pending_payment") {
       return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
     }
     return { auth, db, decoded, pending };
@@ -87,7 +93,7 @@ export async function POST(request) {
   try {
     const uid = access.decoded.uid;
     const pending = access.pending.data;
-    const account = pending.account || pending;
+    const account = pendingOwnerSignupAccount(pending);
     const payment = pending.payment || {};
     const clientId = text(pending.clientId);
     const rateLimit = await checkRequestRateLimit({ db: access.db, request, scope: `payment-setup:${uid}`, limit: 12, windowMs: 60 * 60 * 1000 });
@@ -132,19 +138,19 @@ export async function POST(request) {
 
     const existingSetupIntentId = text(payment.stripeSetupIntentId);
     let setupIntent = await reusableSetupIntent(stripe, existingSetupIntentId, stripeCustomerId, uid, livemode);
-    const paymentSetupAttempt = Math.max(1, Math.floor(Number(payment.paymentSetupAttempt || 0)) + (setupIntent ? 0 : 1));
+    const setupAttempts = Math.max(1, Math.floor(Number(payment.setupAttempts || payment.paymentSetupAttempt || 0)) + (setupIntent ? 0 : 1));
     if (!setupIntent) {
       setupIntent = await stripe.setupIntents.create({
         customer: stripeCustomerId,
         payment_method_types: ["card"],
         usage: "off_session",
         metadata: { uid, clientId, purpose: "ark_onboarding_payment_method" },
-      }, { idempotencyKey: `ark-onboarding-setup-${uid}-${paymentSetupAttempt}` });
+      }, { idempotencyKey: `ark-onboarding-setup-${uid}-${setupAttempts}` });
     }
     if (setupIntent.livemode !== livemode) throw new Error("STRIPE_MODE_MISMATCH");
 
     await access.pending.ref.set({
-      payment: { ...payment, status: "in_progress", stripeCustomerId, stripeSetupIntentId: setupIntent.id, stripeLivemode: livemode, paymentSetupAttempt },
+      payment: { status: "in_progress", stripeCustomerId, stripeSetupIntentId: setupIntent.id, stripeLivemode: livemode, setupAttempts },
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 

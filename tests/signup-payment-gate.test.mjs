@@ -51,15 +51,55 @@ test("main information creates only a short-lived temporary signup", async () =>
   assert.equal(pending.includes("accountPhoneRegistry"), false);
 });
 
+test("pending signup uses one canonical field for each value", async () => {
+  const [pending, draft, ownerSignup, form, completion, setupStatus, paymentClient] = await Promise.all([
+    source("app/lib/pendingOwnerSignup.js"),
+    source("app/api/signup/draft/route.js"),
+    source("app/lib/ownerSignup.js"),
+    source("app/components/ReceptionistBusinessForm.js"),
+    source("app/lib/ownerPaymentSetup.js"),
+    source("app/api/billing/setup-status/route.js"),
+    source("app/signup/payment/PaymentSetupClient.js"),
+  ]);
+  const createdRecord = pending.slice(pending.indexOf("const data = {"), pending.indexOf("const pendingRef"));
+  for (const section of ["account: {", "legal: {", "verification:", "business:", "payment:"]) assert.ok(createdRecord.includes(section));
+  for (const retired of [
+    "moveToRegularAfterPayment",
+    "businessNameKey",
+    "accountPhoneNormalized",
+    "identityVerificationDeadlineAt",
+    "identityVerificationRequired",
+    "identityVerificationStatus",
+    "emailVerificationStatus",
+    "phoneVerificationStatus",
+  ]) assert.equal(createdRecord.includes(retired), false, `${retired} must not be created`);
+
+  const businessRecord = draft.slice(draft.indexOf("const businessUpdate = {"), draft.indexOf("await access.pending.ref.update"));
+  assert.ok(businessRecord.includes("businessType:"));
+  assert.ok(businessRecord.includes("estimateWeekdays:"));
+  for (const retired of ["businessHours", "businessStartHour", "businessEndHour", "estimateDays", "businessBase"]) assert.equal(businessRecord.includes(retired), false);
+  assert.ok(form.includes('label="Type of business"'));
+  assert.ok(form.includes('update("businessType"'));
+  assert.equal(ownerSignup.includes("businessHours:"), false);
+  assert.equal(ownerSignup.includes("estimateDays:"), false);
+
+  const regularAccount = completion.slice(completion.indexOf("const shared = {"), completion.indexOf("const accountData = {"));
+  for (const retired of ["accountPhoneNormalized", "identityVerificationRequired", "identityVerificationStatus", "emailVerificationStatus", "phoneVerificationStatus", "identityVerifiedAt"]) assert.equal(regularAccount.includes(retired), false);
+  assert.ok(setupStatus.includes("cardWasDeclined"));
+  assert.ok(setupStatus.includes("deletePendingOwnerSignup({ db, auth, uid })"));
+  assert.ok(paymentClient.includes("onDeclined={cancelDeclinedSignup}"));
+});
+
 test("business setup is saved into the temporary record before payment", async () => {
   const [page, route] = await Promise.all([source("app/setup/business/page.js"), source("app/api/signup/draft/route.js")]);
   assert.ok(page.includes('fetch("/api/signup/draft"'));
   assert.equal(page.includes("sessionStorage"), false);
   assert.ok(route.includes("readPendingOwnerSignup"));
-  assert.ok(route.includes("identityVerificationVerified !== true"));
+  assert.ok(route.includes("pendingOwnerSignupVerified"));
   assert.ok(route.includes("validateReceptionistBusinessInformation"));
   assert.ok(route.includes('stage: "pending_payment"'));
-  assert.ok(route.includes("businessSetupComplete: true"));
+  assert.ok(route.includes("business: businessUpdate"));
+  assert.equal(route.includes("businessSetupComplete: true"), false);
   assert.ok(route.includes('accountStatus: "pending_payment"'));
   assert.ok(route.includes("createCustomToken"));
   assert.ok(page.includes("signInWithCustomToken"));
@@ -111,15 +151,14 @@ test("successful payment promotes the already-verified temp data and starts only
   assert.ok(completion.includes("createIfMissing: true"));
   assert.ok(completion.includes("batch.create(accountRef, accountData)"));
   assert.ok(completion.includes("batch.delete(pending.ref)"));
-  assert.ok(completion.includes("temporary.identityVerificationVerified !== true"));
+  assert.ok(completion.includes("pendingOwnerSignupVerified(temporary)"));
   assert.equal(completion.includes("sendAccountVerificationCodes({"), false);
-  assert.ok(completion.includes("identityVerificationRequired: false"));
   assert.ok(completion.includes("identityVerificationVerified: true"));
   assert.ok(completion.includes("usageBalancePoints: 0"));
   assert.ok(completion.includes("usageSmsPartRemainder: 0"));
-  assert.ok(completion.includes("termsVersion: text(temporaryAccount.termsVersion)"));
-  assert.ok(completion.includes("privacyVersion: text(temporaryAccount.privacyVersion)"));
-  assert.ok(completion.includes("legalAcceptedAt: temporaryAccount.legalAcceptedAt || now"));
+  assert.ok(completion.includes("termsVersion: text(legal.termsVersion)"));
+  assert.ok(completion.includes("privacyVersion: text(legal.privacyVersion)"));
+  assert.ok(completion.includes("legalAcceptedAt: legal.acceptedAt || now"));
   assert.ok(completion.includes('role: ACCOUNT_ROLES.STANDARD'));
   assert.ok(subscription.includes("return [catalog.basePriceId]"));
   assert.equal(subscription.includes("await configRef.set"), false);
@@ -138,8 +177,9 @@ test("verification completes on the server and automatically opens the saved nex
   assert.ok(verification.includes("verifyPendingSignupCodes"));
   assert.ok(verification.includes("pending.ref"));
   assert.ok(verification.includes("role: ACCOUNT_ROLES.STANDARD"));
-  assert.ok(verification.includes("verified: account.identityVerificationVerified === true"));
-  assert.equal(verification.includes("account.identityVerificationVerified === true || (emailVerified && phoneVerified)"), false);
+  assert.ok(verification.includes("verified: identityVerified"));
+  assert.ok(verification.includes("challenge.verified === true"));
+  assert.equal(verification.includes("identityVerified = emailVerified && phoneVerified"), false);
   assert.ok(route.includes("decoded.temporaryAccount === true"));
   assert.ok(route.includes("verifyPendingSignupCodes"));
   assert.ok(route.includes("statusWithContinuation"));
