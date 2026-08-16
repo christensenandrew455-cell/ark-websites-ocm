@@ -9,48 +9,42 @@ service cloud.firestore {
       return signedIn() && request.auth.token.role == "admin";
     }
 
-    function isActiveOwner(clientId) {
+    function isOwner(clientId) {
       return signedIn()
         && request.auth.token.role == "standard"
-        && request.auth.token.clientId == clientId
+        && request.auth.token.clientId == clientId;
+    }
+
+    function isActiveOwner(clientId) {
+      return isOwner(clientId)
         && (!('identityVerificationRequired' in request.auth.token)
           || request.auth.token.identityVerificationRequired == false
           || request.auth.token.identityVerificationVerified == true)
-        && (!('accountStatus' in request.auth.token) || request.auth.token.accountStatus == "active");
+        && (!('accountStatus' in request.auth.token)
+          || request.auth.token.accountStatus == "active");
     }
 
-    match /accounts/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
-      allow write: if false;
+    function isOwnerManagedCollection(collectionId) {
+      return collectionId == "contactedMe" || collectionId == "clients";
     }
 
-    match /businesses/{clientId} {
-      allow get: if isAdmin() || isActiveOwner(clientId);
+    match /accounts/{clientId} {
+      allow get: if isAdmin() || isOwner(clientId);
       allow list: if isAdmin();
       allow write: if false;
 
-      match /{document=**} {
-        allow read, write: if false;
+      match /{collectionId}/{document=**} {
+        allow read, write: if collectionId != "private"
+          && (isAdmin()
+            || (isActiveOwner(clientId) && isOwnerManagedCollection(collectionId)));
       }
     }
 
-    match /businessNameRegistry/{nameKey} {
+    match /pendingOwnerSignups/{clientId} {
       allow read, write: if false;
     }
 
-    match /connections/{clientId} {
-      allow read, write: if false;
-    }
-
-    match /ocmClients/{clientId} {
-      allow read, write: if isAdmin() || isActiveOwner(clientId);
-
-      match /{document=**} {
-        allow read, write: if isAdmin() || isActiveOwner(clientId);
-      }
-    }
-
-    match /accountVerificationChallenges/{uid} {
+    match /system/{document=**} {
       allow read, write: if false;
     }
   }

@@ -18,16 +18,12 @@ export async function POST(request) {
 
   try {
     const db = getAdminDb();
-    const [accountSnapshot, businessSnapshot] = await Promise.all([
-      db.collection("accounts").doc(decoded.uid).get(),
-      db.collection("businesses").doc(clientId).get(),
-    ]);
-    if (!accountSnapshot.exists || !businessSnapshot.exists) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
-    const business = businessSnapshot.data();
+    const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+    if (!accountSnapshot.exists || text(accountSnapshot.data().uid) !== text(decoded.uid)) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     const account = accountSnapshot.data();
     const body = await request.json();
     const confirmation = text(body.confirmation);
-    const expected = text(business.businessName || account.businessName);
+    const expected = text(account.businessName);
     if (!confirmation || confirmation.toLowerCase() !== expected.toLowerCase()) return NextResponse.json({ error: `Type ${expected} exactly to confirm deletion.` }, { status: 400 });
 
     await deleteCustomerPermanently(clientId);

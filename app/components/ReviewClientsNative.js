@@ -267,7 +267,7 @@ function ClientModal({ row, clientId, messagesEnabled, onClose, onMessage, onAdd
     closing.current = true;
     try {
       if (JSON.stringify(form) !== initialForm.current) {
-        await setDoc(doc(db, "ocmClients", clientId, row.collectionKey, row.id), {
+        await setDoc(doc(db, "accounts", clientId, row.collectionKey, row.id), {
           ...form,
           Notes: form.ClientNotes,
           PreferredDate: form.EstimateDate,
@@ -315,8 +315,8 @@ export default function ReviewClientsNative() {
 
   useEffect(() => {
     if (!clientId) return undefined;
-    const unsubContacted = onSnapshot(collection(db, "ocmClients", clientId, "contactedMe"), (snapshot) => setContacted(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "contactedMe")).sort((a, b) => rowTime(a) - rowTime(b))), () => setError("Something went wrong."));
-    const unsubClients = onSnapshot(collection(db, "ocmClients", clientId, "clients"), (snapshot) => setClients(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "clients")).sort((a, b) => rowTime(a) - rowTime(b))), () => setError("Something went wrong."));
+    const unsubContacted = onSnapshot(collection(db, "accounts", clientId, "contactedMe"), (snapshot) => setContacted(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "contactedMe")).sort((a, b) => rowTime(a) - rowTime(b))), () => setError("Something went wrong."));
+    const unsubClients = onSnapshot(collection(db, "accounts", clientId, "clients"), (snapshot) => setClients(snapshot.docs.map((item) => normalizeRow(item.id, item.data(), "clients")).sort((a, b) => rowTime(a) - rowTime(b))), () => setError("Something went wrong."));
     return () => { unsubContacted(); unsubClients(); };
   }, [clientId]);
 

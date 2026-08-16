@@ -10,10 +10,6 @@ export async function POST(request) {
   if (!new Set(["completed", "skipped"]).has(status)) return NextResponse.json({ error: "Choose completed or skipped." }, { status: 400 });
   const db = getAdminDb();
   const update = { onboardingTourStatus: status, onboardingTourFinishedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
-  const batch = db.batch();
-  batch.set(db.collection("accounts").doc(authorization.decodedToken.uid), update, { merge: true });
-  batch.set(db.collection("businesses").doc(authorization.clientId), update, { merge: true });
-  batch.set(db.collection("ocmClients").doc(authorization.clientId), update, { merge: true });
-  await batch.commit();
+  await db.collection("accounts").doc(authorization.clientId).set(update, { merge: true });
   return NextResponse.json({ ok: true, status });
 }

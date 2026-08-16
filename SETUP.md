@@ -8,7 +8,13 @@ The owner signup flow is:
 4. Email and phone verification
 5. Dashboard
 
-Steps 1 and 2 use one short-lived `pendingOwnerSignups` record. After Stripe confirms the payment method and starts the base subscription, the server creates the regular account, deletes the temporary record, and sends the verification codes.
+Steps 1 and 2 use one `pendingOwnerSignups/{clientId}` record with a hard one-hour expiration. After Stripe confirms the payment method and starts the base subscription, the server creates `accounts/{clientId}`, deletes the temporary record, and sends the verification codes.
+
+Firestore has exactly three top-level collections:
+
+- `accounts` — regular account state and account-owned subcollections
+- `pendingOwnerSignups` — one-hour temporary signup records
+- `system` — server-only operational records under `system/global`
 
 ## Firebase Authentication and Admin
 
@@ -75,7 +81,7 @@ Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh
 
 ## Signup behavior
 
-1. Main information creates a Firebase Auth user and one temporary Firestore record. It does not create `accounts`, `businesses`, or `ocmClients` records.
+1. Main information creates a Firebase Auth user and one temporary `pendingOwnerSignups/{clientId}` record. It does not create a regular `accounts` record.
 2. Business settings are validated and saved into the temporary record.
 3. Stripe confirms an off-session SetupIntent.
 4. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
@@ -86,7 +92,7 @@ If a monthly or $20 usage charge is declined, the account immediately becomes `d
 
 ## Test-mode acceptance checklist
 
-- A new signup has one Auth user and one temporary Firestore record before payment.
+- A new signup has one Auth user and one temporary Firestore record before payment, and that record expires after exactly one hour.
 - Business information must be complete before the Payment Element opens.
 - Stripe test card `4242 4242 4242 4242` completes the SetupIntent with a future expiry and any valid security code.
 - Successful setup starts exactly one $50 monthly base subscription with no metered items.

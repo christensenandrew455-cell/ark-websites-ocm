@@ -19,7 +19,7 @@ export function billingMessageEventId(clientId, direction, sourceId) {
 }
 
 export function billingMessageEventRef(db, { clientId, direction, sourceId }) {
-  return db.collection("ocmClients").doc(clientId).collection("billingMessageEvents")
+  return db.collection("accounts").doc(clientId).collection("billingMessageEvents")
     .doc(billingMessageEventId(clientId, direction, sourceId));
 }
 

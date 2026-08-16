@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminBucket, getAdminDb } from "../../../lib/firebase-admin";
+import { systemCollection } from "../../../lib/firestoreLayout";
 import { checkRequestRateLimit } from "../../../lib/requestRateLimit";
 
 export const runtime = "nodejs";
@@ -123,7 +124,7 @@ export async function POST(request) {
       return json({ error: "Enter the business number that sent the message." }, { status: 400 });
     }
 
-    const ref = db.collection("supportRequests").doc();
+    const ref = systemCollection(db, "supportRequests").doc();
     const screenshot = body.screenshot;
     let attachment = null;
     if (screenshot && typeof screenshot.arrayBuffer === "function" && Number(screenshot.size || 0) > 0) {

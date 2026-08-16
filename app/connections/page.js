@@ -253,7 +253,7 @@ export default function ConnectionsPage() {
       });
       setNewCustomer(EMPTY_CUSTOMER);
       setShowCreate(false);
-      setMessage(`${result.businessName}'s temporary signup was created. It expires in six hours; the owner must sign in and finish business and payment setup.`);
+      setMessage(`${result.businessName}'s temporary signup was created. It expires in one hour; the owner must sign in and finish business and payment setup.`);
     } catch (createError) {
       setError(createError.message);
     } finally {
@@ -384,7 +384,7 @@ export default function ConnectionsPage() {
         {showCreate && (
           <form onSubmit={createCustomer} className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8">
             <h2 className="text-xl font-black">New Customer</h2>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">This creates a six-hour temporary signup. The regular account is created only after the owner saves a payment method.</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">This creates a one-hour temporary signup. The regular account is created only after the owner saves a payment method.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <Field label="Business name"><Input value={newCustomer.businessName} onChange={(event) => updateNewCustomer("businessName", event.target.value)} /></Field>
               <Field label="Name"><Input value={newCustomer.ownerName} onChange={(event) => updateNewCustomer("ownerName", event.target.value)} /></Field>

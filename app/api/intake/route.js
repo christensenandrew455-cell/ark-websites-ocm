@@ -154,7 +154,7 @@ async function findPropertyMatches(db, clientId, propertyKey) {
 
   const matches = [];
   for (const stageKey of allowedSections) {
-    const snapshot = await db.collection("ocmClients").doc(clientId).collection(stageKey).get();
+    const snapshot = await db.collection("accounts").doc(clientId).collection(stageKey).get();
     snapshot.docs.forEach((documentSnapshot) => {
       const data = stripLeadContactFields(documentSnapshot.data());
       const existingAddress = data.Address || [data.StreetAddress, data.TownOrCity].filter(Boolean).join(", ");
@@ -200,27 +200,24 @@ export async function POST(request) {
     }
 
     const db = getAdminDb();
-    const [businessSnapshot, connectionSnapshot, receptionistSnapshot] = await Promise.all([
-      db.collection("businesses").doc(clientId).get(),
-      db.collection("connections").doc(clientId).get(),
-      db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist").get(),
-    ]);
+    const accountSnapshot = await db.collection("accounts").doc(clientId).get();
 
-    if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
+    if (!accountSnapshot.exists || accountSnapshot.data().status !== "active") {
       return Response.json(
         { ok: false, error: "That business account is not active." },
         { status: 404, headers: corsHeaders() }
       );
     }
 
-    if (!connectionSnapshot.exists) {
+    const account = accountSnapshot.data();
+    if (!text(account.connectionKey)) {
       return Response.json(
         { ok: false, error: "This business has not been connected by the administrator." },
         { status: 403, headers: corsHeaders() }
       );
     }
 
-    const connection = connectionSnapshot.data();
+    const connection = account;
     if (connection.enabled === false || !secretMatches(connection.connectionKey, providedKey)) {
       return Response.json(
         { ok: false, error: "This connection is disabled or the connection key is invalid." },
@@ -237,10 +234,7 @@ export async function POST(request) {
       ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
       : channel || "website";
     const row = buildRow(data, source);
-    const timeZone = validTimeZone(
-      text(receptionistSnapshot.exists ? receptionistSnapshot.data().timeZone : "")
-        || text(businessSnapshot.data().timeZone)
-    );
+    const timeZone = validTimeZone(text(account.timeZone));
 
     if (!row.Name && !row.Phone && !row.Notes) {
       return Response.json(
@@ -288,7 +282,7 @@ export async function POST(request) {
     const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
     const primary = existingInTarget || matches[0] || null;
     const primaryData = stripLeadContactFields(primary?.data || {});
-    const targetCollection = db.collection("ocmClients").doc(clientId).collection(sectionKey);
+    const targetCollection = db.collection("accounts").doc(clientId).collection(sectionKey);
     const targetRef = primary ? targetCollection.doc(primary.id) : targetCollection.doc();
 
     const previousJobs = mergeJobs(

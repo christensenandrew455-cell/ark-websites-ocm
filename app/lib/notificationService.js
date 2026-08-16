@@ -96,7 +96,7 @@ async function sendToDevices(devices, message) {
 
 async function notificationDevices(db, clientId, { ownerOnly = false, uid = "" } = {}) {
   const snapshot = await db
-    .collection("ocmClients")
+    .collection("accounts")
     .doc(clientId)
     .collection("notificationDevices")
     .get();
@@ -119,7 +119,7 @@ async function recordLeadDelivery(db, clientId, leadId, summary) {
   const batch = db.batch();
 
   batch.set(
-    db.collection("ocmClients").doc(clientId).collection("notificationDeliveries").doc(safeLeadId),
+    db.collection("accounts").doc(clientId).collection("notificationDeliveries").doc(safeLeadId),
     {
       type: "new-lead",
       leadId: safeLeadId,
@@ -134,7 +134,7 @@ async function recordLeadDelivery(db, clientId, leadId, summary) {
     { merge: true }
   );
 
-  batch.set(db.collection("connections").doc(clientId), {
+  batch.set(db.collection("accounts").doc(clientId), {
     lastNotificationStatus: status,
     lastNotificationLeadId: safeLeadId,
     lastNotificationAttempted: summary.attempted,
@@ -243,20 +243,20 @@ export async function sendAccountPushNotification({ db, clientId, notification, 
 }
 
 export async function sendUnreadLeadReminders(db) {
-  const connectionsSnapshot = await db.collection("connections").get();
+  const accountsSnapshot = await db.collection("accounts").get();
   const now = Date.now();
   let attempted = 0;
   let sent = 0;
   let failed = 0;
 
-  for (const connectionDocument of connectionsSnapshot.docs) {
-    const connection = connectionDocument.data();
-    const lastLeadAt = asMillis(connection.lastLeadAt);
-    if (connection.enabled === false || !lastLeadAt) continue;
+  for (const accountDocument of accountsSnapshot.docs) {
+    const account = accountDocument.data();
+    const lastLeadAt = asMillis(account.lastLeadAt);
+    if (!isStandardRole(account.role) || account.enabled === false || !lastLeadAt) continue;
 
     const devicesSnapshot = await db
-      .collection("ocmClients")
-      .doc(connectionDocument.id)
+      .collection("accounts")
+      .doc(accountDocument.id)
       .collection("notificationDevices")
       .get();
 
@@ -278,14 +278,14 @@ export async function sendUnreadLeadReminders(db) {
       data: {
         type: "unread-lead-reminder",
         route: "/review-my-clients?section=contacted",
-        clientId: connectionDocument.id,
+        clientId: accountDocument.id,
       },
       android: {
         priority: "high",
         notification: {
           channelId: "lead-reminders",
           sound: "default",
-          tag: `unread-leads-${connectionDocument.id}`,
+          tag: `unread-leads-${accountDocument.id}`,
         },
       },
     });

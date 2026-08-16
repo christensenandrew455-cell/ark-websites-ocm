@@ -24,7 +24,7 @@ export function messageContactBlockId(clientId, phone) {
 export function messageContactBlockRef(db, clientId, phone) {
   const id = messageContactBlockId(clientId, phone);
   if (!id) return null;
-  return db.collection("ocmClients").doc(clientId).collection("blockedMessageContacts").doc(id);
+  return db.collection("accounts").doc(clientId).collection("blockedMessageContacts").doc(id);
 }
 
 export async function isMessageContactBlocked(db, clientId, phone) {

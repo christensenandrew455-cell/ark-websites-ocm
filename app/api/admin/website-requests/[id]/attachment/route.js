@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../../../lib/adminRequest";
 import { getAdminBucket, getAdminDb } from "../../../../../lib/firebase-admin";
+import { systemCollection } from "../../../../../lib/firestoreLayout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,8 @@ export async function GET(request, { params }) {
     const requestId = text(id, 160);
     if (!/^[a-z0-9_-]+$/i.test(requestId)) return NextResponse.json({ error: "Choose a valid website request." }, { status: 400 });
 
-    const snapshot = await getAdminDb().collection("supportRequests").doc(requestId).get();
+    const db = getAdminDb();
+    const snapshot = await systemCollection(db, "supportRequests").doc(requestId).get();
     if (!snapshot.exists) return NextResponse.json({ error: "That website request no longer exists." }, { status: 404 });
 
     const data = snapshot.data();

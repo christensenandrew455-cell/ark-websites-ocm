@@ -1,9 +1,9 @@
 import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
-import { accountPhoneRegistryId } from "./signupAvailability.js";
+import { accountCollection, pendingSignupCollection } from "./firestoreLayout.js";
 
 export const PENDING_OWNER_SIGNUP_COLLECTION = "pendingOwnerSignups";
-export const PENDING_OWNER_SIGNUP_TTL_MS = 6 * 60 * 60 * 1000;
+export const PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000;
 
 function text(value) {
   return String(value || "").trim();
@@ -16,8 +16,8 @@ function asDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function pendingOwnerSignupRef(db, uid) {
-  return db.collection(PENDING_OWNER_SIGNUP_COLLECTION).doc(text(uid));
+export function pendingOwnerSignupRef(db, clientId) {
+  return pendingSignupCollection(db).doc(text(clientId));
 }
 
 export function pendingOwnerSignupExpired(data = {}, now = Date.now()) {
@@ -25,13 +25,23 @@ export function pendingOwnerSignupExpired(data = {}, now = Date.now()) {
   return !expiresAt || expiresAt.getTime() <= Number(now);
 }
 
-export async function readPendingOwnerSignup({ db, uid, allowExpired = false }) {
-  const ref = pendingOwnerSignupRef(db, uid);
-  const snapshot = await ref.get();
-  if (!snapshot.exists) return null;
+export async function readPendingOwnerSignup({ db, uid, clientId = "", allowExpired = false }) {
+  let snapshot = null;
+  if (text(clientId)) {
+    snapshot = await pendingOwnerSignupRef(db, clientId).get();
+    if (!snapshot.exists) {
+      const matches = await pendingSignupCollection(db).where("clientId", "==", text(clientId)).limit(1).get();
+      snapshot = matches.empty ? null : matches.docs[0];
+    }
+  } else if (text(uid)) {
+    const matches = await pendingSignupCollection(db).where("uid", "==", text(uid)).limit(1).get();
+    snapshot = matches.empty ? null : matches.docs[0];
+  }
+  if (!snapshot?.exists) return null;
+  if (text(uid) && text(snapshot.data().uid) !== text(uid)) return null;
   const data = snapshot.data();
   if (!allowExpired && pendingOwnerSignupExpired(data)) throw new Error("PENDING_SIGNUP_EXPIRED");
-  return { ref, data };
+  return { ref: snapshot.ref, data };
 }
 
 export async function createPendingOwnerSignup({ db, uid, clientId, signup, referrer = null }) {
@@ -43,57 +53,45 @@ export async function createPendingOwnerSignup({ db, uid, clientId, signup, refe
     stage: "pending_business_setup",
     moveToRegularAfterPayment: true,
     expiresAt,
-    account: {
-      businessName: signup.businessName,
-      ownerName: signup.ownerName,
-      accountEmail: signup.accountEmail,
-      accountPhone: signup.accountPhone,
-      accountPhoneNormalized: signup.accountPhoneNormalized,
-      referrerAccountId: signup.referrerAccountId || "",
-      termsAccepted: true,
-      privacyAccepted: true,
-      termsVersion: signup.termsVersion,
-      privacyVersion: signup.privacyVersion,
-      legalAcceptedAt: now,
-      ...(referrer ? { referral: referrer } : {}),
-    },
-    business: {
-      businessName: signup.businessName,
-      ownerName: signup.ownerName,
-      businessEmail: signup.accountEmail,
-      businessPhone: signup.accountPhone,
-      serviceAreas: [],
-      services: {},
-      businessInformation: [],
-    },
-    payment: {
-      status: "not_started",
-    },
+    businessName: signup.businessName,
+    businessNameKey: clientId,
+    ownerName: signup.ownerName,
+    accountEmail: signup.accountEmail,
+    accountPhone: signup.accountPhone,
+    accountPhoneNormalized: signup.accountPhoneNormalized,
+    referrerAccountId: signup.referrerAccountId || "",
+    termsAccepted: true,
+    privacyAccepted: true,
+    termsVersion: signup.termsVersion,
+    privacyVersion: signup.privacyVersion,
+    legalAcceptedAt: now,
+    ...(referrer ? { referral: referrer } : {}),
+    serviceAreas: [],
+    services: {},
+    businessInformation: [],
+    payment: { status: "not_started" },
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  const batch = db.batch();
-  batch.create(pendingOwnerSignupRef(db, uid), data);
-  batch.create(db.collection("businessNameRegistry").doc(clientId), {
-    clientId,
-    businessName: signup.businessName,
-    ownerUid: uid,
-    status: "temporary",
-    expiresAt,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+  const pendingRef = pendingOwnerSignupRef(db, clientId);
+  const accounts = accountCollection(db);
+  const pending = pendingSignupCollection(db);
+  await db.runTransaction(async (transaction) => {
+    const [regularName, temporaryName, regularPhone, temporaryPhone, regularEmail, temporaryEmail] = await Promise.all([
+      transaction.get(accounts.doc(clientId)),
+      transaction.get(pendingRef),
+      transaction.get(accounts.where("accountPhoneNormalized", "==", signup.accountPhoneNormalized).limit(1)),
+      transaction.get(pending.where("accountPhoneNormalized", "==", signup.accountPhoneNormalized).limit(1)),
+      transaction.get(accounts.where("accountEmail", "==", signup.accountEmail).limit(1)),
+      transaction.get(pending.where("accountEmail", "==", signup.accountEmail).limit(1)),
+    ]);
+    if (regularName.exists || temporaryName.exists || !regularPhone.empty || !temporaryPhone.empty || !regularEmail.empty || !temporaryEmail.empty) {
+      const error = new Error("SIGNUP_IDENTITY_ALREADY_EXISTS");
+      error.code = "already-exists";
+      throw error;
+    }
+    transaction.create(pendingRef, data);
   });
-  batch.create(db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(signup.accountPhoneNormalized)), {
-    uid,
-    ownerUid: uid,
-    clientId,
-    accountPhoneNormalized: signup.accountPhoneNormalized,
-    status: "temporary",
-    expiresAt,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  await batch.commit();
   return { ...data, expiresAt };
 }
 
@@ -114,47 +112,30 @@ async function deletePendingStripeCustomer(data = {}) {
   }
 }
 
-function reservationBelongsTo(snapshot, uid) {
-  if (!snapshot?.exists) return false;
-  const value = snapshot.data();
-  return text(value.uid || value.ownerUid) === uid;
-}
-
 export async function deletePendingOwnerSignup({ db, auth, uid, pending = null }) {
   const safeUid = text(uid);
-  const loaded = pending || (await readPendingOwnerSignup({ db, uid: safeUid, allowExpired: true }))?.data;
+  const stored = pending
+    ? { data: pending.data || pending, ref: pending.ref || null }
+    : await readPendingOwnerSignup({ db, uid: safeUid, allowExpired: true });
+  const loaded = stored?.data;
   if (!loaded) {
     await auth?.deleteUser(safeUid).catch((error) => {
       if (error?.code !== "auth/user-not-found") throw error;
     });
     return { deleted: false };
   }
-
   await deletePendingStripeCustomer(loaded);
   if (auth && safeUid) {
     await auth.deleteUser(safeUid).catch((error) => {
       if (error?.code !== "auth/user-not-found") throw error;
     });
   }
-
-  const pendingRef = pendingOwnerSignupRef(db, safeUid);
-  const businessRegistryRef = db.collection("businessNameRegistry").doc(text(loaded.clientId));
-  const phoneRegistryRef = db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(loaded.account?.accountPhoneNormalized || loaded.account?.accountPhone));
-  await db.runTransaction(async (transaction) => {
-    const [businessReservation, phoneReservation] = await Promise.all([
-      transaction.get(businessRegistryRef),
-      transaction.get(phoneRegistryRef),
-    ]);
-    transaction.delete(pendingRef);
-    transaction.delete(db.collection("accountVerificationChallenges").doc(safeUid));
-    if (reservationBelongsTo(businessReservation, safeUid)) transaction.delete(businessRegistryRef);
-    if (reservationBelongsTo(phoneReservation, safeUid)) transaction.delete(phoneRegistryRef);
-  });
+  await (stored.ref || pendingOwnerSignupRef(db, loaded.clientId)).delete();
   return { deleted: true };
 }
 
 export async function purgeExpiredPendingOwnerSignups({ db, auth, now = new Date(), maximum = 100 } = {}) {
-  const snapshot = await db.collection(PENDING_OWNER_SIGNUP_COLLECTION)
+  const snapshot = await pendingSignupCollection(db)
     .where("expiresAt", "<=", now)
     .limit(Math.max(1, maximum))
     .get();
@@ -162,7 +143,7 @@ export async function purgeExpiredPendingOwnerSignups({ db, auth, now = new Date
   for (const document of snapshot.docs) {
     const uid = text(document.data().uid || document.id);
     try {
-      await deletePendingOwnerSignup({ db, auth, uid, pending: document.data() });
+      await deletePendingOwnerSignup({ db, auth, uid, pending: { ref: document.ref, data: document.data() } });
       result.deleted += 1;
     } catch (error) {
       result.failed += 1;

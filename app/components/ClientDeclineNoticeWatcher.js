@@ -17,7 +17,7 @@ export default function ClientDeclineNoticeWatcher() {
     let initialized = false;
 
     const unsubscribe = onSnapshot(
-      collection(db, "ocmClients", clientId, "contactedMe"),
+      collection(db, "accounts", clientId, "contactedMe"),
       (snapshot) => {
         if (!initialized) {
           initialized = true;

@@ -1,91 +1,49 @@
 import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
 import { getAdminAuth, getAdminBucket, getAdminDb } from "./firebase-admin";
-import { accountPhoneRegistryId } from "./signupAvailability";
+import { systemCollection } from "./firestoreLayout.js";
+import { pendingOwnerSignupRef } from "./pendingOwnerSignup";
 import { missingStripeResource } from "./stripeUsageBilling";
-import { normalizeClientId } from "./valueUtils";
 
-function text(value) {
-  return String(value || "").trim();
-}
+function text(value) { return String(value || "").trim(); }
 
 async function readCustomer(clientId) {
   const db = getAdminDb();
-  const businessRef = db.collection("businesses").doc(clientId);
+  const businessRef = db.collection("accounts").doc(clientId);
   const businessSnapshot = await businessRef.get();
   if (!businessSnapshot.exists) throw new Error("That customer account does not exist.");
   return { db, businessRef, business: businessSnapshot.data() };
-}
-
-async function updateAdminCustomerRecord(db, clientId, data) {
-  const adminClientId = text(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
-  if (!adminClientId || adminClientId === clientId) return;
-  await db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId).set(data, { merge: true }).catch(() => null);
 }
 
 export async function disableCustomer(clientId, actorUid, extra = {}) {
   const { db, businessRef, business } = await readCustomer(clientId);
   const uid = text(business.uid);
   if (uid) await getAdminAuth().updateUser(uid, { disabled: true }).catch(() => null);
-
-  const batch = db.batch();
-  batch.set(businessRef, {
+  await businessRef.set({
     status: "disabled",
-    disabledAt: FieldValue.serverTimestamp(),
-    disabledBy: actorUid,
-    updatedAt: FieldValue.serverTimestamp(),
-    ...extra,
-  }, { merge: true });
-  if (uid) {
-    batch.set(db.collection("accounts").doc(uid), {
-      status: "disabled",
-      disabledAt: FieldValue.serverTimestamp(),
-      disabledBy: actorUid,
-      updatedAt: FieldValue.serverTimestamp(),
-      ...extra,
-    }, { merge: true });
-  }
-  batch.set(db.collection("connections").doc(clientId), {
     enabled: false,
+    receptionistEnabled: false,
     disabledAt: FieldValue.serverTimestamp(),
     disabledBy: actorUid,
     updatedAt: FieldValue.serverTimestamp(),
     ...extra,
   }, { merge: true });
-  batch.set(db.collection("ocmClients").doc(clientId), {
-    status: "disabled",
-    disabledAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    ...extra,
-  }, { merge: true });
-  await batch.commit();
-  await updateAdminCustomerRecord(db, clientId, { AccountStatus: "disabled", updatedAt: FieldValue.serverTimestamp() });
   return { clientId, status: "disabled" };
 }
 
 export async function restoreCustomer(clientId, actorUid) {
-  const { db, businessRef, business } = await readCustomer(clientId);
-  if (business.billingPastDue === true || business.usageSuspended === true) {
+  const { businessRef, business } = await readCustomer(clientId);
+  if (business.billingPastDue === true) {
     const error = new Error("This account is disabled for payment. It restores automatically only after payment succeeds.");
     error.code = "PAYMENT_RESTRICTED";
     throw error;
   }
   const uid = text(business.uid);
   if (uid) await getAdminAuth().updateUser(uid, { disabled: false });
-
-  const restored = {
+  await businessRef.set({
     status: "active",
-    disabledAt: FieldValue.delete(),
-    disabledBy: FieldValue.delete(),
-    deletionScheduledFor: FieldValue.delete(),
-    deletionScheduledBy: FieldValue.delete(),
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-  const batch = db.batch();
-  batch.set(businessRef, restored, { merge: true });
-  if (uid) batch.set(db.collection("accounts").doc(uid), restored, { merge: true });
-  batch.set(db.collection("connections").doc(clientId), {
     enabled: true,
+    receptionistEnabled: business.receptionistPhoneNormalized ? true : business.receptionistEnabled !== false,
     disabledAt: FieldValue.delete(),
     disabledBy: FieldValue.delete(),
     deletionScheduledFor: FieldValue.delete(),
@@ -93,9 +51,6 @@ export async function restoreCustomer(clientId, actorUid) {
     updatedBy: actorUid,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  batch.set(db.collection("ocmClients").doc(clientId), restored, { merge: true });
-  await batch.commit();
-  await updateAdminCustomerRecord(db, clientId, { AccountStatus: "active", updatedAt: FieldValue.serverTimestamp() });
   return { clientId, status: "active" };
 }
 
@@ -125,19 +80,13 @@ async function deleteStripeAccount(business) {
     }
   }
   if (subscriptionId) {
-    try {
-      await stripe.subscriptions.cancel(subscriptionId);
-    } catch (error) {
-      if (!missingStripeResource(error)) throw error;
-    }
+    try { await stripe.subscriptions.cancel(subscriptionId); } catch (error) { if (!missingStripeResource(error)) throw error; }
   }
 }
 
 async function deleteSupportRequests(db, clientId) {
-  const snapshot = await db.collection("supportRequests").where("clientId", "==", clientId).get();
-  const storagePaths = snapshot.docs
-    .map((document) => text(document.data()?.attachment?.storagePath))
-    .filter(Boolean);
+  const snapshot = await systemCollection(db, "supportRequests").where("clientId", "==", clientId).get();
+  const storagePaths = snapshot.docs.map((document) => text(document.data()?.attachment?.storagePath)).filter(Boolean);
   if (storagePaths.length) {
     const bucket = getAdminBucket();
     await Promise.all(storagePaths.map((storagePath) => bucket.file(storagePath).delete({ ignoreNotFound: true })));
@@ -151,10 +100,10 @@ async function deleteSupportRequests(db, clientId) {
 
 async function deleteReferralData(db, clientId) {
   const [asReferrer, asReferred, ownedPeriods, creditedPeriods] = await Promise.all([
-    db.collection("referrals").where("referrerClientId", "==", clientId).get(),
-    db.collection("referrals").where("referredClientId", "==", clientId).get(),
-    db.collection("referralPeriods").where("referrerClientId", "==", clientId).get(),
-    db.collection("referralPeriods").where("referredClientIds", "array-contains", clientId).get(),
+    systemCollection(db, "referrals").where("referrerClientId", "==", clientId).get(),
+    systemCollection(db, "referrals").where("referredClientId", "==", clientId).get(),
+    systemCollection(db, "referralPeriods").where("referrerClientId", "==", clientId).get(),
+    systemCollection(db, "referralPeriods").where("referredClientIds", "array-contains", clientId).get(),
   ]);
   const deleteRefs = new Map();
   [...asReferrer.docs, ...asReferred.docs, ...ownedPeriods.docs].forEach((document) => deleteRefs.set(document.ref.path, document.ref));
@@ -164,9 +113,7 @@ async function deleteReferralData(db, clientId) {
     await batch.commit();
   }
   for (let index = 0; index < creditedPeriods.docs.length; index += 350) {
-    const documents = creditedPeriods.docs
-      .slice(index, index + 350)
-      .filter((document) => !deleteRefs.has(document.ref.path));
+    const documents = creditedPeriods.docs.slice(index, index + 350).filter((document) => !deleteRefs.has(document.ref.path));
     if (!documents.length) continue;
     const batch = db.batch();
     documents.forEach((document) => {
@@ -183,57 +130,17 @@ async function deleteReferralData(db, clientId) {
 
 export async function deleteCustomerPermanently(clientId) {
   const { db, businessRef, business } = await readCustomer(clientId);
-  const uid = text(business.uid || business.ownerUid);
-  const adminClientId = text(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
-  const businessNameKey = normalizeClientId(business.businessNameKey || business.businessName || clientId);
-  const connectionSnapshot = await db.collection("connections").doc(clientId).get();
-  const accountSnapshots = await db.collection("accounts").where("clientId", "==", clientId).get();
-  const accountDocuments = new Map();
-  accountSnapshots.docs.forEach((document) => accountDocuments.set(document.id, document));
-  if (uid && !accountDocuments.has(uid)) {
-    const ownerSnapshot = await db.collection("accounts").doc(uid).get();
-    if (ownerSnapshot.exists) accountDocuments.set(uid, ownerSnapshot);
-  }
-  const authUids = [...new Set([uid, ...accountDocuments.keys()].filter(Boolean))];
-  const phoneRegistryIds = [...new Set([...accountDocuments.values(), { data: () => business }]
-    .map((document) => accountPhoneRegistryId(document.data()?.accountPhoneNormalized || document.data()?.accountPhone))
-    .filter(Boolean))];
-  const connectionPhoneIds = [...new Set([
-    accountPhoneRegistryId(connectionSnapshot.exists ? connectionSnapshot.data().receptionistPhoneNormalized || connectionSnapshot.data().receptionistPhone : ""),
-    accountPhoneRegistryId(business.approvalReservationPhoneNormalized),
-  ].filter(Boolean))];
-
+  const uid = text(business.uid);
   await deleteStripeAccount(business);
   await deleteSupportRequests(db, clientId);
-  await Promise.all(authUids.map((accountUid) => getAdminAuth().deleteUser(accountUid).catch((error) => {
-    if (error?.code !== "auth/user-not-found") throw error;
-  })));
+  if (uid) await getAdminAuth().deleteUser(uid).catch((error) => { if (error?.code !== "auth/user-not-found") throw error; });
   await deleteReferralData(db, clientId);
-
   await Promise.all([
     db.recursiveDelete(businessRef),
-    db.recursiveDelete(db.collection("ocmClients").doc(clientId)),
-    ...[...accountDocuments.values()].map((document) => db.recursiveDelete(document.ref)),
-    deleteQueryDocuments(db.collection("stripeWebhookEvents").where("clientId", "==", clientId)),
-    deleteQueryDocuments(db.collection("messagingComplianceEvents").where("clientId", "==", clientId)),
-    deleteQueryDocuments(db.collection("deletedAccountAudit").where("clientId", "==", clientId)),
-    deleteQueryDocuments(db.collection("businessNameRegistry").where("clientId", "==", clientId)),
+    pendingOwnerSignupRef(db, clientId).delete().catch(() => null),
+    deleteQueryDocuments(systemCollection(db, "stripeWebhookEvents").where("clientId", "==", clientId)),
+    deleteQueryDocuments(systemCollection(db, "messagingComplianceEvents").where("clientId", "==", clientId)),
+    deleteQueryDocuments(systemCollection(db, "deletedAccountAudit").where("clientId", "==", clientId)),
   ]);
-
-  const batch = db.batch();
-  batch.delete(db.collection("connections").doc(clientId));
-  authUids.forEach((accountUid) => {
-    batch.delete(db.collection("accountVerificationChallenges").doc(accountUid));
-    batch.delete(db.collection("pendingOwnerSignups").doc(accountUid));
-  });
-  if (uid && !accountDocuments.has(uid)) batch.delete(db.collection("accounts").doc(uid));
-  if (businessNameKey) batch.delete(db.collection("businessNameRegistry").doc(businessNameKey));
-  phoneRegistryIds.forEach((phoneId) => batch.delete(db.collection("accountPhoneRegistry").doc(phoneId)));
-  connectionPhoneIds.forEach((phoneId) => batch.delete(db.collection("connectionPhoneRegistry").doc(phoneId)));
-  if (adminClientId && adminClientId !== clientId) {
-    batch.delete(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId));
-  }
-  await batch.commit();
-
   return { clientId, deleted: true };
 }

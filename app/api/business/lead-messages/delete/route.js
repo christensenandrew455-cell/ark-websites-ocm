@@ -38,13 +38,10 @@ export async function POST(request) {
     if (!leadId) return NextResponse.json({ error: "Choose a conversation to delete." }, { status: 400 });
 
     const db = getAdminDb();
-    const [accountSnapshot, businessSnapshot] = await Promise.all([
-      db.collection("accounts").doc(decoded.uid).get(),
-      db.collection("businesses").doc(clientId).get(),
-    ]);
-    if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || !businessSnapshot.exists) return NextResponse.json({ error: "An active owner account is required." }, { status: 403 });
+    const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+    if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) return NextResponse.json({ error: "An active owner account is required." }, { status: 403 });
 
-    const root = db.collection("ocmClients").doc(clientId);
+    const root = db.collection("accounts").doc(clientId);
     const key = conversationId(clientId, collectionKey, leadId);
     const conversationRef = root.collection("leadConversations").doc(key);
     const conversationSnapshot = await conversationRef.get();

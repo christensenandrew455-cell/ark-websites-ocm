@@ -86,7 +86,7 @@ export async function POST(request) {
       businessName,
       accountEmail,
       status: "pending_business_setup",
-      expiresInHours: 6,
+      expiresInHours: 1,
     }, { status: 201 });
   } catch (error) {
     console.error("Unable to create temporary customer signup", error);

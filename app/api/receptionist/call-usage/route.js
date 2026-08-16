@@ -24,16 +24,13 @@ async function authorize(request, data) {
   if (!clientId || !providedKey) return { response: Response.json({ ok: false, error: "Missing receptionist connection credentials." }, { status: 401 }) };
 
   const db = getAdminDb();
-  const [businessSnapshot, connectionSnapshot] = await Promise.all([
-    db.collection("businesses").doc(clientId).get(),
-    db.collection("connections").doc(clientId).get(),
-  ]);
-  if (!businessSnapshot.exists || businessSnapshot.data().status !== "active" || businessSnapshot.data().usageSuspended === true || businessSnapshot.data().billingPastDue === true) {
+  const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || accountSnapshot.data().billingPastDue === true) {
     return { response: Response.json({ ok: false, error: "That business account is not active." }, { status: 404 }) };
   }
-  if (!connectionSnapshot.exists) return { response: Response.json({ ok: false, error: "The receptionist connection is not configured." }, { status: 403 }) };
-  const connection = connectionSnapshot.data();
-  if (connection.enabled === false || connection.paymentDisabled === true || !secretMatches(connection.connectionKey, providedKey)) {
+  const connection = accountSnapshot.data();
+  if (!text(connection.connectionKey)) return { response: Response.json({ ok: false, error: "The receptionist connection is not configured." }, { status: 403 }) };
+  if (connection.enabled === false || !secretMatches(connection.connectionKey, providedKey)) {
     return { response: Response.json({ ok: false, error: "The receptionist connection is disabled or invalid." }, { status: 403 }) };
   }
   return { db, clientId };

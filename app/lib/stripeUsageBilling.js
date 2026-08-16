@@ -159,15 +159,7 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (persist) {
-    await Promise.all([
-      db.collection("businesses").doc(clientId).set(update, { merge: true }),
-      uid ? db.collection("accounts").doc(uid).set(update, { merge: true }) : Promise.resolve(),
-      db.collection("ocmClients").doc(clientId).collection("settings").doc("account").set({
-        StripeSubscriptionId: subscription.id,
-        StripeSubscriptionStatus: subscription.status,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true }),
-    ]);
+    await db.collection("accounts").doc(clientId).set(update, { merge: true });
   }
   return subscription;
 }
@@ -219,16 +211,6 @@ export async function refreshStoredPaymentMethod({ stripe, db, clientId, uid, cu
     paymentMethodSyncedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  await Promise.all([
-    db.collection("businesses").doc(clientId).set(update, { merge: true }),
-    uid ? db.collection("accounts").doc(uid).set(update, { merge: true }) : Promise.resolve(),
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("account").set({
-      StripeCustomerId: customerId,
-      StripePaymentMethodId: paymentMethodId,
-      PaymentMethodLabel: label,
-      PaymentMethodSyncedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true }),
-  ]);
+  await db.collection("accounts").doc(clientId).set(update, { merge: true });
   return { paymentMethodId, paymentMethodLabel: label };
 }

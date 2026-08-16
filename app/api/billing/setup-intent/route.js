@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
+import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 export const runtime = "nodejs";
@@ -28,7 +28,11 @@ async function authorize(request) {
     }
     const db = getAdminDb();
     const pending = await readPendingOwnerSignup({ db, uid: decoded.uid, allowExpired: true });
-    if (!pending || pendingOwnerSignupExpired(pending.data) || pending.data.businessSetupComplete !== true || text(pending.data.stage) !== "pending_payment") {
+    if (pending && pendingOwnerSignupExpired(pending.data)) {
+      await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
+      return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
+    }
+    if (!pending || pending.data.businessSetupComplete !== true || text(pending.data.stage) !== "pending_payment") {
       return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
     }
     return { auth, db, decoded, pending };
@@ -45,7 +49,7 @@ export async function POST(request) {
   try {
     const uid = access.decoded.uid;
     const pending = access.pending.data;
-    const account = pending.account || {};
+    const account = pending.account || pending;
     const payment = pending.payment || {};
     const clientId = text(pending.clientId);
     const rateLimit = await checkRequestRateLimit({ db: access.db, request, scope: `payment-setup:${uid}`, limit: 12, windowMs: 60 * 60 * 1000 });

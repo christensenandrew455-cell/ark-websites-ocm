@@ -41,9 +41,10 @@ test("main information creates only a short-lived temporary signup", async () =>
   assert.equal(route.includes("sendAccountVerificationCodes"), false);
   assert.equal(route.includes("new Stripe("), false);
   assert.ok(pending.includes('PENDING_OWNER_SIGNUP_COLLECTION = "pendingOwnerSignups"'));
-  assert.ok(pending.includes("PENDING_OWNER_SIGNUP_TTL_MS = 6 * 60 * 60 * 1000"));
-  assert.ok(pending.includes('batch.create(db.collection("businessNameRegistry")'));
-  assert.ok(pending.includes('batch.create(db.collection("accountPhoneRegistry")'));
+  assert.ok(pending.includes("PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000"));
+  assert.ok(pending.includes("transaction.create(pendingRef, data)"));
+  assert.equal(pending.includes("businessNameRegistry"), false);
+  assert.equal(pending.includes("accountPhoneRegistry"), false);
 });
 
 test("business setup is saved into the temporary record before payment", async () => {
@@ -61,7 +62,7 @@ test("business setup is saved into the temporary record before payment", async (
 test("business-name login resumes temporary setup while regular accounts have two statuses", async () => {
   const route = await source("app/api/auth/business-login/route.js");
   assert.ok(route.includes('REGULAR_ACCOUNT_STATUSES = new Set(["active", "disabled"])'));
-  assert.ok(route.includes('db.collection("pendingOwnerSignups").doc(ownerUid).get()'));
+  assert.ok(route.includes("readPendingOwnerSignup({ db, clientId, allowExpired: true })"));
   assert.ok(route.includes('temporary: true'));
   assert.ok(route.includes('["pending_business_setup", "pending_payment"].includes(stage)'));
   for (const retiredStatus of ["pending_verification", "pending_admin_approval", "approved_pending_payment"]) {
@@ -194,7 +195,7 @@ test("temporary and unverified accounts both have permanent cleanup workflows", 
 test("regular accounts enter the existing number-assignment queue", async () => {
   const completion = await source("app/lib/ownerPaymentSetup.js");
   assert.ok(completion.includes('numberAssignmentStatus: "needed"'));
-  assert.ok(completion.includes('NumberAssignmentStatus: "Needed"'));
+  assert.equal(completion.includes("NumberAssignmentStatus"), false);
 });
 
 test("legal and help copy describe threshold billing and immediate enforcement", async () => {

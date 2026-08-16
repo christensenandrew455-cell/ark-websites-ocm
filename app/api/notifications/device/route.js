@@ -23,7 +23,7 @@ export async function POST(request) {
     const body = await request.json();
     const action = text(body.action || "register").toLowerCase();
     const db = getAdminDb();
-    const devices = db.collection("ocmClients").doc(clientId).collection("notificationDevices");
+    const devices = db.collection("accounts").doc(clientId).collection("notificationDevices");
 
     if (action === "mark-viewed") {
       const snapshot = await devices.where("uid", "==", decoded.uid).get();

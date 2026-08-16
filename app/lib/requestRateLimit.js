@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { systemCollection } from "./firestoreLayout.js";
 
 function requesterAddress(request) {
   const forwarded = String(request.headers.get("x-forwarded-for") || "").split(",")[0].trim();
@@ -15,7 +16,7 @@ function toMillis(value) {
 export async function checkRequestRateLimit({ db, request, scope, limit, windowMs }) {
   const now = Date.now();
   const key = createHash("sha256").update(`${scope}:${requesterAddress(request)}`).digest("hex").slice(0, 48);
-  const ref = db.collection("requestRateLimits").doc(key);
+  const ref = systemCollection(db, "requestRateLimits").doc(key);
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     const data = snapshot.exists ? snapshot.data() : {};

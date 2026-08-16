@@ -30,7 +30,10 @@ async function authorize(request) {
     const db = getAdminDb();
     const pending = await readPendingOwnerSignup({ db, uid: decoded.uid, allowExpired: true });
     if (!pending) return { response: NextResponse.json({ error: "This temporary signup no longer exists." }, { status: 404 }) };
-    if (pendingOwnerSignupExpired(pending.data)) return { response: expiredResponse() };
+    if (pendingOwnerSignupExpired(pending.data)) {
+      await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
+      return { response: expiredResponse() };
+    }
     return { auth, db, decoded, pending };
   } catch (error) {
     if (text(error?.message) === "PENDING_SIGNUP_EXPIRED") return { response: expiredResponse() };
@@ -39,8 +42,8 @@ async function authorize(request) {
 }
 
 function profileFromPending(data = {}) {
-  const account = data.account || {};
-  const business = data.business || {};
+  const account = data.account || data;
+  const business = data.business || data;
   return {
     configured: data.businessSetupComplete === true,
     clientId: text(data.clientId),
@@ -73,7 +76,7 @@ export async function POST(request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const account = access.pending.data.account || {};
+    const account = access.pending.data.account || access.pending.data;
     const normalized = normalizeOwnerSignup({
       businessName: account.businessName,
       ownerName: account.ownerName,
@@ -97,9 +100,14 @@ export async function POST(request) {
       businessEmail: text(account.accountEmail).toLowerCase(),
       businessPhone: text(account.accountPhone),
     };
+    const businessUpdate = { ...business };
+    delete businessUpdate.businessName;
+    delete businessUpdate.ownerName;
+    delete businessUpdate.businessEmail;
+    delete businessUpdate.businessPhone;
     await access.pending.ref.set({
       stage: "pending_payment",
-      business,
+      ...businessUpdate,
       businessSetupComplete: true,
       payment: {
         ...(access.pending.data.payment || {}),
@@ -117,7 +125,7 @@ export async function POST(request) {
     });
 
     return NextResponse.json({
-      profile: { ...profileFromPending({ ...access.pending.data, business, businessSetupComplete: true }), configured: true },
+      profile: { ...profileFromPending({ ...access.pending.data, ...businessUpdate, businessSetupComplete: true }), configured: true },
       nextPath: "/signup/payment",
     });
   } catch (error) {

@@ -1,4 +1,6 @@
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
+import { accountCollection, pendingSignupCollection } from "./firestoreLayout.js";
+import { deletePendingOwnerSignup, pendingOwnerSignupExpired } from "./pendingOwnerSignup.js";
 
 export function normalizeSignupEmail(value) {
   return trimmedText(value).toLowerCase();
@@ -9,10 +11,6 @@ export function normalizeSignupPhone(value) {
   if (digits.length === 10) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
   return digits ? `+${digits}` : "";
-}
-
-export function accountPhoneRegistryId(value) {
-  return normalizeSignupPhone(value).replace(/\D/g, "");
 }
 
 export function signupPhoneVariants(value) {
@@ -37,14 +35,39 @@ export function signupPhoneVariants(value) {
   ])];
 }
 
-function containsDifferentAccount(snapshot, allowedUid) {
+function documentKey(document) {
+  return String(document?.ref?.path || document?.id || "");
+}
+
+function containsDifferentAccount(snapshot, allowedUid, ignored = new Set()) {
   return snapshot.docs.some((document) => {
+    if (ignored.has(documentKey(document))) return false;
     if (!allowedUid) return true;
     const data = document.data();
     return document.id !== allowedUid
-      && String(data.uid || "") !== allowedUid
-      && String(data.ownerUid || "") !== allowedUid;
+      && String(data.uid || "") !== allowedUid;
   });
+}
+
+async function deleteExpiredPendingMatches({ auth, db, snapshots }) {
+  const documents = new Map();
+  for (const snapshot of snapshots) {
+    for (const document of snapshot?.docs || []) documents.set(documentKey(document), document);
+  }
+  const deleted = new Set();
+  const deletedUids = new Set();
+  for (const [key, document] of documents) {
+    const data = document.data();
+    if (!pendingOwnerSignupExpired(data)) continue;
+    try {
+      await deletePendingOwnerSignup({ db, auth, uid: String(data.uid || "").trim(), pending: { ref: document.ref, data } });
+      deleted.add(key);
+      if (data.uid) deletedUids.add(String(data.uid));
+    } catch (error) {
+      console.error(`Unable to remove expired temporary signup ${document.id}`, error);
+    }
+  }
+  return { deleted, deletedUids };
 }
 
 export async function checkSignupAvailability({ auth, db, businessName = "", accountEmail, accountPhone, allowedUid = "" }) {
@@ -52,38 +75,33 @@ export async function checkSignupAvailability({ auth, db, businessName = "", acc
   const phone = normalizeSignupPhone(accountPhone);
   const businessNameKey = normalizeClientId(businessName);
   const phoneVariants = signupPhoneVariants(phone);
-  const collections = [db.collection("accounts"), db.collection("businesses")];
-
-  const emailQueries = email
-    ? collections.map((collection) => collection.where("accountEmail", "==", email).limit(5).get())
-    : [];
-  const normalizedPhoneQueries = phone
-    ? collections.map((collection) => collection.where("accountPhoneNormalized", "==", phone).limit(5).get())
-    : [];
-  const legacyPhoneQueries = phoneVariants.length
-    ? collections.map((collection) => collection.where("accountPhone", "in", phoneVariants).limit(5).get())
-    : [];
-
-  const [authUser, emailSnapshots, normalizedPhoneSnapshots, legacyPhoneSnapshots, businessSnapshot, registrySnapshot, phoneRegistrySnapshot] = await Promise.all([
+  const accounts = accountCollection(db);
+  const pending = pendingSignupCollection(db);
+  const [authUser, accountEmailSnapshot, pendingEmailSnapshot, accountPhoneSnapshot, pendingPhoneSnapshot, legacyAccountPhoneSnapshot, businessSnapshot, pendingBusinessSnapshot] = await Promise.all([
     email ? auth.getUserByEmail(email).catch(() => null) : null,
-    Promise.all(emailQueries),
-    Promise.all(normalizedPhoneQueries),
-    Promise.all(legacyPhoneQueries),
-    businessNameKey ? db.collection("businesses").doc(businessNameKey).get() : null,
-    businessNameKey ? db.collection("businessNameRegistry").doc(businessNameKey).get() : null,
-    phone ? db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(phone)).get() : null,
+    email ? accounts.where("accountEmail", "==", email).limit(5).get() : null,
+    email ? pending.where("accountEmail", "==", email).limit(5).get() : null,
+    phone ? accounts.where("accountPhoneNormalized", "==", phone).limit(5).get() : null,
+    phone ? pending.where("accountPhoneNormalized", "==", phone).limit(5).get() : null,
+    phoneVariants.length ? accounts.where("accountPhone", "in", phoneVariants).limit(5).get() : null,
+    businessNameKey ? accounts.doc(businessNameKey).get() : null,
+    businessNameKey ? pending.doc(businessNameKey).get() : null,
   ]);
 
+  const pendingBusinessQuery = pendingBusinessSnapshot?.exists ? { docs: [pendingBusinessSnapshot] } : null;
+  const expired = await deleteExpiredPendingMatches({ auth, db, snapshots: [pendingEmailSnapshot, pendingPhoneSnapshot, pendingBusinessQuery] });
   return {
     email,
     phone,
     businessNameKey,
-    businessNameInUse: [businessSnapshot, registrySnapshot].some((snapshot) => snapshot?.exists && containsDifferentAccount({ docs: [snapshot] }, allowedUid)),
-    emailInUse: Boolean(authUser && authUser.uid !== allowedUid)
-      || emailSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid)),
-    phoneInUse: normalizedPhoneSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid))
-      || legacyPhoneSnapshots.some((snapshot) => containsDifferentAccount(snapshot, allowedUid))
-      || Boolean(phoneRegistrySnapshot?.exists && containsDifferentAccount({ docs: [phoneRegistrySnapshot] }, allowedUid)),
+    businessNameInUse: Boolean(businessSnapshot?.exists && containsDifferentAccount({ docs: [businessSnapshot] }, allowedUid))
+      || Boolean(pendingBusinessSnapshot?.exists && containsDifferentAccount({ docs: [pendingBusinessSnapshot] }, allowedUid, expired.deleted)),
+    emailInUse: Boolean(authUser && authUser.uid !== allowedUid && !expired.deletedUids.has(authUser.uid))
+      || Boolean(accountEmailSnapshot && containsDifferentAccount(accountEmailSnapshot, allowedUid))
+      || Boolean(pendingEmailSnapshot && containsDifferentAccount(pendingEmailSnapshot, allowedUid, expired.deleted)),
+    phoneInUse: Boolean(accountPhoneSnapshot && containsDifferentAccount(accountPhoneSnapshot, allowedUid))
+      || Boolean(pendingPhoneSnapshot && containsDifferentAccount(pendingPhoneSnapshot, allowedUid, expired.deleted))
+      || Boolean(legacyAccountPhoneSnapshot && containsDifferentAccount(legacyAccountPhoneSnapshot, allowedUid)),
   };
 }
 

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAdmin } from "../../../lib/adminRequest";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { systemCollection } from "../../../lib/firestoreLayout";
 import { computeBillingState, publicBillingStatus } from "../../../lib/billingDelinquency";
 
 export const runtime = "nodejs";
@@ -152,16 +154,14 @@ export async function GET(request) {
 
   try {
     const db = getAdminDb();
-    const [requestSnapshot, accountSnapshot, businessSnapshot] = await Promise.all([
-      db.collection("supportRequests").get(),
+    const [requestSnapshot, accountSnapshot] = await Promise.all([
+      systemCollection(db, "supportRequests").get(),
       db.collection("accounts").get(),
-      db.collection("businesses").get(),
     ]);
 
-    const businesses = businessSnapshot.docs.map((document) => ({
-      clientId: document.id,
-      ...document.data(),
-    }));
+    const businesses = accountSnapshot.docs
+      .map((document) => ({ clientId: document.id, ...document.data() }))
+      .filter((account) => isStandardRole(account.role));
 
     const unresolvedRequests = requestSnapshot.docs
       .map((document) => ({ id: document.id, ...document.data() }))
@@ -184,7 +184,7 @@ export async function GET(request) {
 
     const numberAssignments = accountSnapshot.docs
       .map((document) => ({ id: document.id, ...document.data() }))
-      .filter((item) => item.status === "active" && item.numberAssignmentStatus === "needed")
+      .filter((item) => isStandardRole(item.role) && item.status === "active" && item.numberAssignmentStatus === "needed")
       .map((item) => ({
         uid: item.id,
         clientId: text(item.clientId),

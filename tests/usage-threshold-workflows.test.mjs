@@ -32,12 +32,14 @@ test("temporary signups reserve unique identity and remove Stripe data when aban
     source("app/api/signup/draft/route.js"),
     source("app/lib/ownerPaymentSetup.js"),
   ]);
-  assert.ok(pending.includes('batch.create(db.collection("businessNameRegistry")'));
-  assert.ok(pending.includes('batch.create(db.collection("accountPhoneRegistry")'));
+  assert.ok(pending.includes("transaction.create(pendingRef, data)"));
+  assert.equal(pending.includes("businessNameRegistry"), false);
+  assert.equal(pending.includes("accountPhoneRegistry"), false);
   assert.ok(pending.includes("deletePendingStripeCustomer"));
   assert.ok(pending.includes("customers.del(customerId)"));
   assert.ok(signupDraft.includes("deletePendingOwnerSignup({"));
-  assert.ok(completion.includes('status: "active", expiresAt: FieldValue.delete()'));
+  assert.ok(completion.includes("batch.create(accountRef, accountData)"));
+  assert.ok(completion.includes("batch.delete(pending.ref)"));
 });
 
 test("payment administration follows automatic daily retry and seven-day deletion only", async () => {
@@ -59,7 +61,9 @@ test("payment administration follows automatic daily retry and seven-day deletio
   assert.ok(enforcement.includes("stripe.invoices.pay(invoiceId)"));
   assert.ok(delinquency.includes('status: "disabled"'));
   assert.ok(delinquency.includes('serviceAccess: "payment-update-only"'));
-  assert.ok(delinquency.includes("enabled: false, receptionistEnabled: false, paymentDisabled: true"));
+  assert.ok(delinquency.includes('status: "disabled"'));
+  assert.ok(delinquency.includes("enabled: false"));
+  assert.ok(delinquency.includes("receptionistEnabled: false"));
   assert.ok(lifecycle.includes('error.code = "PAYMENT_RESTRICTED"'));
   assert.ok(operations.includes('WORKFLOW_SECRET: ${{ secrets.CRON_SECRET }}'));
 });

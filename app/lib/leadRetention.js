@@ -36,7 +36,7 @@ export async function cleanupExpiredLeads(db, clientId, retentionDays, now = Dat
   const days = normalizeLeadRetentionDays(retentionDays);
   if (!days) return 0;
 
-  const root = db.collection("ocmClients").doc(text(clientId));
+  const root = db.collection("accounts").doc(text(clientId));
   let deleted = 0;
   for (const collectionKey of ["contactedMe", "clients"]) {
     const snapshot = await root.collection(collectionKey).get();

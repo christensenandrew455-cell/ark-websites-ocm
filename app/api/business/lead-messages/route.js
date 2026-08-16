@@ -60,28 +60,20 @@ async function authorizeMessaging(request) {
   const clientId = text(decoded.clientId);
   if (!clientId) return { response: NextResponse.json({ error: "This account does not have a business workspace." }, { status: 403 }) };
   const db = getAdminDb();
-  const [accountSnapshot, businessSnapshot, connectionSnapshot, receptionistSnapshot] = await Promise.all([
-    db.collection("accounts").doc(decoded.uid).get(),
-    db.collection("businesses").doc(clientId).get(),
-    db.collection("connections").doc(clientId).get(),
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist").get(),
-  ]);
-  if (!accountSnapshot.exists || !businessSnapshot.exists) return { response: NextResponse.json({ error: "This account could not be found." }, { status: 404 }) };
+  const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+  if (!accountSnapshot.exists) return { response: NextResponse.json({ error: "This account could not be found." }, { status: 404 }) };
   const account = accountSnapshot.data();
-  const business = businessSnapshot.data();
-  const connection = connectionSnapshot.exists ? connectionSnapshot.data() : {};
-  const receptionist = receptionistSnapshot.exists ? receptionistSnapshot.data() : {};
-  if (text(account.clientId) !== clientId) return { response: NextResponse.json({ error: "This account does not match the requested workspace." }, { status: 403 }) };
+  if (text(account.clientId) !== clientId || text(account.uid) !== text(decoded.uid)) return { response: NextResponse.json({ error: "This account does not match the requested workspace." }, { status: 403 }) };
   if (!isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "This account is not active." }, { status: 403 }) };
-  if (business.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
-  const fromPhone = normalizePhone(connection.receptionistPhoneNormalized || receptionist.receptionistPhoneNormalized || connection.receptionistPhone || receptionist.receptionistPhone);
-  const businessName = text(business.businessName || business.name || account.businessName || receptionist.businessName) || "the business";
-  return { db, decoded, account, business, businessName, clientId, fromPhone };
+  if (account.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
+  const fromPhone = normalizePhone(account.receptionistPhoneNormalized || account.receptionistPhone);
+  const businessName = text(account.businessName || account.name) || "the business";
+  return { db, decoded, account, business: account, businessName, clientId, fromPhone };
 }
 
 async function loadLead(access, collectionKey, leadId) {
   const key = collectionKey === "clients" ? "clients" : "contactedMe";
-  const ref = access.db.collection("ocmClients").doc(access.clientId).collection(key).doc(text(leadId));
+  const ref = access.db.collection("accounts").doc(access.clientId).collection(key).doc(text(leadId));
   const snapshot = await ref.get();
   if (!snapshot.exists) return null;
   const lead = normalizeLead(snapshot, key);
@@ -89,7 +81,7 @@ async function loadLead(access, collectionKey, leadId) {
 }
 
 async function loadAvailableLeads(access) {
-  const root = access.db.collection("ocmClients").doc(access.clientId);
+  const root = access.db.collection("accounts").doc(access.clientId);
   const collections = ["contactedMe", "clients"];
   const [snapshots, blockedSnapshot] = await Promise.all([
     Promise.all(collections.map((key) => root.collection(key).get())),
@@ -113,7 +105,7 @@ async function deleteQuery(db, query) {
 }
 
 async function purgeOrphanConversations(access) {
-  const root = access.db.collection("ocmClients").doc(access.clientId);
+  const root = access.db.collection("accounts").doc(access.clientId);
   const [contactedSnapshot, clientSnapshot, conversationSnapshot] = await Promise.all([
     root.collection("contactedMe").get(),
     root.collection("clients").get(),
@@ -136,7 +128,7 @@ async function purgeOrphanConversations(access) {
 }
 
 async function loadConversations(access) {
-  const ref = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations");
+  const ref = access.db.collection("accounts").doc(access.clientId).collection("leadConversations");
   const snapshot = await ref.get();
   return snapshot.docs.map((document) => {
     const data = document.data();
@@ -157,7 +149,7 @@ async function loadConversations(access) {
 }
 
 async function loadMessages(access, conversationKey) {
-  const snapshot = await access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations").doc(conversationKey).collection("messages").orderBy("createdAt", "asc").limit(250).get();
+  const snapshot = await access.db.collection("accounts").doc(access.clientId).collection("leadConversations").doc(conversationKey).collection("messages").orderBy("createdAt", "asc").limit(250).get();
   return snapshot.docs.map((document) => {
     const data = document.data();
     return {
@@ -192,7 +184,7 @@ export async function GET(request) {
       if (await isMessageContactBlocked(access.db, access.clientId, loaded.lead.phoneNormalized)) return NextResponse.json({ error: "Messaging with this phone number was blocked when its conversation was deleted." }, { status: 409 });
       const key = conversationId(access.clientId, selectedCollection, selectedLeadId);
       selectedConversation = conversations.find((item) => item.id === key) || { id: key, leadId: selectedLeadId, collectionKey: selectedCollection, leadName: loaded.lead.name, leadPhone: loaded.lead.phone, messagingOptedOut: false, newConversation: true };
-      const conversationRef = access.db.collection("ocmClients").doc(access.clientId).collection("leadConversations").doc(key);
+      const conversationRef = access.db.collection("accounts").doc(access.clientId).collection("leadConversations").doc(key);
       const conversationSnapshot = await conversationRef.get();
       if (conversationSnapshot.exists) {
         messages = await loadMessages(access, key);
@@ -295,7 +287,7 @@ export async function POST(request) {
     if (!access.fromPhone) return NextResponse.json({ error: "This business does not have a connected Telnyx number." }, { status: 409 });
 
     const key = conversationId(access.clientId, collectionKey, leadId);
-    const root = access.db.collection("ocmClients").doc(access.clientId);
+    const root = access.db.collection("accounts").doc(access.clientId);
     const conversationRef = root.collection("leadConversations").doc(key);
     const existingConversation = await conversationRef.get();
     const existingData = existingConversation.exists ? existingConversation.data() : {};

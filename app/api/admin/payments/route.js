@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../lib/adminRequest";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { computeBillingState, publicBillingStatus } from "../../../lib/billingDelinquency";
 
@@ -27,8 +28,9 @@ export async function GET(request) {
 
   try {
     const now = Date.now();
-    const snapshot = await getAdminDb().collection("businesses").where("billingPastDue", "==", true).get();
+    const snapshot = await getAdminDb().collection("accounts").where("billingPastDue", "==", true).get();
     const overdue = snapshot.docs
+      .filter((document) => isStandardRole(document.data().role))
       .map((document) => paymentPayload(document, now))
       .filter((item) => item.showNotice)
       .sort((left, right) => new Date(left.failureAt || 0) - new Date(right.failureAt || 0));

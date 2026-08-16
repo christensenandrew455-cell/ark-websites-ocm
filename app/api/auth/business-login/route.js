@@ -2,36 +2,40 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
+import { accountCollection, accountRef, pendingSignupCollection } from "../../../lib/firestoreLayout";
 import { MESSAGES_AVAILABLE } from "../../../lib/launchFeatures";
+import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
 const REGULAR_ACCOUNT_STATUSES = new Set(["active", "disabled"]);
 
 async function resolveBusiness(db, identifier) {
-  const requestedKey = normalizeClientId(identifier);
-  if (!requestedKey) return null;
-  const registrySnapshot = await db.collection("businessNameRegistry").doc(requestedKey).get();
-  const registry = registrySnapshot.exists ? registrySnapshot.data() : {};
-  const clientId = normalizeClientId(registry.clientId || requestedKey);
-  const snapshot = await db.collection("businesses").doc(clientId).get();
+  const clientId = normalizeClientId(identifier);
+  if (!clientId) return null;
+  const [snapshot, pending] = await Promise.all([
+    accountRef(db, clientId).get(),
+    readPendingOwnerSignup({ db, clientId, allowExpired: true }),
+  ]);
   if (snapshot.exists) return { clientId, data: snapshot.data(), temporary: false };
-
-  const ownerUid = String(registry.ownerUid || "").trim();
-  if (!ownerUid) return null;
-  const pendingSnapshot = await db.collection("pendingOwnerSignups").doc(ownerUid).get();
-  if (!pendingSnapshot.exists) return null;
-  const pending = pendingSnapshot.data();
-  const expiresAt = typeof pending.expiresAt?.toMillis === "function" ? pending.expiresAt.toMillis() : new Date(pending.expiresAt || 0).getTime();
-  const stage = String(pending.stage || "");
-  if (expiresAt <= Date.now() || !["pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(pending.clientId) !== clientId) return null;
+  if (!pending) return null;
+  const data = pending.data;
+  const stage = String(data.stage || "");
+  if (pendingOwnerSignupExpired(data)) {
+    await deletePendingOwnerSignup({ db, auth: getAdminAuth(), uid: data.uid, pending }).catch((error) => {
+      console.error(`Unable to remove expired temporary signup ${clientId}`, error);
+    });
+    return null;
+  }
+  if (!["pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
   return {
     clientId,
-    ownerUid,
+    uid: String(data.uid || "").trim(),
     temporary: true,
     data: {
+      ...data,
       status: stage,
-      accountEmail: String(pending.account?.accountEmail || "").trim().toLowerCase(),
+      accountEmail: String(data.accountEmail || data.account?.accountEmail || "").trim().toLowerCase(),
     },
   };
 }
@@ -66,22 +70,24 @@ export async function POST(request) {
 
     const auth = getAdminAuth();
     const userRecord = await auth.getUser(passwordResult.localId);
-    const [accountSnapshot, pendingSnapshot] = await Promise.all([
-      db.collection("accounts").doc(userRecord.uid).get(),
-      db.collection("pendingOwnerSignups").doc(userRecord.uid).get(),
+    const [accountMatches, pendingMatches, adminSnapshot] = await Promise.all([
+      accountCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
+      pendingSignupCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
+      accountRef(db, userRecord.uid).get(),
     ]);
-    const account = accountSnapshot.exists ? accountSnapshot.data() : {};
+    const matchedAccount = resolvedBusiness?.temporary
+      ? null
+      : (resolvedBusiness ? { id: resolvedBusiness.clientId, data: () => resolvedBusiness.data } : accountMatches.docs[0] || null);
+    const account = matchedAccount?.data?.() || (adminSnapshot.exists ? adminSnapshot.data() : {});
     const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
-    let business = resolvedBusiness?.temporary ? null : resolvedBusiness?.data || null;
-    if (!isAdmin && account.clientId && !business) {
-      const businessSnapshot = await db.collection("businesses").doc(String(account.clientId)).get();
-      business = businessSnapshot.exists ? businessSnapshot.data() : null;
-    }
+    const accountClientId = normalizeClientId(account.clientId || matchedAccount?.id);
 
-    if (!isAdmin && !accountSnapshot.exists && pendingSnapshot.exists) {
-      const pending = pendingSnapshot.data();
-      const expiresAt = typeof pending.expiresAt?.toMillis === "function" ? pending.expiresAt.toMillis() : new Date(pending.expiresAt || 0).getTime();
-      if (expiresAt > Date.now() && ["pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
+    const pendingDocument = resolvedBusiness?.temporary
+      ? { data: () => ({ ...resolvedBusiness.data, uid: resolvedBusiness.uid, clientId: resolvedBusiness.clientId, stage: resolvedBusiness.data.status }) }
+      : pendingMatches.docs[0] || null;
+    if (!isAdmin && !matchedAccount && pendingDocument) {
+      const pending = pendingDocument.data();
+      if (String(pending.uid || "") === userRecord.uid && !pendingOwnerSignupExpired(pending) && ["pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
         const claims = {
           role: ACCOUNT_ROLES.STANDARD,
           accountType: ACCOUNT_TYPES.OWNER,
@@ -95,18 +101,18 @@ export async function POST(request) {
       }
     }
 
-    if (!isAdmin && (!accountSnapshot.exists || !isStandardRole(account.role) || !REGULAR_ACCOUNT_STATUSES.has(String(account.status || "")) || !account.clientId)) {
+    if (!isAdmin && (!matchedAccount || String(account.uid || "") !== userRecord.uid || !isStandardRole(account.role) || !REGULAR_ACCOUNT_STATUSES.has(String(account.status || "")) || !accountClientId)) {
       return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     }
 
-    const messagesEnabled = MESSAGES_AVAILABLE && (business?.messagesEnabled === true || account.messagesEnabled === true);
+    const messagesEnabled = MESSAGES_AVAILABLE && account.messagesEnabled === true;
     const claims = isAdmin
       ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }
       : {
         role: ACCOUNT_ROLES.STANDARD,
         accountType: ACCOUNT_TYPES.OWNER,
         businessRole: "owner",
-        clientId: account.clientId,
+        clientId: accountClientId,
         accountStatus: account.status,
         messagesEnabled,
         identityVerificationRequired: account.identityVerificationRequired === true,
@@ -119,7 +125,7 @@ export async function POST(request) {
 
     await auth.setCustomUserClaims(userRecord.uid, claims);
     if (isAdmin) {
-      await db.collection("accounts").doc(userRecord.uid).set({
+      await accountRef(db, userRecord.uid).set({
         uid: userRecord.uid,
         accountEmail: email,
         ownerName: account.ownerName || userRecord.displayName || "ARK Client Center Admin",

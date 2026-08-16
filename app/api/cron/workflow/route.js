@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { purgeExpiredUnverifiedAccounts } from "../../../lib/accountVerificationCleanup";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { purgeExpiredPendingOwnerSignups } from "../../../lib/pendingOwnerSignup";
@@ -41,22 +42,18 @@ function safeWorkflowError(error) {
 }
 
 async function listActiveBusinesses(db) {
-  const snapshot = await db.collection("businesses").where("status", "==", "active").get();
-  return new Map(snapshot.docs.map((documentSnapshot) => [documentSnapshot.id, documentSnapshot.data()]));
+  const snapshot = await db.collection("accounts").where("status", "==", "active").get();
+  return new Map(snapshot.docs
+    .filter((documentSnapshot) => isStandardRole(documentSnapshot.data().role))
+    .map((documentSnapshot) => [documentSnapshot.id, documentSnapshot.data()]));
 }
 
-async function accountTimeZone(db, clientId, business = {}) {
-  const settings = await db
-    .collection("ocmClients")
-    .doc(clientId)
-    .collection("settings")
-    .doc("receptionist")
-    .get();
-  return validTimeZone(text(settings.exists ? settings.data().timeZone : "") || text(business.timeZone));
+async function accountTimeZone(business = {}) {
+  return validTimeZone(text(business.timeZone));
 }
 
 async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
-  const contactedRef = db.collection("ocmClients").doc(clientId).collection("contactedMe");
+  const contactedRef = db.collection("accounts").doc(clientId).collection("contactedMe");
   const snapshot = await contactedRef.get();
   let autoDeclined = 0;
   let declineNoticesFailed = 0;
@@ -92,7 +89,7 @@ async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
 }
 
 async function markEstimateFollowUps(db, clientId, now, timeZone) {
-  const preClientsRef = db.collection("ocmClients").doc(clientId).collection("preClients");
+  const preClientsRef = db.collection("accounts").doc(clientId).collection("preClients");
   const snapshot = await preClientsRef.get();
   let followUpsMarked = 0;
   let movedToClients = 0;
@@ -116,7 +113,7 @@ async function markEstimateFollowUps(db, clientId, now, timeZone) {
     }
 
     if (row.WorkStartDate && isDateDue(row.WorkStartDate, now, timeZone)) {
-      const clientRef = db.collection("ocmClients").doc(clientId).collection("clients").doc(documentSnapshot.id);
+      const clientRef = db.collection("accounts").doc(clientId).collection("clients").doc(documentSnapshot.id);
       const batch = db.batch();
       batch.set(clientRef, {
         ...row,
@@ -141,7 +138,7 @@ async function createDailyReviewNotification(db, clientId, now, timeZone) {
   if (clock.hour < 17) return false;
 
   const notificationRef = db
-    .collection("ocmClients")
+    .collection("accounts")
     .doc(clientId)
     .collection("notifications")
     .doc(`daily-review-${clock.dateKey}`);
@@ -186,7 +183,7 @@ async function runWorkflow(request) {
 
     for (const [clientId, business] of activeBusinesses) {
       try {
-        const timeZone = await accountTimeZone(db, clientId, business);
+        const timeZone = await accountTimeZone(business);
         const expired = await autoDeclineExpiredEstimateRequests(db, clientId, business, now);
         const workflow = await markEstimateFollowUps(db, clientId, now, timeZone);
         const dailyReviewCreated = await createDailyReviewNotification(db, clientId, now, timeZone);

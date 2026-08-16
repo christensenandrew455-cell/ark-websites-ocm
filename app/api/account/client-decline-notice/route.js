@@ -20,13 +20,12 @@ async function authorizeOwner(request) {
     return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   }
   const db = getAdminDb();
-  const accountRef = db.collection("accounts").doc(decoded.uid);
-  const businessRef = db.collection("businesses").doc(clientId);
-  const [accountSnapshot, businessSnapshot] = await Promise.all([accountRef.get(), businessRef.get()]);
-  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || !businessSnapshot.exists) {
+  const accountRef = db.collection("accounts").doc(clientId);
+  const accountSnapshot = await accountRef.get();
+  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) {
     return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   }
-  return { db, decoded, clientId, accountRef, businessRef, business: businessSnapshot.data() };
+  return { db, decoded, clientId, accountRef, account: accountSnapshot.data() };
 }
 
 export async function GET(request) {
@@ -34,7 +33,7 @@ export async function GET(request) {
   if (access.response) return access.response;
   return NextResponse.json({
     ok: true,
-    enabled: access.business.clientDeclineNoticeEnabled !== false,
+    enabled: access.account.clientDeclineNoticeEnabled !== false,
   });
 }
 
@@ -48,15 +47,7 @@ export async function POST(request) {
       clientDeclineNoticeEnabled: enabled,
       updatedAt: FieldValue.serverTimestamp(),
     };
-    const batch = access.db.batch();
-    batch.set(access.businessRef, update, { merge: true });
-    batch.set(access.accountRef, update, { merge: true });
-    batch.set(
-      access.db.collection("ocmClients").doc(access.clientId).collection("settings").doc("account"),
-      { ClientDeclineNoticeEnabled: enabled, updatedAt: FieldValue.serverTimestamp() },
-      { merge: true },
-    );
-    await batch.commit();
+    await access.accountRef.set(update, { merge: true });
     return NextResponse.json({ ok: true, enabled });
   } catch (error) {
     console.error("Unable to update client decline notice setting", error);

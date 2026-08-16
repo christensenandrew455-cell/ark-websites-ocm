@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { computeBillingState } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { systemCollection } from "../../../lib/firestoreLayout";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, serializeFirestoreValue } from "../../../lib/valueUtils";
@@ -46,18 +47,16 @@ export async function GET(request) {
 
   try {
     const db = getAdminDb();
-    const businessRef = db.collection("businesses").doc(clientId);
-    const clientRoot = db.collection("ocmClients").doc(clientId);
-    const [businessSnapshot, settingsSnapshot, contactedSnapshot, clientsSnapshot, requestsSnapshot] = await Promise.all([
-      businessRef.get(),
-      clientRoot.collection("settings").doc("account").get(),
-      clientRoot.collection("contactedMe").get(),
-      clientRoot.collection("clients").get(),
-      db.collection("supportRequests").where("clientId", "==", clientId).get(),
+    const accountRef = db.collection("accounts").doc(clientId);
+    const [accountSnapshot, contactedSnapshot, clientsSnapshot, requestsSnapshot] = await Promise.all([
+      accountRef.get(),
+      accountRef.collection("contactedMe").get(),
+      accountRef.collection("clients").get(),
+      systemCollection(db, "supportRequests").where("clientId", "==", clientId).get(),
     ]);
 
-    const business = businessSnapshot.exists ? businessSnapshot.data() : {};
-    if (computeBillingState(business).restricted) {
+    const account = accountSnapshot.exists ? accountSnapshot.data() : {};
+    if (computeBillingState(account).restricted) {
       return NextResponse.json({ error: "Client-data downloads are unavailable while the account is payment-restricted." }, { status: 402 });
     }
 
@@ -65,8 +64,8 @@ export async function GET(request) {
       exportVersion: "1.1",
       exportedAt: new Date().toISOString(),
       clientId,
-      account: accountSummary(business),
-      settings: settingsSnapshot.exists ? accountSummary(settingsSnapshot.data()) : {},
+      account: accountSummary(account),
+      settings: serializeFirestoreValue(account),
       contactedMe: leadDocuments(contactedSnapshot),
       clients: leadDocuments(clientsSnapshot),
       requests: documents(requestsSnapshot),

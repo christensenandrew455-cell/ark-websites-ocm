@@ -3,10 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
 import { ACCOUNT_ROLES } from "./accountRoles";
 import { accountVerificationDeadline, accountVerificationExpired } from "./accountVerificationDeadline";
+import { accountPrivateRef, accountRef as regularAccountRef } from "./firestoreLayout.js";
 import { PHONE_VERIFICATION_REQUIRED } from "./launchFeatures";
-import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
+import { checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
 
-const COLLECTION = "accountVerificationChallenges";
 export const ACCOUNT_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 export const ACCOUNT_VERIFICATION_RESEND_MS = 60 * 1000;
 export const ACCOUNT_VERIFICATION_MAX_ATTEMPTS = 5;
@@ -49,11 +49,7 @@ function validContactPhone(value) {
   const phone = normalizedPhone(value);
   return /^\+1\d{10}$/.test(phone) ? phone : "";
 }
-function belongsToUid(snapshot, uid) {
-  if (!snapshot?.exists) return false;
-  const data = snapshot.data();
-  return text(data.uid) === uid || text(data.ownerUid) === uid;
-}
+function verificationRef(db, clientId) { return accountPrivateRef(db, clientId, "verification"); }
 function validEmailSender(value) {
   const sender = text(value);
   const address = sender.match(/<([^<>]+)>$/)?.[1] || sender;
@@ -142,24 +138,24 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
   };
 }
 
-export async function readAccountVerificationStatus({ db, uid }) {
+export async function readAccountVerificationStatus({ db, uid, clientId }) {
   const [accountSnapshot, challengeSnapshot] = await Promise.all([
-    db.collection("accounts").doc(uid).get(),
-    db.collection(COLLECTION).doc(uid).get(),
+    regularAccountRef(db, clientId).get(),
+    verificationRef(db, clientId).get(),
   ]);
-  if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+  if (!accountSnapshot.exists || text(accountSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
   return publicAccountVerificationStatus({ account: accountSnapshot.data(), challenge: challengeSnapshot.exists ? challengeSnapshot.data() : {} });
 }
 
 export async function sendAccountVerificationCodes({ db, uid, clientId, email, phone, ignoreCooldown = false, resetVerification = false }) {
   const missing = missingAccountVerificationConfiguration();
   if (missing.length) throw new Error(`ACCOUNT_VERIFICATION_NOT_CONFIGURED:${missing.join(",")}`);
-  const ref = db.collection(COLLECTION).doc(uid);
-  const accountRef = db.collection("accounts").doc(uid);
+  const ref = verificationRef(db, clientId);
+  const accountRef = regularAccountRef(db, clientId);
   const challengeId = randomUUID();
   const prepared = await db.runTransaction(async (transaction) => {
     const [currentSnapshot, accountSnapshot] = await Promise.all([transaction.get(ref), transaction.get(accountRef)]);
-    if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    if (!accountSnapshot.exists || text(accountSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
     const account = accountSnapshot.data();
     if (account.identityVerificationVerified === true) throw new Error("ACCOUNT_ALREADY_VERIFIED");
     assertAccountVerificationOpen(account);
@@ -211,17 +207,17 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
     error.delivery = { email: emailDeliveryStatus, phone: phoneDeliveryStatus };
     throw error;
   }
-  return readAccountVerificationStatus({ db, uid });
+  return readAccountVerificationStatus({ db, uid, clientId });
 }
 
-export async function updateAccountVerificationContact({ db, auth, uid, email: rawEmail, phone: rawPhone }) {
+export async function updateAccountVerificationContact({ db, auth, uid, clientId, email: rawEmail, phone: rawPhone }) {
   const email = validContactEmail(rawEmail);
   const phone = validContactPhone(rawPhone);
   if (!email) throw new Error("ACCOUNT_EMAIL_INVALID");
   if (!phone) throw new Error("ACCOUNT_PHONE_INVALID");
 
-  const accountSnapshot = await db.collection("accounts").doc(uid).get();
-  if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+  const accountSnapshot = await regularAccountRef(db, clientId).get();
+  if (!accountSnapshot.exists || text(accountSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
   const account = accountSnapshot.data();
   if (account.identityVerificationVerified === true) throw new Error("ACCOUNT_ALREADY_VERIFIED");
   assertAccountVerificationOpen(account);
@@ -233,7 +229,7 @@ export async function updateAccountVerificationContact({ db, auth, uid, email: r
   return sendAccountVerificationCodes({
     db,
     uid,
-    clientId: text(account.clientId),
+    clientId: text(account.clientId || clientId),
     email,
     phone,
     ignoreCooldown: true,
@@ -241,15 +237,15 @@ export async function updateAccountVerificationContact({ db, auth, uid, email: r
   });
 }
 
-export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCode, phoneCode: rawPhoneCode }) {
+export async function verifyAccountCodes({ db, auth, uid, clientId, emailCode: rawEmailCode, phoneCode: rawPhoneCode }) {
   const emailCode = validCode(rawEmailCode);
   const phoneCode = PHONE_VERIFICATION_REQUIRED ? validCode(rawPhoneCode) : "";
   if (!emailCode || (PHONE_VERIFICATION_REQUIRED && !phoneCode)) throw new Error("VERIFICATION_CODE_INVALID");
-  const ref = db.collection(COLLECTION).doc(uid);
-  const accountRef = db.collection("accounts").doc(uid);
+  const ref = verificationRef(db, clientId);
+  const accountRef = regularAccountRef(db, clientId);
   const verification = await db.runTransaction(async (transaction) => {
     const [challengeSnapshot, accountSnapshot] = await Promise.all([transaction.get(ref), transaction.get(accountRef)]);
-    if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    if (!accountSnapshot.exists || text(accountSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
     assertAccountVerificationOpen(accountSnapshot.data());
     if (!challengeSnapshot.exists) throw new Error("VERIFICATION_CODE_EXPIRED");
     const challenge = challengeSnapshot.data();
@@ -272,11 +268,10 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
       emailCorrect,
       phoneCorrect,
       challengeId: text(challenge.challengeId),
-      clientId: text(account.clientId || challenge.clientId),
+      clientId: text(account.clientId || challenge.clientId || clientId),
       email: validContactEmail(challenge.email || account.accountEmail),
       phone: validContactPhone(challenge.phone || account.accountPhone),
       previousEmail: validContactEmail(account.accountEmail),
-      previousPhone: validContactPhone(account.accountPhone),
       stripeCustomerId: text(account.stripeCustomerId),
       accountStatus: text(account.status),
     };
@@ -289,7 +284,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     throw error;
   }
 
-  const { challengeId, clientId, email, phone, previousPhone } = verification;
+  const { challengeId, clientId: resolvedClientId, email, phone } = verification;
   if (!email) throw new Error("ACCOUNT_EMAIL_INVALID");
   if (!phone) throw new Error("ACCOUNT_PHONE_INVALID");
   const availability = await checkSignupAvailability({ auth, db, accountEmail: email, accountPhone: phone, allowedUid: uid });
@@ -318,58 +313,27 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     identityVerifiedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  const contactUpdate = { accountEmail: email, accountPhone: phone, accountPhoneNormalized: phone };
-  const newPhoneRegistryRef = db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(phone));
-  const oldPhoneRegistryId = accountPhoneRegistryId(previousPhone);
-  const oldPhoneRegistryRef = oldPhoneRegistryId && oldPhoneRegistryId !== newPhoneRegistryRef.id
-    ? db.collection("accountPhoneRegistry").doc(oldPhoneRegistryId)
-    : null;
+  const contactUpdate = {
+    accountEmail: email,
+    accountPhone: phone,
+    accountPhoneNormalized: phone,
+    businessEmail: email,
+    businessPhone: phone,
+  };
 
   try {
     await db.runTransaction(async (transaction) => {
-      const [latestChallengeSnapshot, latestAccountSnapshot, newPhoneRegistrySnapshot, oldPhoneRegistrySnapshot] = await Promise.all([
+      const [latestChallengeSnapshot, latestAccountSnapshot] = await Promise.all([
         transaction.get(ref),
         transaction.get(accountRef),
-        transaction.get(newPhoneRegistryRef),
-        oldPhoneRegistryRef ? transaction.get(oldPhoneRegistryRef) : Promise.resolve(null),
       ]);
-      if (!latestChallengeSnapshot.exists || !latestAccountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+      if (!latestChallengeSnapshot.exists || !latestAccountSnapshot.exists || text(latestAccountSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
       assertAccountVerificationOpen(latestAccountSnapshot.data());
       const latestChallenge = latestChallengeSnapshot.data();
       if (text(latestChallenge.challengeId) !== challengeId || latestChallenge.emailVerified !== true || (PHONE_VERIFICATION_REQUIRED && latestChallenge.phoneVerified !== true)) {
         throw new Error("VERIFICATION_CONTACT_CHANGED");
       }
-      if (newPhoneRegistrySnapshot.exists && !belongsToUid(newPhoneRegistrySnapshot, uid)) throw new Error("PHONE_TAKEN");
-
       transaction.set(accountRef, { ...contactUpdate, ...verifiedUpdate }, { merge: true });
-      transaction.set(newPhoneRegistryRef, {
-        uid,
-        ownerUid: uid,
-        clientId,
-        accountPhoneNormalized: phone,
-        createdAt: newPhoneRegistrySnapshot.data()?.createdAt || FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-      if (oldPhoneRegistryRef && belongsToUid(oldPhoneRegistrySnapshot, uid)) transaction.delete(oldPhoneRegistryRef);
-      if (clientId) {
-        const clientRef = db.collection("ocmClients").doc(clientId);
-        transaction.set(db.collection("businesses").doc(clientId), { ...contactUpdate, ...verifiedUpdate }, { merge: true });
-        transaction.set(clientRef, { ...contactUpdate, ...verifiedUpdate }, { merge: true });
-        transaction.set(clientRef.collection("settings").doc("account"), {
-          AccountEmail: email,
-          AccountPhone: phone,
-          BillingEmail: email,
-          IdentityVerificationStatus: "Verified",
-          EmailVerificationStatus: "Verified",
-          PhoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "Verified" : "Not Required",
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-        transaction.set(clientRef.collection("settings").doc("receptionist"), {
-          businessEmail: email,
-          businessPhone: phone,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
       transaction.set(ref, {
         ...contactUpdate,
         email,
@@ -390,7 +354,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
   await auth.setCustomUserClaims(uid, {
     ...(user.customClaims || {}),
     role: ACCOUNT_ROLES.STANDARD,
-    clientId,
+    clientId: resolvedClientId,
     accountStatus: nextAccountStatus,
     identityVerificationRequired: false,
     identityVerificationVerified: true,
@@ -401,5 +365,5 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
       console.error("Unable to update the verified Stripe customer contact", error);
     });
   }
-  return readAccountVerificationStatus({ db, uid });
+  return readAccountVerificationStatus({ db, uid, clientId: resolvedClientId });
 }

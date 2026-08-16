@@ -16,24 +16,16 @@ function authorized(request) {
   return Boolean(expected && authorization === `Bearer ${expected}`);
 }
 
-async function scheduleNextRetry(db, document, business, now, error) {
+async function scheduleNextRetry(document, now, error) {
   const nextRetryAt = Timestamp.fromMillis(now + PAYMENT_RETRY_INTERVAL_MS);
   const patch = {
-    billingPhase: "payment_failed",
-    serviceAccess: "payment-update-only",
     billingNextRetryAt: nextRetryAt,
     billingLastRetryAt: FieldValue.serverTimestamp(),
     billingRetryCount: FieldValue.increment(1),
     billingLastRetryError: text(error?.code || error?.message).slice(0, 200),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  const batch = db.batch();
-  batch.set(document.ref, patch, { merge: true });
-  const uid = text(business.uid || business.ownerUid);
-  if (uid) batch.set(db.collection("accounts").doc(uid), patch, { merge: true });
-  batch.set(db.collection("ocmClients").doc(document.id), patch, { merge: true });
-  batch.set(db.collection("ocmClients").doc(document.id).collection("settings").doc("account"), { BillingNextRetryAt: nextRetryAt, BillingLastRetryAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  await batch.commit();
+  await document.ref.set(patch, { merge: true });
 }
 
 async function runEnforcement(request) {
@@ -41,7 +33,7 @@ async function runEnforcement(request) {
   try {
     const db = getAdminDb();
     const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
-    const snapshot = await db.collection("businesses").where("billingPastDue", "==", true).get();
+    const snapshot = await db.collection("accounts").where("billingPastDue", "==", true).get();
     const results = [];
     const now = Date.now();
 
@@ -67,7 +59,7 @@ async function runEnforcement(request) {
             }
             throw new Error(`INVOICE_${text(invoice.status).toUpperCase()}`);
           } catch (error) {
-            await scheduleNextRetry(db, document, business, now, error);
+            await scheduleNextRetry(document, now, error);
             results.push({ clientId: document.id, status: "retry_failed", nextRetryAt: new Date(now + PAYMENT_RETRY_INTERVAL_MS).toISOString() });
             continue;
           }

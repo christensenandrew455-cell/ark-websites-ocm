@@ -21,14 +21,9 @@ export async function POST(request) {
     }
 
     const db = getAdminDb();
-    const [businessSnapshot, settingsSnapshot] = await Promise.all([
-      db.collection("businesses").doc(auth.clientId).get(),
-      db.collection("ocmClients").doc(auth.clientId).collection("settings").doc("account").get(),
-    ]);
-
-    const business = businessSnapshot.exists ? businessSnapshot.data() : {};
-    const settings = settingsSnapshot.exists ? settingsSnapshot.data() : {};
-    const customerId = text(business.stripeCustomerId || settings.StripeCustomerId);
+    const accountSnapshot = await db.collection("accounts").doc(auth.clientId).get();
+    const account = accountSnapshot.exists ? accountSnapshot.data() : {};
+    const customerId = text(account.stripeCustomerId);
 
     if (!customerId) {
       return NextResponse.json(

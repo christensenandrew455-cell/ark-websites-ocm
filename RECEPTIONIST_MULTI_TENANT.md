@@ -3,10 +3,10 @@
 ARK Client Center stores one receptionist profile per client at:
 
 ```text
-ocmClients/{clientId}/settings/receptionist
+accounts/{clientId}
 ```
 
-The administrator edits the same business information customers see through the Accounts workspace. The connected receptionist number is stored privately on the client connection record and can be removed to stop call routing without deleting the customer account.
+The administrator edits the same business information customers see through the Accounts workspace. The connected receptionist number, connection key, enabled state, and business profile are fields on that same account record. Removing or disabling the receptionist fields stops call routing without deleting the customer account.
 
 A shared Railway receptionist service forwards the original signed Telnyx call event to:
 

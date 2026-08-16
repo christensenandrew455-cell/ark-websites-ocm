@@ -14,7 +14,7 @@ import { db } from "../lib/firebase";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
-const DEFAULT_SETTINGS = { BillingStatus: "", PaymentMethodLabel: "", StripeCustomerId: "" };
+const DEFAULT_SETTINGS = { paymentMethodLabel: "", stripeCustomerId: "" };
 const THEME_KEY = "ark-theme-v1";
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "Information the AI receptionist uses when answering calls." },
@@ -94,10 +94,10 @@ export default function SettingsPanel() {
   useEffect(() => {
     if (!clientId) { setError(ownerFacingError()); setIsLoading(false); return undefined; }
     if (profile?.status === "disabled") {
-      setAccountSettings({ ...DEFAULT_SETTINGS, BillingStatus: "Payment method update needed", PaymentMethodLabel: profile?.paymentMethodLabel || "" });
+      setAccountSettings({ ...DEFAULT_SETTINGS, billingPastDue: true, paymentMethodLabel: profile?.paymentMethodLabel || "" });
       return undefined;
     }
-    return onSnapshot(doc(db, "ocmClients", clientId, "settings", "account"), (snapshot) => setAccountSettings({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) }), (snapshotError) => setError(ownerFacingError(snapshotError)));
+    return onSnapshot(doc(db, "accounts", clientId), (snapshot) => setAccountSettings({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) }), (snapshotError) => setError(ownerFacingError(snapshotError)));
   }, [clientId, profile?.paymentMethodLabel, profile?.status]);
 
   useEffect(() => {
@@ -268,8 +268,8 @@ export default function SettingsPanel() {
   }
 
   if (isAdmin) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening administrator dashboard…</main>;
-  const paymentLabel = accountSettings.PaymentMethodLabel || "No payment method label is available yet.";
-  const billingStatus = accountSettings.BillingStatus || "Not configured";
+  const paymentLabel = accountSettings.paymentMethodLabel || "No payment method label is available yet.";
+  const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
 
   function businessSection() {
     return <><SectionHeader title="Business Information" onBack={backToSettings} /><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} /></div>}</SectionPanel></>;

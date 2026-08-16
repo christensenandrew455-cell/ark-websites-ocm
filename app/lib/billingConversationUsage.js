@@ -12,7 +12,7 @@ export function billingConversationEventId(clientId, sourceId) {
 }
 
 export function billingConversationEventRef(db, { clientId, sourceId }) {
-  return db.collection("ocmClients").doc(clientId).collection("billingConversationEvents")
+  return db.collection("accounts").doc(clientId).collection("billingConversationEvents")
     .doc(billingConversationEventId(clientId, sourceId));
 }
 

@@ -49,7 +49,7 @@ export async function deleteLeadConversation(db, root, conversationRef) {
 export async function cleanupExpiredConversations(db, clientId, retentionDays, now = Date.now()) {
   const days = normalizeMessageRetentionDays(retentionDays);
   if (days === 0) return 0;
-  const root = db.collection("ocmClients").doc(text(clientId));
+  const root = db.collection("accounts").doc(text(clientId));
   const snapshot = await root.collection("leadConversations").get();
   let deleted = 0;
 

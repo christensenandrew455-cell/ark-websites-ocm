@@ -12,7 +12,7 @@ export async function GET(request) {
 
   try {
     const db = getAdminDb();
-    const snapshot = await db.collection("businesses").doc(auth.clientId).get();
+    const snapshot = await db.collection("accounts").doc(auth.clientId).get();
     if (!snapshot.exists) {
       return NextResponse.json({ error: "This business account could not be found." }, { status: 404 });
     }

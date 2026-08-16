@@ -15,20 +15,13 @@ export async function GET(request) {
   if (auth.response) return auth.response;
   try {
     const db = getAdminDb();
-    const [businessSnapshot, accountSnapshot, receptionistSnapshot] = await Promise.all([
-      db.collection("businesses").doc(auth.clientId).get(),
-      db.collection("accounts").doc(auth.decodedToken.uid).get(),
-      db.collection("ocmClients").doc(auth.clientId).collection("settings").doc("receptionist").get(),
-    ]);
-    if (!businessSnapshot.exists) {
+    const accountSnapshot = await db.collection("accounts").doc(auth.clientId).get();
+    if (!accountSnapshot.exists) {
       return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     }
-    const business = businessSnapshot.data();
-    const account = accountSnapshot.exists ? accountSnapshot.data() : {};
-    const subscriptionId = text(business.stripeSubscriptionId || account.stripeSubscriptionId);
-    const timeZone = text(receptionistSnapshot.exists ? receptionistSnapshot.data().timeZone : "")
-      || text(business.timeZone || account.timeZone)
-      || "America/New_York";
+    const account = accountSnapshot.data();
+    const subscriptionId = text(account.stripeSubscriptionId);
+    const timeZone = text(account.timeZone) || "America/New_York";
     let window;
     try {
       window = await resolveBillingWindow({
@@ -39,7 +32,7 @@ export async function GET(request) {
       });
     } catch (error) {
       console.warn("Unable to refresh referral billing period; using the last calculated period", error);
-      const storedKey = text(business.currentBillingMonth || account.currentBillingMonth);
+      const storedKey = text(account.currentBillingMonth);
       if (!storedKey) {
         window = await resolveBillingWindow({ stripe: null, subscriptionId: "", timeZone });
       } else {

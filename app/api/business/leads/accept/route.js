@@ -29,15 +29,12 @@ export async function POST(request) {
     if (!leadId) return NextResponse.json({ error: "Choose an estimate request to accept." }, { status: 400 });
 
     const db = getAdminDb();
-    const [accountSnapshot, businessSnapshot] = await Promise.all([
-      db.collection("accounts").doc(decoded.uid).get(),
-      db.collection("businesses").doc(clientId).get(),
-    ]);
-    if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || !businessSnapshot.exists) {
+    const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+    if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) {
       return NextResponse.json({ error: "An active owner account is required." }, { status: 403 });
     }
 
-    const root = db.collection("ocmClients").doc(clientId);
+    const root = db.collection("accounts").doc(clientId);
     const sourceRef = root.collection("contactedMe").doc(leadId);
     const sourceSnapshot = await sourceRef.get();
     if (!sourceSnapshot.exists) {
@@ -61,8 +58,8 @@ export async function POST(request) {
     batch.delete(sourceRef);
     await batch.commit();
 
-    const business = businessSnapshot.data();
-    const businessName = text(business.businessName || business.name) || "the business";
+    const account = accountSnapshot.data();
+    const businessName = text(account.businessName || account.name) || "the business";
     const notice = await sendEstimateRequestStatusNotice({
       db,
       clientId,

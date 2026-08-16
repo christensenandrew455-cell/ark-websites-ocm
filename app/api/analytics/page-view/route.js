@@ -68,16 +68,14 @@ export async function POST(request) {
     }
 
     const db = getAdminDb();
-    const [businessSnapshot, connectionSnapshot] = await Promise.all([
-      db.collection("businesses").doc(clientId).get(),
-      db.collection("connections").doc(clientId).get(),
-    ]);
+    const accountRef = db.collection("accounts").doc(clientId);
+    const accountSnapshot = await accountRef.get();
 
-    if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
+    if (!accountSnapshot.exists || accountSnapshot.data().status !== "active") {
       return Response.json({ ok: false, error: "Business is not active." }, { status: 404, headers });
     }
 
-    const connection = connectionSnapshot.exists ? connectionSnapshot.data() : {};
+    const connection = accountSnapshot.data();
     if (connection.enabled === false) {
       return Response.json({ ok: false, error: "Tracking is disabled." }, { status: 403, headers });
     }
@@ -95,7 +93,7 @@ export async function POST(request) {
     const userAgent = text(request.headers.get("user-agent")).slice(0, 500);
 
     const eventRef = db
-      .collection("ocmClients")
+      .collection("accounts")
       .doc(clientId)
       .collection("analyticsEvents")
       .doc();
@@ -111,12 +109,10 @@ export async function POST(request) {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    if (connectionSnapshot.exists) {
-      await connectionSnapshot.ref.set({
-        lastPageViewAt: FieldValue.serverTimestamp(),
-        lastPageViewPath: pagePath || "/",
-      }, { merge: true });
-    }
+    await accountRef.set({
+      lastPageViewAt: FieldValue.serverTimestamp(),
+      lastPageViewPath: pagePath || "/",
+    }, { merge: true });
 
     return Response.json({ ok: true }, { status: 201, headers });
   } catch (error) {

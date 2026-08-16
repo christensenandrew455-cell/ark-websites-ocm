@@ -78,37 +78,37 @@ function calledPhoneFromEvent(body) {
 
 async function findConnection(db, calledPhone) {
   if (!calledPhone) return null;
-  const normalized = await db.collection("connections")
+  const normalized = await db.collection("accounts")
     .where("receptionistPhoneNormalized", "==", calledPhone)
     .limit(1)
     .get();
   if (!normalized.empty) return normalized.docs[0];
 
-  const raw = await db.collection("connections")
+  const raw = await db.collection("accounts")
     .where("receptionistPhone", "==", calledPhone)
     .limit(1)
     .get();
   return raw.empty ? null : raw.docs[0];
 }
 
-function buildProfile(clientId, business, account, settings) {
-  const serviceAreas = list(settings.serviceAreas);
-  const services = servicesObject(settings.services);
-  const businessInformation = normalizeBusinessInformation(settings.businessInformation);
-  const businessBase = text(settings.businessBase) || serviceAreas[0] || "the local service area";
+function buildProfile(clientId, account) {
+  const serviceAreas = list(account.serviceAreas);
+  const services = servicesObject(account.services);
+  const businessInformation = normalizeBusinessInformation(account.businessInformation);
+  const businessBase = text(account.businessBase) || serviceAreas[0] || "the local service area";
   const normalizedServiceAreas = serviceAreas.length ? serviceAreas : [businessBase];
-  const savedEstimateWeekdays = list(settings.estimateWeekdays).map((day) => day.toLowerCase());
-  const earliestEstimateStart = text(settings.earliestEstimateStart);
-  const latestEstimateStart = text(settings.latestEstimateStart);
+  const savedEstimateWeekdays = list(account.estimateWeekdays).map((day) => day.toLowerCase());
+  const earliestEstimateStart = text(account.earliestEstimateStart);
+  const latestEstimateStart = text(account.latestEstimateStart);
   const estimateSchedulingConfigured = Boolean(savedEstimateWeekdays.length && earliestEstimateStart && latestEstimateStart);
 
   return {
     clientId,
-    businessName: text(settings.businessName || account.BusinessName || business.businessName || clientId),
-    ownerName: text(settings.ownerName || account.OwnerName || business.ownerName),
-    timeZone: text(settings.timeZone || "America/New_York"),
+    businessName: text(account.businessName || clientId),
+    ownerName: text(account.ownerName),
+    timeZone: text(account.timeZone || "America/New_York"),
     estimateSchedulingConfigured,
-    estimateDays: estimateSchedulingConfigured ? text(settings.estimateDays) : "",
+    estimateDays: estimateSchedulingConfigured ? text(account.estimateDays) : "",
     estimateWeekdays: estimateSchedulingConfigured ? savedEstimateWeekdays : [],
     earliestEstimateStart: estimateSchedulingConfigured ? earliestEstimateStart : "",
     latestEstimateStart: estimateSchedulingConfigured ? latestEstimateStart : "",
@@ -157,46 +157,31 @@ export async function POST(request) {
     }
 
     const db = getAdminDb();
-    const connectionSnapshot = await findConnection(db, calledPhone);
-    if (!connectionSnapshot) {
+    const accountSnapshot = await findConnection(db, calledPhone);
+    if (!accountSnapshot) {
       return NextResponse.json({ ok: false, error: "No ARK account is connected to that phone number." }, { status: 404 });
     }
 
-    const clientId = connectionSnapshot.id;
-    const connection = connectionSnapshot.data();
-    const [businessSnapshot, accountSnapshot, settingsSnapshot] = await Promise.all([
-      db.collection("businesses").doc(clientId).get(),
-      db.collection("ocmClients").doc(clientId).collection("settings").doc("account").get(),
-      db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist").get(),
-    ]);
+    const clientId = accountSnapshot.id;
+    const account = accountSnapshot.data();
 
-    if (!businessSnapshot.exists || businessSnapshot.data().status !== "active") {
+    if (account.status !== "active" || account.billingPastDue === true) {
       return NextResponse.json({ ok: false, error: "The connected business account is not active." }, { status: 404 });
     }
-    if (connection.enabled === false || connection.receptionistEnabled === false) {
+    if (account.enabled === false || account.receptionistEnabled === false) {
       return NextResponse.json({ ok: false, error: "The connected receptionist is disabled." }, { status: 403 });
     }
-    if (!settingsSnapshot.exists) {
+    if (account.businessSetupComplete !== true) {
       return NextResponse.json({ ok: false, error: "The business has not completed AI receptionist setup." }, { status: 409 });
     }
 
-    const settings = settingsSnapshot.data();
-    if (settings.enabled === false) {
-      return NextResponse.json({ ok: false, error: "The business has turned off its AI receptionist." }, { status: 403 });
-    }
-
-    const profile = buildProfile(
-      clientId,
-      businessSnapshot.data(),
-      accountSnapshot.exists ? accountSnapshot.data() : {},
-      settings,
-    );
+    const profile = buildProfile(clientId, account);
     const profileError = validateProfile(profile);
     if (profileError) {
       return NextResponse.json({ ok: false, error: profileError }, { status: 409 });
     }
 
-    const connectionKey = text(connection.connectionKey);
+    const connectionKey = text(account.connectionKey);
     if (!connectionKey) {
       return NextResponse.json({ ok: false, error: "The matched account is missing its private intake connection." }, { status: 409 });
     }

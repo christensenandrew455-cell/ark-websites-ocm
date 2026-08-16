@@ -2,6 +2,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
+import { systemCollection } from "../../../../lib/firestoreLayout";
 import { MESSAGES_AVAILABLE } from "../../../../lib/launchFeatures";
 import { addBillingMessageEventToTransaction, billingMessageEventRef } from "../../../../lib/billingMessageUsage";
 import { isMessageContactBlocked } from "../../../../lib/messageContactBlocks";
@@ -83,13 +84,13 @@ function parsePayload(body) {
 async function resolveClientId(db, suppliedClientId, businessPhone) {
   if (suppliedClientId) return suppliedClientId;
   if (!businessPhone) return "";
-  const normalizedMatch = await db.collection("connections").where("receptionistPhoneNormalized", "==", businessPhone).limit(1).get();
+  const normalizedMatch = await db.collection("accounts").where("receptionistPhoneNormalized", "==", businessPhone).limit(1).get();
   if (!normalizedMatch.empty) return normalizedMatch.docs[0].id;
-  const rawMatch = await db.collection("connections").where("receptionistPhone", "==", businessPhone).limit(1).get();
+  const rawMatch = await db.collection("accounts").where("receptionistPhone", "==", businessPhone).limit(1).get();
   return rawMatch.empty ? "" : rawMatch.docs[0].id;
 }
 async function findOutboundMessage(db, clientId, providerMessageId) {
-  const root = db.collection("ocmClients").doc(clientId);
+  const root = db.collection("accounts").doc(clientId);
   const indexRef = root.collection("telnyxMessageIndex").doc(providerMessageId);
   const indexSnapshot = await indexRef.get();
   if (indexSnapshot.exists) {
@@ -122,7 +123,7 @@ async function recordDeliveryUpdate(db, event) {
   return { matched: true, clientId, conversationId: matched.conversationKey, messageId: matched.messageId, deliveryStatus: status };
 }
 async function resolveConversation(db, clientId, fromPhone, suppliedConversationId) {
-  const root = db.collection("ocmClients").doc(clientId);
+  const root = db.collection("accounts").doc(clientId);
   if (suppliedConversationId) {
     const ref = root.collection("leadConversations").doc(suppliedConversationId);
     const snapshot = await ref.get();
@@ -164,10 +165,10 @@ export async function POST(request) {
     const resolved = await resolveConversation(db, clientId, event.fromPhone, event.providedConversationId);
     if (!resolved) return NextResponse.json({ ok: true, ignored: true, reason: "conversation-not-started" });
 
-    const root = db.collection("ocmClients").doc(clientId);
-    const businessSnapshot = await db.collection("businesses").doc(clientId).get();
+    const root = db.collection("accounts").doc(clientId);
+    const businessSnapshot = await db.collection("accounts").doc(clientId).get();
     const business = businessSnapshot.exists ? businessSnapshot.data() : {};
-    if (!businessSnapshot.exists || business.status !== "active" || business.usageSuspended === true || business.billingPastDue === true) {
+    if (!businessSnapshot.exists || business.status !== "active" || business.billingPastDue === true) {
       return NextResponse.json({ ok: true, ignored: true, reason: "payment-disabled" });
     }
     if (business.messagesEnabled !== true) return NextResponse.json({ ok: true, ignored: true, reason: "messages-disabled" });
@@ -217,8 +218,8 @@ export async function POST(request) {
     let complianceEventData = null;
     if (keyword) {
       complianceEventRef = eventKey
-        ? db.collection("messagingComplianceEvents").doc(eventKey)
-        : db.collection("messagingComplianceEvents").doc();
+        ? systemCollection(db, "messagingComplianceEvents").doc(eventKey)
+        : systemCollection(db, "messagingComplianceEvents").doc();
       const expectedResponse = keyword === "stop"
         ? optOutConfirmationMessage(businessName)
         : keyword === "start"

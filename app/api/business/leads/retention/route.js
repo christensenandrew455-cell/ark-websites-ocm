@@ -20,18 +20,15 @@ async function authorizeOwner(request) {
   const clientId = text(decoded.clientId);
   if (!isStandardRole(decoded.role) || !clientId) return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   const db = getAdminDb();
-  const [accountSnapshot, businessSnapshot] = await Promise.all([
-    db.collection("accounts").doc(decoded.uid).get(),
-    db.collection("businesses").doc(clientId).get(),
-  ]);
-  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || !businessSnapshot.exists) return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
-  return { db, clientId, accountRef: accountSnapshot.ref, businessRef: businessSnapshot.ref, business: businessSnapshot.data() };
+  const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
+  return { db, clientId, accountRef: accountSnapshot.ref, account: accountSnapshot.data() };
 }
 
 export async function GET(request) {
   const access = await authorizeOwner(request);
   if (access.response) return access.response;
-  return NextResponse.json({ ok: true, retentionDays: normalizeLeadRetentionDays(access.business.leadRetentionDays) });
+  return NextResponse.json({ ok: true, retentionDays: normalizeLeadRetentionDays(access.account.leadRetentionDays) });
 }
 
 export async function POST(request) {
@@ -43,11 +40,7 @@ export async function POST(request) {
     const retentionDays = normalizeLeadRetentionDays(requested);
     if (retentionDays !== requested) return NextResponse.json({ error: "Choose never, 1 day, 1 week, or 1 month." }, { status: 400 });
     const update = { leadRetentionDays: retentionDays, updatedAt: FieldValue.serverTimestamp() };
-    await Promise.all([
-      access.businessRef.set(update, { merge: true }),
-      access.accountRef.set(update, { merge: true }),
-      access.db.collection("ocmClients").doc(access.clientId).collection("settings").doc("account").set({ LeadRetentionDays: retentionDays, updatedAt: FieldValue.serverTimestamp() }, { merge: true }),
-    ]);
+    await access.accountRef.set(update, { merge: true });
     const deleted = await cleanupExpiredLeads(access.db, access.clientId, retentionDays);
     return NextResponse.json({ ok: true, retentionDays, deleted });
   } catch (error) {

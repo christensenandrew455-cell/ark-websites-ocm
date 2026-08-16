@@ -40,14 +40,14 @@ export async function POST(request) {
     const auth = getAdminAuth();
     const db = getAdminDb();
     const uid = user.decodedToken.uid;
-    const accountRef = db.collection("accounts").doc(uid);
+    const clientId = String(user.decodedToken.clientId || "").trim();
+    const accountRef = db.collection("accounts").doc(clientId || uid);
     const accountSnapshot = await accountRef.get();
     if (!accountSnapshot.exists) {
       return NextResponse.json({ error: "This account record could not be found." }, { status: 404 });
     }
 
     const account = accountSnapshot.data() || {};
-    const clientId = String(user.decodedToken.clientId || account.clientId || "").trim();
     const email = String(user.decodedToken.email || account.accountEmail || "").trim().toLowerCase();
     const acceptance = {
       termsAccepted: true,
@@ -61,24 +61,7 @@ export async function POST(request) {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    const batch = db.batch();
-    batch.set(accountRef, acceptance, { merge: true });
-
-    if (clientId) {
-      batch.set(db.collection("businesses").doc(clientId), acceptance, { merge: true });
-      batch.set(db.collection("ocmClients").doc(clientId), acceptance, { merge: true });
-      batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), {
-        TermsAccepted: true,
-        PrivacyAccepted: true,
-        TermsVersion: TERMS_VERSION,
-        PrivacyVersion: PRIVACY_VERSION,
-        LegalAcceptedAt: FieldValue.serverTimestamp(),
-        LegalAcceptedBy: email,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
-    }
-
-    await batch.commit();
+    await accountRef.set(acceptance, { merge: true });
 
     const userRecord = await auth.getUser(uid);
     await auth.setCustomUserClaims(uid, {

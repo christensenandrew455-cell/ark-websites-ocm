@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "../../../lib/adminRequest";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
@@ -22,17 +23,13 @@ export async function GET(request) {
   if (admin.response) return admin.response;
 
   const db = getAdminDb();
-  const [businessSnapshot, connectionSnapshot] = await Promise.all([
-    db.collection("businesses").get(),
-    db.collection("connections").get(),
-  ]);
-  const connections = new Map(connectionSnapshot.docs.map((document) => [document.id, document.data()]));
+  const accountSnapshot = await db.collection("accounts").get();
 
-  const rows = await Promise.all(businessSnapshot.docs.map(async (document) => {
+  const customerDocuments = accountSnapshot.docs.filter((document) => isStandardRole(document.data().role));
+  const rows = await Promise.all(customerDocuments.map(async (document) => {
     const business = document.data();
-    const connection = connections.get(document.id) || {};
     const devicesSnapshot = await db
-      .collection("ocmClients")
+      .collection("accounts")
       .doc(document.id)
       .collection("notificationDevices")
       .get();
@@ -45,11 +42,11 @@ export async function GET(request) {
       ownerName: text(business.ownerName),
       accountEmail: text(business.accountEmail),
       accountStatus: text(business.status || "active"),
-      connectionEnabled: connection.enabled !== false,
+      connectionEnabled: business.enabled !== false,
       deviceCount: devices.length,
       enabledDeviceCount: enabledDevices.length,
       unreadLeadCount: devices.reduce((total, device) => total + Number(device.unreadLeadCount || 0), 0),
-      lastLeadAt: iso(connection.lastLeadAt),
+      lastLeadAt: iso(business.lastLeadAt),
       lastPushAt: iso(devices.map((device) => device.lastPushAt).filter(Boolean).sort((a, b) => {
         const aMs = typeof a?.toMillis === "function" ? a.toMillis() : Number(a?.seconds || 0) * 1000;
         const bMs = typeof b?.toMillis === "function" ? b.toMillis() : Number(b?.seconds || 0) * 1000;

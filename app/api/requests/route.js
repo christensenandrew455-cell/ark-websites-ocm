@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { computeBillingState } from "../../lib/billingDelinquency";
 import { getAdminDb } from "../../lib/firebase-admin";
+import { systemCollection } from "../../lib/firestoreLayout";
 import { sendRequestStatusNotification } from "../../lib/notificationService";
 import { requireUser } from "../../lib/userRequest";
 import { normalizeClientId, toIsoString, trimmedText } from "../../lib/valueUtils";
@@ -69,15 +70,16 @@ export async function GET(request) {
   const requestedClientId = normalizeClientId(url.searchParams.get("clientId"));
   const includeClosed = url.searchParams.get("includeClosed") === "1";
   const sourceFilter = trimmedText(url.searchParams.get("source"));
+  const requestCollection = systemCollection(db, "supportRequests");
 
   let snapshot;
   if (isAdmin) {
     snapshot = requestedClientId
-      ? await db.collection("supportRequests").where("clientId", "==", requestedClientId).get()
-      : await db.collection("supportRequests").get();
+      ? await requestCollection.where("clientId", "==", requestedClientId).get()
+      : await requestCollection.get();
   } else {
     if (!tokenClientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
-    snapshot = await db.collection("supportRequests").where("clientId", "==", tokenClientId).get();
+    snapshot = await requestCollection.where("clientId", "==", tokenClientId).get();
   }
 
   let requests = snapshot.docs.map(requestPayload);
@@ -117,14 +119,12 @@ export async function POST(request) {
   if (message.length > 4000) return NextResponse.json({ error: "Keep the help request under 4,000 characters." }, { status: 400 });
 
   const db = getAdminDb();
-  const [businessSnapshot, accountSnapshot, existingRequests] = await Promise.all([
-    db.collection("businesses").doc(clientId).get(),
-    db.collection("accounts").doc(user.decodedToken.uid).get(),
-    db.collection("supportRequests").where("clientId", "==", clientId).get(),
+  const [accountSnapshot, existingRequests] = await Promise.all([
+    db.collection("accounts").doc(clientId).get(),
+    systemCollection(db, "supportRequests").where("clientId", "==", clientId).get(),
   ]);
-  const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   const account = accountSnapshot.exists ? accountSnapshot.data() : {};
-  const billingState = computeBillingState(business);
+  const billingState = computeBillingState(account);
   if (billingState.restricted) {
     return NextResponse.json(
       { error: "Help requests are unavailable while the account is payment-restricted. Update the payment method to restore full access." },
@@ -142,13 +142,13 @@ export async function POST(request) {
     return NextResponse.json({ error: "You already have an open help request. Check Help History for its status or ARK's reply." }, { status: 409 });
   }
 
-  const ref = db.collection("supportRequests").doc();
+  const ref = systemCollection(db, "supportRequests").doc();
   await ref.set({
     clientId,
-    businessName: trimmedText(business.businessName || account.businessName || clientId),
-    ownerName: trimmedText(account.ownerName || business.ownerName || user.decodedToken.name),
+    businessName: trimmedText(account.businessName || clientId),
+    ownerName: trimmedText(account.ownerName || user.decodedToken.name),
     accountEmail: trimmedText(account.accountEmail || user.decodedToken.email).toLowerCase(),
-    contactPhone: trimmedText(account.accountPhone || business.accountPhone),
+    contactPhone: trimmedText(account.accountPhone),
     type: "help",
     subject: subject || "Help request",
     message,
@@ -185,7 +185,7 @@ export async function PATCH(request) {
   }
 
   const db = getAdminDb();
-  const ref = db.collection("supportRequests").doc(id);
+  const ref = systemCollection(db, "supportRequests").doc(id);
   const snapshot = await ref.get();
   if (!snapshot.exists) return NextResponse.json({ error: "That request no longer exists." }, { status: 404 });
 

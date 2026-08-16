@@ -14,9 +14,9 @@ async function authorizeOwner(request) {
   const decoded = user.decodedToken;
   if (!isStandardRole(decoded.role) || !decoded.clientId) return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   const db = getAdminDb();
-  const accountRef = db.collection("accounts").doc(decoded.uid);
+  const accountRef = db.collection("accounts").doc(String(decoded.clientId));
   const accountSnapshot = await accountRef.get();
-  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active") return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
+  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || String(accountSnapshot.data().uid || "") !== String(decoded.uid)) return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   return { db, decoded, accountRef, account: accountSnapshot.data(), clientId: String(decoded.clientId) };
 }
 
@@ -28,7 +28,7 @@ function realConversationCount(snapshot) {
 }
 
 async function featureState(db, clientId, source = {}) {
-  const conversationsSnapshot = await db.collection("ocmClients").doc(clientId).collection("leadConversations").get();
+  const conversationsSnapshot = await db.collection("accounts").doc(clientId).collection("leadConversations").get();
   const conversationCount = realConversationCount(conversationsSnapshot);
   return {
     ...availableAccountFeatures(source),
@@ -40,8 +40,7 @@ async function featureState(db, clientId, source = {}) {
 export async function GET(request) {
   const access = await authorizeOwner(request);
   if (access.response) return access.response;
-  const businessSnapshot = await access.db.collection("businesses").doc(access.clientId).get();
-  return NextResponse.json({ ok: true, ...(await featureState(access.db, access.clientId, businessSnapshot.exists ? businessSnapshot.data() : access.account)) });
+  return NextResponse.json({ ok: true, ...(await featureState(access.db, access.clientId, access.account)) });
 }
 
 export async function POST(request) {
@@ -51,24 +50,18 @@ export async function POST(request) {
     const body = await request.json();
     if (!MESSAGES_AVAILABLE && body.messagesEnabled === true) return NextResponse.json({ error: UPCOMING_FEATURE_MESSAGE }, { status: 409 });
     const messagesEnabled = MESSAGES_AVAILABLE && body.messagesEnabled === true;
-    const businessRef = access.db.collection("businesses").doc(access.clientId);
-    const root = access.db.collection("ocmClients").doc(access.clientId);
-    const [businessSnapshot, conversationsSnapshot] = await Promise.all([
-      businessRef.get(),
-      root.collection("leadConversations").get(),
+    const [accountSnapshot, conversationsSnapshot] = await Promise.all([
+      access.accountRef.get(),
+      access.accountRef.collection("leadConversations").get(),
     ]);
-    const current = availableAccountFeatures(businessSnapshot.exists ? businessSnapshot.data() : access.account);
+    const current = availableAccountFeatures(accountSnapshot.exists ? accountSnapshot.data() : access.account);
     const conversationCount = realConversationCount(conversationsSnapshot);
     if (current.messagesEnabled && !messagesEnabled && conversationCount > 0) {
       return NextResponse.json({ error: `Delete all ${conversationCount} conversation${conversationCount === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
     }
 
     const update = { messagesEnabled, updatedAt: FieldValue.serverTimestamp() };
-    const batch = access.db.batch();
-    batch.set(businessRef, update, { merge: true });
-    batch.set(access.accountRef, update, { merge: true });
-    batch.set(root.collection("settings").doc("account"), { MessagesEnabled: messagesEnabled, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    await batch.commit();
+    await access.accountRef.set(update, { merge: true });
 
     const auth = getAdminAuth();
     const ownerRecord = await auth.getUser(access.decoded.uid);

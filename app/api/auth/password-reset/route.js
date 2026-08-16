@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { getAdminDb } from "../../../lib/firebase-admin";
+import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { accountRef } from "../../../lib/firestoreLayout";
+import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 function cleanClientId(value) {
@@ -26,14 +28,19 @@ export async function POST(request) {
     let email = normalizedIdentifier.toLowerCase();
     if (!email.includes("@")) {
       const clientId = cleanClientId(normalizedIdentifier);
-      const registrySnapshot = await db.collection("businessNameRegistry").doc(clientId).get();
-      const resolvedClientId = cleanClientId(registrySnapshot.exists ? registrySnapshot.data().clientId : clientId);
-      const businessSnapshot = await db.collection("businesses").doc(resolvedClientId).get();
-      if (!businessSnapshot.exists) {
+      const [accountSnapshot, pending] = await Promise.all([
+        accountRef(db, clientId).get(),
+        readPendingOwnerSignup({ db, clientId, allowExpired: true }),
+      ]);
+      if (accountSnapshot.exists) email = String(accountSnapshot.data().accountEmail || "").toLowerCase();
+      else if (pending && !pendingOwnerSignupExpired(pending.data)) email = String(pending.data.accountEmail || pending.data.account?.accountEmail || "").toLowerCase();
+      else {
+        if (pending) await deletePendingOwnerSignup({ db, auth: getAdminAuth(), uid: pending.data.uid, pending }).catch((error) => console.error("Unable to remove expired temporary signup during password reset", error));
         return NextResponse.json({ ok: true });
       }
-      email = String(businessSnapshot.data().accountEmail || "").toLowerCase();
     }
+
+    if (!email) return NextResponse.json({ ok: true });
 
     const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     if (!apiKey) {

@@ -16,17 +16,10 @@ export function normalizeStatusPhone(value) {
 }
 
 async function receptionistPhone(db, clientId) {
-  const [connectionSnapshot, receptionistSnapshot] = await Promise.all([
-    db.collection("connections").doc(clientId).get(),
-    db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist").get(),
-  ]);
-  const connection = connectionSnapshot.exists ? connectionSnapshot.data() : {};
-  const receptionist = receptionistSnapshot.exists ? receptionistSnapshot.data() : {};
+  const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+  const account = accountSnapshot.exists ? accountSnapshot.data() : {};
   return normalizeStatusPhone(
-    connection.receptionistPhoneNormalized
-      || receptionist.receptionistPhoneNormalized
-      || connection.receptionistPhone
-      || receptionist.receptionistPhone,
+    account.receptionistPhoneNormalized || account.receptionistPhone,
   );
 }
 
@@ -97,7 +90,7 @@ export async function sendEstimateRequestStatusNotice({
   const normalizedStatus = status === "accepted" ? "accepted" : "declined";
   if (!normalizedPhone) return { ok: true, skipped: "missing-phone", sent: false };
 
-  const root = db.collection("ocmClients").doc(clientId);
+  const root = db.collection("accounts").doc(clientId);
   const collectionName = normalizedStatus === "accepted" ? "clientAcceptNotices" : "clientDeclineNotices";
   const noticeRef = root.collection(collectionName).doc(leadId);
   const reserved = await db.runTransaction(async (transaction) => {

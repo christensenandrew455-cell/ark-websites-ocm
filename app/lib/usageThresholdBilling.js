@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import Stripe from "stripe";
+import { isStandardRole } from "./accountRoles.js";
 import {
   smsUsageResult,
   USAGE_CHARGE_THRESHOLD_POINTS,
@@ -37,10 +38,10 @@ function paymentDeclined(error) {
 }
 
 async function accountForClient(db, clientId) {
-  const businessSnapshot = await db.collection("businesses").doc(clientId).get();
+  const businessSnapshot = await db.collection("accounts").doc(clientId).get();
   if (!businessSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
   const business = businessSnapshot.data();
-  const uid = text(business.uid || business.ownerUid);
+  const uid = text(business.uid);
   if (!uid) throw new Error("ACCOUNT_NOT_FOUND");
   return { uid, business };
 }
@@ -50,8 +51,8 @@ export async function recordUsage({ db, stripe = null, clientId, type, sourceId,
   const safeType = text(type);
   const safeSourceId = text(sourceId);
   if (!safeClientId || !safeType || !safeSourceId) throw new Error("USAGE_EVENT_INVALID");
-  const { uid } = await accountForClient(db, safeClientId);
-  const accountRef = db.collection("accounts").doc(uid);
+  await accountForClient(db, safeClientId);
+  const accountRef = db.collection("accounts").doc(safeClientId);
   const usageEventRef = accountRef.collection("usageEvents").doc(eventId(safeClientId, safeType, safeSourceId));
   const result = await db.runTransaction(async (transaction) => {
     const [accountSnapshot, existingEvent] = await Promise.all([transaction.get(accountRef), transaction.get(usageEventRef)]);
@@ -61,7 +62,7 @@ export async function recordUsage({ db, stripe = null, clientId, type, sourceId,
       return { duplicate: true, balancePoints: whole(accountSnapshot.data().usageBalancePoints) };
     }
     const account = accountSnapshot.data();
-    if (account.status !== "active" || account.usageSuspended === true || account.billingPastDue === true) throw new Error("ACCOUNT_USAGE_SUSPENDED");
+    if (account.status !== "active" || account.billingPastDue === true) throw new Error("ACCOUNT_USAGE_SUSPENDED");
 
     const smsUsage = smsUsageResult(account.usageSmsPartRemainder, smsParts);
     const smsPoints = smsUsage.addedPoints;
@@ -89,7 +90,7 @@ export async function recordUsage({ db, stripe = null, clientId, type, sourceId,
   });
 
   if (result.balancePoints >= USAGE_CHARGE_THRESHOLD_POINTS) {
-    const payment = await settleUsageThreshold({ db, stripe, uid });
+    const payment = await settleUsageThreshold({ db, stripe, clientId: safeClientId });
     return { ...result, payment };
   }
   return result;
@@ -114,11 +115,12 @@ async function pendingLedgerDocuments(root, collectionName, maximum) {
 }
 
 export async function reconcilePendingUsageEvents({ db, stripe = null, maximumBusinesses = 100, maximumEvents = 500 } = {}) {
-  const businesses = await db.collection("businesses").where("status", "==", "active").limit(Math.max(1, maximumBusinesses)).get();
+  const businesses = await db.collection("accounts").where("status", "==", "active").limit(Math.max(1, maximumBusinesses)).get();
   const results = { businesses: businesses.size, checked: 0, recorded: 0, failed: 0 };
   for (const business of businesses.docs) {
+    if (!isStandardRole(business.data().role)) continue;
     if (results.checked >= maximumEvents) break;
-    const root = db.collection("ocmClients").doc(business.id);
+    const root = db.collection("accounts").doc(business.id);
     const remaining = () => Math.max(0, maximumEvents - results.checked);
     const ledgers = [
       { collection: "billingLeadEvents", type: "lead", points: 2, sms: false },
@@ -153,8 +155,8 @@ export async function reconcilePendingUsageEvents({ db, stripe = null, maximumBu
   return results;
 }
 
-async function claimCharge(db, uid, now = Date.now()) {
-  const accountRef = db.collection("accounts").doc(uid);
+async function claimCharge(db, clientId, now = Date.now()) {
+  const accountRef = db.collection("accounts").doc(clientId);
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(accountRef);
     if (!snapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
@@ -165,7 +167,7 @@ async function claimCharge(db, uid, now = Date.now()) {
     const attemptedAt = millis(account.usageChargeAttemptedAt);
     const retryAt = millis(account.billingNextRetryAt);
     if (status === "processing" && attemptedAt && now - attemptedAt < PROCESSING_LOCK_MS) return null;
-    if ((status === "declined" || account.usageSuspended === true) && retryAt > now) return null;
+    if ((status === "declined" || account.billingPastDue === true) && retryAt > now) return null;
     const reuseSequence = ["processing", "retry_pending"].includes(status) && whole(account.usageChargeSequence) > 0;
     const sequence = reuseSequence ? whole(account.usageChargeSequence) : whole(account.usageChargeSequence) + 1;
     const customerId = reuseSequence ? text(account.usageChargeCustomerId || account.stripeCustomerId) : text(account.stripeCustomerId);
@@ -179,19 +181,19 @@ async function claimCharge(db, uid, now = Date.now()) {
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
     return {
-      uid,
-      clientId: text(account.clientId),
+      uid: text(account.uid),
+      clientId: text(account.clientId || clientId),
       sequence,
       balance,
       customerId,
       paymentMethodId,
-      wasSuspended: account.usageSuspended === true || account.billingPastDue === true,
+      wasSuspended: account.billingPastDue === true,
     };
   });
 }
 
 async function markTransientFailure(db, claim, error) {
-  await db.collection("accounts").doc(claim.uid).set({
+  await db.collection("accounts").doc(claim.clientId).set({
     // Keep the same sequence and payment details so Stripe's idempotency key
     // safely resolves an attempt whose network outcome was unknown.
     usageChargeStatus: "retry_pending",
@@ -202,7 +204,7 @@ async function markTransientFailure(db, claim, error) {
 
 async function markDeclined(db, claim, paymentIntentId, error) {
   const now = Date.now();
-  await db.collection("accounts").doc(claim.uid).set({
+  await db.collection("accounts").doc(claim.clientId).set({
     usageChargeStatus: "declined",
     usageChargeLastPaymentIntentId: text(paymentIntentId),
     usageChargeLastError: text(error?.code || error?.message || "payment_declined").slice(0, 200),
@@ -221,7 +223,7 @@ async function markDeclined(db, claim, paymentIntentId, error) {
 }
 
 async function markPaid(db, claim, paymentIntent) {
-  const accountRef = db.collection("accounts").doc(claim.uid);
+  const accountRef = db.collection("accounts").doc(claim.clientId);
   const result = await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(accountRef);
     if (!snapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
@@ -253,12 +255,12 @@ async function markPaid(db, claim, paymentIntent) {
   return result;
 }
 
-export async function settleUsageThreshold({ db, stripe = null, uid }) {
+export async function settleUsageThreshold({ db, stripe = null, clientId }) {
   const client = stripeClient(stripe);
   if (!client) return { status: "pending", reason: "stripe_not_configured" };
   let lastResult = { status: "not_due" };
   for (let index = 0; index < 5; index += 1) {
-    const claim = await claimCharge(db, text(uid));
+    const claim = await claimCharge(db, text(clientId));
     if (!claim) return lastResult;
     if (!claim.customerId || !claim.paymentMethodId) {
       const error = new Error("PAYMENT_METHOD_MISSING");
@@ -302,22 +304,24 @@ export async function retryUsageThresholdCharges({ db, stripe = null, maximum = 
   const snapshot = await db.collection("accounts").where("usageBalancePoints", ">=", USAGE_CHARGE_THRESHOLD_POINTS).limit(Math.max(1, maximum)).get();
   const results = [];
   for (const document of snapshot.docs) {
+    if (!isStandardRole(document.data().role)) continue;
     try {
-      results.push({ uid: document.id, ...(await settleUsageThreshold({ db, stripe, uid: document.id })) });
+      results.push({ clientId: document.id, ...(await settleUsageThreshold({ db, stripe, clientId: document.id })) });
     } catch (error) {
-      results.push({ uid: document.id, status: "error", error: text(error?.message) });
+      results.push({ clientId: document.id, status: "error", error: text(error?.message) });
     }
   }
   const restorationSnapshot = await db.collection("accounts").where("billingResolutionPending", "==", true).limit(Math.max(1, maximum)).get();
   for (const document of restorationSnapshot.docs) {
     const account = document.data();
+    if (!isStandardRole(account.role)) continue;
     const paymentIntentId = text(account.usageChargeLastPaymentIntentId);
     try {
       await resolvePayment({ db, clientId: text(account.clientId), eventId: `usage-payment-resolved-${paymentIntentId}`, invoiceId: paymentIntentId });
       await document.ref.set({ billingResolutionPending: FieldValue.delete(), billingResolutionLastError: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      results.push({ uid: document.id, status: "restored" });
+      results.push({ clientId: document.id, status: "restored" });
     } catch (error) {
-      results.push({ uid: document.id, status: "restoration_error", error: text(error?.message) });
+      results.push({ clientId: document.id, status: "restoration_error", error: text(error?.message) });
     }
   }
   return results;

@@ -25,7 +25,7 @@ export async function GET(request) {
   const authorization = await requireAuthenticatedCustomer(request);
   if (authorization.response) return authorization.response;
   try {
-    const snapshot = await getAdminDb().collection("accounts").doc(authorization.decodedToken.uid).get();
+    const snapshot = await getAdminDb().collection("accounts").doc(authorization.clientId).get();
     if (!snapshot.exists) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     const account = snapshot.data();
     const usageBalancePoints = Math.max(0, Math.floor(Number(account.usageBalancePoints || 0)));
@@ -41,7 +41,6 @@ export async function GET(request) {
       leadPoints: PER_LEAD_CENTS / USAGE_POINT_CENTS,
       chatPoints: PER_CHAT_CENTS / USAGE_POINT_CENTS,
       usageChargeStatus: String(account.usageChargeStatus || "idle"),
-      usageSuspended: account.usageSuspended === true,
       lastUsagePaymentAt: iso(account.lastUsagePaymentAt),
       lastPaymentAt: iso(account.lastPaymentAt),
     });

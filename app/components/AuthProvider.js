@@ -27,16 +27,19 @@ export function AuthProvider({ children }) {
     }
 
     const tokenResult = await nextUser.getIdTokenResult(true);
+    const claimedRole = String(tokenResult.claims.role || ACCOUNT_ROLES.STANDARD);
+    const claimedClientId = normalizeClientId(tokenResult.claims.clientId || tokenResult.claims.businessClientId || "");
+    const accountDocumentId = claimedRole === ACCOUNT_ROLES.ADMIN ? nextUser.uid : claimedClientId || nextUser.uid;
     let account = {};
     try {
-      const accountSnapshot = await getDoc(doc(db, "accounts", nextUser.uid));
+      const accountSnapshot = await getDoc(doc(db, "accounts", accountDocumentId));
       account = accountSnapshot.exists() ? accountSnapshot.data() : {};
     } catch (accountError) {
       console.warn("Unable to read account profile directly from Firestore; using verified token claims", accountError);
     }
 
     const role = tokenResult.claims.role || account.role || ACCOUNT_ROLES.STANDARD;
-    const clientId = normalizeClientId(tokenResult.claims.clientId || tokenResult.claims.businessClientId || account.clientId || "");
+    const clientId = normalizeClientId(claimedClientId || account.clientId || "");
     const claimedStatus = String(tokenResult.claims.accountStatus || "");
     const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
     const accountType = account.accountType || String(tokenResult.claims.accountType || "") || ACCOUNT_TYPES.OWNER;

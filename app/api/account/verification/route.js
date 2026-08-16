@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { accountRef } from "../../../lib/firestoreLayout";
 import { readAccountVerificationStatus, sendAccountVerificationCodes, updateAccountVerificationContact, verifyAccountCodes } from "../../../lib/accountVerification";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
@@ -16,10 +17,12 @@ async function authorize(request) {
   if (!token) return { response: NextResponse.json({ error: "Sign in to verify your account." }, { status: 401 }) };
   try {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
-    const accountSnapshot = await getAdminDb().collection("accounts").doc(decoded.uid).get();
+    const clientId = text(decoded.clientId);
+    if (!clientId) return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
+    const accountSnapshot = await accountRef(getAdminDb(), clientId).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : null;
-    if (!account || !isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
-    return { decoded, account };
+    if (!account || text(account.uid) !== text(decoded.uid) || !isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
+    return { decoded, account, clientId };
   } catch {
     return { response: NextResponse.json({ error: "Your sign-in expired. Sign in again." }, { status: 401 }) };
   }
@@ -48,7 +51,7 @@ export async function GET(request) {
   const authorization = await authorize(request);
   if (authorization.response) return authorization.response;
   try {
-    return NextResponse.json(await readAccountVerificationStatus({ db: getAdminDb(), uid: authorization.decoded.uid }));
+    return NextResponse.json(await readAccountVerificationStatus({ db: getAdminDb(), uid: authorization.decoded.uid, clientId: authorization.clientId }));
   } catch (error) {
     const safe = verificationError(error);
     return NextResponse.json(safe, { status: safe.status });
@@ -75,7 +78,7 @@ export async function POST(request) {
       return NextResponse.json(await sendAccountVerificationCodes({
         db,
         uid: authorization.decoded.uid,
-        clientId: text(authorization.account.clientId),
+        clientId: authorization.clientId,
         email: text(authorization.account.accountEmail).toLowerCase(),
         phone: text(authorization.account.accountPhone),
       }));
@@ -85,6 +88,7 @@ export async function POST(request) {
         db,
         auth: getAdminAuth(),
         uid: authorization.decoded.uid,
+        clientId: authorization.clientId,
         email: body.email,
         phone: body.phone,
       }));
@@ -93,6 +97,7 @@ export async function POST(request) {
       db,
       auth: getAdminAuth(),
       uid: authorization.decoded.uid,
+      clientId: authorization.clientId,
       emailCode: body.emailCode,
       phoneCode: body.phoneCode,
     }));

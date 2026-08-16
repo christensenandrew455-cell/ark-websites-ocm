@@ -11,11 +11,11 @@ function invalidToken(error) {
 
 export async function sendInboundMessageNotification({ db, clientId, conversationId, conversation }) {
   if (!MESSAGES_AVAILABLE) return { attempted: 0, sent: 0, failed: 0 };
-  const businessSnapshot = await db.collection("businesses").doc(clientId).get();
+  const businessSnapshot = await db.collection("accounts").doc(clientId).get();
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   if (business.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };
 
-  const devicesSnapshot = await db.collection("ocmClients").doc(clientId).collection("notificationDevices").get();
+  const devicesSnapshot = await db.collection("accounts").doc(clientId).collection("notificationDevices").get();
   const devices = devicesSnapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token))

@@ -21,15 +21,12 @@ async function authorizeOwner(request) {
   }
 
   const db = getAdminDb();
-  const [accountSnapshot, businessSnapshot] = await Promise.all([
-    db.collection("accounts").doc(decoded.uid).get(),
-    db.collection("businesses").doc(clientId).get(),
-  ]);
-  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || !businessSnapshot.exists) {
+  const accountSnapshot = await db.collection("accounts").doc(clientId).get();
+  if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) {
     return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   }
 
-  return { db, decoded, clientId, business: businessSnapshot.data() };
+  return { db, decoded, clientId, business: accountSnapshot.data() };
 }
 
 export async function POST(request) {
@@ -43,7 +40,7 @@ export async function POST(request) {
     const leadName = text(body.name);
     if (!leadId) return NextResponse.json({ error: "A lead is required." }, { status: 400 });
 
-    const root = access.db.collection("ocmClients").doc(access.clientId);
+    const root = access.db.collection("accounts").doc(access.clientId);
     const acceptedSnapshot = await root.collection("clients").doc(leadId).get();
     if (acceptedSnapshot.exists) return NextResponse.json({ ok: true, skipped: "accepted" });
     if (access.business.clientDeclineNoticeEnabled === false) {

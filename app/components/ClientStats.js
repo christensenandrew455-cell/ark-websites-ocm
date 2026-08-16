@@ -49,7 +49,7 @@ export default function ClientStats() {
   useEffect(() => {
     if (!clientId) return undefined;
     return onSnapshot(
-      collection(db, "ocmClients", clientId, "contactedMe"),
+      collection(db, "accounts", clientId, "contactedMe"),
       (snapshot) => setNewLeads(snapshot.size),
       () => setNewLeads(0),
     );

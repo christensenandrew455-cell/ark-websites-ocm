@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { publicBillingStatus } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
@@ -22,29 +23,29 @@ function hasCompletedBusinessSetup(receptionist = {}) {
   );
 }
 
-function connectionPayload(clientId, business, data, receptionist = null) {
+function connectionPayload(clientId, account) {
   return {
     clientId,
-    businessName: trimmedText(business.businessName || data.businessName || clientId),
-    ownerName: trimmedText(data.ownerName || business.ownerName),
-    accountEmail: trimmedText(business.accountEmail).toLowerCase(),
-    status: trimmedText(business.status || "active"),
-    disabledAt: toIsoString(business.disabledAt || data.disabledAt),
-    enabled: data.enabled !== false,
-    phone: trimmedText(data.notificationPhone || data.businessPhone || business.accountPhone),
-    sourceLabel: trimmedText(data.sourceLabel || business.businessName || clientId),
-    connectionKey: trimmedText(data.connectionKey),
-    receptionistConfigured: hasCompletedBusinessSetup(receptionist || {}),
-    receptionistEnabled: receptionist?.enabled !== false && data.receptionistEnabled !== false,
-    receptionistPhone: trimmedText(receptionist?.receptionistPhone || data.receptionistPhone),
-    termsAccepted: business.termsAccepted === true,
-    privacyAccepted: business.privacyAccepted === true,
-    termsVersion: trimmedText(business.termsVersion),
-    privacyVersion: trimmedText(business.privacyVersion),
-    legalAcceptedAt: toIsoString(business.legalAcceptedAt),
-    legalAcceptedBy: trimmedText(business.legalAcceptedBy || business.accountEmail).toLowerCase(),
-    legalAcceptanceSource: trimmedText(business.legalAcceptanceSource),
-    billing: publicBillingStatus(business),
+    businessName: trimmedText(account.businessName || clientId),
+    ownerName: trimmedText(account.ownerName),
+    accountEmail: trimmedText(account.accountEmail).toLowerCase(),
+    status: trimmedText(account.status || "active"),
+    disabledAt: toIsoString(account.disabledAt),
+    enabled: account.enabled !== false,
+    phone: trimmedText(account.notificationPhone || account.businessPhone || account.accountPhone),
+    sourceLabel: trimmedText(account.sourceLabel || account.businessName || clientId),
+    connectionKey: trimmedText(account.connectionKey),
+    receptionistConfigured: hasCompletedBusinessSetup(account),
+    receptionistEnabled: account.receptionistEnabled !== false,
+    receptionistPhone: trimmedText(account.receptionistPhone),
+    termsAccepted: account.termsAccepted === true,
+    privacyAccepted: account.privacyAccepted === true,
+    termsVersion: trimmedText(account.termsVersion),
+    privacyVersion: trimmedText(account.privacyVersion),
+    legalAcceptedAt: toIsoString(account.legalAcceptedAt),
+    legalAcceptedBy: trimmedText(account.legalAcceptedBy || account.accountEmail).toLowerCase(),
+    legalAcceptanceSource: trimmedText(account.legalAcceptanceSource),
+    billing: publicBillingStatus(account),
   };
 }
 
@@ -53,31 +54,17 @@ export async function GET(request) {
   if (admin.response) return admin.response;
 
   const db = getAdminDb();
-  const [businessSnapshot, connectionSnapshot] = await Promise.all([
-    db.collection("businesses").get(),
-    db.collection("connections").get(),
-  ]);
+  const accountSnapshot = await db.collection("accounts").get();
 
   const adminUid = trimmedText(admin.decodedToken.uid);
   const adminEmail = trimmedText(admin.decodedToken.email).toLowerCase();
-  const connections = new Map(connectionSnapshot.docs.map((document) => [document.id, document.data()]));
-  const eligible = businessSnapshot.docs
-    .map((document) => ({ clientId: document.id, business: document.data() }))
-    .filter(({ business }) => trimmedText(business.uid) !== adminUid)
-    .filter(({ business }) => !adminEmail || trimmedText(business.accountEmail).toLowerCase() !== adminEmail)
-    .filter(({ business }) => ["active", "disabled"].includes(trimmedText(business.status || "active")));
-
-  const receptionistSnapshots = eligible.length
-    ? await db.getAll(...eligible.map(({ clientId }) => db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist")))
-    : [];
-
-  const businesses = eligible
-    .map(({ clientId, business }, index) => connectionPayload(
-      clientId,
-      business,
-      connections.get(clientId) || {},
-      receptionistSnapshots[index]?.exists ? receptionistSnapshots[index].data() : null,
-    ))
+  const businesses = accountSnapshot.docs
+    .map((document) => ({ clientId: document.id, account: document.data() }))
+    .filter(({ account }) => isStandardRole(account.role))
+    .filter(({ account }) => trimmedText(account.uid) !== adminUid)
+    .filter(({ account }) => !adminEmail || trimmedText(account.accountEmail).toLowerCase() !== adminEmail)
+    .filter(({ account }) => ["active", "disabled"].includes(trimmedText(account.status || "active")))
+    .map(({ clientId, account }) => connectionPayload(clientId, account))
     .filter((business) => business.businessName)
     .sort((a, b) => a.businessName.localeCompare(b.businessName));
 
@@ -93,65 +80,43 @@ export async function POST(request) {
   if (!clientId) return NextResponse.json({ error: "Choose a business account." }, { status: 400 });
 
   const db = getAdminDb();
-  const businessRef = db.collection("businesses").doc(clientId);
-  const connectionRef = db.collection("connections").doc(clientId);
-  const receptionistRef = db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist");
-  const [businessSnapshot, connectionSnapshot, receptionistSnapshot] = await Promise.all([
-    businessRef.get(),
-    connectionRef.get(),
-    receptionistRef.get(),
-  ]);
+  const accountRef = db.collection("accounts").doc(clientId);
+  const accountSnapshot = await accountRef.get();
 
-  if (!businessSnapshot.exists) {
+  if (!accountSnapshot.exists || !isStandardRole(accountSnapshot.data().role)) {
     return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
   }
 
-  const business = businessSnapshot.data();
-  const current = connectionSnapshot.exists ? connectionSnapshot.data() : {};
-  const connectionKey = trimmedText(current.connectionKey) || randomBytes(24).toString("hex");
-  const phone = trimmedText(body.phone || current.notificationPhone || current.businessPhone || business.accountPhone);
-  const ownerName = trimmedText(body.ownerName || business.ownerName);
-  const sourceLabel = trimmedText(body.sourceLabel || business.businessName || clientId);
+  const account = accountSnapshot.data();
+  const connectionKey = trimmedText(account.connectionKey) || randomBytes(24).toString("hex");
+  const phone = trimmedText(body.phone || account.notificationPhone || account.businessPhone || account.accountPhone);
+  const ownerName = trimmedText(body.ownerName || account.ownerName);
+  const sourceLabel = trimmedText(body.sourceLabel || account.businessName || clientId);
 
   const data = {
     clientId,
-    businessName: trimmedText(business.businessName || clientId),
+    businessName: trimmedText(account.businessName || clientId),
     ownerName,
-    enabled: body.enabled !== false && business.status !== "disabled",
+    enabled: body.enabled !== false && account.status !== "disabled",
     businessPhone: phone,
     notificationPhone: phone,
-    notificationEmail: trimmedText(business.accountEmail).toLowerCase(),
+    notificationEmail: trimmedText(account.accountEmail).toLowerCase(),
     sourceLabel,
     defaultStage: "contactedMe",
     allowStageOverride: false,
     connectionKey,
     updatedBy: admin.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
-    ...(connectionSnapshot.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
   };
 
-  const batch = db.batch();
-  batch.set(connectionRef, data, { merge: true });
-  batch.set(businessRef, {
+  await accountRef.set({
+    ...data,
     ownerName,
-    accountPhone: phone || business.accountPhone || "",
+    accountPhone: phone || account.accountPhone || "",
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), {
-    BusinessName: data.businessName,
-    OwnerName: ownerName,
-    AccountEmail: trimmedText(business.accountEmail).toLowerCase(),
-    AccountPhone: phone,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-  await batch.commit();
 
   return NextResponse.json({
-    connection: connectionPayload(
-      clientId,
-      { ...business, ownerName, accountPhone: phone },
-      data,
-      receptionistSnapshot.exists ? receptionistSnapshot.data() : null,
-    ),
+    connection: connectionPayload(clientId, { ...account, ...data, ownerName, accountPhone: phone }),
   });
 }
