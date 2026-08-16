@@ -40,6 +40,6 @@ export async function POST(request) {
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     console.error("Unable to update customer lifecycle", error);
-    return NextResponse.json({ error: error.message || "Could not update the customer account." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Could not update the customer account." }, { status: error.code === "PAYMENT_RESTRICTED" ? 409 : 500 });
   }
 }

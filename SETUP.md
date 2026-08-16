@@ -1,140 +1,104 @@
-# ARK Client Center account and payment setup
+# ARK Client Center setup
 
-The account-creation flow is:
+The owner signup flow is:
 
 1. Main information
-2. Email and phone verification
-3. Business information
-4. In-app Stripe payment-method setup
-5. Existing app Dashboard
+2. Business information
+3. In-app Stripe payment setup and $50 monthly subscription
+4. Email and phone verification
+5. Dashboard
 
-The last signup screen uses Stripe's Payment Element and a SetupIntent. It saves a payment method to the authenticated account's Stripe Customer and does not charge the customer on that screen.
+Steps 1 and 2 use one short-lived `pendingOwnerSignups` record. After Stripe confirms the payment method and starts the base subscription, the server creates the regular account, deletes the temporary record, and sends the verification codes.
 
-## 1. Firebase Authentication
+## Firebase Authentication and Admin
 
-In Firebase Console, enable **Authentication → Sign-in method → Email/Password**.
-
-Keep the existing `NEXT_PUBLIC_FIREBASE_*` values configured in Vercel.
-
-## 2. Firebase Admin credentials
-
-In Firebase Console, open **Project settings → Service accounts** and generate a server credential. Add these server-only Vercel environment variables:
+Enable **Firebase Authentication → Sign-in method → Email/Password**. Configure the public `NEXT_PUBLIC_FIREBASE_*` values and these server-only values in Vercel:
 
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
 
-For `FIREBASE_PRIVATE_KEY`, paste the complete private key. Vercel can store the multiline value directly; the application also supports a value containing literal `\n` characters.
+Paste the complete private key. Multiline text and a value containing literal `\n` characters are both supported.
 
-## 3. Stripe test-mode setup
+## Stripe
 
-Use Stripe test mode until the full onboarding checklist below passes. Add:
+Use Stripe test mode until the acceptance checklist passes. Configure:
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `YOUR_DOMAIN=https://ark-websites-ocm-xi.vercel.app`
 - `APP_HOME_PATH=/`
+- `STRIPE_ACCOUNT_PRODUCT_ID`
+- `STRIPE_ACCOUNT_BASE_PRICE_ID`
+- `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when the portal is enabled
 
-The publishable key is returned to the signed-in payment page by a protected server route. The secret and webhook keys must remain server-only and must never use a `NEXT_PUBLIC_` name.
+`STRIPE_ACCOUNT_BASE_PRICE_ID` must be the active $50 USD monthly recurring Price attached to the configured Product. Test and live mode use different object IDs. The server verifies the Price amount, currency, recurrence, active state, and Product before starting a subscription.
 
-A secret key was exposed in older code. Revoke or rotate that key in Stripe and configure only the replacement. Do not copy the old key into this project or deployment.
+There are no Stripe metered Prices or billing meters. A completed receptionist call or other new lead adds two usage points, a new chat adds one, and each rolling 50 SMS parts adds one. A lead saved from the same receptionist call uses the same event ID and counts once. Whenever the balance reaches or exceeds 20, Stripe charges an exact $20 off-session PaymentIntent and carries any excess forward. For example, 19 plus a two-point call or lead charges $20 and leaves one point.
 
-Register the production webhook endpoint as:
+Register this webhook endpoint:
 
 ```text
 https://ark-websites-ocm-xi.vercel.app/api/billing/webhook
 ```
 
-Subscribe it at minimum to SetupIntent success/failure events and the invoice/subscription events used by the existing billing enforcement logic. Production requests are rejected unless the Stripe signature validates with `STRIPE_WEBHOOK_SECRET`.
+Subscribe it to SetupIntent, invoice payment, subscription, and PaymentIntent events used by the app. Production requests are rejected unless the Stripe signature validates with `STRIPE_WEBHOOK_SECRET`.
 
-The onboarding route determines the Stripe Customer from the verified Firebase token and the server-side account record. The browser never submits or selects a Stripe Customer ID. If the account does not have a Customer, the server creates one with an idempotency key and saves its ID before creating the SetupIntent.
+The browser never submits a Stripe Customer ID. Protected server routes derive the Customer from the verified Firebase token and server-side temporary or regular account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code inputs.
 
-The Payment Element is Stripe-controlled. Do not replace it with card-number, expiration, or security-code inputs owned by ARK.
+## Verification delivery
 
-## 4. Recurring billing configuration
-
-The known Stripe Product is:
-
-```text
-prod_V30kc7tD7n7F
-```
-
-That is a Product ID, not a Price ID, and the payment-method setup screen does not use it. Configure the recurring `price_...` attached to that product when the separate subscription-start process is enabled. Existing billing configuration accepts:
-
-- `STRIPE_ACCOUNT_PRODUCT_ID`
-- `STRIPE_ACCOUNT_BASE_PRICE_ID`
-- `STRIPE_ACCOUNT_LEAD_PRICE_ID`
-- `STRIPE_ACCOUNT_CHAT_PRICE_ID`
-- `STRIPE_ACCOUNT_MESSAGE_PRICE_ID`
-
-Set `STRIPE_ACCOUNT_PRODUCT_ID` to the mode-appropriate Product ID and set `STRIPE_ACCOUNT_BASE_PRICE_ID` to its active $50 USD monthly recurring Price. Test and live modes have separate objects, so use the matching IDs in each environment. The billing code verifies the Price amount, currency, recurrence, active state, and Product before it can create or align a subscription. The signup SetupIntent remains separate from subscription creation and does not create an invoice or immediate charge.
-
-If Stripe's hosted billing portal is enabled for later payment-method management, also configure:
-
-- `STRIPE_BILLING_PORTAL_CONFIGURATION_ID`
-
-The portal is not part of signup.
-
-## 5. Verification delivery
-
-Add:
+Configure:
 
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL=ARK Client Center <accounts@your-verified-domain.com>`
 - `TELNYX_API_KEY`
 - `TELNYX_SIGNUP_FROM_NUMBER=+17742316164`
+- `ACCOUNT_VERIFICATION_SECRET` with a long random server-only value
 
-`TELNYX_SIGNUP_FROM_NUMBER` is the central ARK number that sends signup codes and the later receptionist-number-ready message. Verify the sending domain in Resend and use a messaging-enabled Telnyx number.
+Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `TELNYX_SIGNUP_FROM_NUMBER` sends signup codes and later number-ready messages.
 
-## 6. ARK administrator account
+## Administrator account
 
-Create the administrator user in **Firebase Authentication → Users**, using the intended email and password. Add the same email to Vercel as:
+Create the administrator in Firebase Authentication and add the same email to `ADMIN_EMAILS`. Separate multiple emails with commas. The app uses only two roles: `admin` and `standard`.
 
-- `ADMIN_EMAILS=your-email@example.com`
+## Firestore rules and scheduled workflows
 
-Separate multiple administrator emails with commas. On login, the app gives a configured email the Firebase `admin` claim. The dashboard then shows the business chooser. Business accounts see only their own assigned data.
-
-Administrators may enter their email in the login page's **Business name** field.
-
-## 7. Firestore rules
-
-The repository contains account-isolated rules in `firestore.rules` and deployment configuration in `firebase.json`. Publish them through Firebase Console or run:
+Publish the repository rules:
 
 ```bash
 firebase deploy --only firestore:rules
 ```
 
-After publication, a normal active account can access only its own `clientId`, administrators can access registered businesses, and signup/verification writes remain server-only.
+Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. The workflow job also deletes expired temporary signups and expired unverified regular accounts.
 
-## 8. Signup behavior
+## Signup behavior
 
-1. The owner submits main account information, a password, required legal acceptance, and an optional referring account ID.
-2. The server creates a restricted Firebase account and sends separate four-digit codes by email and text.
-3. Both contacts must be verified before business setup opens.
-4. The owner completes business and AI receptionist information.
-5. The in-app Payment Element saves a card to the Stripe Customer through a SetupIntent with `usage: off_session`.
-6. The browser submits only the SetupIntent ID. The server retrieves it from Stripe, verifies its success, Customer, account metadata, and authenticated user, and then activates the account.
-7. The owner is sent to the existing Dashboard. The administrator sees the account under **Needs a Number**, assigns a receptionist number, and the owner receives a text when it is ready.
+1. Main information creates a Firebase Auth user and one temporary Firestore record. It does not create `accounts`, `businesses`, or `ocmClients` records.
+2. Business settings are validated and saved into the temporary record.
+3. Stripe confirms an off-session SetupIntent.
+4. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
+5. Separate four-digit email and phone codes are sent. Both must be verified before the dashboard opens.
+6. The administrator assigns the receptionist number through **Needs a Number**.
 
-The standard billing model is $50 per monthly period, $2 per new lead, $1 per new chat when Messages is available, plus $1 per 50 SMS parts. Deleting usage records does not reduce recorded billing. Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.
+If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake, receptionist calls, and inbound/outbound chat stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.
 
-## 9. Test-mode acceptance checklist
+## Test-mode acceptance checklist
 
-- A new account receives one correct Stripe Customer.
-- Email and phone verification both occur before business information.
-- Business information must be complete before the payment page opens.
-- The Payment Element appears inside ARK Client Center.
-- Stripe test card `4242 4242 4242 4242` can complete the SetupIntent with a future expiry and any valid security code.
-- No charge or subscription is created by the payment setup screen.
-- The saved PaymentMethod belongs to the authenticated account's Customer and becomes that Customer's default invoice payment method.
-- A failed or incomplete SetupIntent shows the selected failure message and does not activate the account.
-- A SetupIntent belonging to another user, Customer, or account metadata cannot activate the account.
-- A successful user sees `account set up complete` and reaches the existing Dashboard.
-- Stripe secret and webhook keys never appear in frontend JavaScript or API responses.
-- The production webhook rejects missing or invalid signatures.
-- The exposed historical key is revoked before deployment.
+- A new signup has one Auth user and one temporary Firestore record before payment.
+- Business information must be complete before the Payment Element opens.
+- Stripe test card `4242 4242 4242 4242` completes the SetupIntent with a future expiry and any valid security code.
+- Successful setup starts exactly one $50 monthly base subscription with no metered items.
+- A SetupIntent belonging to another user, Customer, or account metadata cannot promote the signup.
+- Payment success removes the temporary record and creates one `standard` regular account.
+- Email and phone verification happens after payment and refreshes the token before navigation.
+- At 19 usage points, a new two-point call or lead produces one $20 charge and leaves one point.
+- A decline immediately disables receptionist calls, chat, and new lead intake.
+- Billing retries occur at most daily; the account is deleted after seven full days unpaid.
+- Stripe keys never appear in frontend code or API responses.
+- The webhook rejects missing or invalid signatures.
 
-## 10. Password reset
+## Password reset
 
-The forgot-password page accepts the business name. The server finds the registered business email and asks Firebase Authentication to send the reset email.
+The forgot-password page accepts the business name. The server resolves the registered business email and asks Firebase Authentication to send the reset email.

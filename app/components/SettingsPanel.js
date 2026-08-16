@@ -19,12 +19,16 @@ const THEME_KEY = "ark-theme-v1";
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "Information the AI receptionist uses when answering calls." },
   { key: "customization", title: "Customization", description: "Choose how the app works for your business." },
-  { key: "payment", title: "Payment", description: "View the estimated monthly total and manage the payment method." },
+  { key: "payment", title: "Payment", description: "View usage toward the next $20 charge and manage the payment method." },
   { key: "account", title: "Help & Account", description: "Help, documentation, policies, support, and account deletion." },
 ];
 
 function money(cents = 0) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(cents || 0) / 100);
+}
+function paymentDate(value) {
+  const date = new Date(value || 0);
+  return Number.isNaN(date.getTime()) ? "No successful payment recorded yet" : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
 }
 function SettingsBlock({ title, description, onClick, tourId = "" }) {
   return <button type="button" data-tour-id={tourId || undefined} onClick={onClick} className="min-h-24 w-full rounded-2xl border border-slate-300 bg-slate-50 p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-slate-500 sm:text-sm sm:leading-6">{description}</p></button>;
@@ -54,7 +58,7 @@ export default function SettingsPanel() {
   const [features, setFeatures] = useState(featureValues(profile));
   const [savedFeatures, setSavedFeatures] = useState(null);
   const [featureState, setFeatureState] = useState({ conversationCount: 0, canDisableMessages: true });
-  const [billingSummary, setBillingSummary] = useState(null);
+  const [usageSummary, setUsageSummary] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [savedDarkMode, setSavedDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,11 +93,16 @@ export default function SettingsPanel() {
 
   useEffect(() => {
     if (!clientId) { setError(ownerFacingError()); setIsLoading(false); return undefined; }
+    if (profile?.status === "disabled") {
+      setAccountSettings({ ...DEFAULT_SETTINGS, BillingStatus: "Payment method update needed", PaymentMethodLabel: profile?.paymentMethodLabel || "" });
+      return undefined;
+    }
     return onSnapshot(doc(db, "ocmClients", clientId, "settings", "account"), (snapshot) => setAccountSettings({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) }), (snapshotError) => setError(ownerFacingError(snapshotError)));
-  }, [clientId]);
+  }, [clientId, profile?.paymentMethodLabel, profile?.status]);
 
   useEffect(() => {
     if (!user || !clientId || isAdmin) { setIsLoading(false); return undefined; }
+    if (profile?.status === "disabled") { setIsLoading(false); return undefined; }
     let active = true;
     user.getIdToken(true).then(async (token) => {
       const [receptionistResponse, featureResponse] = await Promise.all([
@@ -118,17 +127,17 @@ export default function SettingsPanel() {
       }
     }).catch((loadError) => active && setError(ownerFacingError(loadError))).finally(() => active && setIsLoading(false));
     return () => { active = false; };
-  }, [clientId, isAdmin, user]);
+  }, [clientId, isAdmin, profile?.status, user]);
 
-  const refreshBillingSummary = useCallback(async () => {
+  const refreshUsageSummary = useCallback(async () => {
     if (!user || isAdmin) return;
     setIsLoadingBilling(true);
     try {
       const token = await user.getIdToken(true);
-      const response = await fetch("/api/billing/monthly-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const response = await fetch("/api/billing/usage-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Could not refresh this month's billing estimate.");
-      setBillingSummary(data);
+      if (!response.ok) throw new Error(data.error || "Could not refresh the current usage balance.");
+      setUsageSummary(data);
       setError("");
     } catch (billingError) {
       setError(ownerFacingError(billingError));
@@ -139,10 +148,10 @@ export default function SettingsPanel() {
 
   useEffect(() => {
     if (activeSection !== "payment") return undefined;
-    refreshBillingSummary();
-    const interval = window.setInterval(refreshBillingSummary, 60 * 1000);
+    refreshUsageSummary();
+    const interval = window.setInterval(refreshUsageSummary, 60 * 1000);
     return () => window.clearInterval(interval);
-  }, [activeSection, refreshBillingSummary]);
+  }, [activeSection, refreshUsageSummary]);
 
   const businessDirty = useMemo(() => Boolean(receptionist && savedReceptionist && profileKey(receptionist) !== profileKey(savedReceptionist)), [receptionist, savedReceptionist]);
   const customizationDirty = useMemo(() => businessDirty || Boolean(savedFeatures && JSON.stringify(features) !== JSON.stringify(savedFeatures)) || darkMode !== savedDarkMode, [businessDirty, darkMode, features, savedDarkMode, savedFeatures]);
@@ -278,21 +287,18 @@ export default function SettingsPanel() {
     </div></SectionPanel></>;
   }
   function paymentSection() {
-    const subtotal = Number(billingSummary?.subtotalCents ?? (Number(billingSummary?.monthlyBaseCents || 0) + Number(billingSummary?.usageCents || 0)));
-    const savings = Number(billingSummary?.referralSavingsCents || 0);
-    const discount = Number(billingSummary?.referralDiscountPercent || 0);
-    const rowClass = "flex items-center justify-between gap-4 border-b border-slate-200 py-3 last:border-0";
+    const balanceCents = Number(usageSummary?.usageBalanceCents || 0);
+    const thresholdCents = Number(usageSummary?.usageThresholdCents || 2000);
+    const progress = Math.max(0, Math.min(100, Number(usageSummary?.usageProgressPercent || 0)));
+    const lastPayment = usageSummary?.lastUsagePaymentAt || usageSummary?.lastPaymentAt;
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current billing period</p><p className="mt-1 text-sm font-bold text-slate-700">Live usage estimate</p></div><button type="button" onClick={refreshBillingSummary} disabled={isLoadingBilling} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 sm:px-5">
-        <div className={rowClass}><span className="text-sm font-bold text-slate-700">Monthly account</span><strong>{billingSummary ? money(billingSummary.monthlyBaseCents) : "—"}</strong></div>
-        <div className={rowClass}><span className="text-sm font-bold text-slate-700">New leads <small className="block font-semibold text-slate-500">{Number(billingSummary?.leadCount || 0)} × {money(billingSummary?.perLeadCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.leadUsageCents) : "—"}</strong></div>
-        {MESSAGES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Chats <small className="block font-semibold text-slate-500">{Number(billingSummary?.chatCount || 0)} × {money(billingSummary?.perChatCents || 0)}</small></span><strong>{billingSummary ? money(billingSummary.chatUsageCents) : "—"}</strong></div>}
-        {MESSAGES_AVAILABLE && <div className={rowClass}><span className="text-sm font-bold text-slate-700">Parts <small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartCount || 0)} added this period · {Number(billingSummary?.messagePartBlockCount || 0)} × {money(billingSummary?.perMessagePartBlockCents || 0)}</small><small className="block font-semibold text-slate-500">{Number(billingSummary?.messagePartRemainder || 0)}/50 toward the next $1 charge</small></span><strong>{billingSummary ? money(billingSummary.messagePartUsageCents) : "—"}</strong></div>}
-        <div className={rowClass}><span className="text-sm font-black text-slate-950">Subtotal</span><strong>{billingSummary ? money(subtotal) : "—"}</strong></div>
-        {savings > 0 && <div className={rowClass}><span className="text-sm font-black text-green-700">Referral savings ({discount}%)</span><strong className="text-green-700">−{money(savings)}</strong></div>}
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Monthly account</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
+      <div className="mt-6 rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white sm:p-7">
+        <div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Usage toward next charge</p><p className="mt-2 text-sm font-semibold text-slate-300">Automatically charged whenever usage reaches $20.</p></div><p className="shrink-0 text-2xl font-black">{usageSummary ? `${money(balanceCents)} / ${money(thresholdCents)}` : "—"}</p></div>
+        <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Usage toward next twenty dollar charge" aria-valuemin={0} aria-valuemax={20} aria-valuenow={balanceCents / 100}><div className="h-full rounded-full bg-emerald-400 transition-[width]" style={{ width: `${progress}%` }} /></div>
       </div>
-      <div className="mt-4 rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white sm:p-7"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Estimated total this period</p><p className="mt-2 text-right text-4xl font-black tracking-tight sm:text-6xl">{billingSummary ? money(billingSummary.amountDue) : "—"}</p></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">Receptionist call / new lead</p><p className="mt-1 text-2xl font-black">$2</p><p className="mt-1 text-xs font-bold text-slate-500">A lead saved from the same call counts once.</p></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">New chat</p><p className="mt-1 text-2xl font-black">$1</p></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">50 SMS parts</p><p className="mt-1 text-2xl font-black">$1</p><p className="mt-1 text-xs font-bold text-slate-500">{Number(usageSummary?.smsPartRemainder || 0)}/50 toward the next point</p></div></div>
+      <div className="mt-4 rounded-2xl border border-slate-200 p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Last successful payment</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentDate(lastPayment)}</p></div>
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
       <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
     </SectionPanel></>;

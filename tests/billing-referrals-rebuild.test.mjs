@@ -2,10 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MAX_MONTHLY_REFERRALS,
-  calculateBillingSummary,
-  messageBundleCount,
-  messagePartBlocksCrossed,
+  MESSAGE_PARTS_PER_BUNDLE,
+  MONTHLY_BASE_CENTS,
+  PER_CHAT_CENTS,
+  PER_LEAD_CENTS,
+  PER_MESSAGE_BUNDLE_CENTS,
   referralDiscountPercent,
+  smsUsageResult,
+  USAGE_CHARGE_THRESHOLD_POINTS,
+  USAGE_POINT_CENTS,
+  usageThresholdResult,
 } from "../app/lib/billingPricing.js";
 import {
   billingMessageEventData,
@@ -20,36 +26,27 @@ import {
 } from "../app/lib/stripeUsageBilling.js";
 import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
 
-test("billing uses exact base, lead, chat, and completed SMS-part block prices", () => {
-  const summary = calculateBillingSummary({
-    leadCount: 4,
-    chatCount: 3,
-    messagePartCount: 51,
-    messagePartBlockCount: 1,
-    messagePartRemainder: 1,
-    messageCount: 7,
-  });
-  assert.equal(summary.monthlyBaseCents, 5000);
-  assert.equal(summary.leadUsageCents, 800);
-  assert.equal(summary.chatUsageCents, 300);
-  assert.equal(summary.messagePartBlockCount, 1);
-  assert.equal(summary.messagePartRemainder, 1);
-  assert.equal(summary.messagePartUsageCents, 100);
-  assert.equal(summary.messageUsageCents, 400);
-  assert.equal(summary.subtotalCents, 6200);
-  assert.equal(summary.amountDue, 6200);
+test("billing prices live in code and usage charges at exact twenty-dollar intervals", () => {
+  assert.equal(MONTHLY_BASE_CENTS, 5000);
+  assert.equal(PER_LEAD_CENTS, 200);
+  assert.equal(PER_CHAT_CENTS, 100);
+  assert.equal(PER_MESSAGE_BUNDLE_CENTS, 100);
+  assert.equal(MESSAGE_PARTS_PER_BUNDLE, 50);
+  assert.equal(USAGE_CHARGE_THRESHOLD_POINTS, 20);
+  assert.equal(USAGE_POINT_CENTS, 100);
 });
 
 test("SMS billing charges only when a rolling 50-part threshold is reached", () => {
-  assert.equal(messageBundleCount(0), 0);
-  assert.equal(messageBundleCount(1), 0);
-  assert.equal(messageBundleCount(49), 0);
-  assert.equal(messageBundleCount(50), 1);
-  assert.equal(messageBundleCount(51), 1);
-  assert.equal(messageBundleCount(100), 2);
-  assert.equal(messagePartBlocksCrossed(30, 49), 0);
-  assert.equal(messagePartBlocksCrossed(30, 50), 1);
-  assert.equal(messagePartBlocksCrossed(90, 151), 2);
+  assert.deepEqual(smsUsageResult(0, 49), { addedPoints: 0, remainderParts: 49 });
+  assert.deepEqual(smsUsageResult(49, 1), { addedPoints: 1, remainderParts: 0 });
+  assert.deepEqual(smsUsageResult(30, 70), { addedPoints: 2, remainderParts: 0 });
+  assert.deepEqual(smsUsageResult(40, 61), { addedPoints: 2, remainderParts: 1 });
+});
+
+test("usage charges exact twenty-point intervals and carries the remainder", () => {
+  assert.deepEqual(usageThresholdResult(19, 1), { totalPoints: 20, chargeCount: 1, chargeDue: true, chargePoints: 20, remainderPoints: 0 });
+  assert.deepEqual(usageThresholdResult(19, 2), { totalPoints: 21, chargeCount: 1, chargeDue: true, chargePoints: 20, remainderPoints: 1 });
+  assert.deepEqual(usageThresholdResult(0, 42), { totalPoints: 42, chargeCount: 2, chargeDue: true, chargePoints: 40, remainderPoints: 2 });
 });
 
 test("referral savings are ten percent each and capped at five referrals", () => {
@@ -57,10 +54,6 @@ test("referral savings are ten percent each and capped at five referrals", () =>
   assert.equal(referralDiscountPercent(0), 0);
   assert.equal(referralDiscountPercent(3), 30);
   assert.equal(referralDiscountPercent(50), 50);
-  const summary = calculateBillingSummary({ leadCount: 1, referralCount: 5 });
-  assert.equal(summary.subtotalCents, 5200);
-  assert.equal(summary.referralSavingsCents, 2600);
-  assert.equal(summary.amountDue, 2600);
 });
 
 test("durable billing ledger IDs are deterministic and do not expose source values", () => {
@@ -114,29 +107,9 @@ test("only confirmed Stripe missing-resource responses are treated as missing", 
 
 test("a transient subscription lookup failure cannot create a duplicate subscription", async () => {
   let creates = 0;
-  const catalog = {
-    plansProductId: "prod_base",
-    basePriceId: "price_base",
-    leadProductId: "prod_lead",
-    leadMeterId: "meter_lead",
-    leadPriceId: "price_lead",
-    chatProductId: "prod_chat",
-    chatMeterId: "meter_chat",
-    chatPriceId: "price_chat",
-    messageProductId: "prod_message",
-    messageMeterId: "meter_message",
-    messagePriceId: "price_message",
-  };
-  const configDocument = {
-    async get() { return { exists: true, data: () => catalog }; },
-    async set() {},
-  };
-  const db = {
-    collection(name) {
-      assert.equal(name, "systemConfig");
-      return { doc() { return configDocument; } };
-    },
-  };
+  const previousPrice = process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
+  process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = "price_base";
+  const db = {};
   const stripe = {
     customers: { async update() {} },
     prices: {
@@ -153,18 +126,24 @@ test("a transient subscription lookup failure cannot create a duplicate subscrip
       async create() { creates += 1; return { id: "sub_duplicate", status: "active" }; },
     },
   };
-  await assert.rejects(
-    ensureCustomerBillingSubscription({
-      stripe,
-      db,
-      clientId: "client",
-      customerId: "cus_1",
-      paymentMethodId: "pm_1",
-      businessName: "Client",
-      uid: "owner",
-      existingSubscriptionId: "sub_existing",
-    }),
-    /temporary network failure/
-  );
-  assert.equal(creates, 0);
+  try {
+    await assert.rejects(
+      ensureCustomerBillingSubscription({
+        stripe,
+        db,
+        clientId: "client",
+        customerId: "cus_1",
+        paymentMethodId: "pm_1",
+        businessName: "Client",
+        uid: "owner",
+        existingSubscriptionId: "sub_existing",
+        persist: false,
+      }),
+      /temporary network failure/
+    );
+    assert.equal(creates, 0);
+  } finally {
+    if (previousPrice === undefined) delete process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
+    else process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = previousPrice;
+  }
 });

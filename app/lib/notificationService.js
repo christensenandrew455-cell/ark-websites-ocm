@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { isStandardRole } from "./accountRoles";
 import { getAdminMessaging } from "./firebase-admin";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
 
@@ -103,7 +104,7 @@ async function notificationDevices(db, clientId, { ownerOnly = false, uid = "" }
   return snapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token))
-    .filter((device) => !ownerOnly || text(device.role) === "customer")
+    .filter((device) => !ownerOnly || isStandardRole(text(device.role)))
     .filter((device) => !uid || text(device.uid) === uid);
 }
 
@@ -216,6 +217,31 @@ export async function sendNewLeadNotification({ db, clientId, leadId }) {
   return summary;
 }
 
+export async function sendAccountPushNotification({ db, clientId, notification, type, route = "/settings?section=payment", eventId = "" }) {
+  const devices = await notificationDevices(db, clientId, { ownerOnly: true });
+  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
+  const results = await sendToDevices(devices, {
+    notification,
+    data: { type: text(type), route: text(route), clientId, eventId: text(eventId) || `${text(type)}-${Date.now()}` },
+    android: { priority: "high", notification: { channelId: "account-alerts", sound: "default", tag: `${text(type)}-${clientId}`, defaultVibrateTimings: true } },
+  });
+  const batch = db.batch();
+  let sent = 0;
+  let failed = 0;
+  results.forEach(({ device, response }) => {
+    if (response.success) {
+      sent += 1;
+      batch.set(device.ref, { lastPushAt: FieldValue.serverTimestamp(), lastPushError: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    } else {
+      failed += 1;
+      if (isInvalidTarget(response.error)) batch.delete(device.ref);
+      else batch.set(device.ref, { lastPushError: text(response.error?.message || response.error?.code), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+  });
+  await batch.commit();
+  return { attempted: devices.length, sent, failed };
+}
+
 export async function sendUnreadLeadReminders(db) {
   const connectionsSnapshot = await db.collection("connections").get();
   const now = Date.now();
@@ -237,7 +263,7 @@ export async function sendUnreadLeadReminders(db) {
     const devices = devicesSnapshot.docs
       .map((document) => ({ ref: document.ref, ...document.data() }))
       .filter((device) => {
-        if (text(device.role) !== "customer") return false;
+        if (!isStandardRole(text(device.role))) return false;
         if (device.notificationsEnabled === false || !text(device.token)) return false;
         if (Number(device.unreadLeadCount || 0) <= 0) return false;
         if (asMillis(device.lastViewedLeadsAt) >= lastLeadAt) return false;

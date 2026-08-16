@@ -65,6 +65,11 @@ export async function disableCustomer(clientId, actorUid, extra = {}) {
 
 export async function restoreCustomer(clientId, actorUid) {
   const { db, businessRef, business } = await readCustomer(clientId);
+  if (business.billingPastDue === true || business.usageSuspended === true) {
+    const error = new Error("This account is disabled for payment. It restores automatically only after payment succeeds.");
+    error.code = "PAYMENT_RESTRICTED";
+    throw error;
+  }
   const uid = text(business.uid);
   if (uid) await getAdminAuth().updateUser(uid, { disabled: false });
 
@@ -208,6 +213,7 @@ export async function deleteCustomerPermanently(clientId) {
   await Promise.all([
     db.recursiveDelete(businessRef),
     db.recursiveDelete(db.collection("ocmClients").doc(clientId)),
+    ...[...accountDocuments.values()].map((document) => db.recursiveDelete(document.ref)),
     deleteQueryDocuments(db.collection("stripeWebhookEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("messagingComplianceEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(db.collection("deletedAccountAudit").where("clientId", "==", clientId)),
@@ -216,9 +222,11 @@ export async function deleteCustomerPermanently(clientId) {
 
   const batch = db.batch();
   batch.delete(db.collection("connections").doc(clientId));
-  accountDocuments.forEach((document, accountUid) => batch.delete(db.collection("accounts").doc(accountUid)));
-  authUids.forEach((accountUid) => batch.delete(db.collection("accountVerificationChallenges").doc(accountUid)));
-  if (uid) batch.delete(db.collection("accounts").doc(uid));
+  authUids.forEach((accountUid) => {
+    batch.delete(db.collection("accountVerificationChallenges").doc(accountUid));
+    batch.delete(db.collection("pendingOwnerSignups").doc(accountUid));
+  });
+  if (uid && !accountDocuments.has(uid)) batch.delete(db.collection("accounts").doc(uid));
   if (businessNameKey) batch.delete(db.collection("businessNameRegistry").doc(businessNameKey));
   phoneRegistryIds.forEach((phoneId) => batch.delete(db.collection("accountPhoneRegistry").doc(phoneId)));
   connectionPhoneIds.forEach((phoneId) => batch.delete(db.collection("connectionPhoneRegistry").doc(phoneId)));

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { readAccountVerificationStatus, sendAccountVerificationCodes, updateAccountVerificationContact, verifyAccountCodes } from "../../../lib/accountVerification";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
@@ -17,8 +18,7 @@ async function authorize(request) {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
     const accountSnapshot = await getAdminDb().collection("accounts").doc(decoded.uid).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : null;
-    const allowedStatuses = new Set(["pending_verification", "pending_business_setup", "pending_payment", "active"]);
-    if (!account || account.role !== "customer" || !allowedStatuses.has(String(account.status || ""))) return { response: NextResponse.json({ error: "An owner account in setup is required." }, { status: 403 }) };
+    if (!account || !isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
     return { decoded, account };
   } catch {
     return { response: NextResponse.json({ error: "Your sign-in expired. Sign in again." }, { status: 401 }) };

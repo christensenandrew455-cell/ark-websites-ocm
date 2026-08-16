@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { deleteCustomerPermanently } from "../../../lib/customerLifecycle";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
@@ -13,7 +14,7 @@ export async function POST(request) {
   if (user.response) return user.response;
   const decoded = user.decodedToken;
   const clientId = text(decoded.clientId);
-  if (decoded.role !== "customer" || !clientId) return NextResponse.json({ error: "An owner account is required." }, { status: 403 });
+  if (!isStandardRole(decoded.role) || !clientId) return NextResponse.json({ error: "An owner account is required." }, { status: 403 });
 
   try {
     const db = getAdminDb();

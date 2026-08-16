@@ -1,0 +1,86 @@
+import { PUSH_NOTIFICATION_COPY } from "./notificationCopy.js";
+
+export const NOTIFICATION_PREVIEW_CATALOG = Object.freeze([
+  { id: "new-lead", category: "Notification", surface: "push", severity: "info", title: PUSH_NOTIFICATION_COPY.lead.title, message: PUSH_NOTIFICATION_COPY.lead.body, actionLabel: "Review lead" },
+  { id: "new-message", category: "Notification", surface: "push", severity: "info", title: PUSH_NOTIFICATION_COPY.message.title, message: PUSH_NOTIFICATION_COPY.message.body, actionLabel: "Open chat" },
+  { id: "help-update", category: "Notification", surface: "push", severity: "info", title: PUSH_NOTIFICATION_COPY.helpUpdate.title, message: PUSH_NOTIFICATION_COPY.helpUpdate.body, actionLabel: "View update" },
+  { id: "daily-review", category: "Notification", surface: "in-app", severity: "info", title: "Daily review", message: "Go review your clients.", actionLabel: "Review clients" },
+  { id: "payment-failed", category: "Notification", surface: "push", severity: "error", title: PUSH_NOTIFICATION_COPY.paymentFailed.title, message: PUSH_NOTIFICATION_COPY.paymentFailed.body, actionLabel: "Update payment method" },
+  { id: "payment-restored", category: "Notification", surface: "push", severity: "success", title: PUSH_NOTIFICATION_COPY.paymentRestored.title, message: PUSH_NOTIFICATION_COPY.paymentRestored.body, actionLabel: "Open ARK" },
+  { id: "payment-banner", category: "Warning", surface: "banner", severity: "error", title: "You need to update your payment method.", message: "Your receptionist, new leads, and chats are paused. Update the payment method within seven days to keep the account.", actionLabel: "Update payment method" },
+  { id: "billing-refresh-failed", category: "Error", surface: "banner", severity: "error", title: "Payment status couldn’t refresh", message: "Connect to the internet, then try again.", actionLabel: "Try again" },
+  { id: "payment-setup-failed", category: "Error", surface: "form", severity: "error", title: "Payment setup failed", message: "Your payment setup could not be completed. Update your payment method or try again.", actionLabel: "Try again" },
+  { id: "payment-portal-failed", category: "Error", surface: "banner", severity: "error", title: "Billing settings could not open", message: "Something went wrong. Reload and try again.", actionLabel: "Try again" },
+
+  { id: "verification-codes-sent", category: "Notification", surface: "in-app", severity: "success", title: "Verification codes sent", message: "Check the account email and phone for separate four-digit codes.", actionLabel: "Enter codes" },
+  { id: "verification-contact-updated", category: "Notification", surface: "in-app", severity: "success", title: "Contact details updated", message: "Contact details updated. We sent fresh verification codes.", actionLabel: "Enter codes" },
+  { id: "verification-code-required", category: "Error", surface: "form", severity: "error", title: "Both codes are required", message: "Enter both four-digit codes.", actionLabel: "Try again" },
+  { id: "verification-code-incorrect", category: "Error", surface: "form", severity: "error", title: "The codes do not match", message: "One or both codes are incorrect.", actionLabel: "Try again" },
+  { id: "verification-code-expired", category: "Error", surface: "form", severity: "error", title: "The codes expired", message: "Those codes expired. Request new codes.", actionLabel: "Resend codes" },
+  { id: "verification-too-many", category: "Error", surface: "form", severity: "error", title: "Too many attempts", message: "Too many incorrect attempts. Request new codes.", actionLabel: "Resend codes" },
+  { id: "verification-contact-changed", category: "Error", surface: "form", severity: "error", title: "Contact information changed", message: "Your email or phone changed. Enter the newest codes.", actionLabel: "Try again" },
+  { id: "verification-delivery-failed", category: "Error", surface: "form", severity: "error", title: "Codes could not be delivered", message: "One or both codes could not be delivered. Check your connection and try Resend.", actionLabel: "Resend codes" },
+  { id: "verification-account-expired", category: "Error", surface: "dialog", severity: "error", title: "Verification time expired", message: "The verification window ended. Sign out and start signup again.", actionLabel: "Sign out" },
+  { id: "verification-email-invalid", category: "Error", surface: "form", severity: "error", title: "Invalid email address", message: "Enter a valid email address.", actionLabel: "Edit email" },
+  { id: "verification-phone-invalid", category: "Error", surface: "form", severity: "error", title: "Invalid phone number", message: "Enter a valid 10-digit U.S. phone number.", actionLabel: "Edit phone" },
+  { id: "verification-email-taken", category: "Error", surface: "form", severity: "error", title: "Email already registered", message: "That email address is already registered.", actionLabel: "Edit email" },
+  { id: "verification-phone-taken", category: "Error", surface: "form", severity: "error", title: "Phone already registered", message: "That phone number is already registered.", actionLabel: "Edit phone" },
+
+  { id: "temporary-signup-expired", category: "Error", surface: "dialog", severity: "error", title: "Temporary signup expired", message: "This temporary signup expired. Sign out and start again.", actionLabel: "Start again" },
+  { id: "signup-save-failed", category: "Error", surface: "form", severity: "error", title: "Business information was not saved", message: "Unable to save business information right now.", actionLabel: "Try again" },
+  { id: "signup-phone-invalid", category: "Error", surface: "form", severity: "error", title: "Invalid signup phone", message: "Enter a 10-digit phone number.", actionLabel: "Edit phone" },
+  { id: "signup-password-short", category: "Error", surface: "form", severity: "error", title: "Password is too short", message: "Use a password with at least 8 characters.", actionLabel: "Edit password" },
+  { id: "signup-password-mismatch", category: "Error", surface: "form", severity: "error", title: "Passwords do not match", message: "The two passwords do not match.", actionLabel: "Edit password" },
+  { id: "signup-legal-required", category: "Error", surface: "form", severity: "error", title: "Agreement required", message: "You must agree to the Terms of Use and Privacy Policy before continuing.", actionLabel: "Review policies" },
+  { id: "signup-business-taken", category: "Error", surface: "form", severity: "error", title: "Business already registered", message: "That business name is already registered. Use a different business name.", actionLabel: "Edit business" },
+  { id: "signup-email-taken", category: "Error", surface: "form", severity: "error", title: "Email already registered", message: "That email address is already registered.", actionLabel: "Edit email" },
+  { id: "signup-phone-taken", category: "Error", surface: "form", severity: "error", title: "Phone already registered", message: "That phone number is already registered.", actionLabel: "Edit phone" },
+
+  { id: "sign-in-required", category: "Error", surface: "form", severity: "error", title: "Sign-in information required", message: "Enter the required sign-in information.", actionLabel: "Try again" },
+  { id: "sign-in-incorrect", category: "Error", surface: "form", severity: "error", title: "Could not sign in", message: "Business name or password is incorrect.", actionLabel: "Try again" },
+  { id: "account-unavailable", category: "Error", surface: "dialog", severity: "error", title: "Account unavailable", message: "This account is not available.", actionLabel: "Close" },
+  { id: "session-expired", category: "Error", surface: "dialog", severity: "error", title: "Your session expired", message: "Sign in again to continue.", actionLabel: "Sign in" },
+  { id: "password-reset-sent", category: "Notification", surface: "in-app", severity: "success", title: "Reset email sent", message: "Check the account email for a password reset link.", actionLabel: "Back to sign in" },
+  { id: "password-reset-failed", category: "Error", surface: "form", severity: "error", title: "Reset email could not be sent", message: "Unable to send the reset email right now.", actionLabel: "Try again" },
+
+  { id: "message-queued", category: "Notification", surface: "in-app", severity: "success", title: "Message queued", message: "Your message was queued for delivery.", actionLabel: "Close" },
+  { id: "message-delivery-failed", category: "Error", surface: "banner", severity: "error", title: "Message not delivered", message: "The message could not be delivered.", actionLabel: "Try again" },
+  { id: "message-opted-out", category: "Error", surface: "banner", severity: "warning", title: "Customer opted out", message: "This customer opted out of text messages. They must text START before you can message them again.", actionLabel: "Close" },
+  { id: "message-phone-invalid", category: "Error", surface: "form", severity: "warning", title: "Lead phone unavailable", message: "This lead does not have a valid phone number for text messaging.", actionLabel: "Close" },
+  { id: "message-contact-blocked", category: "Error", surface: "dialog", severity: "warning", title: "Messaging blocked", message: "Messaging with this phone number was blocked when its conversation was deleted.", actionLabel: "Close" },
+  { id: "messages-unavailable", category: "Error", surface: "banner", severity: "warning", title: "Messages are unavailable", message: "Messages are not available for this account right now.", actionLabel: "Close" },
+  { id: "connected-number-missing", category: "Error", surface: "dialog", severity: "warning", title: "Connected number needed", message: "This business does not have a connected phone number for messaging.", actionLabel: "Close" },
+
+  { id: "lead-accepted", category: "Notification", surface: "in-app", severity: "success", title: "Lead accepted", message: "The lead was moved to Clients.", actionLabel: "View clients" },
+  { id: "lead-unavailable", category: "Error", surface: "dialog", severity: "warning", title: "Lead unavailable", message: "That estimate request is no longer available.", actionLabel: "Close" },
+  { id: "lead-accept-failed", category: "Error", surface: "banner", severity: "error", title: "Lead could not be accepted", message: "Could not accept this estimate request.", actionLabel: "Try again" },
+  { id: "lead-decline-failed", category: "Error", surface: "banner", severity: "error", title: "Decline notice not sent", message: "Could not send the client decline notice.", actionLabel: "Try again" },
+  { id: "client-saved", category: "Notification", surface: "in-app", severity: "success", title: "Client saved", message: "Client changes were saved.", actionLabel: "Close" },
+  { id: "client-delete-failed", category: "Error", surface: "banner", severity: "error", title: "Client not deleted", message: "Could not delete the client.", actionLabel: "Try again" },
+
+  { id: "help-request-sent", category: "Notification", surface: "in-app", severity: "success", title: "Help request sent", message: "Help request sent. ARK can review it directly from the app.", actionLabel: "View history" },
+  { id: "help-request-open", category: "Error", surface: "banner", severity: "warning", title: "Help request already open", message: "You already have an open help request. Check Help History for its status or ARK's reply.", actionLabel: "View history" },
+  { id: "help-question-required", category: "Error", surface: "form", severity: "warning", title: "Question required", message: "Ask a question about the app.", actionLabel: "Try again" },
+  { id: "help-ai-unavailable", category: "Error", surface: "banner", severity: "error", title: "AI help unavailable", message: "AI help is temporarily unavailable. Open Docs or try again.", actionLabel: "Open Docs" },
+  { id: "help-payment-restricted", category: "Error", surface: "banner", severity: "error", title: "Help requests paused", message: "Help requests are unavailable while the account is payment-restricted. Update the payment method to restore full access.", actionLabel: "Update payment method" },
+
+  { id: "settings-saved", category: "Notification", surface: "in-app", severity: "success", title: "Changes saved", message: "Your account changes were saved.", actionLabel: "Close" },
+  { id: "save-failed", category: "Error", surface: "banner", severity: "error", title: "Changes were not saved", message: "Check the connection and try again.", actionLabel: "Try again" },
+  { id: "load-failed", category: "Error", surface: "banner", severity: "error", title: "Could not load account information", message: "Reload the screen and try again.", actionLabel: "Reload" },
+  { id: "data-saved", category: "Notification", surface: "in-app", severity: "success", title: "Client data saved", message: "Client data saved.", actionLabel: "Close" },
+  { id: "data-download-failed", category: "Error", surface: "banner", severity: "error", title: "Client data not downloaded", message: "Client data could not be downloaded.", actionLabel: "Try again" },
+  { id: "data-download-restricted", category: "Error", surface: "banner", severity: "error", title: "Download unavailable", message: "Client-data downloads are unavailable while the account is payment-restricted.", actionLabel: "Update payment method" },
+  { id: "policy-acceptance-required", category: "Warning", surface: "dialog", severity: "warning", title: "Updated policies", message: "Accept the current Terms of Use and Privacy Policy.", actionLabel: "Review policies" },
+  { id: "account-delete-failed", category: "Error", surface: "dialog", severity: "error", title: "Account not deleted", message: "Something went wrong. Reload and try again.", actionLabel: "Try again" },
+
+  { id: "no-internet", category: "Error", surface: "banner", severity: "error", title: "No internet connection", message: "Connect to the internet, then try again.", actionLabel: "Try again" },
+  { id: "notifications-denied", category: "Error", surface: "banner", severity: "warning", title: "Notifications are off", message: "Allow notifications in phone settings to receive new-lead and account alerts.", actionLabel: "Open settings" },
+  { id: "notification-save-failed", category: "Error", surface: "banner", severity: "error", title: "Notification setting not saved", message: "Could not update notification settings.", actionLabel: "Try again" },
+  { id: "permission-required", category: "Error", surface: "dialog", severity: "warning", title: "Permission required", message: "Allow this permission in phone settings to use the feature.", actionLabel: "Open settings" },
+  { id: "file-saver-unavailable", category: "Error", surface: "dialog", severity: "error", title: "App update required", message: "The Android file saver is not available in this app build. Update the app and try again.", actionLabel: "Close" },
+  { id: "generic-error", category: "Error", surface: "banner", severity: "error", title: "Something went wrong", message: "Something went wrong. Reload and try again.", actionLabel: "Reload" },
+]);
+
+export function notificationPreviewById(id) {
+  return NOTIFICATION_PREVIEW_CATALOG.find((item) => item.id === id) || null;
+}

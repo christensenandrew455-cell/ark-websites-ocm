@@ -12,6 +12,7 @@ import {
 } from "../../lib/leadContactFields";
 import { mergeablePropertyMatches } from "../../lib/intakeLeadRecords";
 import { sendNewLeadNotification } from "../../lib/notificationService";
+import { recordLeadUsage } from "../../lib/usageThresholdBilling";
 import {
   createJob,
   mergeJobs,
@@ -266,6 +267,9 @@ export async function POST(request) {
     if (suppliedBillingEventRef) {
       const existingEvent = await suppliedBillingEventRef.get();
       if (existingEvent.exists) {
+        await recordLeadUsage({ db, clientId, sourceId: suppliedBillingEventRef.id, ledgerRef: suppliedBillingEventRef }).catch((usageError) => {
+          if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Unable to finish duplicate lead usage accounting", usageError);
+        });
         return Response.json({
           ok: true,
           id: text(existingEvent.data().leadId),
@@ -360,6 +364,9 @@ export async function POST(request) {
       if (billingEventRef && alreadyExists(commitError)) {
         const existingEvent = await billingEventRef.get();
         if (existingEvent.exists) {
+          await recordLeadUsage({ db, clientId, sourceId: billingEventRef.id, ledgerRef: billingEventRef }).catch((usageError) => {
+            if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Unable to finish duplicate lead usage accounting", usageError);
+          });
           return Response.json({
             ok: true,
             id: text(existingEvent.data().leadId),
@@ -374,8 +381,14 @@ export async function POST(request) {
     }
 
     if (sectionKey === "contactedMe" && !duplicateSubmission) {
+      let usagePayment = null;
       try {
-        await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
+        usagePayment = (await recordLeadUsage({ db, clientId, sourceId: billingEventRef.id, ledgerRef: billingEventRef })).payment || null;
+      } catch (usageError) {
+        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Lead saved but usage accounting needs a retry", usageError);
+      }
+      try {
+        if (usagePayment?.status !== "declined") await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
       } catch (notificationError) {
         console.error("Lead saved but push notification delivery failed", notificationError);
       }

@@ -11,7 +11,7 @@ service cloud.firestore {
 
     function isActiveOwner(clientId) {
       return signedIn()
-        && request.auth.token.role == "customer"
+        && request.auth.token.role == "standard"
         && request.auth.token.clientId == clientId
         && (!('identityVerificationRequired' in request.auth.token)
           || request.auth.token.identityVerificationRequired == false

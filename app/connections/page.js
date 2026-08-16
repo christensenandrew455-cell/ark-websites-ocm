@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "../components/ReceptionistBusinessForm";
 import { requestAppConfirmation } from "../lib/appConfirmation";
-import { normalizeClientId } from "../lib/valueUtils";
 
 const EMPTY_ACCOUNT = {
   clientId: "",
@@ -20,18 +19,15 @@ const EMPTY_ACCOUNT = {
   receptionistConfigured: false,
   receptionistEnabled: true,
   receptionistPhone: "",
-  billing: { phase: "current", restricted: false, showNotice: false, offenseNumber: 0 },
+  billing: { phase: "current", restricted: false, showNotice: false },
 };
 
 const EMPTY_CUSTOMER = {
   businessName: "",
-  clientId: "",
   ownerName: "",
   accountEmail: "",
   temporaryPassword: "",
   phone: "",
-  accountName: "",
-  connectionPhone: "",
 };
 
 function formatDate(value) {
@@ -39,14 +35,6 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
-}
-
-function formatMoney(amount = 0, currency = "usd") {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: String(currency || "usd").toUpperCase() }).format(Number(amount || 0) / 100);
-  } catch {
-    return `$${(Number(amount || 0) / 100).toFixed(2)}`;
-  }
 }
 
 function formatPhoneInput(value) {
@@ -83,7 +71,6 @@ function Pill({ children }) {
 }
 
 function AccountStatus({ account }) {
-  if (account.status === "approved_pending_payment") return <Pill>Payment Setup</Pill>;
   if (!account.receptionistConfigured) return <Pill>Setup Pending</Pill>;
   if (!account.receptionistEnabled) return <Pill>AI Off</Pill>;
   return <span className="rounded-full bg-slate-950 px-2.5 py-1 text-[9px] font-black uppercase text-white">AI Ready</span>;
@@ -246,12 +233,7 @@ export default function ConnectionsPage() {
   }, [adminFetch, selected]);
 
   function updateNewCustomer(field, value) {
-    setNewCustomer((current) => {
-      const next = { ...current, [field]: value };
-      if (field === "businessName" && (!current.clientId || current.clientId === normalizeClientId(current.businessName))) next.clientId = normalizeClientId(value);
-      if (field === "businessName" && !current.accountName) next.accountName = value;
-      return next;
-    });
+    setNewCustomer((current) => ({ ...current, [field]: value }));
   }
 
   async function createCustomer(event) {
@@ -263,21 +245,15 @@ export default function ConnectionsPage() {
         method: "POST",
         body: JSON.stringify({
           businessName: newCustomer.businessName,
-          clientId: newCustomer.clientId,
           ownerName: newCustomer.ownerName,
           accountEmail: newCustomer.accountEmail,
           temporaryPassword: newCustomer.temporaryPassword,
           businessPhone: newCustomer.phone,
-          notificationPhone: newCustomer.phone,
-          notificationEmail: newCustomer.accountEmail,
-          sourceLabel: newCustomer.accountName || newCustomer.businessName,
-          receptionistPhone: newCustomer.connectionPhone,
         }),
       });
-      await loadBusinesses(result.clientId);
       setNewCustomer(EMPTY_CUSTOMER);
       setShowCreate(false);
-      setMessage(`${result.businessName} was created. Open the account to finish its business information.`);
+      setMessage(`${result.businessName}'s temporary signup was created. It expires in six hours; the owner must sign in and finish business and payment setup.`);
     } catch (createError) {
       setError(createError.message);
     } finally {
@@ -408,17 +384,15 @@ export default function ConnectionsPage() {
         {showCreate && (
           <form onSubmit={createCustomer} className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8">
             <h2 className="text-xl font-black">New Customer</h2>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">This creates a six-hour temporary signup. The regular account is created only after the owner saves a payment method.</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <Field label="Account name"><Input value={newCustomer.accountName} onChange={(event) => updateNewCustomer("accountName", event.target.value)} placeholder="Name shown inside ARK" /></Field>
               <Field label="Business name"><Input value={newCustomer.businessName} onChange={(event) => updateNewCustomer("businessName", event.target.value)} /></Field>
               <Field label="Name"><Input value={newCustomer.ownerName} onChange={(event) => updateNewCustomer("ownerName", event.target.value)} /></Field>
               <Field label="Email"><Input type="email" value={newCustomer.accountEmail} onChange={(event) => updateNewCustomer("accountEmail", event.target.value)} /></Field>
               <Field label="Phone"><Input value={newCustomer.phone} onChange={(event) => updateNewCustomer("phone", event.target.value)} /></Field>
-              <Field label="Connection phone number" hint="The phone number callers use to reach this customer's AI receptionist."><Input value={newCustomer.connectionPhone} onChange={(event) => updateNewCustomer("connectionPhone", event.target.value)} placeholder="+1 774 245 3383" /></Field>
               <Field label="Temporary password"><Input type="password" value={newCustomer.temporaryPassword} onChange={(event) => updateNewCustomer("temporaryPassword", event.target.value)} /></Field>
-              <Field label="Client ID"><Input value={newCustomer.clientId} onChange={(event) => updateNewCustomer("clientId", normalizeClientId(event.target.value))} /></Field>
             </div>
-            <button disabled={isCreating} className="mt-4 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{isCreating ? "Creating…" : "Create Customer"}</button>
+            <button disabled={isCreating} className="mt-4 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{isCreating ? "Creating…" : "Create Temporary Signup"}</button>
           </form>
         )}
 
@@ -444,10 +418,10 @@ export default function ConnectionsPage() {
               <div className="mt-6"><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} adminMode /></div>
             </section>
 
-            {form.billing?.showNotice && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"><h2 className="text-lg font-black">Payment Status</h2><div className="mt-3 grid grid-cols-2 gap-3 text-sm"><div><p className="text-[10px] font-black uppercase text-slate-500">Phase</p><p className="font-black">{form.billing.phase.replaceAll("-", " ")}</p></div><div><p className="text-[10px] font-black uppercase text-slate-500">Amount due</p><p className="font-black">{formatMoney(form.billing.amountDue, form.billing.currency)}</p></div></div></section>}
+            {form.billing?.showNotice && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"><h2 className="text-lg font-black">Payment Status</h2><div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><div><p className="text-[10px] font-black uppercase text-slate-500">Phase</p><p className="font-black">{form.billing.phase.replaceAll("_", " ")}</p></div><div><p className="text-[10px] font-black uppercase text-slate-500">Next retry</p><p className="font-black">{formatDate(form.billing.retryAt)}</p></div><div><p className="text-[10px] font-black uppercase text-slate-500">Automatic deletion</p><p className="font-black">{formatDate(form.billing.recoveryEndsAt)}</p></div></div></section>}
             <LegalAgreementPanel account={form} />
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Request History</h2><CountBadge value={requestHistory.length} /></div><div className="mt-4 space-y-2">{requestHistory.map((item) => <article key={item.id} className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-3"><div><p className="text-sm font-black">{item.subject}</p><p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">{item.type} · {formatDate(item.createdAt)}</p></div><RequestStatus status={item.status} /></div><p className="mt-2 text-xs leading-5 text-slate-600">{item.message}</p></article>)}{requestHistory.length === 0 && <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">No requests for this account.</p>}</div></section>
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><h2 className="text-lg font-black">Account Control</h2><div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]"><button type="button" disabled={lifecycleBusy} onClick={() => lifecycleAction(form.status === "disabled" ? "restore" : "disable")} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-black disabled:opacity-50">{form.status === "disabled" ? "Restore" : "Disable"}</button><button type="button" disabled={lifecycleBusy} onClick={() => lifecycleAction("delete-now")} className="rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50">Delete Permanently</button><button type="button" disabled={isSaving || form.status === "disabled"} onClick={saveProfile} className="rounded-xl bg-slate-950 px-6 py-3 text-xs font-black text-white disabled:opacity-50">{isSaving ? "Saving…" : "Save Profile"}</button></div></section>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8"><h2 className="text-lg font-black">Account Control</h2>{form.billing?.restricted && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold leading-5 text-red-800">This account is disabled for payment and restores automatically only after payment succeeds.</p>}<div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]"><button type="button" disabled={lifecycleBusy || (form.status === "disabled" && form.billing?.restricted)} onClick={() => lifecycleAction(form.status === "disabled" ? "restore" : "disable")} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-black disabled:opacity-50">{form.status === "disabled" ? form.billing?.restricted ? "Payment Update Required" : "Restore" : "Disable"}</button><button type="button" disabled={lifecycleBusy} onClick={() => lifecycleAction("delete-now")} className="rounded-xl bg-red-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50">Delete Permanently</button><button type="button" disabled={isSaving || form.status === "disabled"} onClick={saveProfile} className="rounded-xl bg-slate-950 px-6 py-3 text-xs font-black text-white disabled:opacity-50">{isSaving ? "Saving…" : "Save Profile"}</button></div></section>
           </div>
         )}
       </div>

@@ -13,10 +13,6 @@ export function normalizePersonKey(value) {
     .replace(/^-|-$/g, "");
 }
 
-export function accountTypeForBillingPlan() {
-  return ACCOUNT_TYPES.OWNER;
-}
-
 export function isBusinessAccountType(value) {
   return value === ACCOUNT_TYPES.OWNER;
 }

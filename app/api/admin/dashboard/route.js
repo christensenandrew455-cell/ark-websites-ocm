@@ -225,7 +225,7 @@ export async function GET(request) {
       websiteRequests,
       numberAssignments,
       paymentIssues,
-      deletionReview: paymentIssues.filter((item) => item.phase === "deletion-review"),
+      deletionReview: paymentIssues.filter((item) => item.phase === "deletion_due"),
       stripe,
       counts: {
         customers: businesses.length,
@@ -233,7 +233,7 @@ export async function GET(request) {
         websiteRequests: websiteRequests.length,
         needsNumbers: numberAssignments.length,
         needsPayment: paymentIssues.length,
-        deletionReview: paymentIssues.filter((item) => item.phase === "deletion-review").length,
+        deletionReview: paymentIssues.filter((item) => item.phase === "deletion_due").length,
       },
     });
   } catch (error) {

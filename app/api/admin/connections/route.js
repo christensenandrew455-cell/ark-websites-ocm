@@ -65,7 +65,7 @@ export async function GET(request) {
     .map((document) => ({ clientId: document.id, business: document.data() }))
     .filter(({ business }) => trimmedText(business.uid) !== adminUid)
     .filter(({ business }) => !adminEmail || trimmedText(business.accountEmail).toLowerCase() !== adminEmail)
-    .filter(({ business }) => ["active", "disabled", "approved_pending_payment"].includes(trimmedText(business.status || "active")));
+    .filter(({ business }) => ["active", "disabled"].includes(trimmedText(business.status || "active")));
 
   const receptionistSnapshots = eligible.length
     ? await db.getAll(...eligible.map(({ clientId }) => db.collection("ocmClients").doc(clientId).collection("settings").doc("receptionist")))

@@ -13,10 +13,11 @@ function Waiting({ children }) {
   return <main className="grid min-h-screen place-items-center bg-slate-50 p-6"><div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 text-sm font-semibold text-slate-600 shadow-sm">{children}</div></main>;
 }
 
-function requiredOnboardingPath(status) {
-  if (status === "pending_verification") return "/signup/verify";
+function requiredOnboardingPath(profile) {
+  const status = profile?.status;
   if (status === "pending_business_setup") return "/setup/business";
   if (status === "pending_payment") return "/signup/payment";
+  if (status === "active" && profile?.identityVerificationRequired && !profile?.identityVerificationVerified) return "/signup/verify";
   return "";
 }
 
@@ -26,13 +27,13 @@ export default function SignupFlowShell({ children }) {
   const { user, profile, isAdmin, loading } = useAuth();
   const onboardingPage = routeMatches(pathname, ["/signup/verify", "/setup/business", "/signup/payment"]);
   const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/docs"]);
-  const requiredPath = user && !isAdmin ? requiredOnboardingPath(profile?.status) : "";
+  const requiredPath = user && !isAdmin ? requiredOnboardingPath(profile) : "";
   const allowedPendingPath = requiredPath === "/signup/verify"
     ? pathname === "/signup/verify"
     : requiredPath === "/setup/business"
-      ? routeMatches(pathname, ["/signup/verify", "/setup/business"])
+      ? routeMatches(pathname, ["/signup", "/setup/business"])
       : requiredPath === "/signup/payment"
-        ? routeMatches(pathname, ["/signup/verify", "/setup/business", "/signup/payment"])
+        ? routeMatches(pathname, ["/setup/business", "/signup/payment"])
         : false;
 
   useEffect(() => {

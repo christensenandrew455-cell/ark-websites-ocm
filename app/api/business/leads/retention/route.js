@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import {
   cleanupExpiredLeads,
@@ -17,7 +18,7 @@ async function authorizeOwner(request) {
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
   const clientId = text(decoded.clientId);
-  if (decoded.role !== "customer" || !clientId) return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
+  if (!isStandardRole(decoded.role) || !clientId) return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   const db = getAdminDb();
   const [accountSnapshot, businessSnapshot] = await Promise.all([
     db.collection("accounts").doc(decoded.uid).get(),

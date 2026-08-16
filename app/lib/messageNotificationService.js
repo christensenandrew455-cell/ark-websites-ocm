@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { isStandardRole } from "./accountRoles";
 import { getAdminMessaging } from "./firebase-admin";
 import { MESSAGES_AVAILABLE } from "./launchFeatures";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
@@ -18,7 +19,7 @@ export async function sendInboundMessageNotification({ db, clientId, conversatio
   const devices = devicesSnapshot.docs
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token))
-    .filter((device) => text(device.role) === "customer");
+    .filter((device) => isStandardRole(text(device.role)));
   if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
 
   const collectionKey = text(conversation.collectionKey) === "clients" ? "clients" : "contactedMe";

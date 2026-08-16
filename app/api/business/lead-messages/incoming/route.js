@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE } from "../../../../lib/launchFeatures";
-import { addBillingMessageEventToTransaction } from "../../../../lib/billingMessageUsage";
+import { addBillingMessageEventToTransaction, billingMessageEventRef } from "../../../../lib/billingMessageUsage";
 import { isMessageContactBlocked } from "../../../../lib/messageContactBlocks";
 import {
   ARK_SUPPORT_URL,
@@ -14,6 +14,7 @@ import {
 } from "../../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../../lib/smsParts";
 import { sendInboundMessageNotification } from "../../../../lib/messageNotificationService";
+import { recordSmsPartUsage } from "../../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -166,6 +167,10 @@ export async function POST(request) {
     const root = db.collection("ocmClients").doc(clientId);
     const businessSnapshot = await db.collection("businesses").doc(clientId).get();
     const business = businessSnapshot.exists ? businessSnapshot.data() : {};
+    if (!businessSnapshot.exists || business.status !== "active" || business.usageSuspended === true || business.billingPastDue === true) {
+      return NextResponse.json({ ok: true, ignored: true, reason: "payment-disabled" });
+    }
+    if (business.messagesEnabled !== true) return NextResponse.json({ ok: true, ignored: true, reason: "messages-disabled" });
     const businessName = text(business.businessName || business.name) || "the business";
     const keyword = messagingKeyword(event.messageBody);
     const conversation = resolved.conversation;
@@ -173,6 +178,7 @@ export async function POST(request) {
     const inboundIndexRef = eventKey ? root.collection("telnyxInboundMessageIndex").doc(eventKey) : null;
     const messageRef = eventKey ? resolved.ref.collection("messages").doc(`inbound-${eventKey}`) : resolved.ref.collection("messages").doc();
     const parts = smsPartCount(event.messageBody);
+    const usageLedgerRef = billingMessageEventRef(db, { clientId, direction: "inbound", sourceId: event.providerMessageId || messageRef.id });
     const messageData = {
       direction: "inbound",
       body: event.messageBody,
@@ -273,9 +279,20 @@ export async function POST(request) {
       }
       return false;
     });
-    if (duplicate) return NextResponse.json({ ok: true, duplicate: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, keyword: keyword || null });
+    if (duplicate) {
+      await recordSmsPartUsage({ db, clientId, sourceId: usageLedgerRef.id, smsParts: parts, ledgerRef: usageLedgerRef }).catch((usageError) => {
+        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Unable to finish duplicate inbound usage accounting", usageError);
+      });
+      return NextResponse.json({ ok: true, duplicate: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, keyword: keyword || null });
+    }
+    let usagePayment = null;
+    try {
+      usagePayment = (await recordSmsPartUsage({ db, clientId, sourceId: usageLedgerRef.id, smsParts: parts, ledgerRef: usageLedgerRef })).payment || null;
+    } catch (usageError) {
+      if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Inbound message saved but usage accounting needs a retry", usageError);
+    }
     let notification = { attempted: 0, sent: 0, failed: 0 };
-    if (!keyword) {
+    if (!keyword && usagePayment?.status !== "declined") {
       try {
         notification = await sendInboundMessageNotification({ db, clientId, conversationId: resolved.conversationId, conversation, messageBody: event.messageBody });
       } catch (notificationError) {

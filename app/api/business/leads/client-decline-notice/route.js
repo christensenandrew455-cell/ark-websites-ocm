@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
 import { requireUser } from "../../../../lib/userRequest";
@@ -15,7 +16,7 @@ async function authorizeOwner(request) {
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
   const clientId = text(decoded.clientId);
-  if (decoded.role !== "customer" || !clientId) {
+  if (!isStandardRole(decoded.role) || !clientId) {
     return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   }
 

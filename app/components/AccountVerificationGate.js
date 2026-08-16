@@ -2,7 +2,6 @@
 
 import { signOut } from "firebase/auth";
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
 import { useAuth } from "./AuthProvider";
@@ -25,7 +24,6 @@ function editablePhone(value) {
 }
 
 export default function AccountVerificationGate() {
-  const router = useRouter();
   const { user, refreshProfile } = useAuth();
   const [status, setStatus] = useState(null);
   const [emailCode, setEmailCode] = useState("");
@@ -87,7 +85,7 @@ export default function AccountVerificationGate() {
       await user.getIdToken(true);
       window.dispatchEvent(new Event("ark-account-verified"));
       await refreshProfile();
-      router.replace(next.nextPath || "/setup/business");
+      window.location.replace(next.nextPath || "/");
     } catch (verifyError) {
       setError(verifyError.message);
     } finally {
@@ -155,14 +153,14 @@ export default function AccountVerificationGate() {
 
   return <main className="fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto bg-slate-950 px-4 py-8">
     <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 2 of 4 · Verify</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Verify</p>
       <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{expired ? "Verification time expired" : status?.verified ? "Email and phone verified" : editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
-      {!expired && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
+      {!expired && !status?.verified && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
       {expired ? <>
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold leading-6 text-red-800" role="alert">The one-hour verification window ended. This account is locked and scheduled for permanent deletion. Sign out and start signup again.</p>
       </> : status?.verified ? <>
-        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your contact information is verified. Continue to your business information.</p>
-        <button type="button" onClick={() => router.push(status.nextPath || "/setup/business")} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white">Continue</button>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your contact information is verified. Continue to the client center.</p>
+        <button type="button" onClick={async () => { await user.getIdToken(true); await refreshProfile(); window.location.replace(status.nextPath || "/"); }} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white">Continue</button>
       </> : editingContact ? <>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Update a typo here. Saving will make the old codes stop working and send fresh codes to both entries.</p>
         <form onSubmit={saveContact} className="mt-6 space-y-4">

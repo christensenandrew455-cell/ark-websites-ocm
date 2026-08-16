@@ -36,7 +36,7 @@ import {
 test("owner identity verification expires at exactly one hour without resetting", () => {
   const activatedAt = new Date("2026-08-13T12:00:00.000Z");
   const account = {
-    role: "customer",
+    role: "standard",
     accountType: "owner",
     identityVerificationRequired: true,
     identityVerificationVerified: false,

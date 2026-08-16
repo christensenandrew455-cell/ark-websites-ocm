@@ -9,10 +9,9 @@ const DEFAULT_STATUS = {
   restricted: false,
   showNotice: false,
   serviceAccess: "full",
-  offenseNumber: 0,
-  amountDue: 0,
-  currency: "usd",
-  graceEndsAt: "",
+  failureAt: "",
+  retryAt: "",
+  recoveryEndsAt: "",
   reviewAt: "",
 };
 

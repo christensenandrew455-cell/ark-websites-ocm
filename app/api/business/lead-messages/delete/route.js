@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../../lib/launchFeatures";
 import { messageContactBlockRef, normalizeMessagePhone } from "../../../../lib/messageContactBlocks";
@@ -28,7 +29,7 @@ export async function POST(request) {
   if (user.response) return user.response;
   const decoded = user.decodedToken;
   const clientId = text(decoded.clientId);
-  if (decoded.role !== "customer" || !clientId) return NextResponse.json({ error: "An owner account is required." }, { status: 403 });
+  if (!isStandardRole(decoded.role) || !clientId) return NextResponse.json({ error: "An owner account is required." }, { status: 403 });
 
   try {
     const body = await request.json();

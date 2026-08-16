@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { addBillingConversationEventToBatch, isBillableConversationData } from "../../../lib/billingConversationUsage";
@@ -10,6 +11,7 @@ import { isMessageContactBlocked, messageContactBlockId } from "../../../lib/mes
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../lib/smsParts";
 import { requireUser } from "../../../lib/userRequest";
+import { recordChatUsage, recordSmsPartUsage } from "../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +56,7 @@ async function authorizeMessaging(request) {
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
-  if (decoded.role !== "customer") return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
+  if (!isStandardRole(decoded.role)) return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   const clientId = text(decoded.clientId);
   if (!clientId) return { response: NextResponse.json({ error: "This account does not have a business workspace." }, { status: 403 }) };
   const db = getAdminDb();
@@ -70,7 +72,7 @@ async function authorizeMessaging(request) {
   const connection = connectionSnapshot.exists ? connectionSnapshot.data() : {};
   const receptionist = receptionistSnapshot.exists ? receptionistSnapshot.data() : {};
   if (text(account.clientId) !== clientId) return { response: NextResponse.json({ error: "This account does not match the requested workspace." }, { status: 403 }) };
-  if (account.role !== "customer" || account.status !== "active") return { response: NextResponse.json({ error: "This account is not active." }, { status: 403 }) };
+  if (!isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "This account is not active." }, { status: 403 }) };
   if (business.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
   const fromPhone = normalizePhone(connection.receptionistPhoneNormalized || receptionist.receptionistPhoneNormalized || connection.receptionistPhone || receptionist.receptionistPhone);
   const businessName = text(business.businessName || business.name || account.businessName || receptionist.businessName) || "the business";
@@ -313,6 +315,8 @@ export async function POST(request) {
     const batch = access.db.batch();
     const now = Date.now();
     let addedParts = smsPartCount(messageBody);
+    const messageUsageLedgers = [];
+    let conversationUsageLedger = null;
     const billingConversationSourceId = isNewConversation
       ? `chat:${provider.providerMessageId || messageRef.id}`
       : text(existingData.billingConversationSourceId);
@@ -335,7 +339,7 @@ export async function POST(request) {
         createdAt: Timestamp.fromMillis(now),
       });
       if (optInProvider.providerMessageId) {
-        addBillingMessageEventToBatch(batch, access.db, {
+        const ledgerRef = addBillingMessageEventToBatch(batch, access.db, {
           clientId: access.clientId,
           direction: "outbound",
           sourceId: optInProvider.providerMessageId,
@@ -343,6 +347,7 @@ export async function POST(request) {
           smsParts: smsPartCount(optInBody),
           occurredAt: now,
         });
+        messageUsageLedgers.push({ ref: ledgerRef, smsParts: smsPartCount(optInBody), occurredAt: now });
       }
       addedParts += smsPartCount(optInBody);
     }
@@ -363,7 +368,7 @@ export async function POST(request) {
       createdAt: Timestamp.fromMillis(now + (isNewConversation ? 1 : 0)),
     });
     if (provider.providerMessageId) {
-      addBillingMessageEventToBatch(batch, access.db, {
+      const ledgerRef = addBillingMessageEventToBatch(batch, access.db, {
         clientId: access.clientId,
         direction: "outbound",
         sourceId: provider.providerMessageId,
@@ -371,10 +376,11 @@ export async function POST(request) {
         smsParts: smsPartCount(messageBody),
         occurredAt: now + (isNewConversation ? 1 : 0),
       });
+      messageUsageLedgers.push({ ref: ledgerRef, smsParts: smsPartCount(messageBody), occurredAt: now + (isNewConversation ? 1 : 0) });
     }
 
     if (isNewConversation) {
-      addBillingConversationEventToBatch(batch, access.db, {
+      conversationUsageLedger = addBillingConversationEventToBatch(batch, access.db, {
         clientId: access.clientId,
         conversationId: key,
         sourceId: billingConversationSourceId,
@@ -399,6 +405,16 @@ export async function POST(request) {
       ...(isNewConversation ? { billingConversationSourceId, optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: "owner", ownerUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
     }, { merge: true });
     await batch.commit();
+    if (conversationUsageLedger) {
+      await recordChatUsage({ db: access.db, clientId: access.clientId, sourceId: conversationUsageLedger.id, occurredAt: now, ledgerRef: conversationUsageLedger }).catch((usageError) => {
+        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Chat saved but usage accounting needs a retry", usageError);
+      });
+    }
+    for (const usage of messageUsageLedgers) {
+      await recordSmsPartUsage({ db: access.db, clientId: access.clientId, sourceId: usage.ref.id, smsParts: usage.smsParts, occurredAt: usage.occurredAt, ledgerRef: usage.ref }).catch((usageError) => {
+        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Message saved but usage accounting needs a retry", usageError);
+      });
+    }
 
     const notice = provider.status === "provider-not-configured"
       ? "The message was saved, but this business number is not configured for Telnyx messaging."

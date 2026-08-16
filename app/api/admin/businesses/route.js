@@ -1,134 +1,103 @@
-import { randomBytes } from "node:crypto";
-import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { ACCOUNT_ROLES } from "../../../lib/accountRoles";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
 import { requireAdmin } from "../../../lib/adminRequest";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
-import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
-import {
-  BILLING_VERSION,
-  MESSAGE_PARTS_PER_BUNDLE,
-  MONTHLY_BASE_CENTS,
-  PER_CALL_CENTS,
-  PER_CHAT_CENTS,
-  PER_LEAD_CENTS,
-  PER_MESSAGE_BUNDLE_CENTS,
-} from "../../../lib/stripeUsageBilling";
+import { PRIVACY_VERSION, TERMS_VERSION } from "../../../lib/legal";
+import { createPendingOwnerSignup, deletePendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
+import { checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function normalizePhone(value) {
-  const digits = trimmedText(value).replace(/^tel:/i, "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 10) return `+1${digits}`;
-  return `+${digits}`;
+function text(value) { return String(value || "").trim(); }
+
+function safeCreationError(error) {
+  const code = text(error?.code || error?.errorInfo?.code);
+  if (code === "auth/email-already-exists") return { status: 409, message: "That login email already has an account." };
+  if (code.includes("already-exists")) return { status: 409, message: "That business name or phone number was just registered." };
+  return { status: 500, message: "Could not create the temporary customer signup. Check the server logs for details." };
 }
 
 export async function POST(request) {
   const admin = await requireAdmin(request);
   if (admin.response) return admin.response;
-  let createdUser = null;
-  let committed = false;
+  let createdUid = "";
+  let pendingSaved = false;
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const businessName = trimmedText(body.businessName);
     const ownerName = trimmedText(body.ownerName);
     const accountEmail = trimmedText(body.accountEmail).toLowerCase();
+    const accountPhone = trimmedText(body.businessPhone);
     const temporaryPassword = String(body.temporaryPassword || "");
-    const clientId = normalizeClientId(body.clientId || businessName);
-    const businessNameKey = normalizeClientId(businessName);
-    const businessPhone = trimmedText(body.businessPhone);
-    const accountPhoneNormalized = normalizeSignupPhone(businessPhone);
-    const notificationEmail = trimmedText(body.notificationEmail || accountEmail).toLowerCase();
-    const notificationPhone = trimmedText(body.notificationPhone || businessPhone);
-    const sourceLabel = trimmedText(body.sourceLabel || `${businessName} receptionist`);
-    const receptionistPhone = trimmedText(body.receptionistPhone);
-    const receptionistPhoneNormalized = normalizePhone(receptionistPhone);
+    const clientId = normalizeClientId(businessName);
+    const accountPhoneNormalized = normalizeSignupPhone(accountPhone);
 
-    if (!businessName || !ownerName || !clientId) return NextResponse.json({ error: "Business name, owner name, and client ID are required." }, { status: 400 });
+    if (!businessName || !ownerName || !clientId) return NextResponse.json({ error: "Business name and owner name are required." }, { status: 400 });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) return NextResponse.json({ error: "Enter a valid customer login email." }, { status: 400 });
-    if (notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notificationEmail)) return NextResponse.json({ error: "Enter a valid lead notification email." }, { status: 400 });
+    if (!/^\+1\d{10}$/.test(accountPhoneNormalized)) return NextResponse.json({ error: "Enter a valid 10-digit customer phone number." }, { status: 400 });
     if (temporaryPassword.length < 8) return NextResponse.json({ error: "The temporary password must be at least 8 characters." }, { status: 400 });
 
     const db = getAdminDb();
     const auth = getAdminAuth();
-    const businessRef = db.collection("businesses").doc(clientId);
-    if (!/^\+1\d{10}$/.test(accountPhoneNormalized)) return NextResponse.json({ error: "Enter a valid 10-digit customer phone number." }, { status: 400 });
-    const [businessSnapshot, existingUser, duplicatePhone, availability] = await Promise.all([
-      businessRef.get(),
-      auth.getUserByEmail(accountEmail).catch(() => null),
-      receptionistPhoneNormalized ? db.collection("connections").where("receptionistPhoneNormalized", "==", receptionistPhoneNormalized).limit(1).get() : Promise.resolve({ empty: true }),
-      checkSignupAvailability({ auth, db, businessName, accountEmail, accountPhone: businessPhone }),
-    ]);
-    if (businessSnapshot.exists) return NextResponse.json({ error: "That client ID is already in use." }, { status: 409 });
+    const availability = await checkSignupAvailability({ auth, db, businessName, accountEmail, accountPhone });
     const availabilityError = signupAvailabilityMessage(availability);
     if (availabilityError) return NextResponse.json({ error: availabilityError }, { status: 409 });
-    if (existingUser) return NextResponse.json({ error: "That login email already has an account." }, { status: 409 });
-    if (!duplicatePhone.empty) return NextResponse.json({ error: "That connection phone number is already assigned to another account." }, { status: 409 });
 
-    createdUser = await auth.createUser({ email: accountEmail, password: temporaryPassword, displayName: ownerName, emailVerified: false });
-    const claims = { role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId, accountStatus: "active", billingPlan: "standard", messagesEnabled: false };
-    await auth.setCustomUserClaims(createdUser.uid, claims);
-
-    const connectionKey = randomBytes(24).toString("hex");
-    const accountData = {
-      uid: createdUser.uid,
-      ownerUid: createdUser.uid,
+    const user = await auth.createUser({
+      email: accountEmail,
+      password: temporaryPassword,
+      displayName: ownerName,
+      emailVerified: false,
+      disabled: false,
+    });
+    createdUid = user.uid;
+    await createPendingOwnerSignup({
+      db,
+      uid: user.uid,
       clientId,
-      role: "customer",
+      signup: {
+        businessName,
+        ownerName,
+        accountEmail,
+        accountPhone,
+        accountPhoneNormalized,
+        referrerAccountId: "",
+        termsVersion: TERMS_VERSION,
+        privacyVersion: PRIVACY_VERSION,
+      },
+    });
+    pendingSaved = true;
+
+    const claims = {
+      role: ACCOUNT_ROLES.STANDARD,
       accountType: ACCOUNT_TYPES.OWNER,
       businessRole: "owner",
-      businessName,
-      businessNameKey,
-      ownerName,
-      accountEmail,
-      accountPhone: businessPhone,
-      accountPhoneNormalized,
-      status: "active",
-      verificationStatus: "not_required",
-      businessSetupComplete: false,
-      paymentSetupStatus: "admin-created",
-      billingPlan: "standard",
-      billingPlanName: "ARK AI Receptionist",
-      billingVersion: BILLING_VERSION,
-      monthlyBaseCents: MONTHLY_BASE_CENTS,
-      includedLeads: 0,
-      includedConversations: 0,
-      perLeadCents: PER_LEAD_CENTS,
-      perCallCents: PER_CALL_CENTS,
-      perChatCents: PER_CHAT_CENTS,
-      perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS,
-      messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE,
-      messagesEnabled: false,
-      createdBy: admin.decodedToken.uid,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+      clientId,
+      accountStatus: "pending_business_setup",
+      temporaryAccount: true,
     };
-    const connectionData = { clientId, businessName, ownerName, enabled: true, businessPhone, notificationPhone, notificationEmail, sourceLabel, defaultStage: "contactedMe", allowStageOverride: false, connectionKey, receptionistPhone, receptionistPhoneNormalized, updatedBy: admin.decodedToken.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
-
-    const batch = db.batch();
-    batch.set(db.collection("accounts").doc(createdUser.uid), accountData);
-    batch.set(businessRef, accountData);
-    batch.create(db.collection("businessNameRegistry").doc(businessNameKey), { clientId, businessName, ownerUid: createdUser.uid, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-    batch.create(db.collection("accountPhoneRegistry").doc(accountPhoneRegistryId(accountPhoneNormalized)), { uid: createdUser.uid, ownerUid: createdUser.uid, clientId, accountPhoneNormalized, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-    if (receptionistPhoneNormalized) batch.create(db.collection("connectionPhoneRegistry").doc(accountPhoneRegistryId(receptionistPhoneNormalized)), { clientId, receptionistPhone, receptionistPhoneNormalized, assignedBy: admin.decodedToken.uid, assignedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-    batch.set(db.collection("connections").doc(clientId), connectionData);
-    batch.set(db.collection("ocmClients").doc(clientId), { businessName, ownerUid: createdUser.uid, status: "active", businessSetupComplete: false, accountType: ACCOUNT_TYPES.OWNER, billingPlan: "standard", billingPlanName: "ARK AI Receptionist", billingVersion: BILLING_VERSION, monthlyBaseCents: MONTHLY_BASE_CENTS, perLeadCents: PER_LEAD_CENTS, perCallCents: PER_CALL_CENTS, perChatCents: PER_CHAT_CENTS, perMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, messagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, messagesEnabled: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    batch.set(db.collection("ocmClients").doc(clientId).collection("settings").doc("account"), { BusinessName: businessName, OwnerName: ownerName, AccountEmail: accountEmail, AccountPhone: businessPhone, NotificationEmail: notificationEmail, NotificationPhone: notificationPhone, BillingStatus: "Admin created", AccountType: ACCOUNT_TYPES.OWNER, BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", BillingVersion: BILLING_VERSION, MonthlyBaseCents: MONTHLY_BASE_CENTS, PerLeadCents: PER_LEAD_CENTS, PerCallCents: PER_LEAD_CENTS, PerChatCents: PER_CHAT_CENTS, PerMessageBundleCents: PER_MESSAGE_BUNDLE_CENTS, MessagePartsPerBundle: MESSAGE_PARTS_PER_BUNDLE, MessagesEnabled: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-
-    const adminClientId = trimmedText(process.env.ARK_ADMIN_CLIENT_ID || "ark-ocm");
-    if (adminClientId && adminClientId !== clientId) {
-      batch.set(db.collection("ocmClients").doc(adminClientId).collection("clients").doc(clientId), { Name: ownerName, BusinessName: businessName, Phone: businessPhone, Email: accountEmail, Address: businessName, PropertyKey: `business-${clientId}`, Job: "ARK AI Receptionist account", BestContactMethod: businessPhone ? "Call" : "Email", Notes: `ARK AI Receptionist account for ${businessName}.`, source: "admin-onboarding", RelatedBusinessClientId: clientId, AccountStatus: "active", BillingPlan: "standard", BillingPlanName: "ARK AI Receptionist", currentStage: "clients", TotalJobs: 1, RepeatJobs: 0, createdAt: FieldValue.serverTimestamp(), movedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    }
-
-    await batch.commit();
-    committed = true;
-    return NextResponse.json({ ok: true, clientId, businessName, accountEmail, connectionKey, receptionistPhone }, { status: 201 });
+    await auth.setCustomUserClaims(user.uid, claims);
+    return NextResponse.json({
+      ok: true,
+      clientId,
+      businessName,
+      accountEmail,
+      status: "pending_business_setup",
+      expiresInHours: 6,
+    }, { status: 201 });
   } catch (error) {
-    console.error("Unable to create customer account", error);
-    if (createdUser?.uid && !committed) await getAdminAuth().deleteUser(createdUser.uid).catch(() => null);
-    return NextResponse.json({ error: "Could not create the customer account. Check the server logs for details." }, { status: 500 });
+    console.error("Unable to create temporary customer signup", error);
+    if (createdUid) {
+      const auth = getAdminAuth();
+      const rollback = pendingSaved
+        ? deletePendingOwnerSignup({ db: getAdminDb(), auth, uid: createdUid })
+        : auth.deleteUser(createdUid);
+      await rollback.catch((rollbackError) => console.error("Unable to roll back temporary customer signup", rollbackError));
+    }
+    const safe = safeCreationError(error);
+    return NextResponse.json({ error: safe.message }, { status: safe.status });
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isStandardRole } from "./accountRoles";
 import { getAdminAuth } from "./firebase-admin";
 
 function cleanClientId(value) {
@@ -23,9 +24,9 @@ export async function requireAuthenticatedCustomer(request) {
   try {
     const decodedToken = await getAdminAuth().verifyIdToken(token);
     const clientId = cleanClientId(decodedToken.clientId);
-    if (decodedToken.role !== "customer" || !clientId) {
+    if (!isStandardRole(decodedToken.role) || !clientId) {
       return {
-        response: NextResponse.json({ error: "A customer account is required." }, { status: 403 }),
+        response: NextResponse.json({ error: "A standard account is required." }, { status: 403 }),
       };
     }
     if (decodedToken.identityVerificationRequired === true && decodedToken.identityVerificationVerified !== true) {

@@ -75,13 +75,13 @@ jobs:
 
           wait_for_response "Home page" "200" "$BASE_URL/"
           wait_for_response \
-            "Approved signup API" \
+            "Protected payment setup API" \
             "401" \
             --request POST \
             --header "Content-Type: application/json" \
             --header "Accept: application/json" \
             --data '{}' \
-            "$BASE_URL/api/signup/complete"
+            "$BASE_URL/api/billing/setup-intent"
           python -m json.tool response-body >/dev/null
 
           AUTH_ARGS=()
@@ -177,7 +177,7 @@ jobs:
     steps:
       - name: Update overdue account access
         env:
-          WORKFLOW_SECRET: ${{ secrets.BILLING_WORKFLOW_SECRET || secrets.OCM_REMINDER_SECRET }}
+          WORKFLOW_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$WORKFLOW_SECRET" ]; then
             echo "::warning::No billing workflow secret is configured. Billing enforcement is skipped."

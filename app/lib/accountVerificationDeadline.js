@@ -1,3 +1,5 @@
+import { isStandardRole } from "./accountRoles.js";
+
 export const ACCOUNT_VERIFICATION_DEADLINE_MS = 60 * 60 * 1000;
 
 function timestampMs(value) {
@@ -22,7 +24,7 @@ export function accountVerificationDeadline(account = {}) {
 }
 
 export function ownerAccountNeedsIdentityVerification(account = {}) {
-  return account.role === "customer"
+  return isStandardRole(account.role)
     && account.identityVerificationRequired === true
     && account.identityVerificationVerified !== true;
 }

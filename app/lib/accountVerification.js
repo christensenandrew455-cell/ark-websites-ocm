@@ -1,6 +1,7 @@
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
+import { ACCOUNT_ROLES } from "./accountRoles";
 import { accountVerificationDeadline, accountVerificationExpired } from "./accountVerificationDeadline";
 import { PHONE_VERIFICATION_REQUIRED } from "./launchFeatures";
 import { accountPhoneRegistryId, checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
@@ -23,8 +24,8 @@ function assertAccountVerificationOpen(account) {
   }
 }
 function verificationSecret() {
-  const value = text(process.env.STRIPE_SECRET_KEY);
-  if (!value) throw new Error("STRIPE_SECRET_KEY is required to secure verification codes.");
+  const value = text(process.env.ACCOUNT_VERIFICATION_SECRET || process.env.SESSION_COOKIE_SECRET || process.env.STRIPE_SECRET_KEY);
+  if (!value) throw new Error("ACCOUNT_VERIFICATION_SECRET is required to secure verification codes.");
   return value;
 }
 function codeHash(uid, channel, code) {
@@ -120,13 +121,7 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
   const phone = validContactPhone(challenge.phone || account.accountPhone) || normalizedPhone(challenge.phone || account.accountPhone);
   const deadline = accountVerificationDeadline(account);
   const accountStatus = text(account.status);
-  const nextPath = accountStatus === "pending_verification"
-    ? "/signup/verify"
-    : accountStatus === "pending_business_setup"
-      ? "/setup/business"
-      : accountStatus === "pending_payment"
-        ? "/signup/payment"
-        : "/";
+  const nextPath = "/";
   return {
     required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
     verified: account.identityVerificationVerified === true || (emailVerified && phoneVerified),
@@ -311,9 +306,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
     throw error;
   }
 
-  const nextAccountStatus = verification.accountStatus === "pending_verification"
-    ? "pending_business_setup"
-    : verification.accountStatus || "active";
+  const nextAccountStatus = verification.accountStatus || "active";
   const verifiedUpdate = {
     status: nextAccountStatus,
     verificationStatus: "verified",
@@ -396,7 +389,7 @@ export async function verifyAccountCodes({ db, auth, uid, emailCode: rawEmailCod
 
   await auth.setCustomUserClaims(uid, {
     ...(user.customClaims || {}),
-    role: "customer",
+    role: ACCOUNT_ROLES.STANDARD,
     clientId,
     accountStatus: nextAccountStatus,
     identityVerificationRequired: false,

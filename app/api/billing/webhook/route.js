@@ -46,7 +46,7 @@ export async function POST(request) {
           setupIntentId: setupIntent.id,
         });
       } catch (setupError) {
-        const nonActionable = new Set(["ACCOUNT_NOT_FOUND", "OWNER_ACCOUNT_REQUIRED", "PAYMENT_SETUP_FORBIDDEN"]);
+        const nonActionable = new Set(["ACCOUNT_NOT_FOUND", "OWNER_ACCOUNT_REQUIRED", "PAYMENT_SETUP_FORBIDDEN", "PAYMENT_SETUP_EXPIRED"]);
         if (!nonActionable.has(text(setupError?.message))) throw setupError;
         console.warn("Ignoring stale or unowned Stripe payment-method setup event", setupIntent.id);
         return NextResponse.json({ received: true, ignored: true });
@@ -64,8 +64,6 @@ export async function POST(request) {
         clientId: match.clientId,
         eventId: event.id,
         invoiceId: invoice.id,
-        amountDue: invoice.amount_remaining || invoice.amount_due || 0,
-        currency: invoice.currency || "usd",
         failedAt: event.created * 1000,
       });
     }
@@ -80,7 +78,7 @@ export async function POST(request) {
         ? await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
         : { data: [] };
       const anotherInvoiceIsUnpaid = remaining.data.some((item) => item.id !== invoice.id && Number(item.amount_remaining || 0) > 0);
-      if (!anotherInvoiceIsUnpaid) {
+      if (!anotherInvoiceIsUnpaid && match.business.billingFailureKind !== "usage") {
         await resolvePayment({
           db,
           clientId: match.clientId,

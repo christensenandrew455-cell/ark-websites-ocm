@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { requireUser } from "../../../../lib/userRequest";
 
@@ -50,7 +51,7 @@ export async function POST(request) {
 
   const decoded = user.decodedToken;
   const clientId = text(decoded.clientId);
-  if (decoded.role !== "customer" || !clientId) {
+  if (!isStandardRole(decoded.role) || !clientId) {
     return NextResponse.json({ error: "An owner account is required." }, { status: 403 });
   }
 

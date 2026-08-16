@@ -11,7 +11,7 @@ function text(value) {
 }
 
 function paymentFailure() {
-  return "your payment has failed update your payment method or try again later";
+  return "Your payment setup could not be completed. Update your payment method or try again.";
 }
 
 function appHomePath() {
@@ -39,7 +39,7 @@ export async function POST(request) {
     return NextResponse.json({
       status: result.status,
       message: "account set up complete",
-      appHomePath: appHomePath(),
+      nextPath: result.nextPath || appHomePath(),
     });
   } catch (error) {
     console.error("Unable to verify Stripe payment-method setup", error);

@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { ACCOUNT_TYPES } from "../lib/accountTypes";
+import { ACCOUNT_ROLES, isStandardRole } from "../lib/accountRoles";
 import { auth, db } from "../lib/firebase";
 import { availableAccountFeatures } from "../lib/launchFeatures";
 import { readApiJson } from "../lib/apiResponse";
@@ -34,11 +35,10 @@ export function AuthProvider({ children }) {
       console.warn("Unable to read account profile directly from Firestore; using verified token claims", accountError);
     }
 
-    const role = tokenResult.claims.role || account.role || "customer";
+    const role = tokenResult.claims.role || account.role || ACCOUNT_ROLES.STANDARD;
     const clientId = normalizeClientId(tokenResult.claims.clientId || tokenResult.claims.businessClientId || account.clientId || "");
     const claimedStatus = String(tokenResult.claims.accountStatus || "");
     const status = account.status || claimedStatus || (role === "admin" || (clientId && !claimedStatus) ? "active" : "");
-    const billingPlan = "standard";
     const accountType = account.accountType || String(tokenResult.claims.accountType || "") || ACCOUNT_TYPES.OWNER;
     const businessRole = account.businessRole || String(tokenResult.claims.businessRole || "owner");
     const availableFeatures = availableAccountFeatures({
@@ -53,11 +53,10 @@ export function AuthProvider({ children }) {
       role,
       accountType,
       businessRole,
-      billingPlan,
       clientId,
       status,
       ...availableFeatures,
-      paymentSetupStatus: account.paymentSetupStatus || (status === "active" && role === "customer" ? "complete" : ""),
+      paymentSetupStatus: account.paymentSetupStatus || (status === "active" && isStandardRole(role) ? "complete" : ""),
       identityVerificationRequired: account.identityVerificationRequired === true || tokenResult.claims.identityVerificationRequired === true,
       identityVerificationVerified: account.identityVerificationVerified === true || tokenResult.claims.identityVerificationVerified === true,
       identityVerificationStatus: account.identityVerificationStatus || "",
@@ -95,7 +94,7 @@ export function AuthProvider({ children }) {
       await loadProfile(nextUser);
     } catch (error) {
       console.error("Unable to load account profile", error);
-      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: "customer", accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", billingPlan: "standard", clientId: "", status: "", messagesEnabled: false, paymentSetupStatus: "", identityVerificationRequired: false, identityVerificationVerified: false, identityVerificationStatus: "", emailVerificationStatus: "", phoneVerificationStatus: "", onboardingTourStatus: "", numberAssignmentStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
+      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: ACCOUNT_ROLES.STANDARD, accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId: "", status: "", messagesEnabled: false, paymentSetupStatus: "", identityVerificationRequired: false, identityVerificationVerified: false, identityVerificationStatus: "", emailVerificationStatus: "", phoneVerificationStatus: "", onboardingTourStatus: "", numberAssignmentStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
       setActiveClientId("");
     } finally {
       setLoading(false);
@@ -142,8 +141,8 @@ export function AuthProvider({ children }) {
     refreshProfile,
     selectClientId,
     isAdmin: profile?.role === "admin",
-    isOwner: profile?.role === "customer",
-    isBusinessOwner: profile?.role === "customer",
+    isOwner: isStandardRole(profile?.role),
+    isBusinessOwner: isStandardRole(profile?.role),
   }), [user, profile, activeClientId, loading, login, logout, refreshProfile, selectClientId]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
