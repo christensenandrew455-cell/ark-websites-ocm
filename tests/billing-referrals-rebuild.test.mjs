@@ -22,6 +22,7 @@ import { billingConversationEventId, isBillableConversationData } from "../app/l
 import { messageContactBlockId, normalizeMessagePhone } from "../app/lib/messageContactBlocks.js";
 import {
   ensureCustomerBillingSubscription,
+  ensureStripeBillingCatalog,
   missingStripeResource,
 } from "../app/lib/stripeUsageBilling.js";
 import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
@@ -105,16 +106,73 @@ test("only confirmed Stripe missing-resource responses are treated as missing", 
   assert.equal(missingStripeResource({ statusCode: 503, code: "api_connection_error" }), false);
 });
 
+test("Stripe base billing resolves from the fixed code price without an environment ID", async () => {
+  const calls = [];
+  const stripe = {
+    prices: {
+      async list(params) {
+        calls.push(params);
+        if (params.lookup_keys) return { data: [] };
+        return {
+          data: [{
+            id: "price_existing_base",
+            active: true,
+            currency: "usd",
+            unit_amount: 5000,
+            type: "recurring",
+            recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
+          }],
+        };
+      },
+      async create() { throw new Error("An existing $50 monthly Price should be reused."); },
+    },
+  };
+  assert.deepEqual(await ensureStripeBillingCatalog({ stripe }), { basePriceId: "price_existing_base" });
+  assert.equal(calls.length, 2);
+});
+
+test("Stripe base billing creates the fixed code price when the account has none", async () => {
+  let created = null;
+  const stripe = {
+    prices: {
+      async list() { return { data: [] }; },
+      async create(params, options) {
+        created = { params, options };
+        return {
+          id: "price_created_base",
+          active: true,
+          currency: params.currency,
+          unit_amount: params.unit_amount,
+          type: "recurring",
+          recurring: { ...params.recurring, interval_count: 1 },
+        };
+      },
+    },
+  };
+  assert.deepEqual(await ensureStripeBillingCatalog({ stripe }), { basePriceId: "price_created_base" });
+  assert.equal(created.params.unit_amount, 5000);
+  assert.equal(created.params.recurring.interval, "month");
+  assert.equal(created.params.product_data.name, "ARK Client Center Base Subscription");
+  assert.equal(created.options.idempotencyKey, created.params.lookup_key);
+});
+
 test("a transient subscription lookup failure cannot create a duplicate subscription", async () => {
   let creates = 0;
-  const previousPrice = process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
-  process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = "price_base";
   const db = {};
   const stripe = {
     customers: { async update() {} },
     prices: {
-      async retrieve(id) {
-        return { id, active: true, currency: "usd", unit_amount: 5000, recurring: { interval: "month" }, product: "prod_base" };
+      async list() {
+        return {
+          data: [{
+            id: "price_base",
+            active: true,
+            currency: "usd",
+            unit_amount: 5000,
+            type: "recurring",
+            recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
+          }],
+        };
       },
     },
     subscriptions: {
@@ -126,24 +184,19 @@ test("a transient subscription lookup failure cannot create a duplicate subscrip
       async create() { creates += 1; return { id: "sub_duplicate", status: "active" }; },
     },
   };
-  try {
-    await assert.rejects(
-      ensureCustomerBillingSubscription({
-        stripe,
-        db,
-        clientId: "client",
-        customerId: "cus_1",
-        paymentMethodId: "pm_1",
-        businessName: "Client",
-        uid: "owner",
-        existingSubscriptionId: "sub_existing",
-        persist: false,
-      }),
-      /temporary network failure/
-    );
-    assert.equal(creates, 0);
-  } finally {
-    if (previousPrice === undefined) delete process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
-    else process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = previousPrice;
-  }
+  await assert.rejects(
+    ensureCustomerBillingSubscription({
+      stripe,
+      db,
+      clientId: "client",
+      customerId: "cus_1",
+      paymentMethodId: "pm_1",
+      businessName: "Client",
+      uid: "owner",
+      existingSubscriptionId: "sub_existing",
+      persist: false,
+    }),
+    /temporary network failure/
+  );
+  assert.equal(creates, 0);
 });

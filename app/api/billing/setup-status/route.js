@@ -14,11 +14,6 @@ function paymentFailure() {
   return "Your payment setup could not be completed. Update your payment method or try again.";
 }
 
-function appHomePath() {
-  const configured = text(process.env.APP_HOME_PATH);
-  return configured.startsWith("/") ? configured : "/";
-}
-
 export async function POST(request) {
   if (!process.env.STRIPE_SECRET_KEY) return NextResponse.json({ error: paymentFailure() }, { status: 503 });
   const header = text(request.headers.get("authorization"));
@@ -39,7 +34,7 @@ export async function POST(request) {
     return NextResponse.json({
       status: result.status,
       message: "account set up complete",
-      nextPath: result.nextPath || appHomePath(),
+      nextPath: result.nextPath || "/",
     });
   } catch (error) {
     console.error("Unable to verify Stripe payment-method setup", error);

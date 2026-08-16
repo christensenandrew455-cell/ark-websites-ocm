@@ -9,6 +9,11 @@ import { useAuth } from "../../components/AuthProvider";
 
 const FAILURE_MESSAGE = "your payment has failed update your payment method or try again later";
 
+function visibleSetupError(error) {
+  const message = String(error?.message || "").trim();
+  return message.startsWith("Stripe is connected, but live payments are not enabled") ? message : FAILURE_MESSAGE;
+}
+
 function PaymentForm({ clientSecret, returnUrl, onSucceeded }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -126,7 +131,7 @@ export default function PaymentSetupClient() {
         setConfiguration(data);
       } catch (setupError) {
         console.error("Unable to open Stripe Payment Element", setupError);
-        if (active) setError(FAILURE_MESSAGE);
+        if (active) setError(visibleSetupError(setupError));
       }
     })();
     return () => { active = false; };

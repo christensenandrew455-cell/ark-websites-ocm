@@ -8,6 +8,9 @@ import { calendarMonthWindow, subscriptionPeriodWindow } from "./timeWindows.js"
 
 function text(value) { return String(value || "").trim(); }
 
+const BASE_PRICE_LOOKUP_KEY = "ark_client_center_base_monthly_v1";
+const BASE_PRODUCT_NAME = "ARK Client Center Base Subscription";
+
 export function missingStripeResource(error) {
   return Number(error?.statusCode || error?.status) === 404
     || text(error?.code).toLowerCase() === "resource_missing"
@@ -65,26 +68,55 @@ export async function resolveBillingWindow({ stripe, subscriptionId, timeZone, s
   }
 }
 
-function configuredPrice(name) { return text(process.env[name]); }
+function isMonthlyBasePrice(price) {
+  return Boolean(
+    price
+    && price.active !== false
+    && text(price.currency).toLowerCase() === "usd"
+    && Number(price.unit_amount) === MONTHLY_BASE_CENTS
+    && text(price.type || "recurring") === "recurring"
+    && text(price.recurring?.interval) === "month"
+    && Number(price.recurring?.interval_count || 1) === 1
+    && text(price.recurring?.usage_type || "licensed") === "licensed"
+  );
+}
 
 export async function ensureStripeBillingCatalog({ stripe }) {
-  const basePriceId = configuredPrice("STRIPE_ACCOUNT_BASE_PRICE_ID");
-
-  if (!basePriceId) throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID is required before recurring billing can start.");
-  const basePrice = await stripe.prices.retrieve(basePriceId);
-  const baseProductId = typeof basePrice.product === "string" ? basePrice.product : text(basePrice.product?.id);
-  const configuredProductId = configuredPrice("STRIPE_ACCOUNT_PRODUCT_ID");
-  if (
-    basePrice.active === false
-    || text(basePrice.currency).toLowerCase() !== "usd"
-    || Number(basePrice.unit_amount) !== MONTHLY_BASE_CENTS
-    || !basePrice.recurring
-    || text(basePrice.recurring.interval) !== "month"
-  ) throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID must be the active $50 USD monthly recurring Price.");
-  if (!baseProductId || (configuredProductId && baseProductId !== configuredProductId)) {
-    throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID does not belong to STRIPE_ACCOUNT_PRODUCT_ID.");
+  const managedPrices = await stripe.prices.list({
+    active: true,
+    lookup_keys: [BASE_PRICE_LOOKUP_KEY],
+    limit: 10,
+  });
+  const managedPrice = managedPrices.data?.[0] || null;
+  if (managedPrice && !isMonthlyBasePrice(managedPrice)) {
+    throw new Error("The code-managed Stripe base Price must remain $50 USD per month.");
   }
-  return { basePriceId };
+  if (managedPrice) return { basePriceId: managedPrice.id };
+
+  const existingPrices = await stripe.prices.list({
+    active: true,
+    currency: "usd",
+    type: "recurring",
+    recurring: { interval: "month" },
+    limit: 100,
+  });
+  const existingPrice = (existingPrices.data || []).find(isMonthlyBasePrice);
+  if (existingPrice) return { basePriceId: existingPrice.id };
+
+  const createdPrice = await stripe.prices.create({
+    currency: "usd",
+    unit_amount: MONTHLY_BASE_CENTS,
+    recurring: { interval: "month", usage_type: "licensed" },
+    lookup_key: BASE_PRICE_LOOKUP_KEY,
+    nickname: "$50 monthly base subscription",
+    metadata: { billingPlan: BILLING_PLAN_KEY, billingVersion: BILLING_VERSION },
+    product_data: {
+      name: BASE_PRODUCT_NAME,
+      metadata: { billingPlan: BILLING_PLAN_KEY, billingVersion: BILLING_VERSION },
+    },
+  }, { idempotencyKey: BASE_PRICE_LOOKUP_KEY });
+  if (!isMonthlyBasePrice(createdPrice)) throw new Error("Stripe did not create the required $50 monthly base Price.");
+  return { basePriceId: createdPrice.id };
 }
 
 function expectedPriceIds(catalog) {
