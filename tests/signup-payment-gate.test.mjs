@@ -18,7 +18,9 @@ test("onboarding follows main information, verification, business, then payment"
   assert.ok(signup.includes("Step 1 of 4 · Main information"));
   assert.ok(signup.includes('router.replace(data.nextPath || "/signup/verify")'));
   assert.ok(verification.includes("Step 2 of 4 · Verify"));
-  assert.ok(verification.includes('next.nextPath || "/setup/business"'));
+  assert.ok(verification.includes('if (status.accountStatus === "pending_business_setup") return "/setup/business"'));
+  assert.ok(verification.includes("window.location.replace(destination)"));
+  assert.equal(verification.includes(">Continue</button>"), false);
   assert.ok(business.includes("Step 3 of 4 · Business information"));
   assert.ok(business.includes('router.push(data.nextPath || "/signup/payment")'));
   assert.ok(payment.includes("Step 4 of 4 · Payment"));
@@ -109,7 +111,7 @@ test("successful payment promotes the already-verified temp data and starts only
   assert.equal(subscription.includes("await configRef.set"), false);
 });
 
-test("verification hashes both codes and refreshes the standard role before navigation", async () => {
+test("verification completes on the server and automatically opens the saved next stage", async () => {
   const [verification, route, gate] = await Promise.all([
     source("app/lib/accountVerification.js"),
     source("app/api/account/verification/route.js"),
@@ -122,11 +124,32 @@ test("verification hashes both codes and refreshes the standard role before navi
   assert.ok(verification.includes("verifyPendingSignupCodes"));
   assert.ok(verification.includes("pending.ref"));
   assert.ok(verification.includes("role: ACCOUNT_ROLES.STANDARD"));
+  assert.ok(verification.includes("verified: account.identityVerificationVerified === true"));
+  assert.equal(verification.includes("account.identityVerificationVerified === true || (emailVerified && phoneVerified)"), false);
   assert.ok(route.includes("decoded.temporaryAccount === true"));
   assert.ok(route.includes("verifyPendingSignupCodes"));
-  assert.ok(gate.includes("await user.getIdToken(true)"));
-  assert.ok(gate.includes("!status?.verified && deadlineWait !== null"));
-  assert.ok(gate.includes('next.nextPath || "/setup/business"'));
+  assert.ok(route.includes("statusWithContinuation"));
+  assert.ok(route.includes("auth.createCustomToken"));
+  assert.ok(gate.includes("Checking your account"));
+  assert.ok(gate.includes("Account verified"));
+  assert.ok(gate.includes("signInWithCustomToken"));
+  assert.ok(gate.includes("window.location.replace(destination)"));
+  assert.ok(gate.includes("!checking && !verified && deadlineWait !== null"));
+  assert.equal(gate.includes(">Continue</button>"), false);
+  assert.equal(gate.includes("refreshProfile"), false);
+});
+
+test("backgrounded verification resumes from the server-side temporary signup", async () => {
+  const [route, gate, pending] = await Promise.all([
+    source("app/api/account/verification/route.js"),
+    source("app/components/AccountVerificationGate.js"),
+    source("app/lib/pendingOwnerSignup.js"),
+  ]);
+  assert.ok(pending.includes("PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000"));
+  assert.ok(route.includes("readPendingSignupVerificationStatus"));
+  assert.ok(route.includes("Repair a stale token as part of resume"));
+  assert.ok(route.includes("accountStatus,"));
+  assert.ok(gate.includes("if (next?.verified === true) await continueAfterVerification(next)"));
 });
 
 test("payment page uses Stripe Payment Element without raw card fields", async () => {

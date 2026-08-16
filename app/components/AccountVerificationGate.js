@@ -1,7 +1,6 @@
 "use client";
 
-import { signOut } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { signInWithCustomToken, signOut } from "firebase/auth";
 import { useCallback, useEffect, useState } from "react";
 import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
@@ -24,9 +23,27 @@ function editablePhone(value) {
   return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
 }
 
+function verifiedDestination(status) {
+  if (status?.verified !== true) return "";
+  if (status.accountStatus === "pending_business_setup") return "/setup/business";
+  if (status.accountStatus === "pending_payment") return "/signup/payment";
+  if (status.accountStatus === "active") return "/";
+  return "";
+}
+
+function accountNotVerifiedMessage(error) {
+  const detail = String(error?.message || "").trim();
+  if (detail.startsWith("Account not verified.")) return detail;
+  const reason = detail && detail !== "Something went wrong. Reload and try again." ? ` ${detail}` : "";
+  return `Account not verified.${reason} Make sure your email, phone number, and newest codes are correct, then try again.`;
+}
+
+function pause(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export default function AccountVerificationGate() {
-  const router = useRouter();
-  const { user, refreshProfile } = useAuth();
+  const { user } = useAuth();
   const [status, setStatus] = useState(null);
   const [emailCode, setEmailCode] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
@@ -36,6 +53,7 @@ export default function AccountVerificationGate() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [transition, setTransition] = useState("idle");
   const [wait, setWait] = useState(0);
   const [deadlineWait, setDeadlineWait] = useState(null);
 
@@ -50,11 +68,37 @@ export default function AccountVerificationGate() {
     return readApiJson(response, "Something went wrong. Reload and try again.");
   }, [user]);
 
+  const continueAfterVerification = useCallback(async (next) => {
+    const destination = verifiedDestination(next);
+    if (!destination) throw new Error("Account not verified. The server did not confirm both verification steps.");
+    setTransition("verified");
+    await pause(700);
+    if (next.continuationToken) {
+      try {
+        await signInWithCustomToken(auth, next.continuationToken);
+      } catch {
+        await user.getIdToken(true);
+      }
+    } else {
+      await user.getIdToken(true);
+    }
+    window.dispatchEvent(new Event("ark-account-verified"));
+    window.location.replace(destination);
+  }, [user]);
+
   useEffect(() => {
     let active = true;
-    request().then((next) => active && setStatus(next)).catch((loadError) => active && setError(loadError.message));
+    request().then(async (next) => {
+      if (!active) return;
+      setStatus(next);
+      if (next?.verified === true) await continueAfterVerification(next);
+    }).catch((loadError) => {
+      if (!active) return;
+      setTransition("idle");
+      setError(accountNotVerifiedMessage(loadError));
+    });
     return () => { active = false; };
-  }, [request]);
+  }, [continueAfterVerification, request]);
 
   useEffect(() => {
     const tick = () => setWait(secondsUntil(status?.resendAvailableAt));
@@ -72,6 +116,8 @@ export default function AccountVerificationGate() {
   }, [status?.deadlineAt]);
 
   const expired = !status?.verified && (status?.expired === true || (Boolean(status?.deadlineAt) && deadlineWait === 0));
+  const checking = transition === "checking";
+  const verified = transition === "verified" || status?.verified === true;
 
   async function verify(event) {
     event.preventDefault();
@@ -79,17 +125,17 @@ export default function AccountVerificationGate() {
       return setError(status?.phoneRequired ? "Enter both four-digit codes." : "Enter the four-digit email code.");
     }
     setBusy(true);
+    setTransition("checking");
     setError("");
     setNotice("");
     try {
       const next = await request({ action: "verify", emailCode, phoneCode });
+      if (!verifiedDestination(next)) throw new Error("Account not verified. The server did not confirm both verification steps.");
       setStatus(next);
-      await user.getIdToken(true);
-      window.dispatchEvent(new Event("ark-account-verified"));
-      await refreshProfile();
-      router.replace(next.nextPath || "/setup/business");
+      await continueAfterVerification(next);
     } catch (verifyError) {
-      setError(verifyError.message);
+      setTransition("idle");
+      setError(accountNotVerifiedMessage(verifyError));
     } finally {
       setBusy(false);
     }
@@ -156,14 +202,19 @@ export default function AccountVerificationGate() {
   return <main className="fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto bg-slate-950 px-4 py-8">
     <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 2 of 4 · Verify</p>
-      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{expired ? "Verification time expired" : status?.verified ? "Email and phone verified" : editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
-      {!expired && !status?.verified && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
-      {expired ? <>
+      <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{expired ? "Verification time expired" : checking ? "Checking your account" : verified ? "Account verified" : editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
+      {!expired && !checking && !verified && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
+      {checking ? <div className="py-10 text-center" role="status" aria-live="polite">
+        <span className="mx-auto block h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-700" aria-hidden="true" />
+        <p className="mt-5 text-sm font-bold text-slate-600">Checking both codes with the server…</p>
+      </div> : expired ? <>
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold leading-6 text-red-800" role="alert">The one-hour verification window ended. This account is locked and scheduled for permanent deletion. Sign out and start signup again.</p>
-      </> : status?.verified ? <>
-        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your contact information is verified. Continue to your business information.</p>
-        <button type="button" onClick={() => router.push(status.nextPath || "/setup/business")} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white">Continue</button>
-      </> : editingContact ? <>
+      </> : verified ? <div className="py-8 text-center" role="status" aria-live="polite">
+        <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-9 w-9" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 4 4L19 6" /></svg>
+        </span>
+        <p className="mt-5 text-sm font-bold text-slate-600">Opening your business information…</p>
+      </div> : editingContact ? <>
         <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Update a typo here. Saving will make the old codes stop working and send fresh codes to both entries.</p>
         <form onSubmit={saveContact} className="mt-6 space-y-4">
           <label className="block"><span className="text-xs font-black text-slate-800">Email address</span><input type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value.slice(0, 254))} autoComplete="email" className="mt-2 h-13 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold outline-none focus:border-indigo-700" /></label>

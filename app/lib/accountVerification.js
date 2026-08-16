@@ -127,7 +127,10 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {}, 
         : "/");
   return {
     required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
-    verified: account.identityVerificationVerified === true || (emailVerified && phoneVerified),
+    // Matching both challenge codes is only the first half of verification. The
+    // signup is verified only after the server has committed the verified
+    // identity fields and advanced the temporary signup to its next stage.
+    verified: account.identityVerificationVerified === true,
     emailVerified,
     phoneVerified,
     phoneRequired: PHONE_VERIFICATION_REQUIRED,
