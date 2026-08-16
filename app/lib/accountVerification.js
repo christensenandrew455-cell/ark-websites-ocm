@@ -5,6 +5,7 @@ import { ACCOUNT_ROLES } from "./accountRoles";
 import { accountVerificationDeadline, accountVerificationExpired } from "./accountVerificationDeadline";
 import { accountPrivateRef, accountRef as regularAccountRef } from "./firestoreLayout.js";
 import { PHONE_VERIFICATION_REQUIRED } from "./launchFeatures";
+import { pendingOwnerSignupExpired, readPendingOwnerSignup } from "./pendingOwnerSignup";
 import { checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
 
 export const ACCOUNT_VERIFICATION_TTL_MS = 10 * 60 * 1000;
@@ -106,7 +107,7 @@ function maskPhone(phone) {
   return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : "your phone";
 }
 
-export function publicAccountVerificationStatus({ account = {}, challenge = {} }) {
+export function publicAccountVerificationStatus({ account = {}, challenge = {}, deadlineAt = null, expired = null, nextPath = "" }) {
   const emailVerified = account.emailVerificationStatus === "verified" || challenge.emailVerified === true;
   const phoneVerified = !PHONE_VERIFICATION_REQUIRED
     || account.phoneVerificationStatus === "verified"
@@ -115,9 +116,15 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
   const resendAt = asDate(challenge.resendAvailableAt);
   const email = validContactEmail(challenge.email || account.accountEmail) || normalizeSignupEmail(challenge.email || account.accountEmail);
   const phone = validContactPhone(challenge.phone || account.accountPhone) || normalizedPhone(challenge.phone || account.accountPhone);
-  const deadline = accountVerificationDeadline(account);
-  const accountStatus = text(account.status);
-  const nextPath = "/";
+  const deadline = asDate(deadlineAt) || accountVerificationDeadline(account);
+  const accountStatus = text(account.status || account.stage);
+  const resolvedNextPath = text(nextPath) || (accountStatus === "pending_verification"
+    ? "/signup/verify"
+    : accountStatus === "pending_business_setup"
+      ? "/setup/business"
+      : accountStatus === "pending_payment"
+        ? "/signup/payment"
+        : "/");
   return {
     required: account.identityVerificationRequired === true && account.identityVerificationVerified !== true,
     verified: account.identityVerificationVerified === true || (emailVerified && phoneVerified),
@@ -132,9 +139,9 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {} }
     phoneDeliveryStatus: PHONE_VERIFICATION_REQUIRED ? text(challenge.phoneDeliveryStatus || "pending") : "not_required",
     resendAvailableAt: resendAt?.toISOString() || "",
     deadlineAt: deadline?.toISOString() || "",
-    expired: accountVerificationExpired(account),
+    expired: expired === null ? accountVerificationExpired(account) : expired === true,
     accountStatus,
-    nextPath,
+    nextPath: resolvedNextPath,
   };
 }
 
@@ -208,6 +215,248 @@ export async function sendAccountVerificationCodes({ db, uid, clientId, email, p
     throw error;
   }
   return readAccountVerificationStatus({ db, uid, clientId });
+}
+
+function pendingSignupStatus(pending) {
+  const data = pending?.data || pending || {};
+  return publicAccountVerificationStatus({
+    account: { ...data, status: text(data.stage) },
+    challenge: data.verification || {},
+    deadlineAt: data.expiresAt,
+    expired: pendingOwnerSignupExpired(data),
+  });
+}
+
+function assertPendingSignupVerificationOpen(data = {}) {
+  if (pendingOwnerSignupExpired(data)) throw new Error("ACCOUNT_VERIFICATION_EXPIRED");
+  if (data.identityVerificationVerified === true) throw new Error("ACCOUNT_ALREADY_VERIFIED");
+  if (!["pending_verification", "pending_business_setup"].includes(text(data.stage))) throw new Error("ACCOUNT_NOT_FOUND");
+}
+
+async function pendingSignupForVerification({ db, uid, clientId = "" }) {
+  const pending = await readPendingOwnerSignup({ db, uid, clientId, allowExpired: true });
+  if (!pending || text(pending.data.uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
+  return pending;
+}
+
+export async function readPendingSignupVerificationStatus({ db, uid, clientId = "" }) {
+  return pendingSignupStatus(await pendingSignupForVerification({ db, uid, clientId }));
+}
+
+export async function sendPendingSignupVerificationCodes({ db, uid, clientId = "", email, phone, ignoreCooldown = false, resetVerification = false }) {
+  const missing = missingAccountVerificationConfiguration();
+  if (missing.length) throw new Error(`ACCOUNT_VERIFICATION_NOT_CONFIGURED:${missing.join(",")}`);
+  const pending = await pendingSignupForVerification({ db, uid, clientId });
+  const challengeId = randomUUID();
+  const prepared = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(pending.ref);
+    if (!snapshot.exists || text(snapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
+    const account = snapshot.data();
+    assertPendingSignupVerificationOpen(account);
+    const current = account.verification || {};
+    const resendAvailableAt = asDate(current.resendAvailableAt);
+    if (!ignoreCooldown && resendAvailableAt && resendAvailableAt.getTime() > Date.now() && ["sending", "sent"].includes(text(current.deliveryStatus))) {
+      const error = new Error("VERIFICATION_RESEND_COOLDOWN");
+      error.resendAvailableAt = resendAvailableAt;
+      throw error;
+    }
+
+    const targetEmail = validContactEmail(resetVerification ? email : current.email || email || account.accountEmail);
+    const targetPhone = validContactPhone(resetVerification ? phone : current.phone || phone || account.accountPhone);
+    if (!targetEmail) throw new Error("ACCOUNT_EMAIL_INVALID");
+    if (!targetPhone) throw new Error("ACCOUNT_PHONE_INVALID");
+    const emailCode = !resetVerification && current.emailVerified === true ? "" : verificationCode();
+    const phoneCode = PHONE_VERIFICATION_REQUIRED && (resetVerification || current.phoneVerified !== true) ? verificationCode() : "";
+    const expiresAt = new Date(Date.now() + ACCOUNT_VERIFICATION_TTL_MS);
+    const nextResendAt = new Date(Date.now() + ACCOUNT_VERIFICATION_RESEND_MS);
+    const challenge = {
+      uid: text(uid),
+      clientId: text(account.clientId || clientId),
+      challengeId,
+      email: targetEmail,
+      phone: targetPhone,
+      emailCodeHash: emailCode ? codeHash(uid, "email", emailCode) : text(current.emailCodeHash),
+      phoneCodeHash: phoneCode ? codeHash(uid, "phone", phoneCode) : text(current.phoneCodeHash),
+      emailVerified: emailCode ? false : current.emailVerified === true,
+      phoneVerified: PHONE_VERIFICATION_REQUIRED ? (phoneCode ? false : current.phoneVerified === true) : true,
+      emailAttempts: emailCode ? 0 : Number(current.emailAttempts || 0),
+      phoneAttempts: phoneCode ? 0 : Number(current.phoneAttempts || 0),
+      emailDeliveryStatus: emailCode ? "sending" : text(current.emailDeliveryStatus || "sent"),
+      phoneDeliveryStatus: PHONE_VERIFICATION_REQUIRED ? (phoneCode ? "sending" : text(current.phoneDeliveryStatus || "sent")) : "not_required",
+      deliveryStatus: "sending",
+      expiresAt,
+      resendAvailableAt: nextResendAt,
+      sentAt: FieldValue.serverTimestamp(),
+      createdAt: current.createdAt || FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    transaction.set(pending.ref, {
+      verification: challenge,
+      verificationStatus: "pending",
+      identityVerificationRequired: true,
+      identityVerificationVerified: false,
+      identityVerificationStatus: "pending",
+      emailVerificationStatus: challenge.emailVerified ? "verified" : "pending",
+      phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? (challenge.phoneVerified ? "verified" : "pending") : "not_required",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { emailCode, phoneCode, targetEmail, targetPhone };
+  });
+
+  const [emailResult, phoneResult] = await Promise.allSettled([
+    prepared.emailCode ? sendVerificationEmail({ email: prepared.targetEmail, code: prepared.emailCode }) : Promise.resolve(),
+    prepared.phoneCode ? sendTelnyxText({ phone: prepared.targetPhone, message: `Your ARK Client Center text verification code is ${prepared.phoneCode}. It expires in 10 minutes. Do not share this code.` }) : Promise.resolve(),
+  ]);
+  const emailDeliveryStatus = emailResult.status === "fulfilled" ? "sent" : "failed";
+  const phoneDeliveryStatus = PHONE_VERIFICATION_REQUIRED ? (phoneResult.status === "fulfilled" ? "sent" : "failed") : "not_required";
+  const deliveryStatus = emailDeliveryStatus === "sent" && (!PHONE_VERIFICATION_REQUIRED || phoneDeliveryStatus === "sent") ? "sent" : "partial";
+  await pending.ref.update({
+    "verification.emailDeliveryStatus": emailDeliveryStatus,
+    "verification.phoneDeliveryStatus": phoneDeliveryStatus,
+    "verification.deliveryStatus": deliveryStatus,
+    "verification.updatedAt": FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  if (emailResult.status === "rejected" || (PHONE_VERIFICATION_REQUIRED && phoneResult.status === "rejected")) {
+    const error = new Error("VERIFICATION_DELIVERY_FAILED");
+    error.delivery = { email: emailDeliveryStatus, phone: phoneDeliveryStatus };
+    throw error;
+  }
+  return readPendingSignupVerificationStatus({ db, uid, clientId: text(pending.data.clientId || clientId) });
+}
+
+export async function updatePendingSignupVerificationContact({ db, auth, uid, clientId = "", email: rawEmail, phone: rawPhone }) {
+  const email = validContactEmail(rawEmail);
+  const phone = validContactPhone(rawPhone);
+  if (!email) throw new Error("ACCOUNT_EMAIL_INVALID");
+  if (!phone) throw new Error("ACCOUNT_PHONE_INVALID");
+  const pending = await pendingSignupForVerification({ db, uid, clientId });
+  assertPendingSignupVerificationOpen(pending.data);
+  const availability = await checkSignupAvailability({ auth, db, accountEmail: email, accountPhone: phone, allowedUid: uid });
+  if (availability.emailInUse) throw new Error("EMAIL_TAKEN");
+  if (availability.phoneInUse) throw new Error("PHONE_TAKEN");
+  return sendPendingSignupVerificationCodes({
+    db,
+    uid,
+    clientId: text(pending.data.clientId || clientId),
+    email,
+    phone,
+    ignoreCooldown: true,
+    resetVerification: true,
+  });
+}
+
+export async function verifyPendingSignupCodes({ db, auth, uid, clientId = "", emailCode: rawEmailCode, phoneCode: rawPhoneCode }) {
+  const emailCode = validCode(rawEmailCode);
+  const phoneCode = PHONE_VERIFICATION_REQUIRED ? validCode(rawPhoneCode) : "";
+  if (!emailCode || (PHONE_VERIFICATION_REQUIRED && !phoneCode)) throw new Error("VERIFICATION_CODE_INVALID");
+  const pending = await pendingSignupForVerification({ db, uid, clientId });
+  const verification = await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(pending.ref);
+    if (!snapshot.exists || text(snapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
+    const account = snapshot.data();
+    assertPendingSignupVerificationOpen(account);
+    const challenge = account.verification || {};
+    const expiresAt = asDate(challenge.expiresAt);
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) throw new Error("VERIFICATION_CODE_EXPIRED");
+    const emailAttempts = Number(challenge.emailAttempts || 0);
+    const phoneAttempts = Number(challenge.phoneAttempts || 0);
+    if (emailAttempts >= ACCOUNT_VERIFICATION_MAX_ATTEMPTS || (PHONE_VERIFICATION_REQUIRED && phoneAttempts >= ACCOUNT_VERIFICATION_MAX_ATTEMPTS)) throw new Error("VERIFICATION_TOO_MANY_ATTEMPTS");
+    const emailCorrect = challenge.emailVerified === true || codeMatches(uid, "email", emailCode, challenge.emailCodeHash);
+    const phoneCorrect = !PHONE_VERIFICATION_REQUIRED || challenge.phoneVerified === true || codeMatches(uid, "phone", phoneCode, challenge.phoneCodeHash);
+    transaction.set(pending.ref, {
+      verification: {
+        ...challenge,
+        emailVerified: emailCorrect,
+        phoneVerified: phoneCorrect,
+        emailAttempts: emailCorrect ? emailAttempts : emailAttempts + 1,
+        phoneAttempts: !PHONE_VERIFICATION_REQUIRED || phoneCorrect ? phoneAttempts : phoneAttempts + 1,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return {
+      emailCorrect,
+      phoneCorrect,
+      challengeId: text(challenge.challengeId),
+      clientId: text(account.clientId || clientId),
+      email: validContactEmail(challenge.email || account.accountEmail),
+      phone: validContactPhone(challenge.phone || account.accountPhone),
+      previousEmail: validContactEmail(account.accountEmail),
+    };
+  });
+
+  if (!verification.emailCorrect || (PHONE_VERIFICATION_REQUIRED && !verification.phoneCorrect)) {
+    const error = new Error("VERIFICATION_CODE_INCORRECT");
+    error.emailCorrect = verification.emailCorrect;
+    error.phoneCorrect = verification.phoneCorrect;
+    throw error;
+  }
+  if (!verification.email) throw new Error("ACCOUNT_EMAIL_INVALID");
+  if (!verification.phone) throw new Error("ACCOUNT_PHONE_INVALID");
+  const availability = await checkSignupAvailability({ auth, db, accountEmail: verification.email, accountPhone: verification.phone, allowedUid: uid });
+  if (availability.emailInUse) throw new Error("EMAIL_TAKEN");
+  if (availability.phoneInUse) throw new Error("PHONE_TAKEN");
+
+  const user = await auth.getUser(uid);
+  const previousAuthEmail = validContactEmail(user.email || verification.previousEmail);
+  const previousAuthEmailVerified = user.emailVerified === true;
+  try {
+    await auth.updateUser(uid, { email: verification.email, emailVerified: true });
+  } catch (error) {
+    if (text(error?.code) === "auth/email-already-exists") throw new Error("EMAIL_TAKEN");
+    throw error;
+  }
+
+  try {
+    await db.runTransaction(async (transaction) => {
+      const latestSnapshot = await transaction.get(pending.ref);
+      if (!latestSnapshot.exists || text(latestSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
+      const latest = latestSnapshot.data();
+      if (pendingOwnerSignupExpired(latest)) throw new Error("ACCOUNT_VERIFICATION_EXPIRED");
+      const challenge = latest.verification || {};
+      if (text(challenge.challengeId) !== verification.challengeId || challenge.emailVerified !== true || (PHONE_VERIFICATION_REQUIRED && challenge.phoneVerified !== true)) {
+        throw new Error("VERIFICATION_CONTACT_CHANGED");
+      }
+      transaction.set(pending.ref, {
+        stage: "pending_business_setup",
+        accountEmail: verification.email,
+        accountPhone: verification.phone,
+        accountPhoneNormalized: verification.phone,
+        verificationStatus: "verified",
+        identityVerificationRequired: false,
+        identityVerificationVerified: true,
+        identityVerificationStatus: "verified",
+        emailVerificationStatus: "verified",
+        phoneVerificationStatus: PHONE_VERIFICATION_REQUIRED ? "verified" : "not_required",
+        identityVerifiedAt: FieldValue.serverTimestamp(),
+        verification: {
+          ...challenge,
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    });
+  } catch (error) {
+    if (previousAuthEmail) {
+      await auth.updateUser(uid, { email: previousAuthEmail, emailVerified: previousAuthEmailVerified }).catch((rollbackError) => {
+        console.error("Unable to roll back the temporary signup email after verification failed", rollbackError);
+      });
+    }
+    throw error;
+  }
+
+  await auth.setCustomUserClaims(uid, {
+    ...(user.customClaims || {}),
+    role: ACCOUNT_ROLES.STANDARD,
+    clientId: verification.clientId,
+    accountStatus: "pending_business_setup",
+    temporaryAccount: true,
+    identityVerificationRequired: false,
+    identityVerificationVerified: true,
+  });
+  return readPendingSignupVerificationStatus({ db, uid, clientId: verification.clientId });
 }
 
 export async function updateAccountVerificationContact({ db, auth, uid, clientId, email: rawEmail, phone: rawPhone }) {

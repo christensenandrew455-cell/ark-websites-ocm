@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { accountRef } from "../../../lib/firestoreLayout";
-import { readAccountVerificationStatus, sendAccountVerificationCodes, updateAccountVerificationContact, verifyAccountCodes } from "../../../lib/accountVerification";
+import {
+  readAccountVerificationStatus,
+  readPendingSignupVerificationStatus,
+  sendAccountVerificationCodes,
+  sendPendingSignupVerificationCodes,
+  updateAccountVerificationContact,
+  updatePendingSignupVerificationContact,
+  verifyAccountCodes,
+  verifyPendingSignupCodes,
+} from "../../../lib/accountVerification";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
+import { readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 export const runtime = "nodejs";
@@ -19,10 +29,19 @@ async function authorize(request) {
     const decoded = await getAdminAuth().verifyIdToken(token, true);
     const clientId = text(decoded.clientId);
     if (!clientId) return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
-    const accountSnapshot = await accountRef(getAdminDb(), clientId).get();
+    const db = getAdminDb();
+    if (decoded.temporaryAccount === true) {
+      const pending = await readPendingOwnerSignup({ db, uid: decoded.uid, clientId, allowExpired: true });
+      const stage = text(pending?.data?.stage);
+      if (!pending || !["pending_verification", "pending_business_setup", "pending_payment"].includes(stage)) {
+        return { response: NextResponse.json({ error: "A temporary owner account in verification is required." }, { status: 403 }) };
+      }
+      return { decoded, account: pending.data, clientId, pending, temporary: true };
+    }
+    const accountSnapshot = await accountRef(db, clientId).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : null;
     if (!account || text(account.uid) !== text(decoded.uid) || !isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
-    return { decoded, account, clientId };
+    return { decoded, account, clientId, temporary: false };
   } catch {
     return { response: NextResponse.json({ error: "Your sign-in expired. Sign in again." }, { status: 401 }) };
   }
@@ -51,7 +70,8 @@ export async function GET(request) {
   const authorization = await authorize(request);
   if (authorization.response) return authorization.response;
   try {
-    return NextResponse.json(await readAccountVerificationStatus({ db: getAdminDb(), uid: authorization.decoded.uid, clientId: authorization.clientId }));
+    const readStatus = authorization.temporary ? readPendingSignupVerificationStatus : readAccountVerificationStatus;
+    return NextResponse.json(await readStatus({ db: getAdminDb(), uid: authorization.decoded.uid, clientId: authorization.clientId }));
   } catch (error) {
     const safe = verificationError(error);
     return NextResponse.json(safe, { status: safe.status });
@@ -75,7 +95,8 @@ export async function POST(request) {
     const rateLimit = await checkRequestRateLimit({ db, request, scope: `${selectedLimit.scope}:${authorization.decoded.uid}`, limit: selectedLimit.limit, windowMs: selectedLimit.windowMs });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
     if (action === "resend") {
-      return NextResponse.json(await sendAccountVerificationCodes({
+      const sendCodes = authorization.temporary ? sendPendingSignupVerificationCodes : sendAccountVerificationCodes;
+      return NextResponse.json(await sendCodes({
         db,
         uid: authorization.decoded.uid,
         clientId: authorization.clientId,
@@ -84,7 +105,8 @@ export async function POST(request) {
       }));
     }
     if (action === "update-contact") {
-      return NextResponse.json(await updateAccountVerificationContact({
+      const updateContact = authorization.temporary ? updatePendingSignupVerificationContact : updateAccountVerificationContact;
+      return NextResponse.json(await updateContact({
         db,
         auth: getAdminAuth(),
         uid: authorization.decoded.uid,
@@ -93,7 +115,8 @@ export async function POST(request) {
         phone: body.phone,
       }));
     }
-    return NextResponse.json(await verifyAccountCodes({
+    const verifyCodes = authorization.temporary ? verifyPendingSignupCodes : verifyAccountCodes;
+    return NextResponse.json(await verifyCodes({
       db,
       auth: getAdminAuth(),
       uid: authorization.decoded.uid,

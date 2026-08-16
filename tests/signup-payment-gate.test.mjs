@@ -7,7 +7,7 @@ import { join } from "node:path";
 const root = fileURLToPath(new URL("../", import.meta.url));
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
-test("onboarding follows main information, business, payment, then verification", async () => {
+test("onboarding follows main information, verification, business, then payment", async () => {
   const [signup, business, payment, verification, shell] = await Promise.all([
     source("app/signup/page.js"),
     source("app/setup/business/page.js"),
@@ -16,16 +16,16 @@ test("onboarding follows main information, business, payment, then verification"
     source("app/components/SignupFlowShell.js"),
   ]);
   assert.ok(signup.includes("Step 1 of 4 · Main information"));
-  assert.ok(signup.includes('router.replace(data.nextPath || "/setup/business")'));
-  assert.ok(business.includes("Step 2 of 4 · Business information"));
+  assert.ok(signup.includes('router.replace(data.nextPath || "/signup/verify")'));
+  assert.ok(verification.includes("Step 2 of 4 · Verify"));
+  assert.ok(verification.includes('next.nextPath || "/setup/business"'));
+  assert.ok(business.includes("Step 3 of 4 · Business information"));
   assert.ok(business.includes('router.push(data.nextPath || "/signup/payment")'));
-  assert.ok(payment.includes("Step 3 of 4 · Payment"));
-  assert.ok(payment.includes('data.nextPath || "/signup/verify"'));
-  assert.ok(verification.includes("Step 4 of 4 · Verify"));
-  assert.ok(verification.includes('window.location.replace(next.nextPath || "/")'));
+  assert.ok(payment.includes("Step 4 of 4 · Payment"));
+  assert.ok(payment.includes('data.nextPath || "/"'));
+  assert.ok(shell.includes('status === "pending_verification"'));
   assert.ok(shell.includes('status === "pending_business_setup"'));
   assert.ok(shell.includes('status === "pending_payment"'));
-  assert.ok(shell.includes('profile?.identityVerificationRequired'));
 });
 
 test("main information creates only a short-lived temporary signup", async () => {
@@ -34,11 +34,12 @@ test("main information creates only a short-lived temporary signup", async () =>
   assert.ok(route.includes("auth.createUser({"));
   assert.ok(route.includes("createPendingOwnerSignup({"));
   assert.ok(route.includes("role: ACCOUNT_ROLES.STANDARD"));
-  assert.ok(route.includes('accountStatus: "pending_business_setup"'));
+  assert.ok(route.includes('initialStage: "pending_verification"'));
+  assert.ok(route.includes('accountStatus: "pending_verification"'));
   assert.ok(route.includes("temporaryAccount: true"));
   assert.equal(route.includes('collection("accounts")'), false);
   assert.equal(route.includes('collection("businesses")'), false);
-  assert.equal(route.includes("sendAccountVerificationCodes"), false);
+  assert.ok(route.includes("sendPendingSignupVerificationCodes"));
   assert.equal(route.includes("new Stripe("), false);
   assert.ok(pending.includes('PENDING_OWNER_SIGNUP_COLLECTION = "pendingOwnerSignups"'));
   assert.ok(pending.includes("PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000"));
@@ -52,6 +53,7 @@ test("business setup is saved into the temporary record before payment", async (
   assert.ok(page.includes('fetch("/api/signup/draft"'));
   assert.equal(page.includes("sessionStorage"), false);
   assert.ok(route.includes("readPendingOwnerSignup"));
+  assert.ok(route.includes("identityVerificationVerified !== true"));
   assert.ok(route.includes("validateReceptionistBusinessInformation"));
   assert.ok(route.includes('stage: "pending_payment"'));
   assert.ok(route.includes("businessSetupComplete: true"));
@@ -64,8 +66,8 @@ test("business-name login resumes temporary setup while regular accounts have tw
   assert.ok(route.includes('REGULAR_ACCOUNT_STATUSES = new Set(["active", "disabled"])'));
   assert.ok(route.includes("readPendingOwnerSignup({ db, clientId, allowExpired: true })"));
   assert.ok(route.includes('temporary: true'));
-  assert.ok(route.includes('["pending_business_setup", "pending_payment"].includes(stage)'));
-  for (const retiredStatus of ["pending_verification", "pending_admin_approval", "approved_pending_payment"]) {
+  assert.ok(route.includes('["pending_verification", "pending_business_setup", "pending_payment"].includes(stage)'));
+  for (const retiredStatus of ["pending_admin_approval", "approved_pending_payment"]) {
     assert.equal(route.includes(retiredStatus), false);
   }
 });
@@ -85,7 +87,7 @@ test("payment setup is tied to the authenticated temporary owner", async () => {
   assert.equal(route.includes('collection("accounts")'), false);
 });
 
-test("successful payment promotes temp data, starts only the base subscription, then sends codes", async () => {
+test("successful payment promotes the already-verified temp data and starts only the base subscription", async () => {
   const [completion, subscription] = await Promise.all([source("app/lib/ownerPaymentSetup.js"), source("app/lib/stripeUsageBilling.js")]);
   assert.ok(completion.includes("stripe.setupIntents.retrieve(safeSetupIntentId"));
   assert.ok(completion.includes('setupIntent.status !== "succeeded"'));
@@ -96,8 +98,10 @@ test("successful payment promotes temp data, starts only the base subscription, 
   assert.ok(completion.includes("createIfMissing: true"));
   assert.ok(completion.includes("batch.create(accountRef, accountData)"));
   assert.ok(completion.includes("batch.delete(pending.ref)"));
-  assert.ok(completion.includes("sendAccountVerificationCodes({"));
-  assert.ok(completion.indexOf("batch.delete(pending.ref)") < completion.indexOf("sendAccountVerificationCodes({"));
+  assert.ok(completion.includes("temporary.identityVerificationVerified !== true"));
+  assert.equal(completion.includes("sendAccountVerificationCodes({"), false);
+  assert.ok(completion.includes("identityVerificationRequired: false"));
+  assert.ok(completion.includes("identityVerificationVerified: true"));
   assert.ok(completion.includes("usageBalancePoints: 0"));
   assert.ok(completion.includes("usageSmsPartRemainder: 0"));
   assert.ok(completion.includes('role: ACCOUNT_ROLES.STANDARD'));
@@ -114,13 +118,15 @@ test("verification hashes both codes and refreshes the standard role before navi
   assert.ok(verification.includes('codeHash(uid, "email"'));
   assert.ok(verification.includes('codeHash(uid, "phone"'));
   assert.ok(verification.includes("ACCOUNT_VERIFICATION_SECRET"));
+  assert.ok(verification.includes("sendPendingSignupVerificationCodes"));
+  assert.ok(verification.includes("verifyPendingSignupCodes"));
+  assert.ok(verification.includes("pending.ref"));
   assert.ok(verification.includes("role: ACCOUNT_ROLES.STANDARD"));
-  assert.ok(route.includes("isStandardRole(account.role)"));
-  assert.ok(route.includes('account.status !== "active"'));
-  assert.ok(route.includes("verifyAccountCodes"));
+  assert.ok(route.includes("decoded.temporaryAccount === true"));
+  assert.ok(route.includes("verifyPendingSignupCodes"));
   assert.ok(gate.includes("await user.getIdToken(true)"));
   assert.ok(gate.includes("!status?.verified && deadlineWait !== null"));
-  assert.ok(gate.includes('window.location.replace(next.nextPath || "/")'));
+  assert.ok(gate.includes('next.nextPath || "/setup/business"'));
 });
 
 test("payment page uses Stripe Payment Element without raw card fields", async () => {

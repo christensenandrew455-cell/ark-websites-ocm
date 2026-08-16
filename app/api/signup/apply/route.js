@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES } from "../../../lib/accountRoles";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
+import { missingAccountVerificationConfiguration, sendPendingSignupVerificationCodes } from "../../../lib/accountVerification";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateOwnerAccountInformation } from "../../../lib/ownerSignup";
 import { createPendingOwnerSignup, deletePendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
@@ -32,6 +33,11 @@ export async function POST(request) {
   let createdUid = "";
   let pendingSaved = false;
   try {
+    const missingVerification = missingAccountVerificationConfiguration();
+    if (missingVerification.length) {
+      return NextResponse.json({ error: "Account verification is not available right now." }, { status: 503 });
+    }
+
     const signup = normalizeOwnerSignup(await request.json().catch(() => ({})), { includePassword: true });
     const validationError = validateOwnerAccountInformation(signup);
     if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
@@ -73,6 +79,7 @@ export async function POST(request) {
       clientId,
       signup: { ...signup, accountPhoneNormalized },
       referrer,
+      initialStage: "pending_verification",
     });
     pendingSaved = true;
 
@@ -81,16 +88,33 @@ export async function POST(request) {
       accountType: ACCOUNT_TYPES.OWNER,
       businessRole: "owner",
       clientId,
-      accountStatus: "pending_business_setup",
+      accountStatus: "pending_verification",
       temporaryAccount: true,
+      identityVerificationRequired: true,
+      identityVerificationVerified: false,
     };
     await auth.setCustomUserClaims(createdUid, claims);
+
+    let verificationDelivery = "sent";
+    try {
+      await sendPendingSignupVerificationCodes({
+        db,
+        uid: createdUid,
+        clientId,
+        email: signup.accountEmail,
+        phone: signup.accountPhone,
+      });
+    } catch (error) {
+      verificationDelivery = "needs_resend";
+      console.error("Unable to deliver initial signup verification codes", error);
+    }
 
     return NextResponse.json({
       token: await auth.createCustomToken(createdUid, claims),
       clientId,
-      status: "pending_business_setup",
-      nextPath: "/setup/business",
+      status: "pending_verification",
+      verificationDelivery,
+      nextPath: "/signup/verify",
     }, { status: 201 });
   } catch (error) {
     if (createdUid) {

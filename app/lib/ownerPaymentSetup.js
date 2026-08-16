@@ -1,8 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
 import { ACCOUNT_TYPES } from "./accountTypes";
-import { newAccountVerificationDeadline } from "./accountVerificationDeadline";
-import { sendAccountVerificationCodes } from "./accountVerification";
 import { accountCollection, accountRef as regularAccountRef } from "./firestoreLayout.js";
 import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "./pendingOwnerSignup";
 import { pendingReferralFields } from "./referrals";
@@ -24,7 +22,7 @@ function completedResult(account, setupIntentId) {
     setupIntentId,
     paymentMethodId: text(account.stripePaymentMethodId),
     paymentMethodLabel: text(account.paymentMethodLabel),
-    nextPath: account.identityVerificationVerified === true ? "/" : "/signup/verify",
+    nextPath: "/",
   };
 }
 
@@ -55,7 +53,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const clientId = text(temporary.clientId);
   const accountRef = regularAccountRef(db, clientId);
   const storedCustomerId = text(payment.stripeCustomerId);
-  if (temporary.businessSetupComplete !== true || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
+  if (temporary.identityVerificationVerified !== true || temporary.businessSetupComplete !== true || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
   if (text(payment.stripeSetupIntentId) !== safeSetupIntentId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
 
   const setupIntent = await stripe.setupIntents.retrieve(safeSetupIntentId, { expand: ["payment_method"] });
@@ -94,7 +92,6 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   });
 
   const now = FieldValue.serverTimestamp();
-  const verificationDeadline = newAccountVerificationDeadline();
   const referralFields = pendingReferralFields(temporaryAccount.referral || temporary.referral);
   const businessProfile = {
     timeZone: text(business.timeZone || "America/New_York"),
@@ -130,12 +127,12 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
     paymentMethodLabel,
-    identityVerificationRequired: true,
-    identityVerificationVerified: false,
-    identityVerificationStatus: "pending",
-    emailVerificationStatus: "pending",
-    phoneVerificationStatus: "pending",
-    identityVerificationDeadlineAt: verificationDeadline,
+    identityVerificationRequired: false,
+    identityVerificationVerified: true,
+    identityVerificationStatus: "verified",
+    emailVerificationStatus: "verified",
+    phoneVerificationStatus: text(temporary.phoneVerificationStatus || "verified"),
+    identityVerifiedAt: temporary.identityVerifiedAt || now,
     usageBalancePoints: 0,
     usageSmsPartRemainder: 0,
     usageChargeStatus: "idle",
@@ -181,28 +178,19 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientId,
     accountStatus: "active",
     temporaryAccount: false,
-    identityVerificationRequired: true,
-    identityVerificationVerified: false,
+    identityVerificationRequired: false,
+    identityVerificationVerified: true,
     termsAccepted: temporaryAccount.termsAccepted === true,
     privacyAccepted: temporaryAccount.privacyAccepted === true,
     termsVersion: text(temporaryAccount.termsVersion),
     privacyVersion: text(temporaryAccount.privacyVersion),
   });
 
-  let verificationDeliveryStatus = "sent";
-  try {
-    await sendAccountVerificationCodes({ db, uid: safeUid, clientId, email: accountEmail, phone: accountPhone, ignoreCooldown: true });
-  } catch (error) {
-    verificationDeliveryStatus = "needs_resend";
-    console.error("The regular account was created, but its verification codes need to be resent", error);
-  }
-
   return {
     status: "succeeded",
     clientId,
     paymentMethodId: savedPaymentMethodId,
     paymentMethodLabel,
-    verificationDeliveryStatus,
-    nextPath: "/signup/verify",
+    nextPath: "/",
   };
 }

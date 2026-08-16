@@ -32,7 +32,7 @@ async function authorize(request) {
       await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
       return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
     }
-    if (!pending || pending.data.businessSetupComplete !== true || text(pending.data.stage) !== "pending_payment") {
+    if (!pending || pending.data.identityVerificationVerified !== true || pending.data.businessSetupComplete !== true || text(pending.data.stage) !== "pending_payment") {
       return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
     }
     return { auth, db, decoded, pending };

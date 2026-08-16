@@ -23,7 +23,7 @@ const sections = [
   },
   {
     title: "4. Payment setup",
-    body: <><p>During signup, Stripe’s Payment Element appears inside ARK Client Center and sends sensitive payment information directly to Stripe. ARK’s server verifies the SetupIntent, starts the $50 monthly subscription, promotes the temporary signup into a regular account, and then begins email and phone verification.</p><p>The saved payment method is also authorized for later off-session $20 usage charges. Stripe may collect information needed to process the selected payment method under Stripe’s own privacy practices.</p></>,
+    body: <><p>During signup, ARK verifies the email address and phone number before collecting business information and opening Stripe’s Payment Element. The Payment Element sends sensitive payment information directly to Stripe. ARK’s server verifies the SetupIntent, starts the $50 monthly subscription, and promotes the temporary signup into a regular account that is already verified.</p><p>The saved payment method is also authorized for later off-session $20 usage charges. Stripe may collect information needed to process the selected payment method under Stripe’s own privacy practices.</p></>,
   },
   {
     title: "5. Messaging and notifications",

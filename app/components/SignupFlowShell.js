@@ -15,6 +15,8 @@ function Waiting({ children }) {
 
 function requiredOnboardingPath(profile) {
   const status = profile?.status;
+  if (status === "pending_verification") return "/signup/verify";
+  if (["pending_business_setup", "pending_payment"].includes(status) && profile?.identityVerificationVerified !== true) return "/signup/verify";
   if (status === "pending_business_setup") return "/setup/business";
   if (status === "pending_payment") return "/signup/payment";
   if (status === "active" && profile?.identityVerificationRequired && !profile?.identityVerificationVerified) return "/signup/verify";
@@ -31,9 +33,9 @@ export default function SignupFlowShell({ children }) {
   const allowedPendingPath = requiredPath === "/signup/verify"
     ? pathname === "/signup/verify"
     : requiredPath === "/setup/business"
-      ? routeMatches(pathname, ["/signup", "/setup/business"])
+      ? routeMatches(pathname, ["/signup/verify", "/setup/business"])
       : requiredPath === "/signup/payment"
-        ? routeMatches(pathname, ["/setup/business", "/signup/payment"])
+        ? routeMatches(pathname, ["/signup/verify", "/setup/business", "/signup/payment"])
         : false;
 
   useEffect(() => {
