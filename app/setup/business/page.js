@@ -1,17 +1,19 @@
 "use client";
 
+import { signInWithCustomToken } from "firebase/auth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../components/AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "../../components/ReceptionistBusinessForm";
 import { readApiJson } from "../../lib/apiResponse";
+import { auth } from "../../lib/firebase";
 import { validateReceptionistBusinessInformation } from "../../lib/ownerSignup";
 import { publicFormError } from "../../lib/userFacingError";
 
 export default function BusinessSetupPage() {
   const router = useRouter();
-  const { user, profile, loading, refreshProfile } = useAuth();
+  const { user, profile, loading } = useAuth();
   const [receptionist, setReceptionist] = useState(null);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -66,9 +68,14 @@ export default function BusinessSetupPage() {
         body: JSON.stringify(receptionistRequestPayload(receptionist)),
       });
       const data = await readApiJson(response, "Unable to save business information.");
-      await user.getIdToken(true);
-      await refreshProfile();
-      router.push(data.nextPath || "/signup/payment");
+      const destination = data.nextPath === "/signup/payment" ? data.nextPath : "";
+      if (!destination || !data.continuationToken) throw new Error("Unable to open payment setup.");
+      try {
+        await signInWithCustomToken(auth, data.continuationToken);
+      } catch {
+        await user.getIdToken(true);
+      }
+      window.location.replace(destination);
     } catch (saveError) {
       setError(publicFormError(saveError, "Unable to save business information."));
       setSaving(false);

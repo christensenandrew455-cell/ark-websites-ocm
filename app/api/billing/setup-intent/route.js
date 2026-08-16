@@ -5,12 +5,44 @@ import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
+import { ensureStripeBillingCatalog, missingStripeResource } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function text(value) { return String(value || "").trim(); }
 function paymentFailure() { return "Your payment setup could not be completed. Update the payment method or try again."; }
+function stripeKeyMode(value, prefix) {
+  const key = text(value);
+  if (key.startsWith(`${prefix}_live_`)) return "live";
+  if (key.startsWith(`${prefix}_test_`)) return "test";
+  return "";
+}
+async function reusableStripeCustomer(stripe, customerId, livemode) {
+  if (!customerId) return null;
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    return customer.deleted !== true && customer.livemode === livemode ? customer : null;
+  } catch (error) {
+    if (missingStripeResource(error)) return null;
+    throw error;
+  }
+}
+async function reusableSetupIntent(stripe, setupIntentId, customerId, uid, livemode) {
+  if (!setupIntentId) return null;
+  try {
+    const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+    return setupIntent.livemode === livemode
+      && text(setupIntent.customer) === customerId
+      && text(setupIntent.metadata?.uid) === uid
+      && !["canceled", "succeeded"].includes(setupIntent.status)
+      ? setupIntent
+      : null;
+  } catch (error) {
+    if (missingStripeResource(error)) return null;
+    throw error;
+  }
+}
 function applicationReturnUrl(request) {
   const origin = text(process.env.YOUR_DOMAIN) || new URL(request.url).origin;
   return new URL("/signup/payment", origin).toString();
@@ -44,7 +76,14 @@ async function authorize(request) {
 export async function POST(request) {
   const access = await authorize(request);
   if (access.response) return access.response;
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_PUBLISHABLE_KEY) return NextResponse.json({ error: paymentFailure() }, { status: 503 });
+  const stripeSecretKey = text(process.env.STRIPE_SECRET_KEY);
+  const stripePublishableKey = text(process.env.STRIPE_PUBLISHABLE_KEY);
+  const secretMode = stripeKeyMode(stripeSecretKey, "sk");
+  const publishableMode = stripeKeyMode(stripePublishableKey, "pk");
+  if (!stripeSecretKey || !stripePublishableKey || !secretMode || secretMode !== publishableMode) {
+    console.error("Stripe onboarding keys are missing or mix test and live modes.");
+    return NextResponse.json({ error: paymentFailure() }, { status: 503 });
+  }
 
   try {
     const uid = access.decoded.uid;
@@ -55,9 +94,12 @@ export async function POST(request) {
     const rateLimit = await checkRequestRateLimit({ db: access.db, request, scope: `payment-setup:${uid}`, limit: 12, windowMs: 60 * 60 * 1000 });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = new Stripe(stripeSecretKey);
+    await ensureStripeBillingCatalog({ stripe });
+    const livemode = secretMode === "live";
     let stripeCustomerId = text(payment.stripeCustomerId);
-    if (!stripeCustomerId) {
+    const existingCustomer = await reusableStripeCustomer(stripe, stripeCustomerId, livemode);
+    if (!existingCustomer) {
       const customer = await stripe.customers.create({
         email: text(account.accountEmail),
         name: text(account.ownerName),
@@ -73,12 +115,8 @@ export async function POST(request) {
       });
     }
 
-    let setupIntent = null;
     const existingSetupIntentId = text(payment.stripeSetupIntentId);
-    if (existingSetupIntentId) {
-      const existing = await stripe.setupIntents.retrieve(existingSetupIntentId).catch(() => null);
-      if (existing && text(existing.customer) === stripeCustomerId && text(existing.metadata?.uid) === uid && !["canceled", "succeeded"].includes(existing.status)) setupIntent = existing;
-    }
+    let setupIntent = await reusableSetupIntent(stripe, existingSetupIntentId, stripeCustomerId, uid, livemode);
     const paymentSetupAttempt = Math.max(1, Math.floor(Number(payment.paymentSetupAttempt || 0)) + (setupIntent ? 0 : 1));
     if (!setupIntent) {
       setupIntent = await stripe.setupIntents.create({
@@ -88,13 +126,14 @@ export async function POST(request) {
         metadata: { uid, clientId, purpose: "ark_onboarding_payment_method" },
       }, { idempotencyKey: `ark-onboarding-setup-${uid}-${paymentSetupAttempt}` });
     }
+    if (setupIntent.livemode !== livemode) throw new Error("STRIPE_MODE_MISMATCH");
 
     await access.pending.ref.set({
-      payment: { ...payment, status: "in_progress", stripeCustomerId, stripeSetupIntentId: setupIntent.id, paymentSetupAttempt },
+      payment: { ...payment, status: "in_progress", stripeCustomerId, stripeSetupIntentId: setupIntent.id, stripeLivemode: livemode, paymentSetupAttempt },
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    return NextResponse.json({ clientSecret: setupIntent.client_secret, publishableKey: process.env.STRIPE_PUBLISHABLE_KEY, returnUrl: applicationReturnUrl(request) });
+    return NextResponse.json({ clientSecret: setupIntent.client_secret, publishableKey: stripePublishableKey, returnUrl: applicationReturnUrl(request) });
   } catch (error) {
     console.error("Unable to create Stripe SetupIntent", error);
     return NextResponse.json({ error: paymentFailure() }, { status: 500 });

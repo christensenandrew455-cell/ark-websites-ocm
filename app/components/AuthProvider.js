@@ -97,7 +97,9 @@ export function AuthProvider({ children }) {
       await loadProfile(nextUser);
     } catch (error) {
       console.error("Unable to load account profile", error);
-      setProfile({ uid: nextUser.uid, email: nextUser.email, accountEmail: nextUser.email || "", role: ACCOUNT_ROLES.STANDARD, accountType: ACCOUNT_TYPES.OWNER, businessRole: "owner", clientId: "", status: "", messagesEnabled: false, paymentSetupStatus: "", identityVerificationRequired: false, identityVerificationVerified: false, identityVerificationStatus: "", emailVerificationStatus: "", phoneVerificationStatus: "", onboardingTourStatus: "", numberAssignmentStatus: "", termsAccepted: false, privacyAccepted: false, termsVersion: "", privacyVersion: "" });
+      await signOut(auth).catch((signOutError) => console.warn("Unable to clear the expired local sign-in", signOutError));
+      setUser(null);
+      setProfile(null);
       setActiveClientId("");
     } finally {
       setLoading(false);
