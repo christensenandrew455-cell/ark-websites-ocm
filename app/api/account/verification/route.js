@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isStandardRole } from "../../../lib/accountRoles";
+import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { accountRef } from "../../../lib/firestoreLayout";
 import {
@@ -20,6 +20,34 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function text(value) { return String(value || "").trim(); }
+
+async function statusWithContinuation(authorization, status) {
+  if (status?.verified !== true) return status;
+  const accountStatus = text(status.accountStatus);
+  if (authorization.temporary && !["pending_business_setup", "pending_payment"].includes(accountStatus)) {
+    return { ...status, verified: false, nextPath: "/signup/verify" };
+  }
+  if (!authorization.temporary) return status;
+
+  const auth = getAdminAuth();
+  const user = await auth.getUser(authorization.decoded.uid);
+  const claims = {
+    ...(user.customClaims || {}),
+    role: ACCOUNT_ROLES.STANDARD,
+    clientId: authorization.clientId,
+    accountStatus,
+    temporaryAccount: true,
+    identityVerificationRequired: false,
+    identityVerificationVerified: true,
+  };
+  // Repair a stale token as part of resume as well as immediately after code
+  // submission. This keeps app backgrounding from losing the verified step.
+  await auth.setCustomUserClaims(authorization.decoded.uid, claims);
+  return {
+    ...status,
+    continuationToken: await auth.createCustomToken(authorization.decoded.uid, claims),
+  };
+}
 
 async function authorize(request) {
   const header = text(request.headers.get("authorization"));
@@ -71,7 +99,8 @@ export async function GET(request) {
   if (authorization.response) return authorization.response;
   try {
     const readStatus = authorization.temporary ? readPendingSignupVerificationStatus : readAccountVerificationStatus;
-    return NextResponse.json(await readStatus({ db: getAdminDb(), uid: authorization.decoded.uid, clientId: authorization.clientId }));
+    const status = await readStatus({ db: getAdminDb(), uid: authorization.decoded.uid, clientId: authorization.clientId });
+    return NextResponse.json(await statusWithContinuation(authorization, status));
   } catch (error) {
     const safe = verificationError(error);
     return NextResponse.json(safe, { status: safe.status });
@@ -116,14 +145,15 @@ export async function POST(request) {
       }));
     }
     const verifyCodes = authorization.temporary ? verifyPendingSignupCodes : verifyAccountCodes;
-    return NextResponse.json(await verifyCodes({
+    const status = await verifyCodes({
       db,
       auth: getAdminAuth(),
       uid: authorization.decoded.uid,
       clientId: authorization.clientId,
       emailCode: body.emailCode,
       phoneCode: body.phoneCode,
-    }));
+    });
+    return NextResponse.json(await statusWithContinuation(authorization, status));
   } catch (error) {
     console.error("Unable to verify owner account", error);
     const safe = verificationError(error);
