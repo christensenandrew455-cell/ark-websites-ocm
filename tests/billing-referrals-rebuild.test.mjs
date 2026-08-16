@@ -27,6 +27,18 @@ import {
 } from "../app/lib/stripeUsageBilling.js";
 import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
 
+async function withBasePriceOverride(value, action) {
+  const previous = process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
+  if (value === undefined) delete process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
+  else process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = value;
+  try {
+    return await action();
+  } finally {
+    if (previous === undefined) delete process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
+    else process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = previous;
+  }
+}
+
 test("billing prices live in code and usage charges at exact twenty-dollar intervals", () => {
   assert.equal(MONTHLY_BASE_CENTS, 5000);
   assert.equal(PER_LEAD_CENTS, 200);
@@ -106,7 +118,35 @@ test("only confirmed Stripe missing-resource responses are treated as missing", 
   assert.equal(missingStripeResource({ statusCode: 503, code: "api_connection_error" }), false);
 });
 
-test("Stripe base billing resolves from the fixed code price without an environment ID", async () => {
+test("Stripe base billing accepts an optional monthly Price override", async () => {
+  let retrievedId = "";
+  const stripe = {
+    prices: {
+      async retrieve(priceId) {
+        retrievedId = priceId;
+        return {
+          id: priceId,
+          active: true,
+          billing_scheme: "per_unit",
+          currency: "usd",
+          unit_amount: 1,
+          type: "recurring",
+          recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
+        };
+      },
+      async list() { throw new Error("The catalog should not be searched when an override is set."); },
+      async create() { throw new Error("A Price should not be created when an override is set."); },
+    },
+  };
+  const result = await withBasePriceOverride(
+    "price_owner_live_test",
+    () => ensureStripeBillingCatalog({ stripe })
+  );
+  assert.deepEqual(result, { basePriceId: "price_owner_live_test" });
+  assert.equal(retrievedId, "price_owner_live_test");
+});
+
+test("Stripe base billing resolves from the fixed code price without an override", async () => {
   const calls = [];
   const stripe = {
     prices: {
@@ -127,7 +167,10 @@ test("Stripe base billing resolves from the fixed code price without an environm
       async create() { throw new Error("An existing $50 monthly Price should be reused."); },
     },
   };
-  assert.deepEqual(await ensureStripeBillingCatalog({ stripe }), { basePriceId: "price_existing_base" });
+  assert.deepEqual(
+    await withBasePriceOverride(undefined, () => ensureStripeBillingCatalog({ stripe })),
+    { basePriceId: "price_existing_base" }
+  );
   assert.equal(calls.length, 2);
 });
 
@@ -149,7 +192,10 @@ test("Stripe base billing creates the fixed code price when the account has none
       },
     },
   };
-  assert.deepEqual(await ensureStripeBillingCatalog({ stripe }), { basePriceId: "price_created_base" });
+  assert.deepEqual(
+    await withBasePriceOverride(undefined, () => ensureStripeBillingCatalog({ stripe })),
+    { basePriceId: "price_created_base" }
+  );
   assert.equal(created.params.unit_amount, 5000);
   assert.equal(created.params.recurring.interval, "month");
   assert.equal(created.params.product_data.name, "ARK Client Center Base Subscription");
@@ -184,19 +230,22 @@ test("a transient subscription lookup failure cannot create a duplicate subscrip
       async create() { creates += 1; return { id: "sub_duplicate", status: "active" }; },
     },
   };
-  await assert.rejects(
-    ensureCustomerBillingSubscription({
-      stripe,
-      db,
-      clientId: "client",
-      customerId: "cus_1",
-      paymentMethodId: "pm_1",
-      businessName: "Client",
-      uid: "owner",
-      existingSubscriptionId: "sub_existing",
-      persist: false,
-    }),
-    /temporary network failure/
+  await withBasePriceOverride(
+    undefined,
+    () => assert.rejects(
+      ensureCustomerBillingSubscription({
+        stripe,
+        db,
+        clientId: "client",
+        customerId: "cus_1",
+        paymentMethodId: "pm_1",
+        businessName: "Client",
+        uid: "owner",
+        existingSubscriptionId: "sub_existing",
+        persist: false,
+      }),
+      /temporary network failure/
+    )
   );
   assert.equal(creates, 0);
 });

@@ -68,12 +68,14 @@ export async function resolveBillingWindow({ stripe, subscriptionId, timeZone, s
   }
 }
 
-function isMonthlyBasePrice(price) {
+function isUsableMonthlyPrice(price) {
   return Boolean(
     price
     && price.active !== false
     && text(price.currency).toLowerCase() === "usd"
-    && Number(price.unit_amount) === MONTHLY_BASE_CENTS
+    && Number.isInteger(Number(price.unit_amount))
+    && Number(price.unit_amount) > 0
+    && text(price.billing_scheme || "per_unit") === "per_unit"
     && text(price.type || "recurring") === "recurring"
     && text(price.recurring?.interval) === "month"
     && Number(price.recurring?.interval_count || 1) === 1
@@ -81,7 +83,26 @@ function isMonthlyBasePrice(price) {
   );
 }
 
+function isMonthlyBasePrice(price) {
+  return isUsableMonthlyPrice(price) && Number(price.unit_amount) === MONTHLY_BASE_CENTS;
+}
+
 export async function ensureStripeBillingCatalog({ stripe }) {
+  const configuredPriceId = text(process.env.STRIPE_ACCOUNT_BASE_PRICE_ID);
+  if (configuredPriceId) {
+    let configuredPrice;
+    try {
+      configuredPrice = await stripe.prices.retrieve(configuredPriceId);
+    } catch (error) {
+      if (!missingStripeResource(error)) throw error;
+      throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID was not found with the current Stripe secret key.");
+    }
+    if (!isUsableMonthlyPrice(configuredPrice)) {
+      throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID must be an active USD flat-rate monthly recurring Price.");
+    }
+    return { basePriceId: configuredPrice.id };
+  }
+
   const managedPrices = await stripe.prices.list({
     active: true,
     lookup_keys: [BASE_PRICE_LOOKUP_KEY],
