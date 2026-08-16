@@ -2,7 +2,15 @@ import { FieldValue } from "firebase-admin/firestore";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
 import { ACCOUNT_TYPES } from "./accountTypes";
 import { accountCollection, accountRef as regularAccountRef } from "./firestoreLayout.js";
-import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "./pendingOwnerSignup";
+import {
+  deletePendingOwnerSignup,
+  pendingOwnerSignupAccount,
+  pendingOwnerSignupBusiness,
+  pendingOwnerSignupExpired,
+  pendingOwnerSignupLegal,
+  pendingOwnerSignupVerified,
+  readPendingOwnerSignup,
+} from "./pendingOwnerSignup";
 import { pendingReferralFields } from "./referrals";
 import { ensureCustomerBillingSubscription } from "./stripeUsageBilling";
 
@@ -47,13 +55,14 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     throw new Error("PAYMENT_SETUP_EXPIRED");
   }
   const temporary = pending.data;
-  const temporaryAccount = temporary.account || temporary;
-  const business = temporary.business || temporary;
+  const temporaryAccount = pendingOwnerSignupAccount(temporary);
+  const business = pendingOwnerSignupBusiness(temporary);
+  const legal = pendingOwnerSignupLegal(temporary);
   const payment = temporary.payment || {};
   const clientId = text(temporary.clientId);
   const accountRef = regularAccountRef(db, clientId);
   const storedCustomerId = text(payment.stripeCustomerId);
-  if (temporary.identityVerificationVerified !== true || temporary.businessSetupComplete !== true || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
+  if (!pendingOwnerSignupVerified(temporary) || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
   if (text(payment.stripeSetupIntentId) !== safeSetupIntentId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
 
   const setupIntent = await stripe.setupIntents.retrieve(safeSetupIntentId, { expand: ["payment_method"] });
@@ -69,7 +78,6 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const ownerName = text(temporaryAccount.ownerName || business.ownerName);
   const accountEmail = text(temporaryAccount.accountEmail || business.businessEmail).toLowerCase();
   const accountPhone = text(temporaryAccount.accountPhone || business.businessPhone);
-  const accountPhoneNormalized = text(temporaryAccount.accountPhoneNormalized || accountPhone);
 
   await stripe.customers.update(storedCustomerId, {
     email: accountEmail,
@@ -95,15 +103,10 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const referralFields = pendingReferralFields(temporaryAccount.referral || temporary.referral);
   const businessProfile = {
     timeZone: text(business.timeZone || "America/New_York"),
-    estimateDays: text(business.estimateDays),
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
-    estimateStartHour: business.estimateStartHour || "",
-    estimateStartPeriod: text(business.estimateStartPeriod),
-    estimateEndHour: business.estimateEndHour || "",
-    estimateEndPeriod: text(business.estimateEndPeriod),
     earliestEstimateStart: text(business.earliestEstimateStart),
     latestEstimateStart: text(business.latestEstimateStart),
-    businessBase: text(business.businessBase),
+    businessType: text(business.businessType || business.businessBase),
     serviceAreas: Array.isArray(business.serviceAreas) ? business.serviceAreas : [],
     services: business.services && typeof business.services === "object" && !Array.isArray(business.services) ? business.services : {},
     businessInformation: Array.isArray(business.businessInformation) ? business.businessInformation : [],
@@ -118,7 +121,6 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     ownerName,
     accountEmail,
     accountPhone,
-    accountPhoneNormalized,
     businessSetupComplete: true,
     paymentSetupStatus: "complete",
     stripeCustomerId: storedCustomerId,
@@ -127,12 +129,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
     paymentMethodLabel,
-    identityVerificationRequired: false,
     identityVerificationVerified: true,
-    identityVerificationStatus: "verified",
-    emailVerificationStatus: "verified",
-    phoneVerificationStatus: text(temporary.phoneVerificationStatus || "verified"),
-    identityVerifiedAt: temporary.identityVerifiedAt || now,
     usageBalancePoints: 0,
     usageSmsPartRemainder: 0,
     usageChargeStatus: "idle",
@@ -150,14 +147,13 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const accountData = {
     ...shared,
     ...businessProfile,
-    businessNameKey: clientId,
     accountType: ACCOUNT_TYPES.OWNER,
     businessRole: "owner",
-    termsAccepted: temporaryAccount.termsAccepted === true,
-    privacyAccepted: temporaryAccount.privacyAccepted === true,
-    termsVersion: text(temporaryAccount.termsVersion),
-    privacyVersion: text(temporaryAccount.privacyVersion),
-    legalAcceptedAt: temporaryAccount.legalAcceptedAt || now,
+    termsAccepted: legal.termsAccepted === true,
+    privacyAccepted: legal.privacyAccepted === true,
+    termsVersion: text(legal.termsVersion),
+    privacyVersion: text(legal.privacyVersion),
+    legalAcceptedAt: legal.acceptedAt || now,
     businessEmail: accountEmail,
     businessPhone: accountPhone,
     enabled: true,
@@ -180,10 +176,10 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     temporaryAccount: false,
     identityVerificationRequired: false,
     identityVerificationVerified: true,
-    termsAccepted: temporaryAccount.termsAccepted === true,
-    privacyAccepted: temporaryAccount.privacyAccepted === true,
-    termsVersion: text(temporaryAccount.termsVersion),
-    privacyVersion: text(temporaryAccount.privacyVersion),
+    termsAccepted: legal.termsAccepted === true,
+    privacyAccepted: legal.privacyAccepted === true,
+    termsVersion: text(legal.termsVersion),
+    privacyVersion: text(legal.privacyVersion),
   });
 
   return {

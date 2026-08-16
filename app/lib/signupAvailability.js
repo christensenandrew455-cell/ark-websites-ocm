@@ -77,19 +77,22 @@ export async function checkSignupAvailability({ auth, db, businessName = "", acc
   const phoneVariants = signupPhoneVariants(phone);
   const accounts = accountCollection(db);
   const pending = pendingSignupCollection(db);
-  const [authUser, accountEmailSnapshot, pendingEmailSnapshot, accountPhoneSnapshot, pendingPhoneSnapshot, legacyAccountPhoneSnapshot, businessSnapshot, pendingBusinessSnapshot] = await Promise.all([
+  const [authUser, accountEmailSnapshot, pendingEmailSnapshot, accountPhoneSnapshot, pendingPhoneSnapshot, legacyPendingPhoneSnapshot, businessSnapshot, pendingBusinessSnapshot] = await Promise.all([
     email ? auth.getUserByEmail(email).catch(() => null) : null,
     email ? accounts.where("accountEmail", "==", email).limit(5).get() : null,
-    email ? pending.where("accountEmail", "==", email).limit(5).get() : null,
-    phone ? accounts.where("accountPhoneNormalized", "==", phone).limit(5).get() : null,
-    phone ? pending.where("accountPhoneNormalized", "==", phone).limit(5).get() : null,
+    email ? pending.where("account.accountEmail", "==", email).limit(5).get() : null,
     phoneVariants.length ? accounts.where("accountPhone", "in", phoneVariants).limit(5).get() : null,
+    phone ? pending.where("account.accountPhone", "==", phone).limit(5).get() : null,
+    phone ? pending.where("accountPhoneNormalized", "==", phone).limit(5).get() : null,
     businessNameKey ? accounts.doc(businessNameKey).get() : null,
     businessNameKey ? pending.doc(businessNameKey).get() : null,
   ]);
 
   const pendingBusinessQuery = pendingBusinessSnapshot?.exists ? { docs: [pendingBusinessSnapshot] } : null;
-  const expired = await deleteExpiredPendingMatches({ auth, db, snapshots: [pendingEmailSnapshot, pendingPhoneSnapshot, pendingBusinessQuery] });
+  const authPendingSnapshot = authUser && authUser.uid !== allowedUid
+    ? await pending.where("uid", "==", authUser.uid).limit(1).get()
+    : null;
+  const expired = await deleteExpiredPendingMatches({ auth, db, snapshots: [pendingEmailSnapshot, pendingPhoneSnapshot, legacyPendingPhoneSnapshot, pendingBusinessQuery, authPendingSnapshot] });
   return {
     email,
     phone,
@@ -101,7 +104,7 @@ export async function checkSignupAvailability({ auth, db, businessName = "", acc
       || Boolean(pendingEmailSnapshot && containsDifferentAccount(pendingEmailSnapshot, allowedUid, expired.deleted)),
     phoneInUse: Boolean(accountPhoneSnapshot && containsDifferentAccount(accountPhoneSnapshot, allowedUid))
       || Boolean(pendingPhoneSnapshot && containsDifferentAccount(pendingPhoneSnapshot, allowedUid, expired.deleted))
-      || Boolean(legacyAccountPhoneSnapshot && containsDifferentAccount(legacyAccountPhoneSnapshot, allowedUid)),
+      || Boolean(legacyPendingPhoneSnapshot && containsDifferentAccount(legacyPendingPhoneSnapshot, allowedUid, expired.deleted)),
   };
 }
 

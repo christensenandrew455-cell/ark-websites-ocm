@@ -2,7 +2,7 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
-export const OWNER_SIGNUP_VERSION = 3;
+export const OWNER_SIGNUP_VERSION = 4;
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const PERIODS = new Set(["AM", "PM"]);
@@ -61,19 +61,6 @@ function servicesObject(value) {
     .slice(0, 100));
 }
 
-function titleCase(value) {
-  const text = cleanText(value, 20);
-  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : "";
-}
-
-function daySummary(days) {
-  const labels = WEEKDAYS.filter((day) => days.includes(day)).map(titleCase);
-  if (labels.length === 7) return "every day";
-  if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return labels.length ? `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}` : "no selected days";
-}
-
 function timeSummary(selectedHour, selectedPeriod) {
   return `${selectedHour}:00 ${selectedPeriod}`;
 }
@@ -89,19 +76,12 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const ownerName = cleanText(value.ownerName || value.personName || receptionist.ownerName, 120);
   const accountEmail = cleanText(value.accountEmail || receptionist.businessEmail, 254).toLowerCase();
   const accountPhone = cleanText(value.accountPhone || receptionist.businessPhone, 30);
-  // Retain older business-hour values only for normalizing preexisting records. New forms neither collect nor store them.
-  const businessWeekdays = weekdayList(receptionist.businessWeekdays);
   const estimateWeekdays = weekdayList(receptionist.estimateWeekdays);
-  const businessStartHour = hour(receptionist.businessStartHour);
-  const businessStartPeriod = period(receptionist.businessStartPeriod);
-  const businessEndHour = hour(receptionist.businessEndHour);
-  const businessEndPeriod = period(receptionist.businessEndPeriod);
   const estimateStartHour = hour(receptionist.estimateStartHour);
   const estimateStartPeriod = period(receptionist.estimateStartPeriod);
   const estimateEndHour = hour(receptionist.estimateEndHour);
   const estimateEndPeriod = period(receptionist.estimateEndPeriod);
   const timeZone = cleanText(receptionist.timeZone, 80).toLowerCase() === "choose" ? "" : cleanText(receptionist.timeZone, 80);
-  const businessHoursComplete = businessWeekdays.length && businessStartHour && businessStartPeriod && businessEndHour && businessEndPeriod;
   const estimateStartComplete = estimateStartHour && estimateStartPeriod;
   const estimateEndComplete = estimateEndHour && estimateEndPeriod;
   const businessInformation = normalizeBusinessInformation(receptionist.businessInformation);
@@ -125,13 +105,6 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       businessPhone: accountPhone,
       businessEmail: accountEmail,
       timeZone,
-      businessWeekdays,
-      businessStartHour,
-      businessStartPeriod,
-      businessEndHour,
-      businessEndPeriod,
-      businessHours: businessHoursComplete ? `Open ${daySummary(businessWeekdays)} from ${timeSummary(businessStartHour, businessStartPeriod)} to ${timeSummary(businessEndHour, businessEndPeriod)}.` : "",
-      estimateDays: estimateWeekdays.length ? daySummary(estimateWeekdays) : "",
       estimateWeekdays,
       estimateStartHour,
       estimateStartPeriod,
@@ -139,7 +112,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       estimateEndPeriod,
       earliestEstimateStart: estimateStartComplete ? timeSummary(estimateStartHour, estimateStartPeriod) : "",
       latestEstimateStart: estimateEndComplete ? timeSummary(estimateEndHour, estimateEndPeriod) : "",
-      businessBase: cleanText(receptionist.businessBase, 200),
+      businessType: cleanText(receptionist.businessType || receptionist.businessBase, 120),
       serviceAreas: textList(receptionist.serviceAreas),
       services: servicesObject(receptionist.services),
       ...(businessInformation.length ? { businessInformation } : {}),
@@ -174,6 +147,7 @@ export function validateReceptionistBusinessInformation(value = {}) {
   } catch {
     return "Choose a valid time zone.";
   }
+  if (!receptionist.businessType) return "Enter the type of business.";
   const hasEstimateSchedule = Boolean(receptionist.estimateWeekdays.length || receptionist.estimateStartHour || receptionist.estimateStartPeriod || receptionist.estimateEndHour || receptionist.estimateEndPeriod);
   if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
   if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest estimate time or leave the estimate schedule blank.";

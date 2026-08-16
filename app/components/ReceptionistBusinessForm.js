@@ -25,6 +25,8 @@ const REMOVED_BUSINESS_HOUR_FIELDS = new Set([
   "businessStartPeriod",
   "businessEndHour",
   "businessEndPeriod",
+  "businessBase",
+  "estimateDays",
 ]);
 
 function titleCase(value) {
@@ -42,15 +44,6 @@ function formatTime(hour, period) {
   return Number.isInteger(selectedHour) && selectedHour >= 1 && selectedHour <= 12 && PERIODS.includes(period)
     ? `${selectedHour}:00 ${period}`
     : "";
-}
-
-function formatDayList(days) {
-  const labels = WEEKDAYS.filter((day) => days.includes(day)).map(titleCase);
-  if (labels.length === 7) return "every day";
-  if (labels.length === 0) return "";
-  if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
 }
 
 function ExplainedLabel({ label, explanation, heading = false }) {
@@ -231,6 +224,7 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
     serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
     businessInformation: normalizeBusinessInformation(profile.businessInformation),
+    businessType: String(profile.businessType || profile.businessBase || ""),
     timeZone: requireExplicitSelections ? String(profile.timeZone || "") : profile.timeZone || "America/New_York",
     estimateWeekdays: Array.isArray(profile.estimateWeekdays) ? profile.estimateWeekdays : [],
     estimateStartHour: explicitHour(profile.estimateStartHour || estimateStart.hour),
@@ -248,7 +242,6 @@ export function receptionistRequestPayload(profile = {}) {
     ...editableProfile,
     businessInformation,
     extraInformation: businessInformationText(businessInformation),
-    estimateDays: formatDayList(estimateWeekdays),
     estimateWeekdays,
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
     latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
@@ -273,6 +266,12 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
     </section>
   );
   const sharedSections = <>
+    <section>
+      <h3 className="text-lg font-black">Business type</h3>
+      <div className="mt-4">
+        <Field label="Type of business" explanation="Enter the general kind of work this business does."><Input ariaLabel="Type of business" value={profile.businessType} onChange={(event) => update("businessType", event.target.value)} placeholder="Landscaping" /></Field>
+      </div>
+    </section>
     <section>
       <h3 className="text-lg font-black">Estimate availability</h3>
       <div className="mt-4 grid gap-4 md:grid-cols-2">

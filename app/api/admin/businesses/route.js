@@ -33,11 +33,11 @@ export async function POST(request) {
     const accountPhone = trimmedText(body.businessPhone);
     const temporaryPassword = String(body.temporaryPassword || "");
     const clientId = normalizeClientId(businessName);
-    const accountPhoneNormalized = normalizeSignupPhone(accountPhone);
+    const canonicalAccountPhone = normalizeSignupPhone(accountPhone);
 
     if (!businessName || !ownerName || !clientId) return NextResponse.json({ error: "Business name and owner name are required." }, { status: 400 });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) return NextResponse.json({ error: "Enter a valid customer login email." }, { status: 400 });
-    if (!/^\+1\d{10}$/.test(accountPhoneNormalized)) return NextResponse.json({ error: "Enter a valid 10-digit customer phone number." }, { status: 400 });
+    if (!/^\+1\d{10}$/.test(canonicalAccountPhone)) return NextResponse.json({ error: "Enter a valid 10-digit customer phone number." }, { status: 400 });
     if (temporaryPassword.length < 8) return NextResponse.json({ error: "The temporary password must be at least 8 characters." }, { status: 400 });
 
     const db = getAdminDb();
@@ -62,8 +62,7 @@ export async function POST(request) {
         businessName,
         ownerName,
         accountEmail,
-        accountPhone,
-        accountPhoneNormalized,
+        accountPhone: canonicalAccountPhone,
         referrerAccountId: "",
         termsVersion: TERMS_VERSION,
         privacyVersion: PRIVACY_VERSION,

@@ -72,12 +72,12 @@ export async function POST(request) {
     });
     createdUid = createdUser.uid;
 
-    const accountPhoneNormalized = normalizeSignupPhone(signup.accountPhone);
+    const accountPhone = normalizeSignupPhone(signup.accountPhone);
     await createPendingOwnerSignup({
       db,
       uid: createdUid,
       clientId,
-      signup: { ...signup, accountPhoneNormalized },
+      signup: { ...signup, accountPhone },
       referrer,
       initialStage: "pending_verification",
     });

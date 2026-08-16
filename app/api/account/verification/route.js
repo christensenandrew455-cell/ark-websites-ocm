@@ -13,7 +13,7 @@ import {
   verifyPendingSignupCodes,
 } from "../../../lib/accountVerification";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
-import { readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
+import { pendingOwnerSignupAccount, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 
 export const runtime = "nodejs";
@@ -64,7 +64,7 @@ async function authorize(request) {
       if (!pending || !["pending_verification", "pending_business_setup", "pending_payment"].includes(stage)) {
         return { response: NextResponse.json({ error: "A temporary owner account in verification is required." }, { status: 403 }) };
       }
-      return { decoded, account: pending.data, clientId, pending, temporary: true };
+      return { decoded, account: pendingOwnerSignupAccount(pending.data), clientId, pending, temporary: true };
     }
     const accountSnapshot = await accountRef(db, clientId).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : null;
