@@ -41,6 +41,8 @@ Use Stripe test mode until the acceptance checklist passes. Configure:
 
 `STRIPE_ACCOUNT_BASE_PRICE_ID` must be the active $50 USD monthly recurring Price attached to the configured Product. Test and live mode use different object IDs. The server verifies the Price amount, currency, recurrence, active state, and Product before starting a subscription.
 
+When switching to live mode, replace the secret key, publishable key, Product ID, Price ID, and webhook signing secret together. The onboarding API rejects mixed test/live keys and validates the configured $50 Price before it opens the card fields. If a temporary signup still contains a Customer or SetupIntent from the other mode, the server safely creates a matching Customer and SetupIntent in the current mode.
+
 There are no Stripe metered Prices or billing meters. A completed receptionist call or other new lead adds two usage points, a new chat adds one, and each rolling 50 SMS parts adds one. A lead saved from the same receptionist call uses the same event ID and counts once. Whenever the balance reaches or exceeds 20, Stripe charges an exact $20 off-session PaymentIntent and carries any excess forward. For example, 19 plus a two-point call or lead charges $20 and leaves one point.
 
 Register this webhook endpoint:
@@ -78,6 +80,8 @@ firebase deploy --only firestore:rules
 ```
 
 Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. The workflow job also deletes expired temporary signups and expired unverified regular accounts.
+
+Temporary signup access expires exactly one hour after creation. Every protected signup route rejects and deletes an expired record when it is encountered, and the ARK Operations workflow performs a permanent cleanup sweep every 15 minutes. That sweep deletes the temporary Firebase Authentication user, temporary Firestore record, and any current-mode Stripe Customer. A valid unexpired temporary login resumes its saved verification, business-information, or payment step; it never opens the regular app shell.
 
 ## Signup behavior
 

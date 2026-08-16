@@ -22,7 +22,8 @@ test("onboarding follows main information, verification, business, then payment"
   assert.ok(verification.includes("window.location.replace(destination)"));
   assert.equal(verification.includes(">Continue</button>"), false);
   assert.ok(business.includes("Step 3 of 4 · Business information"));
-  assert.ok(business.includes('router.push(data.nextPath || "/signup/payment")'));
+  assert.ok(business.includes("window.location.replace(destination)"));
+  assert.equal(business.includes("refreshProfile"), false);
   assert.ok(payment.includes("Step 4 of 4 · Payment"));
   assert.ok(payment.includes('data.nextPath || "/"'));
   assert.ok(shell.includes('status === "pending_verification"'));
@@ -60,6 +61,9 @@ test("business setup is saved into the temporary record before payment", async (
   assert.ok(route.includes('stage: "pending_payment"'));
   assert.ok(route.includes("businessSetupComplete: true"));
   assert.ok(route.includes('accountStatus: "pending_payment"'));
+  assert.ok(route.includes("createCustomToken"));
+  assert.ok(page.includes("signInWithCustomToken"));
+  assert.ok(page.includes('data.nextPath === "/signup/payment"'));
   assert.ok(route.includes("export async function DELETE"));
 });
 
@@ -86,6 +90,11 @@ test("payment setup is tied to the authenticated temporary owner", async () => {
   assert.ok(route.includes('payment_method_types: ["card"]'));
   assert.ok(route.includes('usage: "off_session"'));
   assert.ok(route.includes('purpose: "ark_onboarding_payment_method"'));
+  assert.ok(route.includes("ensureStripeBillingCatalog({ stripe })"));
+  assert.ok(route.includes("secretMode !== publishableMode"));
+  assert.ok(route.includes("reusableStripeCustomer"));
+  assert.ok(route.includes("missingStripeResource"));
+  assert.ok(route.includes("stripeLivemode: livemode"));
   assert.equal(route.includes('collection("accounts")'), false);
 });
 
@@ -208,10 +217,16 @@ test("retired multi-user account surface does not remain in source or documentat
 });
 
 test("temporary and unverified accounts both have permanent cleanup workflows", async () => {
-  const [pending, cleanup, workflow] = await Promise.all([
+  const [pending, cleanup, workflow, login, authProvider, shell, operations, userRequest, authenticatedRequest] = await Promise.all([
     source("app/lib/pendingOwnerSignup.js"),
     source("app/lib/accountVerificationCleanup.js"),
     source("app/api/cron/workflow/route.js"),
+    source("app/api/auth/business-login/route.js"),
+    source("app/components/AuthProvider.js"),
+    source("app/components/SignupFlowShell.js"),
+    source(".github/workflows/ark-operations.yml"),
+    source("app/lib/userRequest.js"),
+    source("app/lib/authenticatedRequest.js"),
   ]);
   assert.ok(pending.includes("purgeExpiredPendingOwnerSignups"));
   assert.ok(pending.includes("deletePendingOwnerSignup"));
@@ -219,6 +234,13 @@ test("temporary and unverified accounts both have permanent cleanup workflows", 
   assert.ok(cleanup.includes("deleteCustomerPermanently"));
   assert.ok(workflow.includes("purgeExpiredPendingOwnerSignups({ db, auth: getAdminAuth(), now })"));
   assert.ok(workflow.includes("purgeExpiredUnverifiedAccounts({ db, now })"));
+  assert.ok(operations.includes('cron: "*/15 * * * *"'));
+  assert.ok(login.includes("pendingOwnerSignupExpired(pending)"));
+  assert.ok(login.includes("deletePendingOwnerSignup({"));
+  assert.ok(authProvider.includes("Unable to clear the expired local sign-in"));
+  assert.ok(shell.includes("if (requiredPath && !allowedPendingPath"));
+  assert.ok(userRequest.includes("decodedToken.temporaryAccount === true"));
+  assert.ok(authenticatedRequest.includes("decodedToken.temporaryAccount === true"));
 });
 
 test("regular accounts enter the existing number-assignment queue", async () => {

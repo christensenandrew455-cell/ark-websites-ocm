@@ -87,7 +87,16 @@ export async function POST(request) {
       : pendingMatches.docs[0] || null;
     if (!isAdmin && !matchedAccount && pendingDocument) {
       const pending = pendingDocument.data();
-      if (String(pending.uid || "") === userRecord.uid && !pendingOwnerSignupExpired(pending) && ["pending_verification", "pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
+      if (String(pending.uid || "") === userRecord.uid && pendingOwnerSignupExpired(pending)) {
+        await deletePendingOwnerSignup({
+          db,
+          auth,
+          uid: userRecord.uid,
+          pending: { data: pending, ref: pendingDocument.ref || null },
+        });
+        return NextResponse.json({ error: "This temporary signup expired. Start signup again." }, { status: 403 });
+      }
+      if (String(pending.uid || "") === userRecord.uid && ["pending_verification", "pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
         const claims = {
           role: ACCOUNT_ROLES.STANDARD,
           accountType: ACCOUNT_TYPES.OWNER,

@@ -120,16 +120,18 @@ export async function POST(request) {
     }, { merge: true });
 
     const userRecord = await access.auth.getUser(access.decoded.uid);
-    await access.auth.setCustomUserClaims(access.decoded.uid, {
+    const claims = {
       ...(userRecord.customClaims || {}),
       role: ACCOUNT_ROLES.STANDARD,
       accountStatus: "pending_payment",
       temporaryAccount: true,
-    });
+    };
+    await access.auth.setCustomUserClaims(access.decoded.uid, claims);
 
     return NextResponse.json({
       profile: { ...profileFromPending({ ...access.pending.data, ...businessUpdate, businessSetupComplete: true }), configured: true },
       nextPath: "/signup/payment",
+      continuationToken: await access.auth.createCustomToken(access.decoded.uid, claims),
     });
   } catch (error) {
     console.error("Unable to save temporary business setup", error);
