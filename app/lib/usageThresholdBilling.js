@@ -5,9 +5,9 @@ import { isStandardRole } from "./accountRoles.js";
 import {
   smsUsageResult,
   USAGE_CHARGE_THRESHOLD_POINTS,
-  USAGE_POINT_CENTS,
 } from "./billingPricing";
 import { PAYMENT_RETRY_INTERVAL_MS, registerPaymentFailure, resolvePayment } from "./billingDelinquency";
+import { ensureStripeUsagePrice } from "./stripeUsageBilling";
 
 const PROCESSING_LOCK_MS = 5 * 60 * 1000;
 
@@ -258,6 +258,7 @@ async function markPaid(db, claim, paymentIntent) {
 export async function settleUsageThreshold({ db, stripe = null, clientId }) {
   const client = stripeClient(stripe);
   if (!client) return { status: "pending", reason: "stripe_not_configured" };
+  const usagePrice = await ensureStripeUsagePrice({ stripe: client });
   let lastResult = { status: "not_due" };
   for (let index = 0; index < 5; index += 1) {
     const claim = await claimCharge(db, text(clientId));
@@ -269,14 +270,20 @@ export async function settleUsageThreshold({ db, stripe = null, clientId }) {
     }
     try {
       const paymentIntent = await client.paymentIntents.create({
-        amount: USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS,
-        currency: "usd",
+        amount: usagePrice.unitAmount,
+        currency: usagePrice.currency,
         customer: claim.customerId,
         payment_method: claim.paymentMethodId,
         confirm: true,
         off_session: true,
         description: "ARK usage threshold",
-        metadata: { uid: claim.uid, clientId: claim.clientId, usageChargeSequence: String(claim.sequence) },
+        metadata: {
+          uid: claim.uid,
+          clientId: claim.clientId,
+          usageChargeSequence: String(claim.sequence),
+          usagePriceId: usagePrice.usagePriceId,
+          usageProductId: usagePrice.usageProductId,
+        },
       }, { idempotencyKey: `ark-usage-threshold-${claim.uid}-${claim.sequence}` });
       if (paymentIntent.status !== "succeeded") {
         const error = new Error(`PAYMENT_${text(paymentIntent.status).toUpperCase()}`);

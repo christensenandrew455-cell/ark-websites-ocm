@@ -23,6 +23,7 @@ import { messageContactBlockId, normalizeMessagePhone } from "../app/lib/message
 import {
   ensureCustomerBillingSubscription,
   ensureStripeBillingCatalog,
+  ensureStripeUsagePrice,
   missingStripeResource,
 } from "../app/lib/stripeUsageBilling.js";
 import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
@@ -36,6 +37,18 @@ async function withBasePriceOverride(value, action) {
   } finally {
     if (previous === undefined) delete process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
     else process.env.STRIPE_ACCOUNT_BASE_PRICE_ID = previous;
+  }
+}
+
+async function withUsagePrice(value, action) {
+  const previous = process.env.STRIPE_USAGE_PRICE_ID;
+  if (value === undefined) delete process.env.STRIPE_USAGE_PRICE_ID;
+  else process.env.STRIPE_USAGE_PRICE_ID = value;
+  try {
+    return await action();
+  } finally {
+    if (previous === undefined) delete process.env.STRIPE_USAGE_PRICE_ID;
+    else process.env.STRIPE_USAGE_PRICE_ID = previous;
   }
 }
 
@@ -200,6 +213,38 @@ test("Stripe base billing creates the fixed code price when the account has none
   assert.equal(created.params.recurring.interval, "month");
   assert.equal(created.params.product_data.name, "ARK Client Center Base Subscription");
   assert.equal(created.options.idempotencyKey, created.params.lookup_key);
+});
+
+test("Stripe usage billing accepts only the configured one-time twenty-dollar Price", async () => {
+  let retrievedId = "";
+  const stripe = {
+    prices: {
+      async retrieve(priceId) {
+        retrievedId = priceId;
+        return {
+          id: priceId,
+          active: true,
+          billing_scheme: "per_unit",
+          currency: "usd",
+          unit_amount: 2000,
+          type: "one_time",
+          recurring: null,
+          product: "prod_usage",
+        };
+      },
+    },
+  };
+  const result = await withUsagePrice(
+    "price_usage_threshold",
+    () => ensureStripeUsagePrice({ stripe })
+  );
+  assert.deepEqual(result, {
+    usagePriceId: "price_usage_threshold",
+    usageProductId: "prod_usage",
+    unitAmount: 2000,
+    currency: "usd",
+  });
+  assert.equal(retrievedId, "price_usage_threshold");
 });
 
 test("a transient subscription lookup failure cannot create a duplicate subscription", async () => {

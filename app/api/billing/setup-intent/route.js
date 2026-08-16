@@ -5,7 +5,7 @@ import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { deletePendingOwnerSignup, pendingOwnerSignupExpired, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
-import { ensureStripeBillingCatalog, missingStripeResource } from "../../../lib/stripeUsageBilling";
+import { ensureStripeBillingCatalog, ensureStripeUsagePrice, missingStripeResource } from "../../../lib/stripeUsageBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,7 +108,10 @@ export async function POST(request) {
         }, { status: 503 });
       }
     }
-    await ensureStripeBillingCatalog({ stripe });
+    await Promise.all([
+      ensureStripeBillingCatalog({ stripe }),
+      ensureStripeUsagePrice({ stripe }),
+    ]);
     let stripeCustomerId = text(payment.stripeCustomerId);
     const existingCustomer = await reusableStripeCustomer(stripe, stripeCustomerId, livemode);
     if (!existingCustomer) {

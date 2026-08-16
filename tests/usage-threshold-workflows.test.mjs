@@ -14,7 +14,10 @@ test("usage charging reuses an uncertain Stripe attempt and reconciles saved led
   assert.ok(usage.includes('["processing", "retry_pending"].includes(status)'));
   assert.ok(usage.includes("usageChargePaymentMethodId"));
   assert.ok(usage.includes("idempotencyKey: `ark-usage-threshold-${claim.uid}-${claim.sequence}`"));
-  assert.ok(usage.includes("amount: USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS"));
+  assert.ok(usage.includes("const usagePrice = await ensureStripeUsagePrice({ stripe: client })"));
+  assert.ok(usage.includes("amount: usagePrice.unitAmount"));
+  assert.ok(usage.includes("usagePriceId: usagePrice.usagePriceId"));
+  assert.ok(usage.includes("usageProductId: usagePrice.usageProductId"));
   assert.ok(usage.includes("reconcilePendingUsageEvents"));
   assert.ok(usage.includes('collection: "billingLeadEvents", type: "lead", points: 2'));
   assert.ok(usage.includes('collection: "billingConversationEvents", type: "chat", points: 1'));
