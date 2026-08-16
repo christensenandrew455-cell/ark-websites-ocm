@@ -35,13 +35,13 @@ const sections = [
   {
     id: "account-setup",
     title: "Creating an account",
-    summary: "Account setup uses a temporary record until Stripe confirms payment details, then creates the regular account and verifies its contact information.",
+    summary: "Account setup verifies the owner's contact information before business information and payment, then creates the regular account after Stripe succeeds.",
     points: [
       "Step 1 collects the main account information and password.",
-      "Step 2 collects the business and AI receptionist information.",
-      "Step 3 shows Stripe's secure Payment Element, saves the payment method, and starts the $50 monthly subscription.",
+      "Step 2 verifies both the email address and phone number with separate four-digit codes.",
+      "Step 3 collects the business and AI receptionist information.",
+      "Step 4 shows Stripe's secure Payment Element, saves the payment method, and starts the $50 monthly subscription.",
       "After payment details succeed, ARK moves the temporary signup into a regular account.",
-      "Step 4 verifies both the email address and phone number with separate four-digit codes before opening the Dashboard.",
     ],
     links: ["About the App", "Payment Terms", "Privacy Policy"],
   },

@@ -27,7 +27,7 @@ async function resolveBusiness(db, identifier) {
     });
     return null;
   }
-  if (!["pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
+  if (!["pending_verification", "pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
   return {
     clientId,
     uid: String(data.uid || "").trim(),
@@ -87,7 +87,7 @@ export async function POST(request) {
       : pendingMatches.docs[0] || null;
     if (!isAdmin && !matchedAccount && pendingDocument) {
       const pending = pendingDocument.data();
-      if (String(pending.uid || "") === userRecord.uid && !pendingOwnerSignupExpired(pending) && ["pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
+      if (String(pending.uid || "") === userRecord.uid && !pendingOwnerSignupExpired(pending) && ["pending_verification", "pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
         const claims = {
           role: ACCOUNT_ROLES.STANDARD,
           accountType: ACCOUNT_TYPES.OWNER,
@@ -95,6 +95,8 @@ export async function POST(request) {
           clientId: pending.clientId,
           accountStatus: pending.stage,
           temporaryAccount: true,
+          identityVerificationRequired: pending.identityVerificationVerified !== true,
+          identityVerificationVerified: pending.identityVerificationVerified === true,
         };
         await auth.setCustomUserClaims(userRecord.uid, claims);
         return NextResponse.json({ token: await auth.createCustomToken(userRecord.uid, claims), role: ACCOUNT_ROLES.STANDARD, accountType: ACCOUNT_TYPES.OWNER, status: pending.stage });

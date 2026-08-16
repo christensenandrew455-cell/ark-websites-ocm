@@ -63,7 +63,7 @@ export default function SignupPage() {
       });
       const data = await readApiJson(response, "Unable to create the account.");
       await signInWithCustomToken(auth, data.token);
-      router.replace(data.nextPath || "/setup/business");
+      router.replace(data.nextPath || "/signup/verify");
     } catch (signupError) {
       setError(publicFormError(signupError, "Unable to create the account right now."));
       setSubmitting(false);

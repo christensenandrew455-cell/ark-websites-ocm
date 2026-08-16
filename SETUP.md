@@ -3,12 +3,12 @@
 The owner signup flow is:
 
 1. Main information
-2. Business information
-3. In-app Stripe payment setup and $50 monthly subscription
-4. Email and phone verification
+2. Email and phone verification
+3. Business information
+4. In-app Stripe payment setup and $50 monthly subscription
 5. Dashboard
 
-Steps 1 and 2 use one `pendingOwnerSignups/{clientId}` record with a hard one-hour expiration. After Stripe confirms the payment method and starts the base subscription, the server creates `accounts/{clientId}`, deletes the temporary record, and sends the verification codes.
+Steps 1 through 4 use one `pendingOwnerSignups/{clientId}` record with a hard one-hour expiration. The verification code hashes are stored inside that temporary record. After Stripe confirms the payment method and starts the base subscription, the server creates `accounts/{clientId}` and deletes the temporary record.
 
 Firestore has exactly three top-level collections:
 
@@ -82,10 +82,10 @@ Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh
 ## Signup behavior
 
 1. Main information creates a Firebase Auth user and one temporary `pendingOwnerSignups/{clientId}` record. It does not create a regular `accounts` record.
-2. Business settings are validated and saved into the temporary record.
-3. Stripe confirms an off-session SetupIntent.
-4. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
-5. Separate four-digit email and phone codes are sent. Both must be verified before the dashboard opens.
+2. Separate four-digit email and phone codes are sent, hashed in the temporary record, and both must be verified before business setup opens.
+3. Business settings are validated and saved into the temporary record.
+4. Stripe confirms an off-session SetupIntent.
+5. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the verified temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
 6. The administrator assigns the receptionist number through **Needs a Number**.
 
 If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake, receptionist calls, and inbound/outbound chat stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.
@@ -98,7 +98,7 @@ If a monthly or $20 usage charge is declined, the account immediately becomes `d
 - Successful setup starts exactly one $50 monthly base subscription with no metered items.
 - A SetupIntent belonging to another user, Customer, or account metadata cannot promote the signup.
 - Payment success removes the temporary record and creates one `standard` regular account.
-- Email and phone verification happens after payment and refreshes the token before navigation.
+- Email and phone verification happens before business information and payment, and refreshes the token before navigation.
 - At 19 usage points, a new two-point call or lead produces one $20 charge and leaves one point.
 - A decline immediately disables receptionist calls, chat, and new lead intake.
 - Billing retries occur at most daily; the account is deleted after seven full days unpaid.

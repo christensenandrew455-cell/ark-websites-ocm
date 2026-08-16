@@ -44,15 +44,23 @@ export async function readPendingOwnerSignup({ db, uid, clientId = "", allowExpi
   return { ref: snapshot.ref, data };
 }
 
-export async function createPendingOwnerSignup({ db, uid, clientId, signup, referrer = null }) {
+export async function createPendingOwnerSignup({ db, uid, clientId, signup, referrer = null, initialStage = "pending_business_setup" }) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PENDING_OWNER_SIGNUP_TTL_MS);
+  const stage = initialStage === "pending_verification" ? "pending_verification" : "pending_business_setup";
   const data = {
     uid,
     clientId,
-    stage: "pending_business_setup",
+    stage,
     moveToRegularAfterPayment: true,
     expiresAt,
+    verificationStatus: "pending",
+    identityVerificationRequired: true,
+    identityVerificationVerified: false,
+    identityVerificationStatus: "pending",
+    identityVerificationDeadlineAt: expiresAt,
+    emailVerificationStatus: "pending",
+    phoneVerificationStatus: "pending",
     businessName: signup.businessName,
     businessNameKey: clientId,
     ownerName: signup.ownerName,

@@ -34,6 +34,9 @@ async function authorize(request) {
       await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
       return { response: expiredResponse() };
     }
+    if (pending.data.identityVerificationVerified !== true || !["pending_business_setup", "pending_payment"].includes(text(pending.data.stage))) {
+      return { response: NextResponse.json({ error: "Verify your email and phone before entering business information.", nextPath: "/signup/verify" }, { status: 403 }) };
+    }
     return { auth, db, decoded, pending };
   } catch (error) {
     if (text(error?.message) === "PENDING_SIGNUP_EXPIRED") return { response: expiredResponse() };
