@@ -28,30 +28,20 @@ Paste the complete private key. Multiline text and a value containing literal `\
 
 ## Stripe
 
-Use Stripe test mode until the acceptance checklist passes. Configure:
+Stripe signup payment uses only these two matching keys:
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PUBLISHABLE_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `YOUR_DOMAIN=https://ark-websites-ocm-xi.vercel.app`
-- `APP_HOME_PATH=/`
-- `STRIPE_ACCOUNT_PRODUCT_ID`
-- `STRIPE_ACCOUNT_BASE_PRICE_ID`
-- `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` when the portal is enabled
 
-`STRIPE_ACCOUNT_BASE_PRICE_ID` must be the active $50 USD monthly recurring Price attached to the configured Product. Test and live mode use different object IDs. The server verifies the Price amount, currency, recurrence, active state, and Product before starting a subscription.
+The `$50 USD per month` amount and interval live in `app/lib/billingPricing.js`. The server uses the secret key to find an existing active `$50 USD` monthly recurring Price in the current Stripe mode. If none exists, it creates the Product and Price automatically with a stable code lookup key. No Product ID or Price ID environment variable is required.
 
-When switching to live mode, replace the secret key, publishable key, Product ID, Price ID, and webhook signing secret together. The onboarding API rejects mixed test/live keys and validates the configured $50 Price before it opens the card fields. If a temporary signup still contains a Customer or SetupIntent from the other mode, the server safely creates a matching Customer and SetupIntent in the current mode.
+When switching to live mode, replace only the secret and publishable keys together. The onboarding API rejects mixed test/live keys. If a temporary signup contains a Customer or SetupIntent from the other mode, the server safely creates matching live-mode objects.
+
+The payment return URL uses the domain of the incoming request and successful signup returns to `/`, so `YOUR_DOMAIN` and `APP_HOME_PATH` are not used.
 
 There are no Stripe metered Prices or billing meters. A completed receptionist call or other new lead adds two usage points, a new chat adds one, and each rolling 50 SMS parts adds one. A lead saved from the same receptionist call uses the same event ID and counts once. Whenever the balance reaches or exceeds 20, Stripe charges an exact $20 off-session PaymentIntent and carries any excess forward. For example, 19 plus a two-point call or lead charges $20 and leaves one point.
 
-Register this webhook endpoint:
-
-```text
-https://ark-websites-ocm-xi.vercel.app/api/billing/webhook
-```
-
-Subscribe it to SetupIntent, invoice payment, subscription, and PaymentIntent events used by the app. Production requests are rejected unless the Stripe signature validates with `STRIPE_WEBHOOK_SECRET`.
+Signup does not require a webhook. After Stripe confirms the Payment Element, the browser calls the protected setup-status route, which verifies the SetupIntent, starts the `$50` subscription, and creates the regular account. The existing webhook route can be enabled later for asynchronous recurring-payment notifications; only then does it need its own Stripe signing secret.
 
 The browser never submits a Stripe Customer ID. Protected server routes derive the Customer from the verified Firebase token and server-side temporary or regular account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code inputs.
 
@@ -107,7 +97,7 @@ If a monthly or $20 usage charge is declined, the account immediately becomes `d
 - A decline immediately disables receptionist calls, chat, and new lead intake.
 - Billing retries occur at most daily; the account is deleted after seven full days unpaid.
 - Stripe keys never appear in frontend code or API responses.
-- The webhook rejects missing or invalid signatures.
+- If the optional webhook is enabled later, it rejects missing or invalid signatures.
 
 ## Password reset
 

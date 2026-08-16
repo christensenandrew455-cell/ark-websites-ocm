@@ -91,6 +91,7 @@ test("payment setup is tied to the authenticated temporary owner", async () => {
   assert.ok(route.includes('usage: "off_session"'));
   assert.ok(route.includes('purpose: "ark_onboarding_payment_method"'));
   assert.ok(route.includes("ensureStripeBillingCatalog({ stripe })"));
+  assert.ok(route.includes("stripe.accounts.retrieveCurrent()"));
   assert.ok(route.includes("secretMode !== publishableMode"));
   assert.ok(route.includes("reusableStripeCustomer"));
   assert.ok(route.includes("missingStripeResource"));
@@ -256,5 +257,6 @@ test("legal and help copy describe threshold billing and immediate enforcement",
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));
   assert.ok(help.includes("starts the $50 monthly subscription"));
-  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID", "STRIPE_ACCOUNT_BASE_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY"]) assert.ok(env.includes(`${name}=`));
+  for (const name of ["STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID", "STRIPE_ACCOUNT_BASE_PRICE_ID"]) assert.equal(env.includes(`${name}=`), false);
 });

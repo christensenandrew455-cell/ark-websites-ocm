@@ -44,8 +44,7 @@ async function reusableSetupIntent(stripe, setupIntentId, customerId, uid, livem
   }
 }
 function applicationReturnUrl(request) {
-  const origin = text(process.env.YOUR_DOMAIN) || new URL(request.url).origin;
-  return new URL("/signup/payment", origin).toString();
+  return new URL("/signup/payment", new URL(request.url).origin).toString();
 }
 
 async function authorize(request) {
@@ -95,8 +94,21 @@ export async function POST(request) {
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
 
     const stripe = new Stripe(stripeSecretKey);
-    await ensureStripeBillingCatalog({ stripe });
     const livemode = secretMode === "live";
+    if (livemode) {
+      const stripeAccount = await stripe.accounts.retrieveCurrent();
+      if (stripeAccount.charges_enabled !== true) {
+        console.error("Stripe live payments are not enabled for this account.", {
+          disabledReason: text(stripeAccount.requirements?.disabled_reason),
+          currentlyDue: stripeAccount.requirements?.currently_due || [],
+          pendingVerification: stripeAccount.requirements?.pending_verification || [],
+        });
+        return NextResponse.json({
+          error: "Stripe is connected, but live payments are not enabled yet. Finish the required setup shown in Stripe, then try again.",
+        }, { status: 503 });
+      }
+    }
+    await ensureStripeBillingCatalog({ stripe });
     let stripeCustomerId = text(payment.stripeCustomerId);
     const existingCustomer = await reusableStripeCustomer(stripe, stripeCustomerId, livemode);
     if (!existingCustomer) {
