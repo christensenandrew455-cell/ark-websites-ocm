@@ -3,6 +3,8 @@ import {
   BILLING_PLAN_KEY,
   BILLING_VERSION,
   MONTHLY_BASE_CENTS,
+  USAGE_CHARGE_THRESHOLD_POINTS,
+  USAGE_POINT_CENTS,
 } from "./billingPricing.js";
 import { calendarMonthWindow, subscriptionPeriodWindow } from "./timeWindows.js";
 
@@ -85,6 +87,44 @@ function isUsableMonthlyPrice(price) {
 
 function isMonthlyBasePrice(price) {
   return isUsableMonthlyPrice(price) && Number(price.unit_amount) === MONTHLY_BASE_CENTS;
+}
+
+function stripeProductId(price) {
+  return typeof price?.product === "string" ? text(price.product) : text(price?.product?.id);
+}
+
+function isUsageThresholdPrice(price) {
+  return Boolean(
+    price
+    && price.active !== false
+    && text(price.currency).toLowerCase() === "usd"
+    && Number(price.unit_amount) === USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS
+    && text(price.billing_scheme || "per_unit") === "per_unit"
+    && text(price.type || "one_time") === "one_time"
+    && !price.recurring
+    && stripeProductId(price)
+  );
+}
+
+export async function ensureStripeUsagePrice({ stripe }) {
+  const usagePriceId = text(process.env.STRIPE_USAGE_PRICE_ID);
+  if (!usagePriceId) throw new Error("STRIPE_USAGE_PRICE_ID is required before usage billing can start.");
+  let usagePrice;
+  try {
+    usagePrice = await stripe.prices.retrieve(usagePriceId);
+  } catch (error) {
+    if (!missingStripeResource(error)) throw error;
+    throw new Error("STRIPE_USAGE_PRICE_ID was not found with the current Stripe secret key.");
+  }
+  if (!isUsageThresholdPrice(usagePrice)) {
+    throw new Error("STRIPE_USAGE_PRICE_ID must be an active one-time $20 USD flat-rate Price.");
+  }
+  return {
+    usagePriceId: usagePrice.id,
+    usageProductId: stripeProductId(usagePrice),
+    unitAmount: Number(usagePrice.unit_amount),
+    currency: "usd",
+  };
 }
 
 export async function ensureStripeBillingCatalog({ stripe }) {

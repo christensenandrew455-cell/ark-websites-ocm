@@ -37,11 +37,13 @@ The `$50 USD per month` amount and interval live in `app/lib/billingPricing.js`.
 
 `STRIPE_ACCOUNT_BASE_PRICE_ID` is an optional signup override. Set it to an active USD flat-rate monthly recurring `price_...` in the same Stripe mode when an owner needs to run a temporary live-price test, such as `$0.01`. Replace it with the normal `$50` Price ID and redeploy before public signup. Changing this variable affects new signups only; it does not change subscriptions that already exist.
 
+`STRIPE_USAGE_PRICE_ID` is required and must identify the active one-time `$20 USD` flat-rate Price for the Usage Product in the same Stripe mode. At each completed threshold, the server validates that Price, charges its exact amount to the saved card, and records the Price and Product IDs on the PaymentIntent metadata. No Stripe Product ID variable is needed.
+
 When switching to live mode, replace only the secret and publishable keys together. The onboarding API rejects mixed test/live keys. If a temporary signup contains a Customer or SetupIntent from the other mode, the server safely creates matching live-mode objects.
 
 The payment return URL uses the domain of the incoming request and successful signup returns to `/`, so `YOUR_DOMAIN` and `APP_HOME_PATH` are not used.
 
-There are no Stripe metered Prices, usage Price IDs, or billing meters. A completed receptionist call or other new lead adds two usage points, a new chat adds one, and each rolling 50 SMS parts adds one. A lead saved from the same receptionist call uses the same event ID and counts once. Whenever the balance reaches or exceeds 20, Stripe charges an exact $20 off-session PaymentIntent to the saved card and carries any excess forward. For example, 19 plus a two-point call or lead charges $20 and leaves one point.
+There are no Stripe metered Prices or billing meters. A completed receptionist call or other new lead adds two usage points, a new chat adds one, and each rolling 50 SMS parts adds one. A lead saved from the same receptionist call uses the same event ID and counts once. Whenever the balance reaches or exceeds 20, Stripe uses `STRIPE_USAGE_PRICE_ID` to charge an exact $20 off-session PaymentIntent to the saved card and carries any excess forward. For example, 19 plus a two-point call or lead charges $20 and leaves one point.
 
 Signup does not require a webhook. After Stripe confirms the Payment Element, the browser calls the protected setup-status route, which verifies the SetupIntent, starts the `$50` subscription, and creates the regular account. The existing webhook route can be enabled later for asynchronous recurring-payment notifications; only then does it need its own Stripe signing secret.
 
