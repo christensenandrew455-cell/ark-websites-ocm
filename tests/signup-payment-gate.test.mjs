@@ -257,6 +257,6 @@ test("legal and help copy describe threshold billing and immediate enforcement",
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));
   assert.ok(help.includes("starts the $50 monthly subscription"));
-  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY"]) assert.ok(env.includes(`${name}=`));
-  for (const name of ["STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID", "STRIPE_ACCOUNT_BASE_PRICE_ID"]) assert.equal(env.includes(`${name}=`), false);
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_ACCOUNT_BASE_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
+  for (const name of ["STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID"]) assert.equal(env.includes(`${name}=`), false);
 });
