@@ -9,7 +9,6 @@ const ALL_HELP_LINKS = [
   { label: "Send a Message", href: "/messages" },
   { label: "Account Data", href: "/settings" },
   { label: "Docs", href: "/docs" },
-  { label: "About the App", href: "/about" },
   { label: "Public Support", href: "https://arkwebsites.com/support" },
   { label: "Payment Terms", href: "/terms#paid-service" },
   { label: "Payment Enforcement", href: "/terms#payment-enforcement" },
@@ -30,7 +29,7 @@ const sections = [
       "Leads, available Messages, and Settings open as focused pages with a Back to Dashboard control.",
       "Each business has one owner account for receptionist details, feature controls, billing, policies, downloads, and account deletion.",
     ],
-    links: ["Dashboard", "Settings", "About the App"],
+    links: ["Dashboard", "Settings", "Help"],
   },
   {
     id: "account-setup",
@@ -43,7 +42,7 @@ const sections = [
       "Step 4 shows Stripe's secure Payment Element, saves the payment method, and starts the $50 monthly subscription.",
       "After payment details succeed, ARK moves the temporary signup into a regular account.",
     ],
-    links: ["About the App", "Payment Terms", "Privacy Policy"],
+    links: ["Payment Terms", "Privacy Policy"],
   },
   {
     id: "pricing",
@@ -52,9 +51,9 @@ const sections = [
     points: [
       "The business account is $50 per monthly billing period.",
       "Each completed receptionist call or other new lead is $2. A lead saved from the same receptionist call counts once, not twice. Keeping or deleting it later does not count it again or remove the original event.",
-      ...(MESSAGES_AVAILABLE ? ["When Messages is enabled, each new chat adds $1 and the combined inbound and outbound SMS counter adds $1 whenever it completes another 50 parts. Partial progress carries forward."] : []),
+      ...(MESSAGES_AVAILABLE ? ["When Messages is enabled, each rolling bundle of 50 inbound and outbound SMS parts costs $1. Partial progress carries forward, and starting a chat does not add a separate charge."] : []),
       "Usage is charged in exact $20 intervals. If a two-point lead takes the balance from 19 to 21, ARK charges $20 and starts the next interval at 1.",
-      "Each qualified referral saves 10% for one billing period, up to five referrals and 50% off.",
+      "Each qualified referral saves 10% on usage charges for 30 days after the referred paid account activates, up to 50% off.",
       "Settings → Payment shows the rolling usage balance out of $20, SMS-part progress, the payment method, and the last successful payment.",
     ],
     links: ["Settings", "Payment Terms", "Terms of Use"],

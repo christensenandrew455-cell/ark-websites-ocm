@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
-import { sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
+import { estimateRequestStatusNoticesEnabled, sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
 import { stripLeadContactFields } from "../../../../lib/leadContactFields";
 import { requireUser } from "../../../../lib/userRequest";
 
@@ -60,15 +60,17 @@ export async function POST(request) {
 
     const account = accountSnapshot.data();
     const businessName = text(account.businessName || account.name) || "the business";
-    const notice = await sendEstimateRequestStatusNotice({
-      db,
-      clientId,
-      businessName,
-      leadId,
-      leadName: text(lead.Name || lead.name || lead.fullName),
-      phone: text(lead.Phone || lead.phone || lead.phoneNumber),
-      status: "accepted",
-    });
+    const notice = estimateRequestStatusNoticesEnabled(account)
+      ? await sendEstimateRequestStatusNotice({
+        db,
+        clientId,
+        businessName,
+        leadId,
+        leadName: text(lead.Name || lead.name || lead.fullName),
+        phone: text(lead.Phone || lead.phone || lead.phoneNumber),
+        status: "accepted",
+      })
+      : { ok: true, skipped: "disabled", sent: false };
 
     return NextResponse.json({
       ok: true,

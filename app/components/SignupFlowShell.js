@@ -28,7 +28,7 @@ export default function SignupFlowShell({ children }) {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
   const onboardingPage = routeMatches(pathname, ["/signup/verify", "/setup/business", "/signup/payment"]);
-  const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/docs"]);
+  const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/docs"]);
   const requiredPath = user ? requiredOnboardingPath(profile) : "";
   const allowedPendingPath = requiredPath === "/signup/verify"
     ? pathname === "/signup/verify"

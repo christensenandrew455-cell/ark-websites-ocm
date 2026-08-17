@@ -5,14 +5,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useAuth } from "./AuthProvider";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 
-const TOUR_PENDING_KEY = "ark-guided-onboarding-pending-v2";
+const TOUR_SEEN_KEY = "ark-guided-onboarding-seen-v3";
 const STEPS = [
   { path: "/", target: "settings", title: "Start with Settings", body: "Manage your business information, app preferences, payment method, and account help here.", action: "activate", actionLabel: "Open Settings" },
   { path: "/settings", target: "settings-business", title: "Business Information", body: "Keep the services, service areas, estimate availability, and facts your receptionist uses up to date.", action: "next", actionLabel: "Next" },
   { path: "/settings", target: "settings-customization", title: "Customization", body: "Choose the app appearance and the customer-facing features available to your business.", action: "next", actionLabel: "Next" },
   { path: "/settings", target: "settings-menu-back", title: "Return to the Dashboard", body: "This back arrow always takes you to the main dashboard.", action: "activate", actionLabel: "Open Dashboard" },
   { path: "/", target: "dashboard-leads", title: "Leads", body: "Open Leads to review new receptionist requests and manage the people you accepted.", action: "next", actionLabel: "Next" },
-  { path: "/", target: "dashboard-messages", title: "Messages", body: MESSAGES_AVAILABLE ? "Open Messages to text clients from your dedicated business number." : "The question mark means Messages is not active yet. Tap the card any time to see its current availability.", action: "next", actionLabel: "Next" },
+  { path: "/", target: "dashboard-messages", title: "Messages", body: MESSAGES_AVAILABLE ? "Open Messages to text clients from your dedicated business number." : "Messages isn’t active yet. It’ll be available next month.", action: "next", actionLabel: "Next" },
   { path: "/", target: "referral-star", title: "Referral Savings", body: "The star shows your account ID and referral savings. This is the final stop in the tour.", action: "activate", actionLabel: "Finish Tour", finishAfter: true },
 ];
 
@@ -29,6 +29,7 @@ export default function GuidedOnboarding() {
   const router = useRouter();
   const { user, profile, refreshProfile } = useAuth();
   const panelRef = useRef(null);
+  const startedRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState(null);
@@ -36,11 +37,24 @@ export default function GuidedOnboarding() {
   const current = STEPS[step];
 
   useEffect(() => {
-    if (profile?.identityVerificationVerified !== true || profile?.onboardingTourStatus !== "pending") return;
-    let pending = true;
-    try { pending = window.localStorage.getItem(TOUR_PENDING_KEY) !== "false"; } catch {}
-    setOpen(pending);
-  }, [profile?.identityVerificationVerified, profile?.onboardingTourStatus]);
+    const eligible = profile?.identityVerificationVerified === true
+      && profile?.onboardingTourEligible === true
+      && profile?.onboardingTourStatus === "pending";
+    if (!eligible || !user || startedRef.current) return;
+    startedRef.current = true;
+    const seenKey = `${TOUR_SEEN_KEY}:${profile.clientId}`;
+    let seen = false;
+    try {
+      seen = window.localStorage.getItem(seenKey) === "true";
+      window.localStorage.setItem(seenKey, "true");
+    } catch {}
+    setOpen(!seen);
+    user.getIdToken(true).then((token) => fetch("/api/account/onboarding-tour", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status: "started" }),
+    })).catch((error) => console.warn("Unable to save guided tour start", error));
+  }, [profile?.clientId, profile?.identityVerificationVerified, profile?.onboardingTourEligible, profile?.onboardingTourStatus, user]);
 
   const measure = useCallback(() => {
     if (!open || !current || pathname !== current.path) {
@@ -113,7 +127,7 @@ export default function GuidedOnboarding() {
 
   async function finish(status) {
     setOpen(false);
-    try { window.localStorage.setItem(TOUR_PENDING_KEY, "false"); } catch {}
+    try { window.localStorage.setItem(`${TOUR_SEEN_KEY}:${profile?.clientId || "account"}`, "true"); } catch {}
     try {
       const token = await user.getIdToken(true);
       await fetch("/api/account/onboarding-tour", {

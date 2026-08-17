@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  MAX_MONTHLY_REFERRALS,
+  MAX_ACTIVE_REFERRALS,
   MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
   PER_CHAT_CENTS,
   PER_LEAD_CENTS,
   PER_MESSAGE_BUNDLE_CENTS,
+  REFERRAL_DISCOUNT_DURATION_DAYS,
   referralDiscountPercent,
   smsUsageResult,
   USAGE_CHARGE_THRESHOLD_POINTS,
   USAGE_POINT_CENTS,
+  usageChargeAfterReferralDiscount,
   usageThresholdResult,
 } from "../app/lib/billingPricing.js";
 import {
@@ -26,7 +28,7 @@ import {
   ensureStripeUsagePrice,
   missingStripeResource,
 } from "../app/lib/stripeUsageBilling.js";
-import { referralDocumentId, referralPeriodDocumentId } from "../app/lib/referrals.js";
+import { referralDiscountEndsAt, referralDocumentId } from "../app/lib/referrals.js";
 
 async function withBasePriceOverride(value, action) {
   const previous = process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
@@ -55,7 +57,7 @@ async function withUsagePrice(value, action) {
 test("billing prices live in code and usage charges at exact twenty-dollar intervals", () => {
   assert.equal(MONTHLY_BASE_CENTS, 5000);
   assert.equal(PER_LEAD_CENTS, 200);
-  assert.equal(PER_CHAT_CENTS, 100);
+  assert.equal(PER_CHAT_CENTS, 0);
   assert.equal(PER_MESSAGE_BUNDLE_CENTS, 100);
   assert.equal(MESSAGE_PARTS_PER_BUNDLE, 50);
   assert.equal(USAGE_CHARGE_THRESHOLD_POINTS, 20);
@@ -75,11 +77,16 @@ test("usage charges exact twenty-point intervals and carries the remainder", () 
   assert.deepEqual(usageThresholdResult(0, 42), { totalPoints: 42, chargeCount: 2, chargeDue: true, chargePoints: 40, remainderPoints: 2 });
 });
 
-test("referral savings are ten percent each and capped at five referrals", () => {
-  assert.equal(MAX_MONTHLY_REFERRALS, 5);
+test("referral savings discount usage for thirty days and cap at fifty percent", () => {
+  assert.equal(MAX_ACTIVE_REFERRALS, 5);
+  assert.equal(REFERRAL_DISCOUNT_DURATION_DAYS, 30);
   assert.equal(referralDiscountPercent(0), 0);
   assert.equal(referralDiscountPercent(3), 30);
   assert.equal(referralDiscountPercent(50), 50);
+  assert.equal(usageChargeAfterReferralDiscount(2000, 10), 1800);
+  assert.equal(usageChargeAfterReferralDiscount(2000, 50), 1000);
+  const qualifiedAt = Date.UTC(2026, 7, 17);
+  assert.equal(referralDiscountEndsAt(qualifiedAt), qualifiedAt + 30 * 24 * 60 * 60 * 1000);
 });
 
 test("durable billing ledger IDs are deterministic and do not expose source values", () => {
@@ -94,7 +101,6 @@ test("durable billing ledger IDs are deterministic and do not expose source valu
   assert.equal(chatId, billingConversationEventId("sample-business", "chat-1"));
   assert.equal(chatId.length, 48);
   assert.equal(referralDocumentId("one", "two"), referralDocumentId("one", "two"));
-  assert.notEqual(referralPeriodDocumentId("one", "period-a"), referralPeriodDocumentId("one", "period-b"));
 });
 
 test("message billing records retain counts without message bodies or phone numbers", () => {

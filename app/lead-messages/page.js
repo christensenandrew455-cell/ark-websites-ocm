@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "../components/BackButton";
 import { useAuth } from "../components/AuthProvider";
 import { requestAppConfirmation } from "../lib/appConfirmation";
-import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
+import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 
 function TrashIcon() {
@@ -110,7 +110,7 @@ export default function LeadMessagesPage() {
     } catch (deleteError) { setError(ownerFacingError(deleteError)); } finally { setDeleting(""); }
   }
 
-  if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 text-blue-950 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700">Messages</p><h1 className="mt-2 text-2xl font-black">{!MESSAGES_AVAILABLE ? `Available ${UPCOMING_FEATURE_LABEL.toLowerCase().replace(/^available\s+/, "")}` : "Turn Messages on in Settings"}</h1><p className="mt-2 text-sm font-semibold leading-6">{!MESSAGES_AVAILABLE ? "The question mark on the dashboard means Messages is not active yet—nothing is wrong with your account. This page will become your client texting workspace when the feature is ready." : "Messages is available for your account, but it is currently turned off. Open Settings, then Customization, to enable it."}</p>{MESSAGES_AVAILABLE && <button type="button" onClick={() => router.push("/settings")} className="mt-4 rounded-xl bg-blue-800 px-4 py-3 text-sm font-black text-white">Open Settings</button>}</div></div></main>;
+  if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 text-blue-950 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700">Messages</p><h1 className="mt-2 text-2xl font-black">{!MESSAGES_AVAILABLE ? "Messages isn’t active yet" : "Turn Messages on in Settings"}</h1><p className="mt-2 text-sm font-semibold leading-6">{!MESSAGES_AVAILABLE ? "It’ll be available next month." : "Open Settings, then Customization, to enable it."}</p>{MESSAGES_AVAILABLE && <button type="button" onClick={() => router.push("/settings")} className="mt-4 rounded-xl bg-blue-800 px-4 py-3 text-sm font-black text-white">Open Settings</button>}</div></div></main>;
 
   if (selectedLead) {
     const deleteKey = `${selectedCollection}:${selectedLead}`;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { retryPendingReferralActivations, retryPendingReferralDiscounts } from "../../../lib/referrals";
+import { retireLegacyReferralSubscriptionDiscounts, retryPendingReferralActivations } from "../../../lib/referrals";
 import { refreshStoredPaymentMethod } from "../../../lib/stripeUsageBilling";
 import { reconcilePendingUsageEvents, retryUsageThresholdCharges } from "../../../lib/usageThresholdBilling";
 
@@ -51,14 +51,14 @@ async function handle(request) {
   const usageRetries = await retryUsageThresholdCharges({ db, stripe, maximum: 100 });
   const usageReconciliation = await reconcilePendingUsageEvents({ db, stripe, maximumBusinesses: 100, maximumEvents: 500 });
   let referralRetries = [];
-  let referralDiscountRetries = [];
+  let retiredSubscriptionDiscounts = [];
   try {
-    referralRetries = await retryPendingReferralActivations({ db, stripe });
-    referralDiscountRetries = await retryPendingReferralDiscounts({ db, stripe });
+    referralRetries = await retryPendingReferralActivations({ db });
+    retiredSubscriptionDiscounts = await retireLegacyReferralSubscriptionDiscounts({ db, stripe });
   } catch (error) {
     console.error("Referral retry failed", error);
   }
-  return NextResponse.json({ ok: true, paymentMethods, usageRetries, usageReconciliation, referralRetries, referralDiscountRetries });
+  return NextResponse.json({ ok: true, paymentMethods, usageRetries, usageReconciliation, referralRetries, retiredSubscriptionDiscounts });
 }
 
 export async function GET(request) { return handle(request); }

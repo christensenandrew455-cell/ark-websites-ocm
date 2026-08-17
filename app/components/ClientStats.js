@@ -107,14 +107,14 @@ export default function ClientStats() {
         </div>
         {notice && <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-800"><span>{notice}</span><button type="button" onClick={() => router.push("/settings")} className="shrink-0 rounded-lg bg-amber-900 px-3 py-2 text-white">Settings</button></div>}
         <section className={numberPending ? "mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm sm:rounded-3xl sm:p-5" : "mt-5 rounded-2xl border border-slate-300 bg-slate-50 p-4 shadow-sm sm:rounded-3xl sm:p-5"}>
-          <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Your receptionist number</p>{numberPending && <span className="rounded-full bg-blue-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Setup in progress</span>}</div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Your AI receptionist number</p></div>
           <p className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{receptionistPhone ? displayPhone(receptionistPhone) : "Your number is being assigned"}</p>
-          {numberPending && <div className="mt-3 border-t border-blue-200 pt-3"><p className="text-xs font-semibold leading-5 text-blue-950">Most numbers are assigned within 24–48 hours. You can keep setting up your account while you wait. If it is still missing after 48 hours, contact ARK through Help.</p><button type="button" onClick={() => router.push("/messages")} className="mt-3 rounded-xl border border-blue-300 bg-white px-4 py-2.5 text-xs font-black text-blue-900">Contact ARK</button></div>}
+          {numberPending && <div className="mt-3 border-t border-blue-200 pt-3"><p className="text-xs font-semibold leading-5 text-blue-950">Most businesses receive their number within 24–48 hours. Thank you for your patience.</p></div>}
         </section>
         <section className="mt-3 rounded-[2rem] border border-slate-300 bg-slate-300/70 p-3 shadow-inner sm:mt-5 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
             <DashboardCard tourId="dashboard-leads" value={newLeads} label="Leads" description="Accept new leads and view your clients." onClick={() => router.push("/leads")} />
-            <DashboardCard tourId="dashboard-messages" value={MESSAGES_AVAILABLE ? unreadMessages : "?"} label="Messages" description={MESSAGES_AVAILABLE ? "Text clients from your dedicated business number." : `${UPCOMING_FEATURE_LABEL}. Tap for details.`} onClick={() => MESSAGES_AVAILABLE ? openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages") : router.push("/lead-messages")} />
+            <DashboardCard tourId="dashboard-messages" value={MESSAGES_AVAILABLE ? unreadMessages : "?"} label="Messages" description={MESSAGES_AVAILABLE ? "Text clients from your dedicated business number." : UPCOMING_FEATURE_LABEL} onClick={() => MESSAGES_AVAILABLE ? openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages") : router.push("/lead-messages")} />
           </div>
         </section>
       </div>

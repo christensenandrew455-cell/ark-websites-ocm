@@ -5,9 +5,12 @@ import { isStandardRole } from "./accountRoles.js";
 import {
   smsUsageResult,
   USAGE_CHARGE_THRESHOLD_POINTS,
+  USAGE_POINT_CENTS,
+  usageChargeAfterReferralDiscount,
 } from "./billingPricing";
 import { PAYMENT_RETRY_INTERVAL_MS, registerPaymentFailure, resolvePayment } from "./billingDelinquency";
 import { ensureStripeUsagePrice } from "./stripeUsageBilling";
+import { activeReferralSavings } from "./referrals.js";
 
 const PROCESSING_LOCK_MS = 5 * 60 * 1000;
 
@@ -101,7 +104,7 @@ export function recordLeadUsage(options) {
 }
 
 export function recordChatUsage(options) {
-  return recordUsage({ ...options, type: "chat", points: 1 });
+  return recordUsage({ ...options, type: "chat", points: 0 });
 }
 
 export function recordSmsPartUsage(options) {
@@ -124,7 +127,7 @@ export async function reconcilePendingUsageEvents({ db, stripe = null, maximumBu
     const remaining = () => Math.max(0, maximumEvents - results.checked);
     const ledgers = [
       { collection: "billingLeadEvents", type: "lead", points: 2, sms: false },
-      { collection: "billingConversationEvents", type: "chat", points: 1, sms: false },
+      { collection: "billingConversationEvents", type: "chat", points: 0, sms: false },
       { collection: "billingMessageEvents", type: "sms-parts", points: 0, sms: true },
     ];
     for (const ledger of ledgers) {
@@ -157,6 +160,7 @@ export async function reconcilePendingUsageEvents({ db, stripe = null, maximumBu
 
 async function claimCharge(db, clientId, now = Date.now()) {
   const accountRef = db.collection("accounts").doc(clientId);
+  const referralSavings = await activeReferralSavings({ db, clientId, now });
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(accountRef);
     if (!snapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
@@ -172,11 +176,20 @@ async function claimCharge(db, clientId, now = Date.now()) {
     const sequence = reuseSequence ? whole(account.usageChargeSequence) : whole(account.usageChargeSequence) + 1;
     const customerId = reuseSequence ? text(account.usageChargeCustomerId || account.stripeCustomerId) : text(account.stripeCustomerId);
     const paymentMethodId = reuseSequence ? text(account.usageChargePaymentMethodId || account.stripePaymentMethodId) : text(account.stripePaymentMethodId);
+    const fullAmountCents = USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS;
+    const discountPercent = reuseSequence
+      ? whole(account.usageChargeReferralDiscountPercent)
+      : referralSavings.percent;
+    const amountCents = reuseSequence
+      ? whole(account.usageChargeAmountCents) || fullAmountCents
+      : usageChargeAfterReferralDiscount(fullAmountCents, discountPercent);
     transaction.set(accountRef, {
       usageChargeStatus: "processing",
       usageChargeSequence: sequence,
       usageChargeCustomerId: customerId,
       usageChargePaymentMethodId: paymentMethodId,
+      usageChargeAmountCents: amountCents,
+      usageChargeReferralDiscountPercent: discountPercent,
       usageChargeAttemptedAt: Timestamp.fromMillis(now),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
@@ -187,6 +200,8 @@ async function claimCharge(db, clientId, now = Date.now()) {
       balance,
       customerId,
       paymentMethodId,
+      amountCents,
+      referralDiscountPercent: discountPercent,
       wasSuspended: account.billingPastDue === true,
     };
   });
@@ -210,6 +225,8 @@ async function markDeclined(db, claim, paymentIntentId, error) {
     usageChargeLastError: text(error?.code || error?.message || "payment_declined").slice(0, 200),
     usageChargeCustomerId: FieldValue.delete(),
     usageChargePaymentMethodId: FieldValue.delete(),
+    usageChargeAmountCents: FieldValue.delete(),
+    usageChargeReferralDiscountPercent: FieldValue.delete(),
     billingNextRetryAt: Timestamp.fromMillis(now + PAYMENT_RETRY_INTERVAL_MS),
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
@@ -237,7 +254,11 @@ async function markPaid(db, claim, paymentIntent) {
       usageChargeLastError: FieldValue.delete(),
       usageChargeCustomerId: FieldValue.delete(),
       usageChargePaymentMethodId: FieldValue.delete(),
+      usageChargeAmountCents: FieldValue.delete(),
+      usageChargeReferralDiscountPercent: FieldValue.delete(),
       usageChargeAttemptedAt: FieldValue.delete(),
+      lastUsageChargeAmountCents: claim.amountCents,
+      lastUsageReferralDiscountPercent: claim.referralDiscountPercent,
       lastUsagePaymentAt: FieldValue.serverTimestamp(),
       lastPaymentAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -270,7 +291,7 @@ export async function settleUsageThreshold({ db, stripe = null, clientId }) {
     }
     try {
       const paymentIntent = await client.paymentIntents.create({
-        amount: usagePrice.unitAmount,
+        amount: claim.amountCents,
         currency: usagePrice.currency,
         customer: claim.customerId,
         payment_method: claim.paymentMethodId,
@@ -283,6 +304,9 @@ export async function settleUsageThreshold({ db, stripe = null, clientId }) {
           usageChargeSequence: String(claim.sequence),
           usagePriceId: usagePrice.usagePriceId,
           usageProductId: usagePrice.usageProductId,
+          usageChargeFullAmountCents: String(usagePrice.unitAmount),
+          referralDiscountPercent: String(claim.referralDiscountPercent),
+          chargedAmountCents: String(claim.amountCents),
         },
       }, { idempotencyKey: `ark-usage-threshold-${claim.uid}-${claim.sequence}` });
       if (paymentIntent.status !== "succeeded") {
@@ -292,7 +316,13 @@ export async function settleUsageThreshold({ db, stripe = null, clientId }) {
         return { status: "declined", paymentIntentId: paymentIntent.id };
       }
       const paid = await markPaid(db, claim, paymentIntent);
-      lastResult = { status: "paid", paymentIntentId: paymentIntent.id, balancePoints: paid.balancePoints };
+      lastResult = {
+        status: "paid",
+        paymentIntentId: paymentIntent.id,
+        balancePoints: paid.balancePoints,
+        amountCents: claim.amountCents,
+        referralDiscountPercent: claim.referralDiscountPercent,
+      };
       if (paid.balancePoints < USAGE_CHARGE_THRESHOLD_POINTS) return lastResult;
     } catch (error) {
       const paymentIntentId = text(error?.payment_intent?.id || error?.raw?.payment_intent?.id);
