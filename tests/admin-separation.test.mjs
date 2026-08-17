@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { signedAdminEvent } from "../app/lib/adminEvents.js";
+import { ARC_ADMIN_WEBHOOK_URL, signedAdminEvent } from "../app/lib/adminEvents.js";
 
 const root = new URL("../", import.meta.url);
 const source = (path) => readFile(new URL(path, root), "utf8");
@@ -36,4 +36,5 @@ test("operational event bridge signs the exact timestamp and JSON body", () => {
   const body = JSON.stringify({ id: "event-1", type: "lead.created" });
   const expected = `v1=${createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
   assert.equal(signedAdminEvent({ secret, timestamp, body }), expected);
+  assert.equal(ARC_ADMIN_WEBHOOK_URL, "https://ark-admin-app.vercel.app/api/webhooks/events");
 });
