@@ -1,26 +1,36 @@
 import { createHash } from "node:crypto";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
-  MAX_MONTHLY_REFERRALS,
+  MAX_ACTIVE_REFERRALS,
+  REFERRAL_DISCOUNT_DURATION_DAYS,
   REFERRAL_DISCOUNT_PERCENT,
   referralDiscountPercent,
 } from "./billingPricing.js";
-import { normalizeClientId } from "./valueUtils.js";
 import { systemCollection } from "./firestoreLayout.js";
-import { missingStripeResource, resolveBillingWindow } from "./stripeUsageBilling.js";
+import { normalizeClientId } from "./valueUtils.js";
+
+const REFERRAL_DISCOUNT_DURATION_MS = REFERRAL_DISCOUNT_DURATION_DAYS * 24 * 60 * 60 * 1000;
 
 function text(value) { return String(value || "").trim(); }
 function stableId(...values) {
   return createHash("sha256").update(values.map(text).join(":"))
     .digest("hex").slice(0, 48);
 }
-
-export function referralPeriodDocumentId(clientId, billingPeriodKey) {
-  return stableId("referral-period", clientId, billingPeriodKey);
+function millis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 export function referralDocumentId(referrerClientId, referredClientId) {
   return stableId("referral", referrerClientId, referredClientId);
+}
+
+export function referralDiscountEndsAt(qualifiedAt) {
+  const qualifiedAtMs = millis(qualifiedAt);
+  return qualifiedAtMs ? qualifiedAtMs + REFERRAL_DISCOUNT_DURATION_MS : 0;
 }
 
 export async function validateReferrerAccount({ db, referrerAccountId, referredClientId }) {
@@ -49,99 +59,47 @@ export function pendingReferralFields(referrer) {
   };
 }
 
-export async function referralCountForPeriod({ db, clientId, billingPeriodKey }) {
-  if (!clientId || !billingPeriodKey) return 0;
-  const snapshot = await systemCollection(db, "referralPeriods")
-    .doc(referralPeriodDocumentId(clientId, billingPeriodKey)).get();
-  return snapshot.exists
-    ? Math.min(MAX_MONTHLY_REFERRALS, Math.max(0, Number(snapshot.data().qualifiedCount || 0)))
-    : 0;
+export async function activeReferralSavings({ db, clientId, now = Date.now() }) {
+  const safeClientId = normalizeClientId(clientId);
+  if (!safeClientId) return { count: 0, totalActiveCount: 0, percent: 0, nextExpirationAt: 0 };
+  const snapshot = await systemCollection(db, "referrals")
+    .where("referrerClientId", "==", safeClientId)
+    .get();
+  const currentMs = millis(now) || Date.now();
+  const active = snapshot.docs
+    .map((document) => {
+      const data = document.data();
+      const qualifiedAt = millis(data.qualifiedAt);
+      const endsAt = millis(data.discountEndsAt) || referralDiscountEndsAt(qualifiedAt);
+      return { qualified: data.qualified === true, endsAt };
+    })
+    .filter((entry) => entry.qualified && entry.endsAt > currentMs)
+    .sort((left, right) => left.endsAt - right.endsAt);
+  const count = Math.min(MAX_ACTIVE_REFERRALS, active.length);
+  return {
+    count,
+    totalActiveCount: active.length,
+    percent: referralDiscountPercent(count),
+    nextExpirationAt: active[0]?.endsAt || 0,
+  };
 }
 
-function couponId(clientId, billingPeriodKey, percent) {
-  return `arkref_${stableId(clientId, billingPeriodKey).slice(0, 24)}_${percent}`;
-}
-
-async function ensureReferralCoupon({ stripe, clientId, billingPeriodKey, percent }) {
-  const id = couponId(clientId, billingPeriodKey, percent);
-  try {
-    return await stripe.coupons.retrieve(id);
-  } catch (error) {
-    if (!missingStripeResource(error)) throw error;
-  }
-  return stripe.coupons.create({
-    id,
-    percent_off: percent,
-    duration: "once",
-    name: `ARK referral savings (${percent}% off)`,
-    metadata: {
-      ark_referrer_client_id: clientId,
-      ark_billing_period: billingPeriodKey,
-      ark_referral_discount_percent: String(percent),
-    },
-  });
-}
-
-export async function applyReferralPeriodDiscount({ db, stripe, periodId }) {
-  const periodRef = systemCollection(db, "referralPeriods").doc(periodId);
-  const snapshot = await periodRef.get();
-  if (!snapshot.exists) return { status: "missing" };
-  const period = snapshot.data();
-  const count = Math.min(MAX_MONTHLY_REFERRALS, Math.max(0, Number(period.qualifiedCount || 0)));
-  const percent = referralDiscountPercent(count);
-  const subscriptionId = text(period.stripeSubscriptionId);
-  if (!count || !subscriptionId) return { status: "not-applicable", count, percent };
-  try {
-    const coupon = await ensureReferralCoupon({
-      stripe,
-      clientId: text(period.referrerClientId),
-      billingPeriodKey: text(period.billingPeriodKey),
-      percent,
-    });
-    await stripe.subscriptions.update(subscriptionId, { discounts: [{ coupon: coupon.id }] });
-    await periodRef.set({
-      discountPercent: percent,
-      stripeCouponId: coupon.id,
-      stripeStatus: "applied",
-      stripeAppliedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    const referredClientIds = Array.isArray(period.referredClientIds) ? period.referredClientIds.map(text).filter(Boolean) : [];
-    for (const referredClientId of referredClientIds) {
-      const businessRef = db.collection("accounts").doc(referredClientId);
-      const businessSnapshot = await businessRef.get();
-      const update = { referralStatus: "qualified", referralUpdatedAt: FieldValue.serverTimestamp() };
-      await businessRef.set(update, { merge: true });
-    }
-    return { status: "applied", count, percent, couponId: coupon.id };
-  } catch (error) {
-    await periodRef.set({
-      discountPercent: percent,
-      stripeStatus: "pending",
-      stripeLastError: text(error?.message).slice(0, 300),
-      stripeLastAttemptAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    throw error;
-  }
-}
-
-async function markReferredAccount(db, referredClientId, referredUid, update) {
+async function markReferredAccount(db, referredClientId, update) {
   await db.collection("accounts").doc(referredClientId).set(update, { merge: true });
 }
 
-export async function qualifyReferralAfterActivation({ db, stripe, referredClientId, referredUid }) {
+export async function qualifyReferralAfterActivation({ db, referredClientId, referredUid, now = Date.now() }) {
   const referredBusinessRef = db.collection("accounts").doc(referredClientId);
   const businessSnapshot = await referredBusinessRef.get();
   const business = businessSnapshot.exists ? businessSnapshot.data() : {};
   const referrerClientId = normalizeClientId(business.referrerClientId);
   if (!referrerClientId) return { status: "none" };
-  const referredStatus = text(business.status);
-  const paymentSetupStatus = text(business.paymentSetupStatus);
-  const subscriptionIdForReferredAccount = text(business.stripeSubscriptionId);
-  const subscriptionStatusForReferredAccount = text(business.stripeSubscriptionStatus);
-  if (referredStatus !== "active" || paymentSetupStatus !== "complete" || !subscriptionIdForReferredAccount || subscriptionStatusForReferredAccount !== "active") {
-    await markReferredAccount(db, referredClientId, referredUid, {
+  const paidAccountIsActive = text(business.status) === "active"
+    && text(business.paymentSetupStatus) === "complete"
+    && Boolean(text(business.stripeSubscriptionId))
+    && text(business.stripeSubscriptionStatus) === "active";
+  if (!paidAccountIsActive) {
+    await markReferredAccount(db, referredClientId, {
       referralStatus: "pending_payment",
       referralUpdatedAt: FieldValue.serverTimestamp(),
     });
@@ -150,132 +108,58 @@ export async function qualifyReferralAfterActivation({ db, stripe, referredClien
 
   const referrerSnapshot = await db.collection("accounts").doc(referrerClientId).get();
   if (!referrerSnapshot.exists || referrerSnapshot.data().status !== "active") {
-    await markReferredAccount(db, referredClientId, referredUid, {
+    await markReferredAccount(db, referredClientId, {
       referralStatus: "invalid_referrer",
       referralUpdatedAt: FieldValue.serverTimestamp(),
     });
     return { status: "invalid_referrer" };
   }
-  const referrer = referrerSnapshot.data();
-  const subscriptionId = text(referrer.stripeSubscriptionId);
-  let window;
-  try {
-    window = await resolveBillingWindow({
-      stripe,
-      subscriptionId,
-      timeZone: text(referrer.timeZone) || "America/New_York",
-      strictSubscription: true,
-    });
-  } catch (error) {
-    await markReferredAccount(db, referredClientId, referredUid, {
-      referralStatus: "pending_activation",
-      referralLastError: "Could not determine the referrer's Stripe billing period yet.",
-      referralUpdatedAt: FieldValue.serverTimestamp(),
-    });
-    return { status: "pending_activation", error };
-  }
 
-  const periodId = referralPeriodDocumentId(referrerClientId, window.monthKey);
-  const periodRef = systemCollection(db, "referralPeriods").doc(periodId);
+  const qualifiedAtMs = millis(business.activatedAt) || millis(now) || Date.now();
+  const discountEndsAtMs = qualifiedAtMs + REFERRAL_DISCOUNT_DURATION_MS;
   const referralRef = systemCollection(db, "referrals")
     .doc(referralDocumentId(referrerClientId, referredClientId));
   const result = await db.runTransaction(async (transaction) => {
-    const [periodSnapshot, referralSnapshot] = await Promise.all([
-      transaction.get(periodRef),
-      transaction.get(referralRef),
-    ]);
-    const period = periodSnapshot.exists ? periodSnapshot.data() : {};
+    const referralSnapshot = await transaction.get(referralRef);
     const existingReferral = referralSnapshot.exists ? referralSnapshot.data() : {};
-    if (existingReferral.qualified === true) {
-      return { status: "qualified", count: Number(period.qualifiedCount || 0), existing: true };
-    }
-    const currentCount = Math.max(0, Number(period.qualifiedCount || 0));
-    if (currentCount >= MAX_MONTHLY_REFERRALS) {
-      const cappedUpdate = {
-        referrerClientId,
-        referredClientId,
-        referredUid: referredUid || null,
-        billingPeriodKey: window.monthKey,
-        qualified: false,
-        status: "limit_reached",
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      transaction.set(referralRef, cappedUpdate, { merge: true });
-      transaction.set(referredBusinessRef, { referralStatus: "limit_reached", referralBillingPeriodKey: window.monthKey, referralUpdatedAt: FieldValue.serverTimestamp() }, { merge: true });
-      return { status: "limit_reached", count: currentCount };
-    }
-    const qualifiedCount = currentCount + 1;
-    transaction.set(periodRef, {
-      referrerClientId,
-      billingPeriodKey: window.monthKey,
-      periodStart: new Date(window.startMs),
-      periodEnd: new Date(window.endMs),
-      stripeSubscriptionId: subscriptionId,
-      qualifiedCount,
-      referredClientIds: FieldValue.arrayUnion(referredClientId),
-      discountPercent: referralDiscountPercent(qualifiedCount),
-      stripeStatus: "pending",
-      createdAt: period.createdAt || FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    if (existingReferral.qualified === true) return { status: "qualified", existing: true };
     transaction.set(referralRef, {
       referrerClientId,
       referredClientId,
       referredUid: referredUid || null,
-      billingPeriodKey: window.monthKey,
       qualified: true,
       status: "qualified",
-      qualifiedAt: FieldValue.serverTimestamp(),
+      qualifiedAt: Timestamp.fromMillis(qualifiedAtMs),
+      discountEndsAt: Timestamp.fromMillis(discountEndsAtMs),
       updatedAt: FieldValue.serverTimestamp(),
+      createdAt: existingReferral.createdAt || FieldValue.serverTimestamp(),
     }, { merge: true });
-    const referredUpdate = {
+    transaction.set(referredBusinessRef, {
       referralStatus: "qualified",
-      referralBillingPeriodKey: window.monthKey,
-      referralQualifiedAt: FieldValue.serverTimestamp(),
-      referralUpdatedAt: FieldValue.serverTimestamp(),
-    };
-    transaction.set(referredBusinessRef, referredUpdate, { merge: true });
-    transaction.set(db.collection("accounts").doc(referrerClientId), {
-      currentReferralPeriodKey: window.monthKey,
-      currentReferralCount: qualifiedCount,
-      currentReferralDiscountPercent: referralDiscountPercent(qualifiedCount),
+      referralQualifiedAt: Timestamp.fromMillis(qualifiedAtMs),
+      referralDiscountEndsAt: Timestamp.fromMillis(discountEndsAtMs),
       referralUpdatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { status: "qualified", count: qualifiedCount, existing: false };
+    return { status: "qualified", existing: false };
   });
 
-  if (result.status !== "qualified") return { ...result, periodKey: window.monthKey };
-  try {
-    const stripeResult = await applyReferralPeriodDiscount({ db, stripe, periodId });
-    await markReferredAccount(db, referredClientId, referredUid, {
-      referralStatus: "qualified",
-      referralUpdatedAt: FieldValue.serverTimestamp(),
-    });
-    return { ...result, periodKey: window.monthKey, stripeStatus: stripeResult.status };
-  } catch (error) {
-    await markReferredAccount(db, referredClientId, referredUid, {
-      referralStatus: "pending_discount",
-      referralUpdatedAt: FieldValue.serverTimestamp(),
-    });
-    return { ...result, periodKey: window.monthKey, stripeStatus: "pending", error };
-  }
+  const savings = await activeReferralSavings({ db, clientId: referrerClientId, now: qualifiedAtMs });
+  await db.collection("accounts").doc(referrerClientId).set({
+    currentReferralCount: savings.count,
+    currentReferralDiscountPercent: savings.percent,
+    currentReferralDiscountEndsAt: savings.nextExpirationAt ? Timestamp.fromMillis(savings.nextExpirationAt) : FieldValue.delete(),
+    currentReferralPeriodKey: FieldValue.delete(),
+    referralUpdatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return {
+    ...result,
+    count: savings.count,
+    discountPercent: savings.percent,
+    discountEndsAt: discountEndsAtMs,
+  };
 }
 
-export async function retryPendingReferralDiscounts({ db, stripe }) {
-  const snapshot = await systemCollection(db, "referralPeriods").get();
-  const pending = snapshot.docs.filter((document) => document.data().stripeStatus === "pending");
-  const results = [];
-  for (const document of pending) {
-    try {
-      results.push({ periodId: document.id, ...(await applyReferralPeriodDiscount({ db, stripe, periodId: document.id })) });
-    } catch (error) {
-      results.push({ periodId: document.id, status: "pending", error: text(error?.message) });
-    }
-  }
-  return results;
-}
-
-export async function retryPendingReferralActivations({ db, stripe }) {
+export async function retryPendingReferralActivations({ db }) {
   const businesses = await db.collection("accounts").get();
   const pending = businesses.docs.filter((document) => {
     const data = document.data();
@@ -284,25 +168,57 @@ export async function retryPendingReferralActivations({ db, stripe }) {
   const results = [];
   for (const document of pending) {
     const data = document.data();
-    const uid = text(data.uid);
     if (data.status !== "active") continue;
     results.push({
       clientId: document.id,
-      ...(await qualifyReferralAfterActivation({ db, stripe, referredClientId: document.id, referredUid: uid })),
+      ...(await qualifyReferralAfterActivation({ db, referredClientId: document.id, referredUid: text(data.uid) })),
     });
   }
   return results;
 }
 
-export async function loadReferralStatus({ db, clientId, billingPeriodKey }) {
-  const count = await referralCountForPeriod({ db, clientId, billingPeriodKey });
+export async function retireLegacyReferralSubscriptionDiscounts({ db, stripe }) {
+  const snapshot = await systemCollection(db, "referralPeriods").get();
+  const results = [];
+  for (const document of snapshot.docs) {
+    const data = document.data();
+    const status = text(data.stripeStatus);
+    if (["retired", "removed"].includes(status)) continue;
+    const subscriptionId = text(data.stripeSubscriptionId);
+    const couponWasApplied = ["applied", "removal_pending"].includes(status) && Boolean(text(data.stripeCouponId));
+    try {
+      if (couponWasApplied && subscriptionId) {
+        await stripe.subscriptions.update(subscriptionId, { discounts: "", proration_behavior: "none" });
+      }
+      await document.ref.set({
+        stripeStatus: couponWasApplied ? "removed" : "retired",
+        stripeRemovedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      results.push({ periodId: document.id, status: couponWasApplied ? "removed" : "retired" });
+    } catch (error) {
+      await document.ref.set({
+        stripeStatus: "removal_pending",
+        stripeLastError: text(error?.message).slice(0, 300),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      results.push({ periodId: document.id, status: "removal_pending", error: text(error?.message) });
+    }
+  }
+  return results;
+}
+
+export async function loadReferralStatus({ db, clientId, now = Date.now() }) {
+  const savings = await activeReferralSavings({ db, clientId, now });
   return {
     accountId: clientId,
-    billingPeriodKey,
-    referralCount: count,
-    maximumReferrals: MAX_MONTHLY_REFERRALS,
+    referralCount: savings.count,
+    activeReferralCount: savings.count,
+    maximumReferrals: MAX_ACTIVE_REFERRALS,
     discountPerReferralPercent: REFERRAL_DISCOUNT_PERCENT,
-    referralDiscountPercent: referralDiscountPercent(count),
-    referralsRemaining: Math.max(0, MAX_MONTHLY_REFERRALS - count),
+    referralDiscountPercent: savings.percent,
+    referralsRemaining: Math.max(0, MAX_ACTIVE_REFERRALS - savings.count),
+    discountDurationDays: REFERRAL_DISCOUNT_DURATION_DAYS,
+    nextExpirationAt: savings.nextExpirationAt ? new Date(savings.nextExpirationAt).toISOString() : "",
   };
 }

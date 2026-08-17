@@ -59,10 +59,10 @@ export default function ReferralCenter({ clientId = "" }) {
         <button type="button" onClick={() => setOpen(false)} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-slate-100 text-lg font-black text-slate-700" aria-label="Close">×</button>
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">Referral savings</p>
         <h2 id="referral-title" className="mt-2 pr-10 text-3xl font-black tracking-tight text-slate-950">Save up to 50%</h2>
-        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Give another business your account ID. After its paid account activates, you receive 10% off one billing period, up to five referrals.</p>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Give another business your account ID. When its paid account activates, you receive 10% off every usage charge for 30 days, up to 50% off.</p>
         {loading ? <p className="mt-6 rounded-2xl bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">Loading referral progress…</p> : <>
           <div className="mt-6 rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white">
-            <div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">This billing period</p><p className="mt-1 text-4xl font-black">{percent(discount)} off</p></div><p className="text-sm font-black">{qualified} of 5</p></div>
+            <div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Active usage savings</p><p className="mt-1 text-4xl font-black">{percent(discount)} off</p></div><p className="text-sm font-black">{qualified} of 5</p></div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/20"><div className="h-full rounded-full bg-amber-400" style={{ width: `${qualified * 20}%` }} /></div>
           </div>
           <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500">Your account ID</p><button type="button" onClick={copyAccountId} className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-left"><span className="min-w-0 break-all text-sm font-black text-slate-950">{accountId || "Not available"}</span><span className="shrink-0 text-xs font-black text-indigo-700">{copied ? "Copied" : "Copy"}</span></button></div>

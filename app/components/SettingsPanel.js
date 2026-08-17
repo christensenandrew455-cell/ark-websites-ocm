@@ -22,11 +22,13 @@ const SETTINGS_BLOCKS = [
 ];
 
 function money(cents = 0) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(cents || 0) / 100);
-}
-function paymentDate(value) {
-  const date = new Date(value || 0);
-  return Number.isNaN(date.getTime()) ? "No successful payment recorded yet" : new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+  const dollars = Number(cents || 0) / 100;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: Number.isInteger(dollars) ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(dollars);
 }
 function SettingsBlock({ title, description, onClick, tourId = "" }) {
   return <button type="button" data-tour-id={tourId || undefined} onClick={onClick} className="min-h-24 w-full rounded-2xl border border-slate-300 bg-slate-50 p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-slate-500 sm:text-sm sm:leading-6">{description}</p></button>;
@@ -279,8 +281,8 @@ export default function SettingsPanel() {
       <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
       {!MESSAGES_AVAILABLE && <div className="rounded-xl border border-slate-200 bg-slate-100 p-4"><p className="text-sm font-black text-slate-800">Coming soon</p><p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{UPCOMING_FEATURE_MESSAGE}</p></div>}
       {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
-      {MESSAGES_AVAILABLE && features.messagesEnabled && <MessageRetentionSettings />}
-      {MESSAGES_AVAILABLE && <ClientDeclineNoticeSettings />}
+      <MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
+      <ClientDeclineNoticeSettings />
       <div id="account-data" className="border-t border-slate-200 pt-6"><FieldLabel>Client data</FieldLabel><button type="button" onClick={downloadClientData} disabled={isDownloading} className="w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></div>
     </div></SectionPanel></>;
   }
@@ -288,15 +290,14 @@ export default function SettingsPanel() {
     const balanceCents = Number(usageSummary?.usageBalanceCents || 0);
     const thresholdCents = Number(usageSummary?.usageThresholdCents || 2000);
     const progress = Math.max(0, Math.min(100, Number(usageSummary?.usageProgressPercent || 0)));
-    const lastPayment = usageSummary?.lastUsagePaymentAt || usageSummary?.lastPaymentAt;
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Monthly account</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
-      <div className="mt-6 rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white sm:p-7">
-        <div className="flex items-end justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Usage toward next charge</p><p className="mt-2 text-sm font-semibold text-slate-300">Automatically charged whenever usage reaches $20.</p></div><p className="shrink-0 text-2xl font-black">{usageSummary ? `${money(balanceCents)} / ${money(thresholdCents)}` : "—"}</p></div>
+      <div className="rounded-2xl bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white sm:p-7">
+        <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Usage toward next charge</p><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
+        <p className="mt-3 text-3xl font-black">{usageSummary ? `${money(balanceCents)} out of ${money(thresholdCents)}` : "—"}</p>
         <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Usage toward next twenty dollar charge" aria-valuemin={0} aria-valuemax={20} aria-valuenow={Math.min(20, balanceCents / 100)}><div className="h-full rounded-full bg-blue-500 transition-[width]" style={{ width: `${progress}%` }} /></div>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">Receptionist call / new lead</p><p className="mt-1 text-2xl font-black">$2</p><p className="mt-1 text-xs font-bold text-slate-500">A lead saved from the same call counts once.</p></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">New chat</p><p className="mt-1 text-2xl font-black">$1</p></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">50 SMS parts</p><p className="mt-1 text-2xl font-black">$1</p><p className="mt-1 text-xs font-bold text-slate-500">{Number(usageSummary?.smsPartRemainder || 0)}/50 toward the next point</p></div></div>
-      <div className="mt-4 rounded-2xl border border-slate-200 p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Last successful payment</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentDate(lastPayment)}</p></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">New lead</p><p className="mt-1 text-2xl font-black">$2</p><p className="mt-1 text-xs font-bold text-slate-500">A lead saved from the same call counts once.</p></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-black">50 SMS parts</p><p className="mt-1 text-2xl font-black">$1</p><p className="mt-1 text-xs font-bold text-slate-500">{Number(usageSummary?.smsPartRemainder || 0)}/50 toward the next $1.</p></div></div>
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recurring charge</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div>
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
       <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
     </SectionPanel></>;

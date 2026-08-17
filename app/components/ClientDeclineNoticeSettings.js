@@ -22,7 +22,7 @@ export default function ClientDeclineNoticeSettings() {
       .then(async (response) => ({ response, data: await response.json().catch(() => ({})) }))
       .then(({ response, data }) => {
         if (!active) return;
-        if (!response.ok) throw new Error(data.error || "Could not load the decline notice setting.");
+        if (!response.ok) throw new Error(data.error || "Could not load the lead status notice setting.");
         setEnabled(data.enabled !== false);
         setError("");
       })
@@ -45,7 +45,7 @@ export default function ClientDeclineNoticeSettings() {
         body: JSON.stringify({ enabled: checked }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Could not update the decline notice setting.");
+      if (!response.ok) throw new Error(data.error || "Could not update the lead status notice setting.");
       setEnabled(data.enabled !== false);
     } catch (saveError) {
       setEnabled(previous);
@@ -59,8 +59,8 @@ export default function ClientDeclineNoticeSettings() {
     <div>
       <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
         <span>
-          <span className={LABEL_CLASS}>Client decline notice</span>
-          <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Automatically text a client when you decline their estimate request.</span>
+          <span className={LABEL_CLASS}>Lead status notices</span>
+          <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Automatically text customers when you accept or decline their lead.</span>
         </span>
         <input
           type="checkbox"

@@ -12,7 +12,7 @@ import {
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
-import { pendingReferralFields } from "./referrals";
+import { pendingReferralFields, qualifyReferralAfterActivation } from "./referrals";
 import { ensureCustomerBillingSubscription } from "./stripeUsageBilling";
 
 function text(value) { return String(value || "").trim(); }
@@ -138,6 +138,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
     receptionistPhone: "",
+    onboardingTourEligible: true,
     onboardingTourStatus: "pending",
     ...referralFields,
     activatedAt: now,
@@ -165,6 +166,14 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   batch.create(accountRef, accountData);
   batch.delete(pending.ref);
   await batch.commit();
+
+  if (referralFields.referrerClientId) {
+    try {
+      await qualifyReferralAfterActivation({ db, referredClientId: clientId, referredUid: safeUid });
+    } catch (error) {
+      console.error("Referral activation will be retried by billing sync", error);
+    }
+  }
 
   const userRecord = await auth.getUser(safeUid);
   await auth.setCustomUserClaims(safeUid, {

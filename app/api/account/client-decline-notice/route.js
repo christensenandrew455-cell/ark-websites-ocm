@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
+import { estimateRequestStatusNoticesEnabled } from "../../../lib/estimateRequestStatusNotice";
 import { requireUser } from "../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -11,7 +11,6 @@ export const dynamic = "force-dynamic";
 function text(value) { return String(value || "").trim(); }
 
 async function authorizeOwner(request) {
-  if (!MESSAGES_AVAILABLE) return { response: NextResponse.json({ error: `Messages are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 }) };
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
@@ -33,7 +32,7 @@ export async function GET(request) {
   if (access.response) return access.response;
   return NextResponse.json({
     ok: true,
-    enabled: access.account.clientDeclineNoticeEnabled !== false,
+    enabled: estimateRequestStatusNoticesEnabled(access.account),
   });
 }
 
@@ -44,13 +43,14 @@ export async function POST(request) {
     const body = await request.json();
     const enabled = body.enabled === true;
     const update = {
-      clientDeclineNoticeEnabled: enabled,
+      clientStatusNoticeEnabled: enabled,
+      clientDeclineNoticeEnabled: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     };
     await access.accountRef.set(update, { merge: true });
     return NextResponse.json({ ok: true, enabled });
   } catch (error) {
-    console.error("Unable to update client decline notice setting", error);
-    return NextResponse.json({ error: "Could not update the client decline notice setting." }, { status: 500 });
+    console.error("Unable to update lead status notice setting", error);
+    return NextResponse.json({ error: "Could not update the lead status notice setting." }, { status: 500 });
   }
 }

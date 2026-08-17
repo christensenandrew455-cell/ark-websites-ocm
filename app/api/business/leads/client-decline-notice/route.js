@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
-import { sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
+import { estimateRequestStatusNoticesEnabled, sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
 import { requireUser } from "../../../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -43,7 +43,7 @@ export async function POST(request) {
     const root = access.db.collection("accounts").doc(access.clientId);
     const acceptedSnapshot = await root.collection("clients").doc(leadId).get();
     if (acceptedSnapshot.exists) return NextResponse.json({ ok: true, skipped: "accepted" });
-    if (access.business.clientDeclineNoticeEnabled === false) {
+    if (!estimateRequestStatusNoticesEnabled(access.business)) {
       return NextResponse.json({ ok: true, skipped: "disabled" });
     }
 

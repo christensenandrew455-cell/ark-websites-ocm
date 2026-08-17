@@ -5,24 +5,30 @@ import { readFile } from "node:fs/promises";
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
 test("usage charging reuses an uncertain Stripe attempt and reconciles saved ledgers", async () => {
-  const [usage, cron, calls] = await Promise.all([
+  const [usage, cron, calls, referrals] = await Promise.all([
     source("app/lib/usageThresholdBilling.js"),
     source("app/api/cron/billing-sync/route.js"),
     source("app/api/receptionist/call-usage/route.js"),
+    source("app/lib/referrals.js"),
   ]);
   assert.ok(usage.includes('usageChargeStatus: "retry_pending"'));
   assert.ok(usage.includes('["processing", "retry_pending"].includes(status)'));
   assert.ok(usage.includes("usageChargePaymentMethodId"));
   assert.ok(usage.includes("idempotencyKey: `ark-usage-threshold-${claim.uid}-${claim.sequence}`"));
   assert.ok(usage.includes("const usagePrice = await ensureStripeUsagePrice({ stripe: client })"));
-  assert.ok(usage.includes("amount: usagePrice.unitAmount"));
+  assert.ok(usage.includes("amount: claim.amountCents"));
+  assert.ok(usage.includes("activeReferralSavings({ db, clientId, now })"));
+  assert.ok(usage.includes("usageChargeAfterReferralDiscount(fullAmountCents, discountPercent)"));
+  assert.ok(usage.includes('type: "chat", points: 0'));
   assert.ok(usage.includes("usagePriceId: usagePrice.usagePriceId"));
   assert.ok(usage.includes("usageProductId: usagePrice.usageProductId"));
   assert.ok(usage.includes("reconcilePendingUsageEvents"));
   assert.ok(usage.includes('collection: "billingLeadEvents", type: "lead", points: 2'));
-  assert.ok(usage.includes('collection: "billingConversationEvents", type: "chat", points: 1'));
+  assert.ok(usage.includes('collection: "billingConversationEvents", type: "chat", points: 0'));
   assert.ok(usage.includes('collection: "billingMessageEvents", type: "sms-parts", points: 0'));
   assert.ok(cron.includes("reconcilePendingUsageEvents({"));
+  assert.ok(cron.includes("retireLegacyReferralSubscriptionDiscounts({ db, stripe })"));
+  assert.equal(referrals.includes("stripe.coupons.create"), false);
   assert.ok(calls.includes("recordLeadUsage({"));
   assert.ok(calls.includes("billingLeadEventId(authorization.clientId, callId)"));
   assert.equal(calls.includes('collection("usage")'), false);

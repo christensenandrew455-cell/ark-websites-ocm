@@ -1,5 +1,4 @@
 import { FieldValue } from "firebase-admin/firestore";
-import { MESSAGES_AVAILABLE } from "./launchFeatures";
 
 function text(value) {
   return String(value || "").trim();
@@ -73,7 +72,12 @@ export function estimateRequestStatusMessage(status, businessName) {
   const statusLine = status === "accepted"
     ? `Your estimate request has been accepted by ${brand}.`
     : `We're sorry, but your estimate request has been declined by ${brand}.`;
-  return `${statusLine} If you text this number, the business will not be able to see your message until they start a text conversation with you.`;
+  return statusLine;
+}
+
+export function estimateRequestStatusNoticesEnabled(account = {}) {
+  if (Object.hasOwn(account, "clientStatusNoticeEnabled")) return account.clientStatusNoticeEnabled !== false;
+  return account.clientDeclineNoticeEnabled !== false;
 }
 
 export async function sendEstimateRequestStatusNotice({
@@ -85,7 +89,6 @@ export async function sendEstimateRequestStatusNotice({
   phone,
   status,
 }) {
-  if (!MESSAGES_AVAILABLE) return { ok: true, skipped: "feature-unavailable", sent: false };
   const normalizedPhone = normalizeStatusPhone(phone);
   const normalizedStatus = status === "accepted" ? "accepted" : "declined";
   if (!normalizedPhone) return { ok: true, skipped: "missing-phone", sent: false };

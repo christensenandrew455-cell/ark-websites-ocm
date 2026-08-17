@@ -14,7 +14,7 @@ import ReferralCenter from "./ReferralCenter";
 import { billingPaymentDeadline } from "../lib/billingNotice";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
-const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/about", "/docs"];
+const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 const THEME_KEY = "ark-theme-v1";
 
