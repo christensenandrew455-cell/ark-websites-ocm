@@ -31,6 +31,8 @@ test("usage charging reuses an uncertain Stripe attempt and reconciles saved led
   assert.equal(referrals.includes("stripe.coupons.create"), false);
   assert.ok(calls.includes("recordLeadUsage({"));
   assert.ok(calls.includes("billingLeadEventId(authorization.clientId, callId)"));
+  assert.ok(calls.includes("receptionist.call.completed"));
+  assert.ok(calls.includes("sendAdminEvent"));
   assert.equal(calls.includes('collection("usage")'), false);
   assert.equal(calls.includes("monthKey"), false);
 });

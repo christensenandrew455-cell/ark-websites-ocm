@@ -6,7 +6,7 @@
 	"backgroundColor": "#f8fafc",
 	"loggingBehavior": "debug",
 	"server": {
-		"url": "https://ark-websites-ocm-xi.vercel.app",
+		"url": "https://ark-websites-ocm.vercel.app",
 		"androidScheme": "https",
 		"iosScheme": "https",
 		"cleartext": false,
