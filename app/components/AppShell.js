@@ -26,6 +26,10 @@ function LoadingScreen({ message = "Loading client center…" }) {
   return <main className="grid min-h-screen place-items-center bg-slate-50 p-6"><div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 text-sm font-semibold text-slate-600 shadow-sm">{message}</div></main>;
 }
 
+function AccountLoadProblem({ message, retry, loading, logout }) {
+  return <main className="grid min-h-screen place-items-center bg-slate-100 p-5 text-slate-950"><section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-amber-100 text-xl font-black text-amber-800">!</div><h1 className="mt-5 text-2xl font-black tracking-tight">Your account needs another try</h1><p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{message}</p><button type="button" disabled={loading} onClick={retry} className="mt-5 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-60">{loading ? "Loading…" : "Try Again"}</button><button type="button" onClick={logout} className="mt-2 w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black text-slate-700">Sign Out</button></section></main>;
+}
+
 function PullToRefresh({ children }) {
   const startY = useRef(0);
   const tracking = useRef(false);
@@ -124,7 +128,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, loading, logout } = useAuth();
+  const { user, profile, profileError, loading, logout, refreshProfile } = useAuth();
   const isAuthPublic = matchesPath(pathname, AUTH_PUBLIC_PATHS);
   const isPolicyPublic = matchesPath(pathname, POLICY_PUBLIC_PATHS);
   const isPublic = isAuthPublic || isPolicyPublic;
@@ -168,6 +172,7 @@ export default function AppShell({ children }) {
   if (!user && isPublic) return children;
   if (!user) return <LoadingScreen />;
   if (isAuthPublic) return children;
+  if (!profile) return <AccountLoadProblem message={profileError || "We couldn’t load your account information."} retry={refreshProfile} loading={loading} logout={logout} />;
 
   return <BillingStatusProvider><CustomerWorkspace pathname={pathname} isPolicyPublic={isPolicyPublic} profile={profile} logout={logout}>{children}</CustomerWorkspace></BillingStatusProvider>;
 }

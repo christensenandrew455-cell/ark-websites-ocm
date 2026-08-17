@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
 import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
 import MessageRetentionSettings from "./MessageRetentionSettings";
 import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
-import { db } from "../lib/firebase";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
@@ -93,12 +91,13 @@ export default function SettingsPanel() {
 
   useEffect(() => {
     if (!clientId) { setError(ownerFacingError()); setIsLoading(false); return undefined; }
-    if (profile?.status === "disabled") {
-      setAccountSettings({ ...DEFAULT_SETTINGS, billingPastDue: true, paymentMethodLabel: profile?.paymentMethodLabel || "" });
-      return undefined;
-    }
-    return onSnapshot(doc(db, "accounts", clientId), (snapshot) => setAccountSettings({ ...DEFAULT_SETTINGS, ...(snapshot.exists() ? snapshot.data() : {}) }), (snapshotError) => setError(ownerFacingError(snapshotError)));
-  }, [clientId, profile?.paymentMethodLabel, profile?.status]);
+    setAccountSettings({
+      ...DEFAULT_SETTINGS,
+      billingPastDue: profile?.billingPastDue === true,
+      paymentMethodLabel: profile?.paymentMethodLabel || "",
+    });
+    return undefined;
+  }, [clientId, profile?.billingPastDue, profile?.paymentMethodLabel]);
 
   useEffect(() => {
     if (!user || !clientId) { setIsLoading(false); return undefined; }

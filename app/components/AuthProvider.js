@@ -2,13 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signInWithCustomToken, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { ACCOUNT_TYPES } from "../lib/accountTypes";
-import { ACCOUNT_ROLES, isStandardRole } from "../lib/accountRoles";
-import { auth, db } from "../lib/firebase";
-import { availableAccountFeatures } from "../lib/launchFeatures";
+import { isStandardRole } from "../lib/accountRoles";
+import { auth } from "../lib/firebase";
 import { readApiJson } from "../lib/apiResponse";
-import { normalizeClientId } from "../lib/valueUtils";
 
 const AuthContext = createContext(null);
 
@@ -16,60 +12,31 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
 
   const loadProfile = useCallback(async (nextUser) => {
     if (!nextUser) {
       setProfile(null);
+      setProfileError("");
       return null;
     }
 
-    const tokenResult = await nextUser.getIdTokenResult(true);
-    const claimedRole = String(tokenResult.claims.role || "");
-    if (!isStandardRole(claimedRole)) throw new Error("OWNER_ACCOUNT_REQUIRED");
-    const claimedClientId = normalizeClientId(tokenResult.claims.clientId || tokenResult.claims.businessClientId || "");
-    const accountDocumentId = claimedClientId || nextUser.uid;
-    let account = {};
-    try {
-      const snapshot = await getDoc(doc(db, "accounts", accountDocumentId));
-      account = snapshot.exists() ? snapshot.data() : {};
-    } catch (accountError) {
-      console.warn("Unable to read account profile directly from Firestore; using verified token claims", accountError);
-    }
-
-    const role = tokenResult.claims.role || account.role || ACCOUNT_ROLES.STANDARD;
-    if (!isStandardRole(role)) throw new Error("OWNER_ACCOUNT_REQUIRED");
-    const clientId = normalizeClientId(claimedClientId || account.clientId || "");
-    const claimedStatus = String(tokenResult.claims.accountStatus || "");
-    const status = account.status || claimedStatus || (clientId ? "active" : "");
-    const accountType = account.accountType || String(tokenResult.claims.accountType || "") || ACCOUNT_TYPES.OWNER;
-    const availableFeatures = availableAccountFeatures({
-      messagesEnabled: account.messagesEnabled === true || tokenResult.claims.messagesEnabled === true,
+    const token = await nextUser.getIdToken(true);
+    const response = await fetch("/api/account/profile", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
     });
-    const nextProfile = {
-      ...account,
-      uid: nextUser.uid,
-      email: nextUser.email,
-      accountEmail: account.accountEmail || nextUser.email || "",
-      role,
-      accountType,
-      businessRole: account.businessRole || String(tokenResult.claims.businessRole || "owner"),
-      clientId,
-      status,
-      ...availableFeatures,
-      paymentSetupStatus: account.paymentSetupStatus || (status === "active" ? "complete" : ""),
-      identityVerificationRequired: account.identityVerificationRequired === true || tokenResult.claims.identityVerificationRequired === true,
-      identityVerificationVerified: account.identityVerificationVerified === true || tokenResult.claims.identityVerificationVerified === true,
-      identityVerificationStatus: account.identityVerificationStatus || "",
-      emailVerificationStatus: account.emailVerificationStatus || "",
-      phoneVerificationStatus: account.phoneVerificationStatus || "",
-      onboardingTourStatus: account.onboardingTourStatus || "",
-      numberAssignmentStatus: account.numberAssignmentStatus || "",
-      termsAccepted: account.termsAccepted === true || tokenResult.claims.termsAccepted === true,
-      privacyAccepted: account.privacyAccepted === true || tokenResult.claims.privacyAccepted === true,
-      termsVersion: account.termsVersion || String(tokenResult.claims.termsVersion || ""),
-      privacyVersion: account.privacyVersion || String(tokenResult.claims.privacyVersion || ""),
-    };
+    let data;
+    try {
+      data = await readApiJson(response, "Could not load your account information.");
+    } catch (error) {
+      error.status = response.status;
+      throw error;
+    }
+    const nextProfile = data.profile;
+    if (!nextProfile?.clientId) throw new Error("Could not load your business account.");
     setProfile(nextProfile);
+    setProfileError("");
     return nextProfile;
   }, []);
 
@@ -77,6 +44,7 @@ export function AuthProvider({ children }) {
     setLoading(true);
     setUser(nextUser);
     setProfile(null);
+    setProfileError("");
     if (!nextUser) {
       setLoading(false);
       return;
@@ -85,9 +53,16 @@ export function AuthProvider({ children }) {
       await loadProfile(nextUser);
     } catch (error) {
       console.error("Unable to load owner account profile", error);
-      await signOut(auth).catch((signOutError) => console.warn("Unable to clear the expired local sign-in", signOutError));
-      setUser(null);
+      if ([401, 403, 404, 410].includes(Number(error?.status))) {
+        await signOut(auth).catch((signOutError) => console.warn("Unable to clear the expired local sign-in", signOutError));
+        setUser(null);
+        setProfile(null);
+        setProfileError("");
+        setLoading(false);
+        return;
+      }
       setProfile(null);
+      setProfileError("We couldn’t load your account information. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -109,6 +84,10 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       return await loadProfile(auth.currentUser);
+    } catch (error) {
+      console.error("Unable to refresh owner account profile", error);
+      setProfileError("We couldn’t load your account information. Check your connection and try again.");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -117,13 +96,14 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => ({
     user,
     profile,
+    profileError,
     loading,
     login,
     logout,
     refreshProfile,
     isOwner: isStandardRole(profile?.role),
     isBusinessOwner: isStandardRole(profile?.role),
-  }), [user, profile, loading, login, logout, refreshProfile]);
+  }), [user, profile, profileError, loading, login, logout, refreshProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
