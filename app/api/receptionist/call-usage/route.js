@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { sendAdminEvent } from "../../../lib/adminEvents";
 import { billingLeadEventId } from "../../../lib/billingLeadUsage";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { recordLeadUsage } from "../../../lib/usageThresholdBilling";
@@ -33,7 +34,7 @@ async function authorize(request, data) {
   if (connection.enabled === false || !secretMatches(connection.connectionKey, providedKey)) {
     return { response: Response.json({ ok: false, error: "The receptionist connection is disabled or invalid." }, { status: 403 }) };
   }
-  return { db, clientId };
+  return { db, clientId, businessName: text(connection.businessName || clientId) };
 }
 
 export async function POST(request) {
@@ -46,13 +47,27 @@ export async function POST(request) {
     const callId = text(data.callId);
     if (!callId) return Response.json({ ok: false, error: "A call ID is required." }, { status: 400 });
     const occurredAt = Number.isFinite(Date.parse(data.startedAt)) ? Date.parse(data.startedAt) : Date.now();
+    const usageEventId = billingLeadEventId(authorization.clientId, callId);
     const usage = await recordLeadUsage({
       db: authorization.db,
       clientId: authorization.clientId,
       // Intake uses the same deterministic ID when this call also creates a lead,
       // so a call and its saved lead can never be charged twice.
-      sourceId: billingLeadEventId(authorization.clientId, callId),
+      sourceId: usageEventId,
       occurredAt,
+    });
+    await sendAdminEvent({
+      id: `receptionist-call-${usageEventId}`,
+      type: "receptionist.call.completed",
+      clientId: authorization.clientId,
+      businessName: authorization.businessName,
+      summary: data.leadSaved === true ? "Receptionist call completed with a new lead" : "Receptionist call completed",
+      metadata: {
+        durationSeconds: Math.max(0, Number(data.durationSeconds || 0)),
+        outcome: text(data.outcome || data.endReason).slice(0, 80),
+        leadSaved: data.leadSaved === true,
+      },
+      occurredAt: new Date(occurredAt).toISOString(),
     });
     return Response.json({ ok: true, duplicate: usage.duplicate === true, balancePoints: usage.balancePoints, paymentStatus: usage.payment?.status || "not_due" });
   } catch (error) {
