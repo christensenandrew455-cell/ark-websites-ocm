@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import Stripe from "stripe";
 import { isStandardRole } from "./accountRoles.js";
+import { sendAdminEvent } from "./adminEvents.js";
 import {
   smsUsageResult,
   USAGE_CHARGE_THRESHOLD_POINTS,
@@ -187,6 +188,7 @@ async function claimCharge(db, clientId, now = Date.now()) {
     return {
       uid: text(account.uid),
       clientId: text(account.clientId || clientId),
+      businessName: text(account.businessName || account.clientId || clientId),
       sequence,
       balance,
       customerId,
@@ -307,6 +309,22 @@ export async function settleUsageThreshold({ db, stripe = null, clientId }) {
         return { status: "declined", paymentIntentId: paymentIntent.id };
       }
       const paid = await markPaid(db, claim, paymentIntent);
+      if (!paid.stale) {
+        await sendAdminEvent({
+          id: `billing-paid-${paymentIntent.id}`,
+          type: "billing.payment_succeeded",
+          clientId: claim.clientId,
+          businessName: claim.businessName,
+          summary: "Usage payment succeeded",
+          metadata: {
+            paymentId: paymentIntent.id,
+            paymentKind: "usage",
+            amountCents: claim.amountCents,
+            currency: text(paymentIntent.currency || usagePrice.currency || "usd").toLowerCase(),
+            referralDiscountPercent: claim.referralDiscountPercent,
+          },
+        });
+      }
       lastResult = {
         status: "paid",
         paymentIntentId: paymentIntent.id,

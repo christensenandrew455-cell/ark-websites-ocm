@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 export const ARC_ADMIN_WEBHOOK_URL = "https://ark-admin-app.vercel.app/api/webhooks/events";
 
@@ -8,6 +8,20 @@ function text(value, maximum = 700) {
 
 export function signedAdminEvent({ secret, timestamp, body }) {
   return `v1=${createHmac("sha256", text(secret)).update(`${timestamp}.${body}`).digest("hex")}`;
+}
+
+export function verifyAdminEvent({ secret, timestamp, signature, body, now = Date.now() }) {
+  const configuredSecret = text(secret, 1000);
+  const requestTimestamp = text(timestamp, 20);
+  const provided = text(signature, 80).replace(/^v1=/i, "");
+  if (configuredSecret.length < 32) return { ok: false, status: 503, error: "The Arc webhook is not configured." };
+  if (!/^\d{10}$/.test(requestTimestamp)) return { ok: false, status: 401, error: "The webhook timestamp is invalid." };
+  if (Math.abs(Math.floor(now / 1000) - Number(requestTimestamp)) > 5 * 60) return { ok: false, status: 401, error: "The webhook request expired." };
+  const expected = signedAdminEvent({ secret: configuredSecret, timestamp: requestTimestamp, body }).replace(/^v1=/, "");
+  if (!/^[a-f0-9]{64}$/i.test(provided) || !timingSafeEqual(Buffer.from(provided, "hex"), Buffer.from(expected, "hex"))) {
+    return { ok: false, status: 401, error: "The webhook signature is invalid." };
+  }
+  return { ok: true };
 }
 
 export async function sendAdminEvent(event) {

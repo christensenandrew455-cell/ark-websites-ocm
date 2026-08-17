@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
 import {
@@ -73,6 +74,21 @@ export async function POST(request) {
       const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || "";
       const match = await findBusinessForStripeCustomer(db, customerId, invoice.metadata || {});
       if (!match) return NextResponse.json({ received: true, ignored: true });
+
+      await sendAdminEvent({
+        id: `billing-paid-${invoice.id}`,
+        type: "billing.payment_succeeded",
+        clientId: match.clientId,
+        businessName: text(match.business.businessName || match.clientId),
+        summary: "Monthly payment succeeded",
+        metadata: {
+          paymentId: invoice.id,
+          paymentKind: "subscription",
+          amountCents: Math.max(0, Number(invoice.amount_paid || 0)),
+          currency: text(invoice.currency || "usd").toLowerCase(),
+        },
+        occurredAt: new Date(event.created * 1000).toISOString(),
+      });
 
       const remaining = customerId
         ? await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
