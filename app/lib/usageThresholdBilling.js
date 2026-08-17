@@ -7,9 +7,9 @@ import {
   USAGE_CHARGE_THRESHOLD_POINTS,
   USAGE_POINT_CENTS,
   usageChargeAfterReferralDiscount,
-} from "./billingPricing";
-import { PAYMENT_RETRY_INTERVAL_MS, registerPaymentFailure, resolvePayment } from "./billingDelinquency";
-import { ensureStripeUsagePrice } from "./stripeUsageBilling";
+} from "./billingPricing.js";
+import { PAYMENT_RETRY_INTERVAL_MS, registerPaymentFailure, resolvePayment } from "./billingDelinquency.js";
+import { ensureStripeUsagePrice } from "./stripeUsageBilling.js";
 import { activeReferralSavings } from "./referrals.js";
 
 const PROCESSING_LOCK_MS = 5 * 60 * 1000;
@@ -40,31 +40,22 @@ function paymentDeclined(error) {
   return type.includes("card") || ["card_declined", "authentication_required", "payment_intent_authentication_failure"].includes(code) || ["requires_action", "requires_payment_method", "canceled"].includes(status);
 }
 
-async function accountForClient(db, clientId) {
-  const businessSnapshot = await db.collection("accounts").doc(clientId).get();
-  if (!businessSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
-  const business = businessSnapshot.data();
-  const uid = text(business.uid);
-  if (!uid) throw new Error("ACCOUNT_NOT_FOUND");
-  return { uid, business };
-}
-
 export async function recordUsage({ db, stripe = null, clientId, type, sourceId, points = 0, smsParts = 0, occurredAt = Date.now(), ledgerRef = null }) {
   const safeClientId = text(clientId);
   const safeType = text(type);
   const safeSourceId = text(sourceId);
   if (!safeClientId || !safeType || !safeSourceId) throw new Error("USAGE_EVENT_INVALID");
-  await accountForClient(db, safeClientId);
   const accountRef = db.collection("accounts").doc(safeClientId);
   const usageEventRef = accountRef.collection("usageEvents").doc(eventId(safeClientId, safeType, safeSourceId));
   const result = await db.runTransaction(async (transaction) => {
     const [accountSnapshot, existingEvent] = await Promise.all([transaction.get(accountRef), transaction.get(usageEventRef)]);
     if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    const account = accountSnapshot.data();
+    if (!text(account.uid)) throw new Error("ACCOUNT_NOT_FOUND");
     if (existingEvent.exists) {
       if (ledgerRef) transaction.set(ledgerRef, { usageRecorded: true, usageRecordedAt: FieldValue.serverTimestamp() }, { merge: true });
-      return { duplicate: true, balancePoints: whole(accountSnapshot.data().usageBalancePoints) };
+      return { duplicate: true, balancePoints: whole(account.usageBalancePoints) };
     }
-    const account = accountSnapshot.data();
     if (account.status !== "active" || account.billingPastDue === true) throw new Error("ACCOUNT_USAGE_SUSPENDED");
 
     const smsUsage = smsUsageResult(account.usageSmsPartRemainder, smsParts);

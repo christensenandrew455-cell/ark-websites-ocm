@@ -69,8 +69,9 @@ export default function MessageRetentionSettings({ showMessages = false }) {
   return (
     <section className="border-t border-slate-200 pt-6">
       <span className={FIELD_LABEL_CLASS}>Auto-delete</span>
-      <div className={showMessages ? "mt-4 grid gap-3 sm:grid-cols-2" : "mt-4 grid gap-3"}>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <RetentionSelect title="Leads" endpoint="/api/business/leads/retention" />
+        <RetentionSelect title="Clients" endpoint="/api/business/clients/retention" />
         {showMessages && <RetentionSelect title="Messages" endpoint="/api/business/lead-messages/retention" />}
       </div>
     </section>

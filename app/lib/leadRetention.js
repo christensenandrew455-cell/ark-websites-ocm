@@ -37,14 +37,12 @@ export async function cleanupExpiredLeads(db, clientId, retentionDays, now = Dat
   if (!days) return 0;
 
   const root = db.collection("accounts").doc(text(clientId));
+  const snapshot = await root.collection("contactedMe").get();
   let deleted = 0;
-  for (const collectionKey of ["contactedMe", "clients"]) {
-    const snapshot = await root.collection(collectionKey).get();
-    for (const document of snapshot.docs) {
-      if (!isPastRetention(leadActivityAt(document.data()), days, now)) continue;
-      await document.ref.delete();
-      deleted += 1;
-    }
+  for (const document of snapshot.docs) {
+    if (!isPastRetention(leadActivityAt(document.data()), days, now)) continue;
+    await document.ref.delete();
+    deleted += 1;
   }
   return deleted;
 }

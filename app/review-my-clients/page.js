@@ -20,7 +20,7 @@ export default function ReviewMyClientsPage() {
   return (
     <div className="review-clients-shell">
       <style>{`
-        .review-clients-shell { min-height: 100vh; background-color: #e2e8f0; }
+        .review-clients-shell { min-height: 100vh; background: transparent; }
         .review-clients-shell > main > div > nav:first-child { display: none; }
       `}</style>
       <ReviewClientsNative />
