@@ -45,14 +45,14 @@ test("literal server-side top-level collection calls use only accounts", async (
   assert.deepEqual([...new Set(names)], ["accounts"]);
 });
 
-test("browser Firestore paths start only at accounts", async () => {
+test("browser components do not read Firestore directly", async () => {
   const source = await applicationSource();
   const names = [
     ...source.matchAll(/\bcollection\(db,\s*"([^"]+)"/g),
     ...source.matchAll(/\bdoc\(db,\s*"([^"]+)"/g),
   ].map((match) => match[1]);
-  assert.ok(names.length > 0);
-  assert.deepEqual([...new Set(names)], ["accounts"]);
+  assert.deepEqual(names, []);
+  assert.equal(source.includes('from "firebase/firestore"'), false);
 });
 
 test("account settings live on the account document instead of a settings subcollection", async () => {

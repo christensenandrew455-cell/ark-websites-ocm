@@ -1,6 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,12 +16,10 @@ const firebaseConfig = {
 // SDK only in an actual browser. The module is evaluated again in the browser,
 // where the NEXT_PUBLIC Firebase configuration is available.
 let auth = null;
-let db = null;
 
 if (typeof window !== "undefined") {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
-  db = getFirestore(app);
 }
 
-export { auth, db };
+export { auth };
