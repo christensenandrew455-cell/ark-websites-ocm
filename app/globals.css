@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --ark-top-safe-area-color: #ffffff;
+  --ark-top-safe-area-color: #020617;
   --ark-workspace-header-height: 65px;
+  --ark-navy: #071a3d;
+  --ark-blue: #1d4ed8;
+  --ark-canvas: #eff6ff;
 }
 
 html,
@@ -11,14 +14,12 @@ body {
   min-height: 100vh;
 }
 
-/* Every signed-in workspace page uses the same outer canvas. Cards and
- * inset panels provide the visual layers instead of each route choosing a
- * different page color. */
+/* Signed-in pages share the same blue workspace canvas. */
 .ark-workspace-surface,
 .ark-workspace-surface .ark-pull-to-refresh-content,
 .ark-workspace-surface .ark-pull-to-refresh-content > main {
-  background-color: #e2e8f0 !important;
-  background-image: none !important;
+  background-color: var(--ark-canvas) !important;
+  background-image: linear-gradient(180deg, #071a3d 0, #12366f 11rem, #e7f0ff 11rem, #f8fbff 100%) !important;
 }
 
 html {
@@ -199,8 +200,8 @@ html.ark-dark body {
 html.ark-dark .ark-workspace-surface,
 html.ark-dark .ark-workspace-surface .ark-pull-to-refresh-content,
 html.ark-dark .ark-workspace-surface .ark-pull-to-refresh-content > main {
-  background-color: #334155 !important;
-  background-image: none !important;
+  background-color: #020617 !important;
+  background-image: linear-gradient(180deg, #020617 0, #102a5b 11rem, #0f172a 11rem, #020617 100%) !important;
 }
 
 html.ark-dark .bg-slate-50 {
@@ -243,6 +244,26 @@ html.ark-dark .text-slate-500 {
 
 html.ark-dark .text-slate-400 {
   color: #94a3b8 !important;
+}
+
+html.ark-dark .text-blue-950,
+html.ark-dark .text-blue-900,
+html.ark-dark .text-blue-800,
+html.ark-dark .text-indigo-950,
+html.ark-dark .text-cyan-950,
+html.ark-dark .text-cyan-800 {
+  color: #dbeafe !important;
+}
+
+html.ark-dark .text-blue-700,
+html.ark-dark .text-indigo-700 {
+  color: #93c5fd !important;
+}
+
+html.ark-dark .bg-blue-50,
+html.ark-dark .bg-indigo-50,
+html.ark-dark .bg-cyan-50 {
+  background-color: #172554 !important;
 }
 
 html.ark-dark .border-slate-100,

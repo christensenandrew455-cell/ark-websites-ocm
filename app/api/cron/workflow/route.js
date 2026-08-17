@@ -9,6 +9,7 @@ import {
   estimateRequestLifecycle,
 } from "../../../lib/estimateRequestLifecycle";
 import { sendEstimateRequestStatusNotice } from "../../../lib/estimateRequestStatusNotice";
+import { cleanupExpiredClients, normalizeClientRetentionDays } from "../../../lib/clientRetention";
 import { cleanupExpiredLeads, normalizeLeadRetentionDays } from "../../../lib/leadRetention";
 import { validTimeZone } from "../../../lib/timeWindows";
 
@@ -188,12 +189,16 @@ async function runWorkflow(request) {
         const workflow = await markEstimateFollowUps(db, clientId, now, timeZone);
         const dailyReviewCreated = await createDailyReviewNotification(db, clientId, now, timeZone);
         const retentionDays = normalizeLeadRetentionDays(business.leadRetentionDays);
+        const clientRetentionDays = normalizeClientRetentionDays(business.clientRetentionDays);
         const retainedLeadsDeleted = await cleanupExpiredLeads(db, clientId, retentionDays, now);
+        const retainedClientsDeleted = await cleanupExpiredClients(db, clientId, clientRetentionDays, now);
         businesses.push({
           clientId,
           timeZone,
           retentionDays,
+          clientRetentionDays,
           retainedLeadsDeleted,
+          retainedClientsDeleted,
           ...expired,
           ...workflow,
           dailyReviewCreated,

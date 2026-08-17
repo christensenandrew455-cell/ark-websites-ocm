@@ -47,6 +47,10 @@ export default function LeadMessagesPage() {
   const [error, setError] = useState("");
 
   const featureEnabled = MESSAGES_AVAILABLE && profile?.messagesEnabled === true;
+  useEffect(() => {
+    if (!MESSAGES_AVAILABLE) router.replace("/");
+  }, [router]);
+
   const load = useCallback(async (leadId = selectedLead, collectionKey = selectedCollection, silent = false) => {
     if (!user || !featureEnabled) return;
     if (!silent) setLoading(true);
@@ -110,7 +114,8 @@ export default function LeadMessagesPage() {
     } catch (deleteError) { setError(ownerFacingError(deleteError)); } finally { setDeleting(""); }
   }
 
-  if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" className="bg-slate-50" /><div className="mt-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 text-blue-950 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700">Messages</p><h1 className="mt-2 text-2xl font-black">{!MESSAGES_AVAILABLE ? "Messages isn’t active yet" : "Turn Messages on in Settings"}</h1><p className="mt-2 text-sm font-semibold leading-6">{!MESSAGES_AVAILABLE ? "It’ll be available next month." : "Open Settings, then Customization, to enable it."}</p>{MESSAGES_AVAILABLE && <button type="button" onClick={() => router.push("/settings")} className="mt-4 rounded-xl bg-blue-800 px-4 py-3 text-sm font-black text-white">Open Settings</button>}</div></div></main>;
+  if (!MESSAGES_AVAILABLE) return null;
+  if (!featureEnabled) return <main className="min-h-[100dvh] bg-transparent p-4"><div className="mx-auto max-w-xl"><BackButton href="/" /><div className="mt-4 rounded-3xl border border-blue-100 bg-white p-5 text-blue-950 shadow-lg shadow-blue-950/10"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-blue-700">Messages</p><h1 className="mt-2 text-2xl font-black">Turn on Messages</h1><button type="button" onClick={() => router.push("/settings")} className="mt-4 rounded-xl bg-blue-800 px-4 py-3 text-sm font-black text-white">Open Settings</button></div></div></main>;
 
   if (selectedLead) {
     const deleteKey = `${selectedCollection}:${selectedLead}`;

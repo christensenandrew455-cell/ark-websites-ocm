@@ -3,17 +3,17 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
 const TOUR_SEEN_KEY = "ark-guided-onboarding-seen-v3";
 const STEPS = [
-  { path: "/", target: "settings", title: "Start with Settings", body: "Manage your business information, app preferences, payment method, and account help here.", action: "activate", actionLabel: "Open Settings" },
-  { path: "/settings", target: "settings-business", title: "Business Information", body: "Keep the services, service areas, estimate availability, and facts your receptionist uses up to date.", action: "next", actionLabel: "Next" },
-  { path: "/settings", target: "settings-customization", title: "Customization", body: "Choose the app appearance and the customer-facing features available to your business.", action: "next", actionLabel: "Next" },
-  { path: "/settings", target: "settings-menu-back", title: "Return to the Dashboard", body: "This back arrow always takes you to the main dashboard.", action: "activate", actionLabel: "Open Dashboard" },
-  { path: "/", target: "dashboard-leads", title: "Leads", body: "Open Leads to review new receptionist requests and manage the people you accepted.", action: "next", actionLabel: "Next" },
-  { path: "/", target: "dashboard-messages", title: "Messages", body: MESSAGES_AVAILABLE ? "Open Messages to text clients from your dedicated business number." : "Messages isn’t active yet. It’ll be available next month.", action: "next", actionLabel: "Next" },
-  { path: "/", target: "referral-star", title: "Referral Savings", body: "The star shows your account ID and referral savings. This is the final stop in the tour.", action: "activate", actionLabel: "Finish Tour", finishAfter: true },
+  { path: "/", target: "settings", title: "Settings", body: "Business, preferences, payment, and help.", action: "activate", actionLabel: "Open Settings" },
+  { path: "/settings", target: "settings-business", title: "Business Information", body: "What your receptionist knows.", action: "next", actionLabel: "Next" },
+  { path: "/settings", target: "settings-customization", title: "Customization", body: "Appearance and preferences.", action: "next", actionLabel: "Next" },
+  { path: "/settings", target: "settings-menu-back", title: "Dashboard", body: "Back to your main screen.", action: "activate", actionLabel: "Open Dashboard" },
+  { path: "/", target: "dashboard-leads", title: "Leads", body: "New leads and clients.", action: "next", actionLabel: "Next" },
+  { path: "/", target: "dashboard-messages", title: "Messages", body: MESSAGES_AVAILABLE ? "Client texts." : UPCOMING_FEATURE_LABEL, action: "next", actionLabel: "Next" },
+  { path: "/", target: "referral-star", title: "Referral Savings", body: "Your account ID and savings.", action: "activate", actionLabel: "Finish", finishAfter: true },
 ];
 
 function targetElement(id) {
@@ -168,7 +168,7 @@ export default function GuidedOnboarding() {
       <div className="mt-3 flex gap-1.5" aria-hidden="true">{STEPS.map((item, index) => <span key={`${item.target}-${index}`} className={index <= step ? "h-1.5 flex-1 rounded-full bg-indigo-700" : "h-1.5 flex-1 rounded-full bg-slate-200"} />)}</div>
       <h2 className="mt-4 text-xl font-black tracking-tight">{current.title}</h2>
       <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{current.body}</p>
-      <p className="mt-3 text-xs font-bold text-yellow-700">The yellow outline marks the exact item.</p>
+      <p className="mt-3 text-xs font-bold text-yellow-700">Tap the highlighted item.</p>
       <div className="mt-5 grid grid-cols-[auto_1fr] gap-2"><button type="button" onClick={() => finish("skipped")} className="rounded-xl px-3 py-3 text-xs font-black text-slate-500">Skip</button><button type="button" disabled={!rect} onClick={runAction} className="rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white disabled:bg-slate-300">{rect ? current.actionLabel : "Finding this item…"}</button></div>
     </section>
   </div>;

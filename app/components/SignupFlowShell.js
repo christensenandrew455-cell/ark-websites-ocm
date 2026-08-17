@@ -10,7 +10,7 @@ function routeMatches(pathname, values) {
 }
 
 function Waiting({ children }) {
-  return <main className="grid min-h-screen place-items-center bg-slate-50 p-6"><div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 text-sm font-semibold text-slate-600 shadow-sm">{children}</div></main>;
+  return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 p-6"><div className="rounded-2xl border border-white/15 bg-white/10 px-8 py-6 text-sm font-semibold text-blue-50 shadow-xl backdrop-blur">{children}</div></main>;
 }
 
 function requiredOnboardingPath(profile) {

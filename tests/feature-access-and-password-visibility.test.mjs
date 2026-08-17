@@ -3,11 +3,11 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { billingPaymentDeadline } from "../app/lib/billingNotice.js";
 
-test("disabled owner dashboard features are real disabled buttons", async () => {
+test("unavailable dashboard features are non-interactive status cards", async () => {
   const source = await readFile(new URL("../app/components/ClientStats.js", import.meta.url), "utf8");
-  assert.ok(source.includes("disabled={disabled}"));
-  assert.ok(source.includes("onClick={disabled ? undefined : onClick}"));
-  assert.ok(source.includes("cursor-not-allowed"));
+  assert.ok(source.includes('<div aria-disabled="true"'));
+  assert.ok(source.includes("if (disabled)"));
+  assert.ok(source.includes("disabled={!MESSAGES_AVAILABLE}"));
 });
 
 test("launch switch disables messaging across UI and APIs", async () => {
@@ -20,7 +20,8 @@ test("launch switch disables messaging across UI and APIs", async () => {
   ]);
 
   assert.ok(switches.includes('messages: "off"'));
-  assert.ok(dashboard.includes('value={MESSAGES_AVAILABLE ? unreadMessages : "?"}'));
+  assert.ok(dashboard.includes('value={MESSAGES_AVAILABLE ? unreadMessages : ""}'));
+  assert.ok(dashboard.includes("disabled={!MESSAGES_AVAILABLE}"));
   assert.ok(settings.includes("MESSAGES_AVAILABLE && <label"));
   assert.equal(signup.includes("MESSAGES_AVAILABLE"), false);
   assert.ok(messagingApi.includes("if (!MESSAGES_AVAILABLE)"));

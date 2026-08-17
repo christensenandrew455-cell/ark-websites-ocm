@@ -34,18 +34,18 @@ test("leads load and save through the owner server route", async () => {
   assert.ok(route.includes("leadContactFieldDeletionPatch(FieldValue.delete())"));
 });
 
-test("dashboard keeps number assignment and unavailable Messages copy simple", async () => {
+test("dashboard keeps number assignment simple and does not open unavailable Messages", async () => {
   const [dashboard, messages] = await Promise.all([
     source("app/components/ClientStats.js"),
     source("app/lead-messages/page.js"),
   ]);
-  assert.ok(dashboard.includes("Most businesses receive their number within 24–48 hours. Thank you for your patience."));
+  assert.ok(dashboard.includes("Most numbers arrive within 24–48 hours."));
   assert.equal(dashboard.includes("Setup in progress"), false);
   assert.equal(dashboard.includes("keep setting up your account"), false);
-  assert.ok(dashboard.includes('router.push("/lead-messages")'));
-  assert.ok(messages.includes("Messages isn’t active yet"));
-  assert.ok(messages.includes("It’ll be available next month."));
-  assert.equal(messages.includes("nothing is wrong with your account"), false);
+  assert.equal(dashboard.includes('router.push("/lead-messages")'), false);
+  assert.ok(dashboard.includes("disabled={!MESSAGES_AVAILABLE}"));
+  assert.ok(messages.includes('if (!MESSAGES_AVAILABLE) router.replace("/")'));
+  assert.ok(messages.includes("if (!MESSAGES_AVAILABLE) return null"));
 });
 
 test("guided tour is eligible only for new accounts and is consumed on first open", async () => {
@@ -62,7 +62,7 @@ test("guided tour is eligible only for new accounts and is consumed on first ope
   assert.ok(tutorial.includes("const below = bottom + gap"));
   assert.ok(tutorial.includes("const above = top - panelHeight - gap"));
   assert.ok(tutorial.includes("onClick={runAction}"));
-  assert.ok(tutorial.includes("The yellow outline marks the exact item."));
+  assert.ok(tutorial.includes("Tap the highlighted item."));
   assert.ok(tutorial.includes("new MutationObserver(locate)"));
 });
 
@@ -75,6 +75,7 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(settings.includes("<MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />"));
   assert.ok(settings.includes("<ClientDeclineNoticeSettings />"));
   assert.ok(retention.includes('title="Leads" endpoint="/api/business/leads/retention"'));
+  assert.ok(retention.includes('title="Clients" endpoint="/api/business/clients/retention"'));
   assert.equal(noticeRoute.includes("if (!MESSAGES_AVAILABLE)"), false);
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });

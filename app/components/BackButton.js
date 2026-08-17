@@ -11,7 +11,7 @@ function BackArrow() {
   );
 }
 
-const baseClass = "grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-slate-950 shadow-sm transition active:scale-95";
+const baseClass = "grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-blue-200 bg-white text-blue-950 shadow-sm shadow-blue-950/10 transition active:scale-95";
 
 export default function BackButton({ href, onClick, className = "", label = "Back", tourId = "" }) {
   const classes = `${baseClass} ${className}`.trim();

@@ -13,7 +13,7 @@ export const metadata = {
   appleWebApp: {
     capable: true,
     title: "ARK Client Center",
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
   },
 };
 
@@ -21,7 +21,7 @@ export const viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  themeColor: "#020617",
   colorScheme: "light dark",
 };
 

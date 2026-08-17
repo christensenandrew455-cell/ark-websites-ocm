@@ -120,25 +120,25 @@ export default function HelpCenter() {
   if (!pathname.startsWith("/help")) return null;
 
   return (
-    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-950 sm:p-6 md:p-8">
+    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-3xl">
         <BackButton href="/settings" />
-        <header className="mt-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
+        <header className="mt-5 text-white">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200">ARK Client Center</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Help</h1>
         </header>
         <section className="mt-5 grid gap-3 sm:grid-cols-3">
-          <Link href="/docs" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-400">
-            <p className="text-lg font-black">Go to Docs</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Read the full app guide and find where features are located.</p>
+          <Link href="/docs" className="rounded-2xl border border-blue-100 bg-white p-5 shadow-lg shadow-blue-950/10">
+            <p className="text-lg font-black text-blue-950">Docs</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-blue-700">App guide</p>
           </Link>
-          <button type="button" onClick={() => setChatOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-slate-400">
-            <p className="text-lg font-black">Ask AI</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Ask how to use ARK Client Center and receive direct page links.</p>
+          <button type="button" onClick={() => setChatOpen(true)} className="rounded-2xl border border-indigo-100 bg-white p-5 text-left shadow-lg shadow-blue-950/10">
+            <p className="text-lg font-black text-indigo-950">Ask AI</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-indigo-700">Quick answers</p>
           </button>
-          <Link href="/messages" className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm hover:border-amber-500">
-            <p className="text-lg font-black">Contact Support</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-amber-900">For billing, account, or technical problems that Docs and Ask AI did not solve.</p>
+          <Link href="/messages" className="rounded-2xl border border-cyan-100 bg-cyan-50 p-5 shadow-lg shadow-blue-950/10">
+            <p className="text-lg font-black text-cyan-950">Support</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-cyan-800">Account or technical help</p>
           </Link>
         </section>
       </div>
