@@ -49,7 +49,7 @@ function profileKey(value) { return JSON.stringify(receptionistRequestPayload(va
 
 export default function SettingsPanel() {
   const router = useRouter();
-  const { user, profile, isAdmin, isOwner, refreshProfile, logout } = useAuth();
+  const { user, profile, isOwner, refreshProfile, logout } = useAuth();
   const clientId = profile?.clientId || "";
   const [activeSection, setActiveSection] = useState("");
   const [accountSettings, setAccountSettings] = useState(DEFAULT_SETTINGS);
@@ -101,7 +101,7 @@ export default function SettingsPanel() {
   }, [clientId, profile?.paymentMethodLabel, profile?.status]);
 
   useEffect(() => {
-    if (!user || !clientId || isAdmin) { setIsLoading(false); return undefined; }
+    if (!user || !clientId) { setIsLoading(false); return undefined; }
     if (profile?.status === "disabled") { setIsLoading(false); return undefined; }
     let active = true;
     user.getIdToken(true).then(async (token) => {
@@ -127,10 +127,10 @@ export default function SettingsPanel() {
       }
     }).catch((loadError) => active && setError(ownerFacingError(loadError))).finally(() => active && setIsLoading(false));
     return () => { active = false; };
-  }, [clientId, isAdmin, profile?.status, user]);
+  }, [clientId, profile?.status, user]);
 
   const refreshUsageSummary = useCallback(async () => {
-    if (!user || isAdmin) return;
+    if (!user) return;
     setIsLoadingBilling(true);
     try {
       const token = await user.getIdToken(true);
@@ -144,7 +144,7 @@ export default function SettingsPanel() {
     } finally {
       setIsLoadingBilling(false);
     }
-  }, [isAdmin, user]);
+  }, [user]);
 
   useEffect(() => {
     if (activeSection !== "payment") return undefined;
@@ -267,7 +267,6 @@ export default function SettingsPanel() {
     } catch (deleteError) { setError(ownerFacingError(deleteError)); setIsDeleting(false); }
   }
 
-  if (isAdmin) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening administrator dashboard…</main>;
   const paymentLabel = accountSettings.paymentMethodLabel || "No payment method label is available yet.";
   const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
 

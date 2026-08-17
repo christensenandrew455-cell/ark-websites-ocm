@@ -89,7 +89,8 @@ test("Firestore rules name only the three canonical roots", async () => {
     .map((match) => match[1])
     .filter((name) => name !== "databases");
   assert.deepEqual(roots, ["accounts", "pendingOwnerSignups", "system"]);
-  assert.ok(rules.includes('request.auth.token.role == "admin"'));
   assert.ok(rules.includes('request.auth.token.role == "standard"'));
+  assert.equal(rules.includes('request.auth.token.role == "admin"'), false);
+  assert.ok(rules.includes("allow get: if isOwner(clientId)"));
   assert.ok(rules.includes('collectionId != "private"'));
 });

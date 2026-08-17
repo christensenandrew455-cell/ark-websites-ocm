@@ -68,7 +68,6 @@ body:has(.fixed.inset-0 > button[aria-label="Close"]) {
 }
 
 body:has(.ark-modal-overlay) .ark-workspace-header,
-body:has(.ark-modal-overlay) .ark-admin-header,
 body:has(.ark-modal-overlay) header.sticky {
   pointer-events: none;
 }

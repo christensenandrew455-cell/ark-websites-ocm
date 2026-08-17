@@ -26,10 +26,10 @@ function requiredOnboardingPath(profile) {
 export default function SignupFlowShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, isAdmin, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const onboardingPage = routeMatches(pathname, ["/signup/verify", "/setup/business", "/signup/payment"]);
   const publicInformationPage = routeMatches(pathname, ["/terms", "/privacy", "/about", "/docs"]);
-  const requiredPath = user && !isAdmin ? requiredOnboardingPath(profile) : "";
+  const requiredPath = user ? requiredOnboardingPath(profile) : "";
   const allowedPendingPath = requiredPath === "/signup/verify"
     ? pathname === "/signup/verify"
     : requiredPath === "/setup/business"
@@ -40,19 +40,14 @@ export default function SignupFlowShell({ children }) {
 
   useEffect(() => {
     if (loading) return;
-    if (user && isAdmin && onboardingPage) {
-      router.replace("/");
-      return;
-    }
     if (requiredPath && !allowedPendingPath && !publicInformationPage) {
       router.replace(requiredPath);
       return;
     }
-  }, [allowedPendingPath, isAdmin, loading, onboardingPage, profile?.status, publicInformationPage, requiredPath, router, user]);
+  }, [allowedPendingPath, loading, profile?.status, publicInformationPage, requiredPath, router]);
 
   if (loading) return <Waiting>Loading client center…</Waiting>;
   if (requiredPath && !allowedPendingPath && !publicInformationPage) return <Waiting>Opening account setup…</Waiting>;
   if (onboardingPage || (requiredPath && publicInformationPage)) return children;
-  if (user && isAdmin && onboardingPage) return <Waiting>Opening the administrator dashboard…</Waiting>;
   return <AppShell>{children}</AppShell>;
 }

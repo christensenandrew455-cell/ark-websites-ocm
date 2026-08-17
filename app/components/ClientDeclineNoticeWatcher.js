@@ -8,11 +8,11 @@ import { db } from "../lib/firebase";
 function text(value) { return String(value || "").trim(); }
 
 export default function ClientDeclineNoticeWatcher() {
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile } = useAuth();
   const clientId = text(profile?.clientId);
 
   useEffect(() => {
-    if (!user || !clientId || isAdmin) return undefined;
+    if (!user || !clientId) return undefined;
     let active = true;
     let initialized = false;
 
@@ -53,7 +53,7 @@ export default function ClientDeclineNoticeWatcher() {
       active = false;
       unsubscribe();
     };
-  }, [clientId, isAdmin, user]);
+  }, [clientId, user]);
 
   return null;
 }

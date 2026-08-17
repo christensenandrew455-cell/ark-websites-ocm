@@ -40,12 +40,3 @@ export function getAdminBucket() {
   const bucketName = process.env.FIREBASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   return getStorage(getAdminApp()).bucket(bucketName || undefined);
 }
-
-export function getAdminEmails() {
-  return new Set(
-    String(process.env.ADMIN_EMAILS || "")
-      .split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean)
-  );
-}

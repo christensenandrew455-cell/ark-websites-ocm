@@ -248,7 +248,7 @@ export function receptionistRequestPayload(profile = {}) {
   };
 }
 
-export default function ReceptionistBusinessForm({ profile, onChange, adminMode = false, onboardingMode = false }) {
+export default function ReceptionistBusinessForm({ profile, onChange, onboardingMode = false }) {
   if (!profile) return null;
   function update(field, value) { onChange({ ...profile, [field]: value }); }
   function updateEstimateWeekdays(days) {
@@ -298,7 +298,6 @@ export default function ReceptionistBusinessForm({ profile, onChange, adminMode 
   </>;
   return (
     <div className="space-y-7">
-      {adminMode && <section><h3 className="text-lg font-black">Receptionist Access</h3><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Railway owns the model, voice, timing, and call controls. This switch only controls whether this business may receive receptionist calls.</p><label className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-sm font-black">AI receptionist enabled<input type="checkbox" checked={profile.enabled !== false} onChange={(event) => update("enabled", event.target.checked)} /></label></section>}
       {identitySection}
       {sharedSections}
     </div>

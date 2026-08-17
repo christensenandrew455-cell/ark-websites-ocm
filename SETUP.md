@@ -61,9 +61,9 @@ Configure:
 
 Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `TELNYX_SIGNUP_FROM_NUMBER` sends signup codes and later number-ready messages.
 
-## Administrator account
+## Arc Admin event bridge
 
-Create the administrator in Firebase Authentication and add the same email to `ADMIN_EMAILS`. Separate multiple emails with commas. The app uses only two roles: `admin` and `standard`.
+Set `ARC_ADMIN_WEBHOOK_URL` to the separate Arc Admin deployment's `/api/webhooks/events` route. Set the same random `ARC_WEBHOOK_SECRET` with at least 32 bytes in both deployments. ARC Client Center has no administrator login, role, route, or screen.
 
 ## Firestore rules and scheduled workflows
 
@@ -84,7 +84,7 @@ Temporary signup access expires exactly one hour after creation. Every protected
 3. Business settings are validated and saved into the temporary record.
 4. Stripe confirms an off-session SetupIntent.
 5. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the verified temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
-6. The administrator assigns the receptionist number through **Needs a Number**.
+6. Arc Admin shows the account under **Needs a Number**, where the private APK assigns the receptionist number.
 
 If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake, receptionist calls, and inbound/outbound chat stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.
 

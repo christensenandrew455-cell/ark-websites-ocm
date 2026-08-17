@@ -47,7 +47,7 @@ test("owner identity verification expires at exactly one hour without resetting"
   assert.equal(accountVerificationDeadline(account).toISOString(), "2026-08-13T13:00:00.000Z");
   assert.equal(accountVerificationExpired(account, "2026-08-13T12:59:59.999Z"), false);
   assert.equal(accountVerificationExpired(account, "2026-08-13T13:00:00.000Z"), true);
-  assert.equal(ownerAccountNeedsIdentityVerification({ ...account, role: "admin" }), false);
+  assert.equal(ownerAccountNeedsIdentityVerification({ ...account, role: "unknown" }), false);
   assert.equal(accountVerificationExpired({ ...account, identityVerificationVerified: true }, "2026-08-13T14:00:00.000Z"), false);
 });
 

@@ -20,7 +20,7 @@ export default function LegalAcceptanceGate() {
     && profile?.privacyVersion === PRIVACY_VERSION
   );
 
-  if (!user || profile?.role === "admin" || isCurrent) return null;
+  if (!user || isCurrent) return null;
 
   async function acceptPolicies(event) {
     event.preventDefault();

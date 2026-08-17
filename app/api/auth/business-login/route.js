@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
-import { getAdminAuth, getAdminDb, getAdminEmails } from "../../../lib/firebase-admin";
+import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { accountCollection, accountRef, pendingSignupCollection } from "../../../lib/firestoreLayout";
 import { MESSAGES_AVAILABLE } from "../../../lib/launchFeatures";
 import {
@@ -76,22 +76,20 @@ export async function POST(request) {
 
     const auth = getAdminAuth();
     const userRecord = await auth.getUser(passwordResult.localId);
-    const [accountMatches, pendingMatches, adminSnapshot] = await Promise.all([
+    const [accountMatches, pendingMatches] = await Promise.all([
       accountCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
       pendingSignupCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
-      accountRef(db, userRecord.uid).get(),
     ]);
     const matchedAccount = resolvedBusiness?.temporary
       ? null
       : (resolvedBusiness ? { id: resolvedBusiness.clientId, data: () => resolvedBusiness.data } : accountMatches.docs[0] || null);
-    const account = matchedAccount?.data?.() || (adminSnapshot.exists ? adminSnapshot.data() : {});
-    const isAdmin = getAdminEmails().has(email.toLowerCase()) || account.role === "admin";
+    const account = matchedAccount?.data?.() || {};
     const accountClientId = normalizeClientId(account.clientId || matchedAccount?.id);
 
     const pendingDocument = resolvedBusiness?.temporary
       ? { data: () => ({ ...resolvedBusiness.data, uid: resolvedBusiness.uid, clientId: resolvedBusiness.clientId, stage: resolvedBusiness.data.status }) }
       : pendingMatches.docs[0] || null;
-    if (!isAdmin && !matchedAccount && pendingDocument) {
+    if (!matchedAccount && pendingDocument) {
       const pending = pendingDocument.data();
       if (String(pending.uid || "") === userRecord.uid && pendingOwnerSignupExpired(pending)) {
         await deletePendingOwnerSignup({
@@ -119,43 +117,29 @@ export async function POST(request) {
       }
     }
 
-    if (!isAdmin && (!matchedAccount || String(account.uid || "") !== userRecord.uid || !isStandardRole(account.role) || !REGULAR_ACCOUNT_STATUSES.has(String(account.status || "")) || !accountClientId)) {
+    if (!matchedAccount || String(account.uid || "") !== userRecord.uid || !isStandardRole(account.role) || !REGULAR_ACCOUNT_STATUSES.has(String(account.status || "")) || !accountClientId) {
       return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     }
 
     const messagesEnabled = MESSAGES_AVAILABLE && account.messagesEnabled === true;
-    const claims = isAdmin
-      ? { role: "admin", accountStatus: "active", ...(account.clientId ? { clientId: account.clientId } : {}) }
-      : {
-        role: ACCOUNT_ROLES.STANDARD,
-        accountType: ACCOUNT_TYPES.OWNER,
-        businessRole: "owner",
-        clientId: accountClientId,
-        accountStatus: account.status,
-        messagesEnabled,
-        identityVerificationRequired: account.identityVerificationRequired === true,
-        identityVerificationVerified: account.identityVerificationVerified === true,
-        termsAccepted: account.termsAccepted === true,
-        privacyAccepted: account.privacyAccepted === true,
-        termsVersion: String(account.termsVersion || ""),
-        privacyVersion: String(account.privacyVersion || ""),
-      };
+    const claims = {
+      role: ACCOUNT_ROLES.STANDARD,
+      accountType: ACCOUNT_TYPES.OWNER,
+      businessRole: "owner",
+      clientId: accountClientId,
+      accountStatus: account.status,
+      messagesEnabled,
+      identityVerificationRequired: account.identityVerificationRequired === true,
+      identityVerificationVerified: account.identityVerificationVerified === true,
+      termsAccepted: account.termsAccepted === true,
+      privacyAccepted: account.privacyAccepted === true,
+      termsVersion: String(account.termsVersion || ""),
+      privacyVersion: String(account.privacyVersion || ""),
+    };
 
     await auth.setCustomUserClaims(userRecord.uid, claims);
-    if (isAdmin) {
-      await accountRef(db, userRecord.uid).set({
-        uid: userRecord.uid,
-        accountEmail: email,
-        ownerName: account.ownerName || userRecord.displayName || "ARK Client Center Admin",
-        businessName: account.businessName || "ARK Websites",
-        clientId: account.clientId || "",
-        role: "admin",
-        status: "active",
-        updatedAt: new Date(),
-      }, { merge: true });
-    }
     const token = await auth.createCustomToken(userRecord.uid, claims);
-    return NextResponse.json({ token, role: isAdmin ? ACCOUNT_ROLES.ADMIN : ACCOUNT_ROLES.STANDARD, accountType: claims.accountType || "admin", status: isAdmin ? "active" : account.status });
+    return NextResponse.json({ token, role: ACCOUNT_ROLES.STANDARD, accountType: ACCOUNT_TYPES.OWNER, status: account.status });
   } catch (error) {
     console.error("Unable to sign in", error);
     return NextResponse.json({ error: "Unable to sign in right now." }, { status: 500 });

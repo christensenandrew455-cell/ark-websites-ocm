@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminBucket, getAdminDb } from "../../../lib/firebase-admin";
 import { systemCollection } from "../../../lib/firestoreLayout";
 import { checkRequestRateLimit } from "../../../lib/requestRateLimit";
@@ -173,6 +174,14 @@ export async function POST(request) {
       ...(attachment ? { attachment } : {}),
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
+    });
+    await sendAdminEvent({
+      id: `website-${ref.id}`,
+      type: "support.website.created",
+      clientId: "public-website",
+      businessName: businessName || name,
+      summary: `${categoryLabel}: ${businessName || name}`,
+      metadata: { requestId: ref.id, category },
     });
 
     return json({ ok: true, id: ref.id }, { status: 201 });

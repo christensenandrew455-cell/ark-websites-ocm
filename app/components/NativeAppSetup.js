@@ -118,7 +118,7 @@ function PermissionRow({ permissionKey, title, description, status, busy, onEnab
 
 export default function NativeAppSetup() {
   const router = useRouter();
-  const { user, profile, isAdmin } = useAuth();
+  const { user, profile } = useAuth();
   const pushPluginRef = useRef(null);
   const registrationRequestedRef = useRef(false);
   const promptSessionActiveRef = useRef(false);
@@ -133,7 +133,7 @@ export default function NativeAppSetup() {
 
   useEffect(() => {
     const isAndroidApp = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
-    if (!isAndroidApp || !user || !profile?.clientId || isAdmin) return undefined;
+    if (!isAndroidApp || !user || !profile?.clientId) return undefined;
 
     let active = true;
     const handles = [];
@@ -278,7 +278,7 @@ export default function NativeAppSetup() {
       document.removeEventListener("visibilitychange", refreshWhileOneTimePromptIsOpen);
       window.removeEventListener("focus", refreshWhileOneTimePromptIsOpen);
     };
-  }, [isAdmin, profile?.clientId, router, user]);
+  }, [profile?.clientId, router, user]);
 
   async function enablePermission(permissionKey) {
     setBusyPermission(permissionKey);
@@ -331,7 +331,7 @@ export default function NativeAppSetup() {
   }
 
   const isAndroidApp = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
-  if (!isAndroidApp || !user || isAdmin) return null;
+  if (!isAndroidApp || !user) return null;
 
   return (
     <>

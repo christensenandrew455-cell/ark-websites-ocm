@@ -19,7 +19,12 @@ export async function requireUser(request) {
         response: NextResponse.json({ error: "Complete signup before using the client center." }, { status: 403 }),
       };
     }
-    if (isStandardRole(decodedToken.role) && decodedToken.identityVerificationRequired === true && decodedToken.identityVerificationVerified !== true) {
+    if (!isStandardRole(decodedToken.role)) {
+      return {
+        response: NextResponse.json({ error: "A customer owner account is required." }, { status: 403 }),
+      };
+    }
+    if (decodedToken.identityVerificationRequired === true && decodedToken.identityVerificationVerified !== true) {
       return {
         response: NextResponse.json({ error: "Verify your email and phone to continue.", code: "ACCOUNT_VERIFICATION_REQUIRED" }, { status: 403 }),
       };

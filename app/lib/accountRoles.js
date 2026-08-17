@@ -1,5 +1,4 @@
 export const ACCOUNT_ROLES = Object.freeze({
-  ADMIN: "admin",
   STANDARD: "standard",
 });
 

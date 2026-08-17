@@ -25,14 +25,14 @@ const BillingStatusContext = createContext({
 });
 
 export function BillingStatusProvider({ children }) {
-  const { user, isAdmin, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [openingBilling, setOpeningBilling] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!user || isAdmin) {
+    if (!user) {
       setStatus(DEFAULT_STATUS);
       return DEFAULT_STATUS;
     }
@@ -57,10 +57,10 @@ export function BillingStatusProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, user]);
+  }, [user]);
 
   useEffect(() => {
-    if (authLoading || !user || isAdmin) return undefined;
+    if (authLoading || !user) return undefined;
     refresh();
     const interval = window.setInterval(refresh, 60 * 1000);
     const onVisibility = () => {
@@ -71,7 +71,7 @@ export function BillingStatusProvider({ children }) {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [authLoading, isAdmin, refresh, user]);
+  }, [authLoading, refresh, user]);
 
   const openBillingPortal = useCallback(async () => {
     if (!user || openingBilling) return;

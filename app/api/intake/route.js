@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "../../lib/firebase-admin";
+import { sendAdminEvent } from "../../lib/adminEvents";
 import {
   addBillingLeadEventToBatch,
   billingLeadEventId,
@@ -386,6 +387,14 @@ export async function POST(request) {
       } catch (notificationError) {
         console.error("Lead saved but push notification delivery failed", notificationError);
       }
+      await sendAdminEvent({
+        id: `lead-${clientId}-${targetRef.id}-${nextJob.id}`.replace(/[^a-z0-9_-]/gi, "-"),
+        type: "lead.created",
+        clientId,
+        businessName: text(account.businessName || clientId),
+        summary: `New ${source || "website"} lead received`,
+        metadata: { leadId: targetRef.id, source, repeatClient: Jobs.length > 1 },
+      });
     }
 
     return Response.json(
