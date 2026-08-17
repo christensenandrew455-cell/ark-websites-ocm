@@ -45,21 +45,13 @@ test("temporary signups reserve unique identity and remove Stripe data when aban
   assert.ok(completion.includes("batch.delete(pending.ref)"));
 });
 
-test("payment administration follows automatic daily retry and seven-day deletion only", async () => {
-  const [api, page, enforcement, delinquency, lifecycle, operations] = await Promise.all([
-    source("app/api/admin/payments/route.js"),
-    source("app/payment/page.js"),
+test("customer billing follows automatic daily retry and seven-day deletion with no local admin override", async () => {
+  const [enforcement, delinquency, lifecycle, operations] = await Promise.all([
     source("app/api/workflows/billing-enforcement/route.js"),
     source("app/lib/billingDelinquency.js"),
     source("app/lib/customerLifecycle.js"),
     source(".github/workflows/ark-operations.yml"),
   ]);
-  assert.ok(api.includes('item.phase === "payment_failed"'));
-  assert.ok(api.includes('item.phase === "deletion_due"'));
-  assert.equal(api.includes("export async function POST"), false);
-  assert.equal(page.includes("Restore + 7 Days"), false);
-  assert.equal(page.includes("Grace Period"), false);
-  assert.ok(page.includes("retries no more than once per day"));
   assert.ok(enforcement.includes("deleteCustomerPermanently(document.id)"));
   assert.ok(enforcement.includes("stripe.invoices.pay(invoiceId)"));
   assert.ok(delinquency.includes('status: "disabled"'));

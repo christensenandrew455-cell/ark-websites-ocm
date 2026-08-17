@@ -16,14 +16,6 @@ import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
 const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/about", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
-const ADMIN_NAV_ITEMS = [
-  { label: "Dashboard", mobileLabel: "Dash", href: "/" },
-  { label: "Messages", mobileLabel: "Messages", href: "/messages" },
-  { label: "Website Requests", mobileLabel: "Website", href: "/website-requests" },
-  { label: "Payment", mobileLabel: "Pay", href: "/payment" },
-  { label: "Connections", mobileLabel: "Accounts", href: "/connections" },
-  { label: "Notifications", mobileLabel: "Alerts", href: "/notifications" },
-];
 const THEME_KEY = "ark-theme-v1";
 
 function matchesPath(pathname, paths) {
@@ -99,7 +91,7 @@ function PaymentNotice() {
   return <section className={sectionClass}><div className="mx-auto max-w-6xl"><div className="flex items-start gap-3"><span aria-hidden="true" className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg font-black shadow-sm ${accentClass}`}>!</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-base font-black ${titleClass}`}>{title}</h2>{overdue && <span className="rounded-full bg-red-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Paused</span>}</div><p className={`mt-1 text-xs font-semibold leading-5 ${bodyClass}`}>{body}</p></div></div><div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><div className="rounded-2xl border border-white/90 bg-white/80 px-4 py-3 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Update before</p>{deadline ? <time dateTime={deadlineValue} className="mt-1 block text-base font-black text-slate-950">{deadline}</time> : <p className="mt-1 text-sm font-black text-slate-700">Checking the exact deadline…</p>}</div><button type="button" onClick={openBillingPortal} disabled={openingBilling} className="grid min-h-12 place-items-center rounded-xl bg-slate-950 px-5 py-3 text-center text-xs font-black text-white shadow-sm disabled:opacity-60">{openingBilling ? "Opening Stripe…" : "Update Payment Method"}</button></div>{error && <div className="mt-2"><BillingRefreshProblem refresh={refresh} loading={loading} compact /></div>}</div></section>;
 }
 
-function WorkspaceHeader({ profile, pathname, logout, admin = false }) {
+function WorkspaceHeader({ profile, pathname, logout }) {
   const businessName = profile?.businessName || "Your Business";
   const subtitle = businessName;
   const settingsHref = "/settings";
@@ -107,10 +99,10 @@ function WorkspaceHeader({ profile, pathname, logout, admin = false }) {
   return <>
     <header className="ark-workspace-header fixed inset-x-0 z-[60] border-b border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-5 md:px-8 md:py-4">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-        <div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{admin ? "Admin" : subtitle}</p></div>
+        <div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-slate-950 sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">{subtitle}</p></div>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm sm:px-4 sm:py-2.5">Sign out</button>
-          {!admin && <Link href={settingsHref} data-tour-id="settings" aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>}
+          <Link href={settingsHref} data-tour-id="settings" aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg text-white shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-slate-300 bg-white text-lg text-slate-700 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>
         </div>
       </div>
     </header>
@@ -132,11 +124,10 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
 export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, profile, isAdmin, loading, logout, selectClientId } = useAuth();
+  const { user, profile, loading, logout } = useAuth();
   const isAuthPublic = matchesPath(pathname, AUTH_PUBLIC_PATHS);
   const isPolicyPublic = matchesPath(pathname, POLICY_PUBLIC_PATHS);
   const isPublic = isAuthPublic || isPolicyPublic;
-  const selectedClientId = profile?.clientId || "";
 
   useEffect(() => {
     try {
@@ -147,11 +138,11 @@ export default function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
-    const stiffDashboard = pathname === "/" && !isAdmin;
+    const stiffDashboard = pathname === "/";
     if (stiffDashboard) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.documentElement.classList.toggle("ark-stiff-dashboard", stiffDashboard);
     return () => document.documentElement.classList.remove("ark-stiff-dashboard");
-  }, [isAdmin, pathname]);
+  }, [pathname]);
 
   useEffect(() => {
     const orientation = window.screen?.orientation;
@@ -171,17 +162,12 @@ export default function AppShell({ children }) {
       router.replace("/");
       return;
     }
-    if (user && !isAuthPublic && selectedClientId) selectClientId(selectedClientId);
-  }, [isAuthPublic, isPublic, loading, pathname, router, selectClientId, selectedClientId, user]);
+  }, [isAuthPublic, isPublic, loading, pathname, router, user]);
 
   if (loading) return <LoadingScreen />;
   if (!user && isPublic) return children;
   if (!user) return <LoadingScreen />;
   if (isAuthPublic) return children;
-
-  const signOutButton = <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm">Sign out</button>;
-
-  if (isAdmin) return <><header className="ark-admin-header fixed inset-x-0 z-[60] border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur md:px-8 md:py-4"><div className="mx-auto flex max-w-7xl flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"><div className="flex min-w-0 items-center justify-between gap-3"><div className="min-w-0 leading-tight"><p className="truncate text-base font-black tracking-tight text-slate-950 sm:text-xl">ARK Client Center</p><p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 sm:text-xs">Admin</p></div><div className="sm:hidden">{signOutButton}</div></div><div className="flex min-w-0 items-center gap-2"><nav className="grid min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:flex sm:flex-none" style={{ gridTemplateColumns: `repeat(${ADMIN_NAV_ITEMS.length}, minmax(0, 1fr))` }}>{ADMIN_NAV_ITEMS.map((item) => { const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href); return <Link key={item.href} href={item.href} className={active ? "min-w-0 rounded-lg bg-white px-1 py-2 text-center text-[9px] font-black text-slate-950 shadow-sm sm:whitespace-nowrap sm:px-3 sm:text-sm" : "min-w-0 rounded-lg px-1 py-2 text-center text-[9px] font-bold text-slate-600 hover:bg-white/60 hover:text-slate-950 sm:whitespace-nowrap sm:px-3 sm:text-sm"}><span className="sm:hidden">{item.mobileLabel}</span><span className="hidden sm:inline">{item.label}</span></Link>; })}</nav><div className="hidden sm:block">{signOutButton}</div></div></div></header><div className="ark-admin-header-spacer" aria-hidden="true" />{children}</>;
 
   return <BillingStatusProvider><CustomerWorkspace pathname={pathname} isPolicyPublic={isPolicyPublic} profile={profile} logout={logout}>{children}</CustomerWorkspace></BillingStatusProvider>;
 }

@@ -1,4 +1,5 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { sendAdminEvent } from "./adminEvents.js";
 import { systemCollection } from "./firestoreLayout.js";
 
 export const PAYMENT_RETRY_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -120,6 +121,14 @@ export async function registerPaymentFailure({ db, clientId, eventId, invoiceId 
   await batch.commit();
   await setAccountClaimStatus(uid, "disabled").catch((error) => console.error("Unable to refresh disabled account claims", error));
   await sendBillingPush({ db, clientId, kind: "failed", eventId: safeEventId }).catch((error) => console.error("Unable to send payment failure notification", error));
+  await sendAdminEvent({
+    id: `billing-failed-${safeEventId}`,
+    type: "billing.payment_failed",
+    clientId,
+    businessName: text(business.businessName || clientId),
+    summary: "Payment failed; customer service was paused",
+    metadata: { invoiceId: text(invoiceId), retryAt: new Date(retryAt).toISOString(), deleteAt: new Date(deleteAt).toISOString() },
+  });
   return { duplicate: false, ...computeBillingState(patch) };
 }
 
@@ -157,5 +166,13 @@ export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) 
   await batch.commit();
   await setAccountClaimStatus(uid, "active").catch((error) => console.error("Unable to refresh restored account claims", error));
   await sendBillingPush({ db, clientId, kind: "restored", eventId: safeEventId }).catch((error) => console.error("Unable to send payment-restored notification", error));
+  await sendAdminEvent({
+    id: `billing-restored-${safeEventId}`,
+    type: "billing.payment_restored",
+    clientId,
+    businessName: text(business.businessName || clientId),
+    summary: "Payment succeeded; customer service was restored",
+    metadata: { invoiceId: text(invoiceId || business.billingInvoiceId) },
+  });
   return { duplicate: false, phase: "current" };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
 
@@ -23,7 +23,6 @@ function formatDate(value) {
     minute: "2-digit",
   }).format(date);
 }
-
 async function apiFetch(user, options = {}) {
   const token = await user.getIdToken(true);
   const response = await fetch("/api/requests", {
@@ -150,100 +149,9 @@ function CustomerMessages({ user, requests, onRefresh }) {
   );
 }
 
-function AdminMessages({ user, requests, onRefresh }) {
-  const [filter, setFilter] = useState("open");
-  const [savingId, setSavingId] = useState("");
-  const [replies, setReplies] = useState({});
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
-
-  const visible = useMemo(() => requests.filter((item) => filter !== "help" || item.type === "help"), [filter, requests]);
-
-  async function update(item, status) {
-    const denialReason = String(item.adminReply || item.adminNote || "").trim();
-    if (status === "denied" && !denialReason) {
-      setError("Send the customer a short explanation before denying the request.");
-      return;
-    }
-    setSavingId(item.id);
-    setError("");
-    setNotice("");
-    try {
-      await apiFetch(user, {
-        method: "PATCH",
-        body: JSON.stringify({ id: item.id, status, adminNote: status === "denied" ? denialReason : item.adminNote || "" }),
-      });
-      await onRefresh();
-    } catch (updateError) {
-      setError(updateError.message);
-    } finally {
-      setSavingId("");
-    }
-  }
-
-  async function sendReply(item) {
-    const adminReply = String(replies[item.id] || "").trim();
-    if (!adminReply) {
-      setError("Write a reply before sending it.");
-      return;
-    }
-    setSavingId(item.id);
-    setError("");
-    setNotice("");
-    try {
-      await apiFetch(user, {
-        method: "PATCH",
-        body: JSON.stringify({ id: item.id, action: "reply", adminReply }),
-      });
-      setReplies((current) => ({ ...current, [item.id]: "" }));
-      setNotice(`Reply sent to ${item.ownerName || item.businessName || "the customer"}.`);
-      await onRefresh();
-    } catch (replyError) {
-      setError(replyError.message);
-    } finally {
-      setSavingId("");
-    }
-  }
-
-  return (
-    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
-      <div className="mx-auto max-w-5xl">
-        <header className="mb-4 flex items-end justify-between gap-3 sm:mb-7">
-          <div><p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Administrator</p><h1 className="mt-1.5 text-3xl font-black tracking-tight sm:text-4xl">Messages</h1><p className="mt-1 text-xs font-semibold text-slate-500">Oldest unresolved help request stays at the top. Completed and denied requests leave this page.</p></div>
-          <div className="flex items-center gap-2"><span className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-black text-white">{requests.length}</span><button type="button" onClick={onRefresh} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-black">Refresh</button></div>
-        </header>
-        {notice && <div className="mb-3 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
-        {error && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</div>}
-        <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-          {[['open', 'All Open'], ['help', 'Help']].map(([value, label]) => <button key={value} type="button" onClick={() => setFilter(value)} className={filter === value ? "rounded-lg bg-white px-2 py-2 text-[11px] font-black shadow-sm" : "rounded-lg px-2 py-2 text-[11px] font-bold text-slate-500"}>{label}</button>)}
-        </div>
-        <section className="mt-3 space-y-3 sm:mt-5">
-          {visible.map((item) => {
-            const isSaving = savingId === item.id;
-            const isNew = item.status === "new";
-            return (
-              <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-black">{item.subject}</h2><span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase text-slate-700">{item.type === "change" ? "Previous Change" : "Help"}</span></div><p className="mt-1 text-xs font-semibold text-slate-500">{item.businessName} · {item.ownerName || item.accountEmail} · {formatDate(item.createdAt)}</p><div className="mt-2 flex flex-wrap gap-2">{item.accountEmail && <a href={`mailto:${item.accountEmail}?subject=${encodeURIComponent(`ARK support: ${item.subject}`)}`} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] font-black text-slate-700">Email</a>}{item.contactPhone && <a href={`sms:${item.contactPhone}`} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-[10px] font-black text-slate-700">Text</a>}</div></div>
-                  <StatusBadge status={item.status} />
-                </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{item.message}</p>
-                {item.adminReply && <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Last reply sent</p><p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-blue-950">{item.adminReply}</p></div>}
-                <label className="mt-3 block"><span className="text-[10px] font-black uppercase tracking-wide text-slate-500">Reply to customer</span><textarea rows={3} value={replies[item.id] || ""} onChange={(event) => setReplies((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="Type the message the customer should see in the app…" className="mt-1.5 w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label>
-                <button type="button" disabled={isSaving || !String(replies[item.id] || "").trim()} onClick={() => sendReply(item)} className="mt-2 w-full rounded-xl bg-slate-950 px-3 py-2.5 text-xs font-black text-white disabled:opacity-40">{isSaving ? "Sending…" : "Send Reply"}</button>
-                {isNew ? <div className="mt-3 grid grid-cols-2 gap-2"><button disabled={isSaving} onClick={() => update(item, "denied")} className="rounded-xl border border-red-300 px-3 py-2.5 text-xs font-black text-red-700 disabled:opacity-50">Deny</button><button disabled={isSaving} onClick={() => update(item, "in-progress")} className="rounded-xl bg-blue-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">{isSaving ? "Saving…" : "Start"}</button></div> : <button disabled={isSaving} onClick={() => update(item, "completed")} className="mt-3 w-full rounded-xl bg-green-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">{isSaving ? "Saving…" : "Complete"}</button>}
-              </article>
-            );
-          })}
-          {visible.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">No unresolved help requests in this view.</p>}
-        </section>
-      </div>
-    </main>
-  );
-}
 
 export default function MessagesPage() {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, loading } = useAuth();
   const [requests, setRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -255,11 +163,11 @@ export default function MessagesPage() {
       setRequests(data.requests || []);
       setError("");
     } catch (loadError) {
-      setError(isAdmin ? loadError.message : ownerFacingError(loadError));
+      setError(ownerFacingError(loadError));
     } finally {
       setIsLoading(false);
     }
-  }, [isAdmin, user]);
+  }, [user]);
 
   useEffect(() => {
     if (!loading && user) load();
@@ -267,5 +175,5 @@ export default function MessagesPage() {
 
   if (loading || isLoading) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Loading messages…</main>;
   if (error && requests.length === 0) return <main className="grid min-h-[70vh] place-items-center p-6"><div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-700">{error}</div></main>;
-  return isAdmin ? <AdminMessages user={user} requests={requests} onRefresh={load} /> : <CustomerMessages user={user} requests={requests} onRefresh={load} />;
+  return <CustomerMessages user={user} requests={requests} onRefresh={load} />;
 }

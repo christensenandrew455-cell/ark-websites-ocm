@@ -1,4 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
+import { sendAdminEvent } from "./adminEvents.js";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
 import { ACCOUNT_TYPES } from "./accountTypes";
 import { accountCollection, accountRef as regularAccountRef } from "./firestoreLayout.js";
@@ -180,6 +181,14 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     privacyAccepted: legal.privacyAccepted === true,
     termsVersion: text(legal.termsVersion),
     privacyVersion: text(legal.privacyVersion),
+  });
+  await sendAdminEvent({
+    id: `account-activated-${clientId}-${safeSetupIntentId}`,
+    type: "account.activated",
+    clientId,
+    businessName,
+    summary: "Customer finished signup and needs a receptionist number",
+    metadata: { numberAssignmentStatus: "needed" },
   });
 
   return {

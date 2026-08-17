@@ -38,9 +38,6 @@ function accountSummary(data = {}) {
 export async function GET(request) {
   const user = await requireUser(request);
   if (user.response) return user.response;
-  if (user.decodedToken.role === "admin") {
-    return NextResponse.json({ error: "Use a customer account to download that customer’s data." }, { status: 403 });
-  }
 
   const clientId = normalizeClientId(user.decodedToken.clientId);
   if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });

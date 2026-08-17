@@ -15,12 +15,6 @@ function list(value) {
   if (Array.isArray(value)) return value.map(text).filter(Boolean);
   return text(value).split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 }
-function normalizePhone(value) {
-  const digits = text(value).replace(/^tel:/i, "").replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 10) return `+1${digits}`;
-  return `+${digits}`;
-}
 function servicesObject(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return Object.fromEntries(Object.entries(value).map(([name, description]) => {
@@ -83,15 +77,13 @@ function validateEstimateSchedule(profile) {
   return "";
 }
 
-async function resolveClient(request, body = null) {
+async function resolveClient(request) {
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
-  const isAdmin = user.decodedToken.role === "admin";
-  if (!isAdmin && !isStandardRole(user.decodedToken.role)) return { response: NextResponse.json({ error: "Only the business owner can change receptionist and business settings." }, { status: 403 }) };
-  const requested = body?.clientId || new URL(request.url).searchParams.get("clientId");
-  const clientId = normalizeClientId(isAdmin ? requested : user.decodedToken.clientId);
-  if (!clientId) return { response: NextResponse.json({ error: isAdmin ? "Choose an account." : "This account has no business assigned." }, { status: 400 }) };
-  return { user, isAdmin, clientId };
+  if (!isStandardRole(user.decodedToken.role)) return { response: NextResponse.json({ error: "Only the business owner can change receptionist and business settings." }, { status: 403 }) };
+  const clientId = normalizeClientId(user.decodedToken.clientId);
+  if (!clientId) return { response: NextResponse.json({ error: "This account has no business assigned." }, { status: 400 }) };
+  return { user, clientId };
 }
 async function loadProfile(db, clientId) {
   const ref = db.collection("accounts").doc(clientId);
@@ -107,13 +99,6 @@ function validateProfile(profile) {
   if (!Object.keys(profile.services).length) return "Add at least one service.";
   try { new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format(); } catch { return "Choose a valid time zone."; }
   return validateEstimateSchedule(profile);
-}
-async function validateConnectionPhone(db, clientId, phone) {
-  const normalized = normalizePhone(phone);
-  if (!normalized) return { normalized: "" };
-  const duplicate = await db.collection("accounts").where("receptionistPhoneNormalized", "==", normalized).limit(2).get();
-  if (duplicate.docs.some((document) => document.id !== clientId)) return { error: "That connected phone number is already assigned to another account." };
-  return { normalized };
 }
 async function validateBusinessName(db, clientId, value) {
   const businessNameKey = normalizeClientId(value);
@@ -147,26 +132,11 @@ export async function GET(request) {
 
 export async function POST(request) {
   const body = await request.json();
-  const access = await resolveClient(request, body);
+  const access = await resolveClient(request);
   if (access.response) return access.response;
   const db = getAdminDb();
   const loaded = await loadProfile(db, access.clientId);
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
-
-  if (access.isAdmin && body.connectionOnly === true) {
-    const receptionistPhone = text(body.receptionistPhone);
-    const phoneCheck = await validateConnectionPhone(db, access.clientId, receptionistPhone);
-    if (phoneCheck.error) return NextResponse.json({ error: phoneCheck.error }, { status: 400 });
-    const update = {
-      receptionistPhone,
-      receptionistPhoneNormalized: phoneCheck.normalized,
-      receptionistEnabled: Boolean(phoneCheck.normalized) && loaded.account.enabled !== false,
-      updatedBy: access.user.decodedToken.uid,
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-    await loaded.ref.set(update, { merge: true });
-    return NextResponse.json({ profile: profilePayload(access.clientId, { ...loaded.account, ...update }) });
-  }
 
   const current = profilePayload(access.clientId, loaded.account);
   const profile = {
@@ -184,13 +154,6 @@ export async function POST(request) {
     services: servicesObject(body.services ?? current.services),
     businessInformation: normalizeBusinessInformation(body.businessInformation ?? current.businessInformation),
   };
-  if (access.isAdmin) {
-    profile.enabled = body.enabled !== false;
-    profile.receptionistPhone = text(body.receptionistPhone ?? current.receptionistPhone);
-    const connectionPhone = await validateConnectionPhone(db, access.clientId, profile.receptionistPhone);
-    if (connectionPhone.error) return NextResponse.json({ error: connectionPhone.error }, { status: 400 });
-    profile.receptionistPhoneNormalized = connectionPhone.normalized;
-  }
   const validationError = validateProfile(profile);
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
   const [nameCheck, phoneCheck] = await Promise.all([

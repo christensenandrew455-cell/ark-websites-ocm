@@ -1,6 +1,6 @@
 # ARK Client Center
 
-ARK Client Center is a Next.js application with Firebase authentication and data storage, Stripe billing, administrator workflows, customer lead management, and Capacitor mobile projects.
+ARK Client Center is the customer application for Firebase-backed account access, Stripe billing, lead management, and Capacitor mobile projects. Private operations live in the separate Arc Admin repository.
 
 ## Project structure
 
@@ -8,7 +8,6 @@ ARK Client Center is a Next.js application with Firebase authentication and data
 app/
   api/                 Server routes grouped by feature and access level
     account/           Signed-in customer account actions
-    admin/             Administrator-only actions
     auth/              Authentication endpoints
     billing/           Stripe billing and webhook endpoints
     notifications/     Device and notification endpoints
@@ -19,8 +18,7 @@ app/
   about/               Public app overview
   docs/                Public product documentation
   login/               Business login
-  messages/            Customer requests and administrator messages
-  payment/             Administrator payment review
+  messages/            Customer help requests and replies
   privacy/             Public privacy policy
   settings/            Customer account settings
   signup/              Account application flow
@@ -40,7 +38,8 @@ scripts/                 Cross-platform mobile setup and asset generators
 - Keep page entry files in `app/<route>/page.js` focused on layout and orchestration.
 - Put reusable UI in `app/components`.
 - Put shared formatting, identifiers, authentication helpers, and service logic in `app/lib` rather than copying functions into routes.
-- Group API routes by audience: customer actions under `api/account`, administrator actions under `api/admin`, and unauthenticated actions under `api/public`.
+- Keep signed-in customer actions under `api/account` and public submissions under their feature-specific routes. Do not add private operations routes or screens to this repository.
+- Forward lightweight operational events to Arc Admin through the server-only signed webhook; Arc Admin reads authoritative records through its own server APIs.
 - Keep Firebase Admin code server-only. Do not import `firebase-admin` modules into client components.
 - Use `normalizeClientId` from `app/lib/valueUtils.js` whenever a business or client identifier becomes a Firestore document ID.
 - Use `toIsoString` or `serializeFirestoreValue` from `app/lib/valueUtils.js` when returning Firestore timestamps through an API.

@@ -45,17 +45,12 @@ body {
   overflow-x: clip !important;
 }
 
-.ark-workspace-header,
-.ark-admin-header {
+.ark-workspace-header {
   top: env(safe-area-inset-top, 0px);
 }
 
 .ark-workspace-header-spacer {
   height: var(--ark-workspace-header-height);
-}
-
-.ark-admin-header-spacer {
-  height: 104px;
 }
 
 .ark-referral-button {
@@ -68,8 +63,7 @@ body {
     --ark-workspace-header-height: 73px;
   }
 
-  .ark-workspace-header-spacer,
-  .ark-admin-header-spacer {
+  .ark-workspace-header-spacer {
     height: 73px;
   }
 }

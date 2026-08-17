@@ -62,7 +62,7 @@ The **Hourly Lead Reminders** workflow runs near the seventh minute of each hour
 ## Testing order
 
 1. Install the newly built APK.
-2. Sign in with a customer account, not the administrator account.
+2. Sign in with a customer account.
 3. Enable notifications when prompted.
 4. Submit a real or controlled test lead through the protected intake webhook.
 5. Confirm the immediate notification opens Contacted Me.

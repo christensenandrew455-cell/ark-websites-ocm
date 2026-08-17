@@ -5,10 +5,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return signedIn() && request.auth.token.role == "admin";
-    }
-
     function isOwner(clientId) {
       return signedIn()
         && request.auth.token.role == "standard"
@@ -29,14 +25,13 @@ service cloud.firestore {
     }
 
     match /accounts/{clientId} {
-      allow get: if isAdmin() || isOwner(clientId);
-      allow list: if isAdmin();
+      allow get: if isOwner(clientId);
       allow write: if false;
 
       match /{collectionId}/{document=**} {
         allow read, write: if collectionId != "private"
-          && (isAdmin()
-            || (isActiveOwner(clientId) && isOwnerManagedCollection(collectionId)));
+          && isActiveOwner(clientId)
+          && isOwnerManagedCollection(collectionId);
       }
     }
 
