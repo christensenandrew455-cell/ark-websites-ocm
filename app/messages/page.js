@@ -92,10 +92,10 @@ function CustomerMessages({ user, requests, onRefresh }) {
   return (
     <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
       <div className="mx-auto max-w-3xl">
-        <header className="mb-4 text-white sm:mb-7">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200">ARK</p>
+        <header className="mb-4 text-slate-950 sm:mb-7">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">ARK</p>
           <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Support</h1>
-          <p className="mt-2 text-sm font-semibold text-blue-100">Account or technical help</p>
+          <p className="mt-2 text-sm font-semibold text-slate-600">Account or technical help</p>
         </header>
 
         {notice && <div className="mb-3 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}

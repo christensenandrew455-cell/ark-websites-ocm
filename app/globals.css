@@ -14,12 +14,12 @@ body {
   min-height: 100vh;
 }
 
-/* Signed-in pages share the same blue workspace canvas. */
+/* Signed-in pages use a quiet blue-gray canvas beneath the navy header. */
 .ark-workspace-surface,
 .ark-workspace-surface .ark-pull-to-refresh-content,
 .ark-workspace-surface .ark-pull-to-refresh-content > main {
-  background-color: var(--ark-canvas) !important;
-  background-image: linear-gradient(180deg, #071a3d 0, #12366f 11rem, #e7f0ff 11rem, #f8fbff 100%) !important;
+  background-color: #f1f5f9 !important;
+  background-image: none !important;
 }
 
 html {
@@ -201,7 +201,7 @@ html.ark-dark .ark-workspace-surface,
 html.ark-dark .ark-workspace-surface .ark-pull-to-refresh-content,
 html.ark-dark .ark-workspace-surface .ark-pull-to-refresh-content > main {
   background-color: #020617 !important;
-  background-image: linear-gradient(180deg, #020617 0, #102a5b 11rem, #0f172a 11rem, #020617 100%) !important;
+  background-image: none !important;
 }
 
 html.ark-dark .bg-slate-50 {
