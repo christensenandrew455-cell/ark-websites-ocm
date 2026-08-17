@@ -1,5 +1,7 @@
 import { createHmac, randomUUID } from "node:crypto";
 
+export const ARC_ADMIN_WEBHOOK_URL = "https://ark-admin-app.vercel.app/api/webhooks/events";
+
 function text(value, maximum = 700) {
   return String(value || "").trim().slice(0, maximum);
 }
@@ -9,7 +11,7 @@ export function signedAdminEvent({ secret, timestamp, body }) {
 }
 
 export async function sendAdminEvent(event) {
-  const url = text(process.env.ARC_ADMIN_WEBHOOK_URL, 2000);
+  const url = text(process.env.ARC_ADMIN_WEBHOOK_URL || ARC_ADMIN_WEBHOOK_URL, 2000);
   const secret = text(process.env.ARC_WEBHOOK_SECRET, 1000);
   if (!url || secret.length < 32) return { delivered: false, skipped: true };
 

@@ -63,7 +63,7 @@ Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `
 
 ## Arc Admin event bridge
 
-Set `ARC_ADMIN_WEBHOOK_URL` to the separate Arc Admin deployment's `/api/webhooks/events` route. Set the same random `ARC_WEBHOOK_SECRET` with at least 32 bytes in both deployments. ARC Client Center has no administrator login, role, route, or screen.
+ARC Client Center forwards signed events to `https://ark-admin-app.vercel.app/api/webhooks/events`. Set the same random `ARC_WEBHOOK_SECRET` with at least 32 bytes in both deployments. ARC Client Center has no administrator login, role, route, or screen.
 
 ## Firestore rules and scheduled workflows
 
