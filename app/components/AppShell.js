@@ -23,7 +23,7 @@ function matchesPath(pathname, paths) {
 }
 
 function LoadingScreen({ message = "Loading client center…" }) {
-  return <main className="grid min-h-screen place-items-center bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 p-6"><div className="rounded-2xl border border-white/15 bg-white/10 px-8 py-6 text-sm font-semibold text-blue-50 shadow-xl backdrop-blur">{message}</div></main>;
+  return <main className="grid min-h-screen place-items-center bg-slate-950 p-6 text-sm font-semibold text-blue-50">{message}</main>;
 }
 
 function AccountLoadProblem({ message, retry, loading, logout }) {
@@ -101,7 +101,7 @@ function WorkspaceHeader({ profile, pathname, logout }) {
   const settingsHref = "/settings";
   const settingsActive = pathname.startsWith(settingsHref);
   return <>
-    <header className="ark-workspace-header fixed inset-x-0 z-[60] border-b border-blue-800 bg-gradient-to-r from-slate-950 via-blue-950 to-indigo-950 px-3 py-3 shadow-lg shadow-blue-950/20 sm:px-5 md:px-8 md:py-4">
+    <header className="ark-workspace-header fixed inset-x-0 z-[60] border-b border-blue-950 bg-[#071a3d] px-3 py-3 shadow-sm sm:px-5 md:px-8 md:py-4">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
         <div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-white sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-blue-200 sm:text-xs">{subtitle}</p></div>
         <div className="flex shrink-0 items-center gap-2">

@@ -31,13 +31,13 @@ function money(cents = 0) {
   }).format(dollars);
 }
 function SettingsBlock({ title, description, onClick, tourId = "" }) {
-  return <button type="button" data-tour-id={tourId || undefined} onClick={onClick} className="min-h-24 w-full rounded-2xl border border-blue-100 bg-white p-4 text-left shadow-md shadow-blue-950/10 transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-blue-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-blue-700 sm:text-sm sm:leading-6">{description}</p></button>;
+  return <button type="button" data-tour-id={tourId || undefined} onClick={onClick} className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-slate-600 sm:text-sm sm:leading-6">{description}</p></button>;
 }
 function SectionHeader({ title, onBack }) {
-  return <div className="mb-4 sm:mb-6"><BackButton onClick={onBack} tourId="settings-section-back" /><h2 className="mt-5 text-2xl font-black tracking-tight text-white sm:text-4xl">{title}</h2></div>;
+  return <div className="mb-4 sm:mb-6"><BackButton onClick={onBack} tourId="settings-section-back" /><h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">{title}</h2></div>;
 }
 function SectionPanel({ children }) {
-  return <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-xl shadow-blue-950/10 sm:rounded-3xl sm:p-7">{children}</section>;
+  return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-7">{children}</section>;
 }
 function FieldLabel({ children }) {
   return <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{children}</span>;
@@ -291,15 +291,15 @@ export default function SettingsPanel() {
     const thresholdCents = Number(usageSummary?.usageThresholdCents || 2000);
     const progress = Math.max(0, Math.min(100, Number(usageSummary?.usageProgressPercent || 0)));
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
-      <div className="rounded-2xl bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-950 p-5 text-white shadow-lg shadow-blue-950/20 sm:p-7">
+      <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
         <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Usage toward next charge</p><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
         <p className="mt-3 text-3xl font-black">{usageSummary ? `${money(balanceCents)} out of ${money(thresholdCents)}` : "—"}</p>
         <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Usage toward next twenty dollar charge" aria-valuemin={0} aria-valuemax={20} aria-valuenow={Math.min(20, balanceCents / 100)}><div className="h-full rounded-full bg-blue-500 transition-[width]" style={{ width: `${progress}%` }} /></div>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">New lead</p><p className="mt-1 text-2xl font-black text-blue-950">$2</p></div><div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4"><p className="text-sm font-black text-indigo-950">50 SMS parts</p><p className="mt-1 text-2xl font-black text-indigo-950">$1</p><p className="mt-1 text-xs font-bold text-indigo-700">{Number(usageSummary?.smsPartRemainder || 0)}/50</p></div></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">New lead</p><p className="mt-1 text-2xl font-black text-blue-950">$2</p></div><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">50 SMS parts</p><p className="mt-1 text-2xl font-black text-blue-950">$1</p><p className="mt-1 text-xs font-bold text-blue-700">{Number(usageSummary?.smsPartRemainder || 0)}/50</p></div></div>
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recurring charge</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div>
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-black text-white disabled:bg-indigo-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
+      <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
     </SectionPanel></>;
   }
   function accountSection() {
@@ -309,10 +309,10 @@ export default function SettingsPanel() {
   return (
     <main className="ark-settings-page min-h-screen bg-transparent px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-4xl">
-        {!activeSection && <header className="mb-4 sm:mb-7"><BackButton href="/" className="mb-4" tourId="settings-menu-back" /><h1 className="text-3xl font-black tracking-tight text-white sm:text-4xl">Settings</h1></header>}
+        {!activeSection && <header className="mb-4 sm:mb-7"><BackButton href="/" className="mb-4" tourId="settings-menu-back" /><h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Settings</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         {downloadNotice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700">{downloadNotice}</div>}
-        {isOwner && !activeSection ? <div className="rounded-[2rem] border border-blue-200/30 bg-blue-950/55 p-3 shadow-inner sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} tourId={`settings-${block.key}`} onClick={() => setActiveSection(block.key)} />)}</div></div>
+        {isOwner && !activeSection ? <div className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} tourId={`settings-${block.key}`} onClick={() => setActiveSection(block.key)} />)}</div></div>
             : isOwner && activeSection === "business" ? businessSection()
               : isOwner && activeSection === "customization" ? customizationSection()
                 : isOwner && activeSection === "payment" ? paymentSection()

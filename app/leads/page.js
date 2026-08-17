@@ -14,7 +14,7 @@ export default function LeadsPage() {
       `}</style>
       <div className="mx-auto max-w-6xl px-3 pt-5 sm:px-5 sm:pt-8 md:px-8">
         <BackButton href="/" />
-        <header className="mt-5 text-white">
+        <header className="mt-5 text-slate-950">
           <h1 className="text-4xl font-black tracking-tight">Leads</h1>
         </header>
       </div>
