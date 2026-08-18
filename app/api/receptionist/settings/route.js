@@ -73,7 +73,6 @@ function validateEstimateSchedule(profile) {
   const latest = clockMinutes(profile.latestEstimateStart);
   if (earliest === null) return "Complete the earliest estimate time or leave the estimate schedule blank.";
   if (latest === null) return "Complete the latest estimate time or leave the estimate schedule blank.";
-  if (earliest > latest) return "The latest estimate time must be after the earliest estimate time.";
   return "";
 }
 
