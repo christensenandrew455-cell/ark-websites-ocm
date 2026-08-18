@@ -36,7 +36,7 @@ test("leads load and save through the owner server route", async () => {
 
 test("lead intake saves the lead and its account activity metadata", async () => {
   const route = await source("app/api/intake/route.js");
-  assert.ok(route.includes("batch.set(targetRef"));
+  assert.ok(route.includes("batch.create(targetRef"));
   assert.ok(route.includes("batch.set(accountSnapshot.ref"));
   assert.equal(route.includes("connectionSnapshot"), false);
 });
@@ -97,7 +97,8 @@ test("payment separates usage pricing from the recurring charge", async () => {
   const settings = await source("app/components/SettingsPanel.js");
   assert.ok(settings.includes("Usage toward next charge"));
   assert.ok(settings.includes("out of"));
-  assert.ok(settings.includes(">New lead<"));
+  assert.ok(settings.includes(">Accepted lead<"));
+  assert.ok(settings.includes("Declined leads are free"));
   assert.ok(settings.includes(">50 SMS parts<"));
   assert.ok(settings.includes("Recurring charge"));
   assert.ok(settings.includes("$50 per month"));

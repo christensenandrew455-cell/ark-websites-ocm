@@ -4,6 +4,12 @@ import { billingTimestampMillis } from "./billingMessageUsage.js";
 
 function text(value) { return String(value || "").trim(); }
 
+export const ACCEPTED_LEAD_BILLING_SOURCE = "accepted-lead";
+
+export function acceptedLeadBillingSourceId(leadId) {
+  return `accepted:${text(leadId)}`;
+}
+
 export function billingLeadEventId(clientId, sourceId) {
   return createHash("sha256")
     .update(`${text(clientId)}:${text(sourceId)}`)
@@ -16,12 +22,12 @@ export function billingLeadEventRef(db, { clientId, sourceId }) {
     .doc(billingLeadEventId(clientId, sourceId));
 }
 
-export function billingLeadEventData({ leadId, jobId = "", occurredAt, sourceType = "intake" }) {
+export function billingLeadEventData({ leadId, jobId = "", occurredAt, sourceType = "unclassified" }) {
   const millis = billingTimestampMillis(occurredAt);
   return {
     leadId: text(leadId),
     jobId: text(jobId) || null,
-    sourceType: text(sourceType) || "intake",
+    sourceType: text(sourceType) || "unclassified",
     usageRecorded: false,
     occurredAt: millis > 0 ? Timestamp.fromMillis(millis) : FieldValue.serverTimestamp(),
     createdAt: FieldValue.serverTimestamp(),

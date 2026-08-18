@@ -4,11 +4,12 @@ import { readFile } from "node:fs/promises";
 
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
-test("usage charging reuses an uncertain Stripe attempt and reconciles saved ledgers", async () => {
-  const [usage, cron, calls, referrals] = await Promise.all([
+test("usage charging reuses an uncertain Stripe attempt and reconciles accepted-lead ledgers", async () => {
+  const [usage, cron, calls, acceptance, referrals] = await Promise.all([
     source("app/lib/usageThresholdBilling.js"),
     source("app/api/cron/billing-sync/route.js"),
     source("app/api/receptionist/call-usage/route.js"),
+    source("app/api/business/leads/accept/route.js"),
     source("app/lib/referrals.js"),
   ]);
   assert.ok(usage.includes('usageChargeStatus: "retry_pending"'));
@@ -29,8 +30,10 @@ test("usage charging reuses an uncertain Stripe attempt and reconciles saved led
   assert.ok(cron.includes("reconcilePendingUsageEvents({"));
   assert.ok(cron.includes("retireLegacyReferralSubscriptionDiscounts({ db, stripe })"));
   assert.equal(referrals.includes("stripe.coupons.create"), false);
-  assert.ok(calls.includes("recordLeadUsage({"));
-  assert.ok(calls.includes("billingLeadEventId(authorization.clientId, callId)"));
+  assert.equal(calls.includes("recordLeadUsage({"), false);
+  assert.ok(calls.includes("billingDeferredToAcceptance: true"));
+  assert.ok(acceptance.includes("recordLeadUsage({"));
+  assert.ok(acceptance.includes("ACCEPTED_LEAD_BILLING_SOURCE"));
   assert.ok(calls.includes("receptionist.call.completed"));
   assert.ok(calls.includes("sendAdminEvent"));
   assert.ok(usage.includes('type: "billing.payment_succeeded"'));

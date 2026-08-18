@@ -4,6 +4,7 @@ import { computeBillingState } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { systemCollection } from "../../../lib/firestoreLayout";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
+import { pendingLeadSummary } from "../../../lib/leadVisibility";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, serializeFirestoreValue } from "../../../lib/valueUtils";
 
@@ -17,11 +18,12 @@ function documents(snapshot) {
   }));
 }
 
-function leadDocuments(snapshot) {
-  return snapshot.docs.map((document) => ({
-    id: document.id,
-    ...stripLeadContactFields(serializeFirestoreValue(document.data())),
-  }));
+function leadDocuments(snapshot, collectionKey) {
+  return snapshot.docs.map((document) => {
+    const data = stripLeadContactFields(serializeFirestoreValue(document.data()));
+    if (collectionKey === "contactedMe") return pendingLeadSummary(document.id, data);
+    return { id: document.id, ...data };
+  });
 }
 
 function accountSummary(data = {}) {
@@ -60,14 +62,14 @@ export async function GET(request) {
     }
 
     const payload = {
-      exportVersion: "1.2",
+      exportVersion: "1.3",
       exportedAt: new Date().toISOString(),
       clientId,
       account: accountSummary(account),
       businessInformation: serializeFirestoreValue(sections?.business || {}),
       customization: serializeFirestoreValue(sections?.customization || {}),
-      contactedMe: leadDocuments(contactedSnapshot),
-      clients: leadDocuments(clientsSnapshot),
+      contactedMe: leadDocuments(contactedSnapshot, "contactedMe"),
+      clients: leadDocuments(clientsSnapshot, "clients"),
       requests: documents(requestsSnapshot),
     };
     const date = new Date().toISOString().slice(0, 10);

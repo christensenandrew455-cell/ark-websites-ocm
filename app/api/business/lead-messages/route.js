@@ -73,25 +73,23 @@ async function authorizeMessaging(request) {
   return { db, decoded, account, business: sections.combined, businessName, clientId, fromPhone };
 }
 
-async function loadLead(access, collectionKey, leadId) {
-  const key = collectionKey === "clients" ? "clients" : "contactedMe";
-  const ref = access.db.collection("accounts").doc(access.clientId).collection(key).doc(text(leadId));
+async function loadLead(access, leadId) {
+  const ref = access.db.collection("accounts").doc(access.clientId).collection("clients").doc(text(leadId));
   const snapshot = await ref.get();
   if (!snapshot.exists) return null;
-  const lead = normalizeLead(snapshot, key);
+  const lead = normalizeLead(snapshot, "clients");
   return { ref, lead };
 }
 
 async function loadAvailableLeads(access) {
   const root = access.db.collection("accounts").doc(access.clientId);
-  const collections = ["contactedMe", "clients"];
-  const [snapshots, blockedSnapshot] = await Promise.all([
-    Promise.all(collections.map((key) => root.collection(key).get())),
+  const [clientsSnapshot, blockedSnapshot] = await Promise.all([
+    root.collection("clients").get(),
     root.collection("blockedMessageContacts").get(),
   ]);
   const blockedIds = new Set(blockedSnapshot.docs.map((document) => document.id));
-  return snapshots
-    .flatMap((snapshot, index) => snapshot.docs.map((document) => normalizeLead(document, collections[index])))
+  return clientsSnapshot.docs
+    .map((document) => normalizeLead(document, "clients"))
     .filter((lead) => !blockedIds.has(messageContactBlockId(access.clientId, lead.phoneNormalized)))
     .sort((a, b) => String(b.lastActivityAt).localeCompare(String(a.lastActivityAt)));
 }
@@ -108,15 +106,11 @@ async function deleteQuery(db, query) {
 
 async function purgeOrphanConversations(access) {
   const root = access.db.collection("accounts").doc(access.clientId);
-  const [contactedSnapshot, clientSnapshot, conversationSnapshot] = await Promise.all([
-    root.collection("contactedMe").get(),
+  const [clientSnapshot, conversationSnapshot] = await Promise.all([
     root.collection("clients").get(),
     root.collection("leadConversations").get(),
   ]);
-  const activeLeadIds = new Set([
-    ...contactedSnapshot.docs.map((document) => document.id),
-    ...clientSnapshot.docs.map((document) => document.id),
-  ]);
+  const activeLeadIds = new Set(clientSnapshot.docs.map((document) => document.id));
   const orphaned = conversationSnapshot.docs.filter((document) => {
     const leadId = text(document.data().leadId);
     return !leadId || !activeLeadIds.has(leadId);
@@ -137,7 +131,7 @@ async function loadConversations(access) {
     return {
       id: document.id,
       leadId: text(data.leadId),
-      collectionKey: text(data.collectionKey || "contactedMe"),
+      collectionKey: text(data.collectionKey),
       leadName: text(data.leadName) || "Unnamed lead",
       leadPhone: text(data.leadPhone),
       lastMessage: text(data.lastMessage),
@@ -147,7 +141,8 @@ async function loadConversations(access) {
       lastMessageAt: iso(data.lastMessageAt || data.updatedAt || data.createdAt),
       createdAt: iso(data.createdAt),
     };
-  }).sort((a, b) => String(b.lastMessageAt).localeCompare(String(a.lastMessageAt)));
+  }).filter((conversation) => conversation.collectionKey === "clients")
+    .sort((a, b) => String(b.lastMessageAt).localeCompare(String(a.lastMessageAt)));
 }
 
 async function loadMessages(access, conversationKey) {
@@ -175,13 +170,13 @@ export async function GET(request) {
   try {
     const url = new URL(request.url);
     const selectedLeadId = text(url.searchParams.get("lead"));
-    const selectedCollection = url.searchParams.get("collection") === "clients" ? "clients" : "contactedMe";
+    const selectedCollection = "clients";
     await purgeOrphanConversations(access);
     const [availableLeads, conversations] = await Promise.all([loadAvailableLeads(access), loadConversations(access)]);
     let selectedConversation = null;
     let messages = [];
     if (selectedLeadId) {
-      const loaded = await loadLead(access, selectedCollection, selectedLeadId);
+      const loaded = await loadLead(access, selectedLeadId);
       if (!loaded) return NextResponse.json({ error: "That lead is not available to this account." }, { status: 404 });
       if (await isMessageContactBlocked(access.db, access.clientId, loaded.lead.phoneNormalized)) return NextResponse.json({ error: "Messaging with this phone number was blocked when its conversation was deleted." }, { status: 409 });
       const key = conversationId(access.clientId, selectedCollection, selectedLeadId);
@@ -279,10 +274,10 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const leadId = text(body.leadId);
-    const collectionKey = body.collectionKey === "clients" ? "clients" : "contactedMe";
+    const collectionKey = "clients";
     const messageBody = text(body.message).slice(0, 1600);
     if (!leadId || !messageBody) return NextResponse.json({ error: "Choose a lead and enter a message." }, { status: 400 });
-    const loaded = await loadLead(access, collectionKey, leadId);
+    const loaded = await loadLead(access, leadId);
     if (!loaded) return NextResponse.json({ error: "That lead is not available to this account." }, { status: 404 });
     if (!loaded.lead.phoneNormalized) return NextResponse.json({ error: "This lead does not have a valid phone number for text messaging." }, { status: 409 });
     if (await isMessageContactBlocked(access.db, access.clientId, loaded.lead.phoneNormalized)) return NextResponse.json({ error: "Messaging with this phone number was blocked when its conversation was deleted." }, { status: 409 });

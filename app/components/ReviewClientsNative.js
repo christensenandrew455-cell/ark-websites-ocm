@@ -7,6 +7,7 @@ import { useAuth } from "./AuthProvider";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 import { stripLeadContactFields } from "../lib/leadContactFields";
+import { leadRiskLabel, leadRiskLevel } from "../lib/leadRiskAssessment";
 import {
   estimateRequestCreatedAt,
   estimateRequestLifecycle,
@@ -38,6 +39,9 @@ function normalizeRow(id, source, collectionKey) {
     Email: firstValue(data.Email, data.email),
     Address: firstValue(data.Address, data.address),
     Job: firstValue(data.Job, data.job, data.service, data.projectType, currentJob.type),
+    riskAssessed: data.riskAssessed === true,
+    riskScore: Math.max(0, Math.floor(Number(data.riskScore) || 0)),
+    riskLevel: leadRiskLevel(data.riskScore),
     ClientNotes,
     BusinessNotes,
     Notes: ClientNotes,
@@ -225,6 +229,24 @@ function TrashIcon() {
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>;
 }
 
+const riskBadgeClasses = {
+  low: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  moderate: "border-amber-200 bg-amber-50 text-amber-800",
+  high: "border-orange-200 bg-orange-50 text-orange-800",
+  "very-high": "border-red-200 bg-red-50 text-red-800",
+};
+
+const riskIcons = { low: "🟢", moderate: "🟡", high: "🟠", "very-high": "🔴" };
+
+function RiskBadge({ row }) {
+  if (row.riskAssessed !== true) {
+    return <span className="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">Risk check unavailable</span>;
+  }
+  const level = leadRiskLevel(row.riskScore);
+  const points = Math.max(0, Math.floor(Number(row.riskScore) || 0));
+  return <span aria-label={`${leadRiskLabel(level)}, ${points} points`} className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${riskBadgeClasses[level]}`}><span aria-hidden="true">{riskIcons[level]}</span>{leadRiskLabel(level)} · {points} {points === 1 ? "point" : "points"}</span>;
+}
+
 function Modal({ title, children, onClose }) {
   useEffect(() => {
     const listener = (event) => { if (event.key === "Escape") onClose(); };
@@ -242,7 +264,7 @@ function ConfirmDialog({ row, busy, onCancel, onConfirm }) {
     <div className="ark-modal-surface max-w-sm">
       <div className="px-6 py-10 text-center">
         <h2 className="text-xl font-black text-slate-950">{declining ? "Decline" : "Delete"} {row.Name || "this record"}?</h2>
-        <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">This cannot be undone.</p>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{declining ? "This lead will be removed and you will not be charged." : "This cannot be undone."}</p>
       </div>
       <div className="grid grid-cols-2 gap-3 border-t border-slate-200 p-4">
         <button type="button" disabled={busy} onClick={onCancel} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50">Cancel</button>
@@ -362,10 +384,16 @@ export default function ReviewClientsNative() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Could not accept this estimate request.");
-      if (result.noticeError) {
-        setNotice(`${row.Name || "Lead"} was accepted, but the acceptance text could not be sent.`);
+      if (result.duplicate) {
+        setNotice(`${row.Name || "Lead"} was already accepted. No additional charge was added.`);
+      } else if (result.paymentStatus === "declined") {
+        setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage, but the payment method needs attention.`);
+      } else if (result.billingPending) {
+        setNotice(`${row.Name || "Lead"} was accepted. The $2 usage entry is being finalized.`);
+      } else if (result.noticeError) {
+        setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage, but the acceptance text could not be sent.`);
       } else {
-        setNotice(`${row.Name || "Lead"} was accepted.`);
+        setNotice(`${row.Name || "Lead"} was accepted. $2 was added to usage.`);
       }
       await load(true);
     } catch (acceptError) {
@@ -388,7 +416,7 @@ export default function ReviewClientsNative() {
         const declineResponse = await fetch("/api/business/leads/client-decline-notice", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ leadId: row.id, name: row.Name, phone: row.Phone }),
+          body: JSON.stringify({ leadId: row.id }),
         });
         declineResult = await declineResponse.json().catch(() => ({}));
         if (!declineResponse.ok) throw new Error(declineResult.error || "Could not send the client decline notice.");
@@ -454,5 +482,5 @@ export default function ReviewClientsNative() {
   const inactiveCard = "min-h-36 rounded-3xl border border-slate-200 bg-white p-5 text-left text-slate-950 shadow-sm transition active:scale-[0.99]";
   const activeCard = "min-h-36 rounded-3xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
 
-  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700"><span>{error}</span><button type="button" disabled={loading} onClick={() => load()} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs text-white disabled:opacity-50">Try again</button></div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-70">New leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-70">Accepted</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3 text-slate-950">{rows.map((row) => { const expiring = activeSection === "contacted" && isEstimateRequestFinalDay(row); return <article key={row.id} className={expiring ? "rounded-2xl border border-red-300 bg-red-50/95 p-4 shadow-sm" : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{activeSection === "clients" && row.Address ? ` · ${row.Address}` : ""}</p></button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">Accept</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline</button></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{loading ? "Loading leads…" : "Nothing here yet."}</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onSave={saveClient} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /></div>;
+  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700"><span>{error}</span><button type="button" disabled={loading} onClick={() => load()} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs text-white disabled:opacity-50">Try again</button></div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-70">New leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-70">Accepted</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3 text-slate-950">{rows.map((row) => { const expiring = activeSection === "contacted" && isEstimateRequestFinalDay(row); return <article key={row.id} className={expiring ? "rounded-2xl border border-red-300 bg-red-50/95 p-4 shadow-sm" : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{activeSection === "clients" && row.Address ? ` · ${row.Address}` : ""}</p>{activeSection === "contacted" && <RiskBadge row={row} />}</button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">{busy === `accept:${row.id}` ? "Accepting…" : "Accept · $2"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline · $0</button></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{loading ? "Loading leads…" : "Nothing here yet."}</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onSave={saveClient} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /></div>;
 }

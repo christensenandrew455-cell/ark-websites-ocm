@@ -38,25 +38,28 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const leadId = text(body.leadId);
-    const phone = text(body.phone);
-    const leadName = text(body.name);
     if (!leadId) return NextResponse.json({ error: "A lead is required." }, { status: 400 });
 
     const root = access.db.collection("accounts").doc(access.clientId);
-    const acceptedSnapshot = await root.collection("clients").doc(leadId).get();
+    const [acceptedSnapshot, pendingSnapshot] = await Promise.all([
+      root.collection("clients").doc(leadId).get(),
+      root.collection("contactedMe").doc(leadId).get(),
+    ]);
     if (acceptedSnapshot.exists) return NextResponse.json({ ok: true, skipped: "accepted" });
+    if (!pendingSnapshot.exists) return NextResponse.json({ error: "That lead is no longer available." }, { status: 404 });
     if (!estimateRequestStatusNoticesEnabled(access.business)) {
       return NextResponse.json({ ok: true, skipped: "disabled" });
     }
 
+    const lead = pendingSnapshot.data();
     const businessName = text(access.business.businessName || access.business.name) || "the business";
     const result = await sendEstimateRequestStatusNotice({
       db: access.db,
       clientId: access.clientId,
       businessName,
       leadId,
-      leadName,
-      phone,
+      leadName: text(lead.Name || lead.name || lead.fullName),
+      phone: text(lead.Phone || lead.phone || lead.phoneNumber),
       status: "declined",
     });
     return NextResponse.json(result);
