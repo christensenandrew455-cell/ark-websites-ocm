@@ -71,8 +71,8 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
-      <div className="mx-auto w-full max-w-3xl rounded-3xl bg-white p-7 shadow-2xl md:p-9">
+    <main className="ark-auth-page min-h-screen px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
+      <div className="ark-auth-card mx-auto w-full max-w-3xl rounded-3xl p-7 shadow-2xl md:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">ARK Client Center</p>
         <h1 className="mt-3 text-3xl font-bold">Make an account</h1>
         <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 1 of 4 · Main information</p>

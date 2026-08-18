@@ -33,8 +33,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 p-5">
-      <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
+    <main className="ark-auth-page grid min-h-screen place-items-center p-5">
+      <div className="ark-auth-card w-full max-w-md rounded-3xl p-7 shadow-2xl md:p-9">
         <h1 className="text-3xl font-bold">Reset your password</h1>
         <p className="mt-2 text-sm text-slate-600">Enter the business name or account email.</p>
         <form onSubmit={handleSubmit} className="mt-7 space-y-4">
