@@ -53,3 +53,23 @@ test("payment warnings show the plain message, recovery deadline, and payment up
     recoveryEndsAt: "2026-08-20T12:00:00.000Z",
   }), "2026-08-20T12:00:00.000Z");
 });
+
+test("help renders once, legal back arrows sit outside the cards, and Android navigation stays immersive", async () => {
+  const [shell, helpPage, terms, privacy, legalHeader, androidSetup] = await Promise.all([
+    readFile(new URL("../app/components/AppShell.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/help/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/terms/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/privacy/page.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/LegalPageHeader.js", import.meta.url), "utf8"),
+    readFile(new URL("../scripts/configure-android.mjs", import.meta.url), "utf8"),
+  ]);
+
+  assert.equal(shell.includes("HelpCenter"), false);
+  assert.ok(helpPage.includes("<HelpCenter />"));
+  assert.ok(terms.indexOf("<LegalBackButton />") < terms.indexOf("<article"));
+  assert.ok(privacy.indexOf("<LegalBackButton />") < privacy.indexOf("<article"));
+  assert.ok(legalHeader.includes("export function LegalBackButton"));
+  assert.ok(androidSetup.includes("WindowInsetsCompat.Type.navigationBars()"));
+  assert.ok(androidSetup.includes("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE"));
+  assert.equal(androidSetup.includes("WindowInsetsCompat.Type.systemBars()"), false);
+});

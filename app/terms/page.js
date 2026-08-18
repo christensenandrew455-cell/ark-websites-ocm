@@ -1,4 +1,4 @@
-import LegalPageHeader from "../components/LegalPageHeader";
+import LegalPageHeader, { LegalBackButton } from "../components/LegalPageHeader";
 import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "../lib/legal";
 
 const sections = [
@@ -80,5 +80,5 @@ const sections = [
 ];
 
 export default function TermsPage() {
-  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 sm:py-12"><article className="mx-auto max-w-4xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10"><LegalPageHeader title="Terms of Use" effectiveDate={LEGAL_EFFECTIVE_DATE} version={TERMS_VERSION} active="terms" /><div className="mt-7 space-y-8 text-sm leading-7 text-slate-700 sm:text-base">{sections.map((section) => <section key={section.id} id={section.id} className="scroll-mt-24"><h2 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{section.title}</h2><div className="mt-2 space-y-3">{section.body}</div></section>)}</div></article></main>;
+  return <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 sm:py-12"><div className="mx-auto max-w-4xl"><div className="mb-4"><LegalBackButton /></div><article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10"><LegalPageHeader title="Terms of Use" effectiveDate={LEGAL_EFFECTIVE_DATE} version={TERMS_VERSION} active="terms" /><div className="mt-7 space-y-8 text-sm leading-7 text-slate-700 sm:text-base">{sections.map((section) => <section key={section.id} id={section.id} className="scroll-mt-24"><h2 className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{section.title}</h2><div className="mt-2 space-y-3">{section.body}</div></section>)}</div></article></div></main>;
 }

@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import GuidedOnboarding from "./GuidedOnboarding";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
-import HelpCenter from "./HelpCenter";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
 import ReferralCenter from "./ReferralCenter";
@@ -122,7 +121,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{!status.restricted && <HelpCenter />}{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <GuidedOnboarding />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <GuidedOnboarding />}</>;
 }
 
 export default function AppShell({ children }) {
