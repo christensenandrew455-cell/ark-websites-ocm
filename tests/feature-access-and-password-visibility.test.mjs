@@ -71,5 +71,6 @@ test("help renders once, legal back arrows sit outside the cards, and Android na
   assert.ok(legalHeader.includes("export function LegalBackButton"));
   assert.ok(androidSetup.includes("WindowInsetsCompat.Type.navigationBars()"));
   assert.ok(androidSetup.includes("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE"));
+  assert.ok(androidSetup.includes("public void onResume()"));
   assert.equal(androidSetup.includes("WindowInsetsCompat.Type.systemBars()"), false);
 });
