@@ -5,12 +5,13 @@ import { readFile } from "node:fs/promises";
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
 test("usage charging reuses an uncertain Stripe attempt and reconciles accepted-lead ledgers", async () => {
-  const [usage, cron, calls, acceptance, referrals] = await Promise.all([
+  const [usage, cron, calls, acceptance, referrals, summary] = await Promise.all([
     source("app/lib/usageThresholdBilling.js"),
     source("app/api/cron/billing-sync/route.js"),
     source("app/api/receptionist/call-usage/route.js"),
     source("app/api/business/leads/accept/route.js"),
     source("app/lib/referrals.js"),
+    source("app/api/billing/usage-summary/route.js"),
   ]);
   assert.ok(usage.includes('usageChargeStatus: "retry_pending"'));
   assert.ok(usage.includes('["processing", "retry_pending"].includes(status)'));
@@ -24,10 +25,16 @@ test("usage charging reuses an uncertain Stripe attempt and reconciles accepted-
   assert.ok(usage.includes("usagePriceId: usagePrice.usagePriceId"));
   assert.ok(usage.includes("usageProductId: usagePrice.usageProductId"));
   assert.ok(usage.includes("reconcilePendingUsageEvents"));
+  assert.ok(usage.includes("reconcileNonAcceptedLeadUsage"));
+  assert.ok(usage.includes("LEAD_ACCEPTANCE_REQUIRED"));
+  assert.ok(usage.includes('voidReason: NON_ACCEPTED_LEAD_VOID_REASON'));
   assert.ok(usage.includes('collection: "billingLeadEvents", type: "lead", points: 2'));
   assert.ok(usage.includes('collection: "billingConversationEvents", type: "chat", points: 0'));
   assert.ok(usage.includes('collection: "billingMessageEvents", type: "sms-parts", points: 0'));
   assert.ok(cron.includes("reconcilePendingUsageEvents({"));
+  assert.ok(cron.includes("reconcileNonAcceptedLeadUsageBalances({"));
+  assert.ok(cron.indexOf("reconcileNonAcceptedLeadUsageBalances({") < cron.indexOf("retryUsageThresholdCharges({"));
+  assert.ok(summary.includes("reconcileNonAcceptedLeadUsage({"));
   assert.ok(cron.includes("retireLegacyReferralSubscriptionDiscounts({ db, stripe })"));
   assert.equal(referrals.includes("stripe.coupons.create"), false);
   assert.equal(calls.includes("recordLeadUsage({"), false);

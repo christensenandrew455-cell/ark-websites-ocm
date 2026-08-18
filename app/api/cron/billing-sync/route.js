@@ -3,7 +3,11 @@ import Stripe from "stripe";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { retireLegacyReferralSubscriptionDiscounts, retryPendingReferralActivations } from "../../../lib/referrals";
 import { refreshStoredPaymentMethod } from "../../../lib/stripeUsageBilling";
-import { reconcilePendingUsageEvents, retryUsageThresholdCharges } from "../../../lib/usageThresholdBilling";
+import {
+  reconcileNonAcceptedLeadUsageBalances,
+  reconcilePendingUsageEvents,
+  retryUsageThresholdCharges,
+} from "../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +51,8 @@ async function handle(request) {
   const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
   if (!stripe) return NextResponse.json({ ok: false, error: "Stripe billing is not configured." }, { status: 503 });
 
+  // Correct legacy call and unaccepted-intake points before any threshold can be charged.
+  const acceptedLeadCorrections = await reconcileNonAcceptedLeadUsageBalances({ db, maximumBusinesses: 100, force: true });
   const paymentMethods = await refreshUsagePaymentMethods(db, stripe);
   const usageRetries = await retryUsageThresholdCharges({ db, stripe, maximum: 100 });
   const usageReconciliation = await reconcilePendingUsageEvents({ db, stripe, maximumBusinesses: 100, maximumEvents: 500 });
@@ -58,7 +64,7 @@ async function handle(request) {
   } catch (error) {
     console.error("Referral retry failed", error);
   }
-  return NextResponse.json({ ok: true, paymentMethods, usageRetries, usageReconciliation, referralRetries, retiredSubscriptionDiscounts });
+  return NextResponse.json({ ok: true, acceptedLeadCorrections, paymentMethods, usageRetries, usageReconciliation, referralRetries, retiredSubscriptionDiscounts });
 }
 
 export async function GET(request) { return handle(request); }

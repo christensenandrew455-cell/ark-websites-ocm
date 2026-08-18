@@ -15,6 +15,8 @@ import { ensureStripeUsagePrice } from "./stripeUsageBilling.js";
 import { activeReferralSavings } from "./referrals.js";
 
 const PROCESSING_LOCK_MS = 5 * 60 * 1000;
+const ACCEPTED_LEAD_USAGE_CORRECTION_VERSION = 1;
+const NON_ACCEPTED_LEAD_VOID_REASON = "lead-not-accepted";
 
 function text(value) { return String(value || "").trim(); }
 function whole(value) {
@@ -28,8 +30,20 @@ function millis(value) {
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
 }
-function eventId(clientId, type, sourceId) {
+export function usageEventDocumentId(clientId, type, sourceId) {
   return createHash("sha256").update(`${text(clientId)}:${text(type)}:${text(sourceId)}`).digest("hex").slice(0, 48);
+}
+function correctedChargeStatus(status, balancePoints) {
+  const current = text(status);
+  if (["processing", "retry_pending", "declined"].includes(current)) return current;
+  return balancePoints >= USAGE_CHARGE_THRESHOLD_POINTS ? "pending" : "idle";
+}
+async function requireAcceptedLeadLedger(ledgerRef, sourceId) {
+  if (!ledgerRef || text(ledgerRef.id) !== text(sourceId)) throw new Error("LEAD_ACCEPTANCE_REQUIRED");
+  const snapshot = await ledgerRef.get();
+  if (!snapshot.exists || text(snapshot.data().sourceType) !== ACCEPTED_LEAD_BILLING_SOURCE) {
+    throw new Error("LEAD_ACCEPTANCE_REQUIRED");
+  }
 }
 function stripeClient(stripe) {
   if (stripe) return stripe;
@@ -47,8 +61,12 @@ export async function recordUsage({ db, stripe = null, clientId, type, sourceId,
   const safeType = text(type);
   const safeSourceId = text(sourceId);
   if (!safeClientId || !safeType || !safeSourceId) throw new Error("USAGE_EVENT_INVALID");
+  if (safeType === "lead") {
+    await requireAcceptedLeadLedger(ledgerRef, safeSourceId);
+    await reconcileNonAcceptedLeadUsage({ db, clientId: safeClientId });
+  }
   const accountRef = db.collection("accounts").doc(safeClientId);
-  const usageEventRef = accountRef.collection("usageEvents").doc(eventId(safeClientId, safeType, safeSourceId));
+  const usageEventRef = accountRef.collection("usageEvents").doc(usageEventDocumentId(safeClientId, safeType, safeSourceId));
   const result = await db.runTransaction(async (transaction) => {
     const [accountSnapshot, existingEvent] = await Promise.all([transaction.get(accountRef), transaction.get(usageEventRef)]);
     if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
@@ -102,6 +120,124 @@ export function recordChatUsage(options) {
 
 export function recordSmsPartUsage(options) {
   return recordUsage({ ...options, type: "sms-parts", points: 0 });
+}
+
+async function voidNonAcceptedLeadUsageEvent({ db, accountRef, usageEventRef }) {
+  return db.runTransaction(async (transaction) => {
+    const [accountSnapshot, eventSnapshot] = await Promise.all([
+      transaction.get(accountRef),
+      transaction.get(usageEventRef),
+    ]);
+    if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+    if (!eventSnapshot.exists) return { voided: false, points: 0, balancePointsRemoved: 0 };
+
+    const event = eventSnapshot.data();
+    if (text(event.type) !== "lead" || event.voided === true) {
+      return { voided: false, points: 0, balancePointsRemoved: 0 };
+    }
+
+    const account = accountSnapshot.data();
+    const points = whole(event.points);
+    const currentBalance = whole(account.usageBalancePoints);
+    const nextBalance = Math.max(0, currentBalance - points);
+    const balancePointsRemoved = currentBalance - nextBalance;
+    transaction.set(usageEventRef, {
+      voided: true,
+      voidReason: NON_ACCEPTED_LEAD_VOID_REASON,
+      voidedPoints: points,
+      balancePointsRemoved,
+      voidedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    transaction.set(accountRef, {
+      usageBalancePoints: nextBalance,
+      usageChargeStatus: correctedChargeStatus(account.usageChargeStatus, nextBalance),
+      nonAcceptedLeadPointsVoided: whole(account.nonAcceptedLeadPointsVoided) + points,
+      nonAcceptedLeadBalancePointsRemoved: whole(account.nonAcceptedLeadBalancePointsRemoved) + balancePointsRemoved,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { voided: true, points, balancePointsRemoved };
+  });
+}
+
+export async function reconcileNonAcceptedLeadUsage({ db, clientId, force = false } = {}) {
+  const safeClientId = text(clientId);
+  if (!safeClientId) throw new Error("ACCOUNT_NOT_FOUND");
+  const accountRef = db.collection("accounts").doc(safeClientId);
+  const accountSnapshot = await accountRef.get();
+  if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+  const account = accountSnapshot.data();
+  if (!force && whole(account.acceptedLeadUsageCorrectionVersion) >= ACCEPTED_LEAD_USAGE_CORRECTION_VERSION) {
+    return {
+      skipped: true,
+      checked: 0,
+      voided: 0,
+      pointsVoided: 0,
+      balancePointsRemoved: 0,
+      balancePoints: whole(account.usageBalancePoints),
+    };
+  }
+
+  // Read usage first and accepted ledgers second. An acceptance writes its ledger
+  // before its usage event, so this order cannot mistake a concurrent acceptance
+  // for a legacy call or unaccepted intake event.
+  const usageSnapshot = await accountRef.collection("usageEvents").where("type", "==", "lead").get();
+  const acceptedLedgerSnapshot = await accountRef.collection("billingLeadEvents")
+    .where("sourceType", "==", ACCEPTED_LEAD_BILLING_SOURCE)
+    .get();
+  const acceptedUsageEventIds = new Set(
+    acceptedLedgerSnapshot.docs.map((document) => usageEventDocumentId(safeClientId, "lead", document.id)),
+  );
+  const candidates = usageSnapshot.docs.filter((document) => (
+    document.data().voided !== true && !acceptedUsageEventIds.has(document.id)
+  ));
+
+  const result = {
+    skipped: false,
+    checked: usageSnapshot.size,
+    voided: 0,
+    pointsVoided: 0,
+    balancePointsRemoved: 0,
+    balancePoints: whole(account.usageBalancePoints),
+  };
+  for (const document of candidates) {
+    const correction = await voidNonAcceptedLeadUsageEvent({
+      db,
+      accountRef,
+      usageEventRef: document.ref,
+    });
+    if (!correction.voided) continue;
+    result.voided += 1;
+    result.pointsVoided += correction.points;
+    result.balancePointsRemoved += correction.balancePointsRemoved;
+  }
+
+  await accountRef.set({
+    acceptedLeadUsageCorrectionVersion: ACCEPTED_LEAD_USAGE_CORRECTION_VERSION,
+    acceptedLeadUsageCorrectedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  const correctedAccount = await accountRef.get();
+  result.balancePoints = whole(correctedAccount.data()?.usageBalancePoints);
+  return result;
+}
+
+export async function reconcileNonAcceptedLeadUsageBalances({ db, maximumBusinesses = 100, force = true } = {}) {
+  const businesses = await db.collection("accounts").where("status", "==", "active").limit(Math.max(1, maximumBusinesses)).get();
+  const results = { businesses: businesses.size, checked: 0, corrected: 0, pointsVoided: 0, balancePointsRemoved: 0, failed: 0 };
+  for (const business of businesses.docs) {
+    if (!isStandardRole(business.data().role)) continue;
+    try {
+      const correction = await reconcileNonAcceptedLeadUsage({ db, clientId: business.id, force });
+      results.checked += 1;
+      if (correction.voided > 0) results.corrected += 1;
+      results.pointsVoided += correction.pointsVoided;
+      results.balancePointsRemoved += correction.balancePointsRemoved;
+    } catch (error) {
+      results.failed += 1;
+      console.error(`Unable to correct non-accepted lead usage for ${business.id}`, error);
+    }
+  }
+  return results;
 }
 
 async function pendingLedgerDocuments(root, collectionName, maximum) {
@@ -280,6 +416,7 @@ async function markPaid(db, claim, paymentIntent) {
 }
 
 export async function settleUsageThreshold({ db, stripe = null, clientId }) {
+  await reconcileNonAcceptedLeadUsage({ db, clientId: text(clientId), force: true });
   const client = stripeClient(stripe);
   if (!client) return { status: "pending", reason: "stripe_not_configured" };
   const usagePrice = await ensureStripeUsagePrice({ stripe: client });
