@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
+import { readAccountSections } from "../../../lib/accountSections";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { accountCollection, accountRef, pendingSignupCollection } from "../../../lib/firestoreLayout";
@@ -121,7 +122,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "This account is not available." }, { status: 403 });
     }
 
-    const messagesEnabled = MESSAGES_AVAILABLE && account.messagesEnabled === true;
+    const accountSnapshot = await accountCollection(db).doc(accountClientId).get();
+    const sections = await readAccountSections(accountSnapshot);
+    const messagesEnabled = MESSAGES_AVAILABLE && sections.customization.messagesEnabled === true;
     const claims = {
       role: ACCOUNT_ROLES.STANDARD,
       accountType: ACCOUNT_TYPES.OWNER,

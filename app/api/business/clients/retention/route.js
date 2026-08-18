@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
+import { customizationRootFieldDeletes, readAccountSections } from "../../../../lib/accountSections";
 import { cleanupExpiredClients, normalizeClientRetentionDays } from "../../../../lib/clientRetention";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { requireUser } from "../../../../lib/userRequest";
@@ -25,11 +26,13 @@ async function authorizeOwner(request) {
   if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) {
     return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   }
+  const sections = await readAccountSections(accountSnapshot);
   return {
     db,
     clientId,
     accountRef: accountSnapshot.ref,
-    account: accountSnapshot.data(),
+    customizationRef: sections.customizationRef,
+    customization: sections.customization,
   };
 }
 
@@ -38,7 +41,7 @@ export async function GET(request) {
   if (access.response) return access.response;
   return NextResponse.json({
     ok: true,
-    retentionDays: normalizeClientRetentionDays(access.account.clientRetentionDays),
+    retentionDays: normalizeClientRetentionDays(access.customization.clientRetentionDays),
   });
 }
 
@@ -53,10 +56,17 @@ export async function POST(request) {
       return NextResponse.json({ error: "Choose never, 1 day, 1 week, or 1 month." }, { status: 400 });
     }
 
-    await access.accountRef.set({
+    const batch = access.db.batch();
+    batch.set(access.customizationRef, {
+      ...access.customization,
       clientRetentionDays: retentionDays,
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
+    batch.update(access.accountRef, {
+      ...customizationRootFieldDeletes(FieldValue.delete()),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
     const deleted = await cleanupExpiredClients(access.db, access.clientId, retentionDays);
     return NextResponse.json({ ok: true, retentionDays, deleted });
   } catch (error) {

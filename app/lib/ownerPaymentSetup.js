@@ -2,7 +2,12 @@ import { FieldValue } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
 import { ACCOUNT_TYPES } from "./accountTypes";
-import { accountCollection, accountRef as regularAccountRef } from "./firestoreLayout.js";
+import {
+  accountBusinessRef,
+  accountCollection,
+  accountCustomizationRef,
+  accountRef as regularAccountRef,
+} from "./firestoreLayout.js";
 import {
   deletePendingOwnerSignup,
   pendingOwnerSignupAccount,
@@ -62,6 +67,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const payment = temporary.payment || {};
   const clientId = text(temporary.clientId);
   const accountRef = regularAccountRef(db, clientId);
+  const businessRef = accountBusinessRef(db, clientId);
+  const customizationRef = accountCustomizationRef(db, clientId);
   const storedCustomerId = text(payment.stripeCustomerId);
   if (!pendingOwnerSignupVerified(temporary) || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
   if (text(payment.stripeSetupIntentId) !== safeSetupIntentId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
@@ -103,6 +110,9 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const now = FieldValue.serverTimestamp();
   const referralFields = pendingReferralFields(temporaryAccount.referral || temporary.referral);
   const businessProfile = {
+    businessName,
+    businessEmail: accountEmail,
+    businessPhone: accountPhone,
     timeZone: text(business.timeZone || "America/New_York"),
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
     earliestEstimateStart: text(business.earliestEstimateStart),
@@ -138,17 +148,27 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
     receptionistPhone: "",
-    onboardingTourEligible: true,
-    onboardingTourStatus: "pending",
     ...referralFields,
     activatedAt: now,
     paymentMethodSavedAt: now,
     updatedAt: now,
     createdAt: now,
   };
+  const customization = {
+    darkMode: false,
+    messagesEnabled: false,
+    leadRetentionDays: 0,
+    clientRetentionDays: 0,
+    messageRetentionDays: 0,
+    clientStatusNoticeEnabled: true,
+    onboardingTourEligible: true,
+    onboardingTourStatus: "pending",
+    nativeSetupPromptStatus: "pending",
+    createdAt: now,
+    updatedAt: now,
+  };
   const accountData = {
     ...shared,
-    ...businessProfile,
     accountType: ACCOUNT_TYPES.OWNER,
     businessRole: "owner",
     termsAccepted: legal.termsAccepted === true,
@@ -156,14 +176,14 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     termsVersion: text(legal.termsVersion),
     privacyVersion: text(legal.privacyVersion),
     legalAcceptedAt: legal.acceptedAt || now,
-    businessEmail: accountEmail,
-    businessPhone: accountPhone,
     enabled: true,
     receptionistEnabled: true,
     connectionKey: "",
   };
   const batch = db.batch();
   batch.create(accountRef, accountData);
+  batch.create(businessRef, { ...businessProfile, createdAt: now, updatedAt: now });
+  batch.create(customizationRef, customization);
   batch.delete(pending.ref);
   await batch.commit();
 

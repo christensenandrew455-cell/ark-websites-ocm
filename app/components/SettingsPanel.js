@@ -13,7 +13,6 @@ import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeature
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
 const DEFAULT_SETTINGS = { paymentMethodLabel: "", stripeCustomerId: "" };
-const THEME_KEY = "ark-theme-v1";
 const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "What your receptionist knows" },
@@ -47,6 +46,7 @@ function featureValues(data = {}) {
   return { messagesEnabled: data.messagesEnabled === true };
 }
 function profileKey(value) { return JSON.stringify(receptionistRequestPayload(value || {})); }
+function customizationKey(features, darkMode) { return JSON.stringify({ ...featureValues(features), darkMode: darkMode === true }); }
 
 export default function SettingsPanel() {
   const router = useRouter();
@@ -57,13 +57,10 @@ export default function SettingsPanel() {
   const [receptionist, setReceptionist] = useState(null);
   const [savedReceptionist, setSavedReceptionist] = useState(null);
   const [features, setFeatures] = useState(featureValues(profile));
-  const [savedFeatures, setSavedFeatures] = useState(null);
   const [featureState, setFeatureState] = useState({ conversationCount: 0, canDisableMessages: true });
   const [usageSummary, setUsageSummary] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
-  const [savedDarkMode, setSavedDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSavingCustomization, setIsSavingCustomization] = useState(false);
   const [isOpeningBilling, setIsOpeningBilling] = useState(false);
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -73,20 +70,21 @@ export default function SettingsPanel() {
   const [error, setError] = useState("");
   const receptionistRef = useRef(null);
   const savedReceptionistRef = useRef(null);
+  const featuresRef = useRef(featureValues(profile));
+  const savedFeaturesRef = useRef(featureValues(profile));
+  const darkModeRef = useRef(profile?.darkMode === true);
+  const savedDarkModeRef = useRef(profile?.darkMode === true);
   const businessSaveQueueRef = useRef(Promise.resolve(true));
   const businessAutosaveTimerRef = useRef(null);
+  const customizationSaveQueueRef = useRef(Promise.resolve(true));
 
   useEffect(() => {
-    try {
-      const enabled = window.localStorage.getItem(THEME_KEY) === "dark";
-      setDarkMode(enabled);
-      setSavedDarkMode(enabled);
-      document.documentElement.classList.toggle("ark-dark", enabled);
-    } catch {
-      setDarkMode(false);
-      setSavedDarkMode(false);
-    }
-  }, []);
+    const enabled = profile?.darkMode === true;
+    darkModeRef.current = enabled;
+    savedDarkModeRef.current = enabled;
+    setDarkMode(enabled);
+    document.documentElement.classList.toggle("ark-dark", enabled);
+  }, [profile?.darkMode]);
 
   useEffect(() => {
     const stiffSettingsMenu = !activeSection;
@@ -125,8 +123,14 @@ export default function SettingsPanel() {
         savedReceptionistRef.current = prepared;
         setReceptionist(prepared);
         setSavedReceptionist(prepared);
+        featuresRef.current = nextFeatures;
+        savedFeaturesRef.current = nextFeatures;
         setFeatures(nextFeatures);
-        setSavedFeatures(nextFeatures);
+        const nextDarkMode = featureData.darkMode === true;
+        darkModeRef.current = nextDarkMode;
+        savedDarkModeRef.current = nextDarkMode;
+        setDarkMode(nextDarkMode);
+        document.documentElement.classList.toggle("ark-dark", nextDarkMode);
         setFeatureState({
           conversationCount: Number(featureData.conversationCount || 0),
           canDisableMessages: featureData.canDisableMessages !== false,
@@ -161,7 +165,6 @@ export default function SettingsPanel() {
   }, [activeSection, refreshUsageSummary]);
 
   const businessDirty = useMemo(() => Boolean(receptionist && savedReceptionist && profileKey(receptionist) !== profileKey(savedReceptionist)), [receptionist, savedReceptionist]);
-  const customizationDirty = useMemo(() => businessDirty || Boolean(savedFeatures && JSON.stringify(features) !== JSON.stringify(savedFeatures)) || darkMode !== savedDarkMode, [businessDirty, darkMode, features, savedDarkMode, savedFeatures]);
 
   const persistBusinessSnapshot = useCallback(async (snapshot) => {
     if (!user || !snapshot) return false;
@@ -229,42 +232,83 @@ export default function SettingsPanel() {
     const saved = await queueBusinessSave(latest);
     return saved && profileKey(latest) === profileKey(savedReceptionistRef.current);
   }
+
+  const persistCustomizationSnapshot = useCallback(async (snapshot) => {
+    if (!user) return false;
+    const snapshotKey = customizationKey(snapshot.features, snapshot.darkMode);
+    const token = await user.getIdToken(true);
+    const response = await fetch("/api/account/features", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ...snapshot.features, darkMode: snapshot.darkMode }),
+      keepalive: true,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Could not update account features.");
+
+    const nextFeatures = featureValues(data);
+    const nextDarkMode = data.darkMode === true;
+    savedFeaturesRef.current = nextFeatures;
+    savedDarkModeRef.current = nextDarkMode;
+
+    if (customizationKey(featuresRef.current, darkModeRef.current) === snapshotKey) {
+      featuresRef.current = nextFeatures;
+      darkModeRef.current = nextDarkMode;
+      setFeatures(nextFeatures);
+      setDarkMode(nextDarkMode);
+      document.documentElement.classList.toggle("ark-dark", nextDarkMode);
+      updateProfile({ ...nextFeatures, darkMode: nextDarkMode });
+    }
+
+    setFeatureState({
+      conversationCount: Number(data.conversationCount || 0),
+      canDisableMessages: data.canDisableMessages !== false,
+    });
+    return true;
+  }, [updateProfile, user]);
+
+  const queueCustomizationSave = useCallback((snapshot) => {
+    if (!user) return Promise.resolve(false);
+    const snapshotKey = customizationKey(snapshot.features, snapshot.darkMode);
+    const run = async () => {
+      if (snapshotKey === customizationKey(savedFeaturesRef.current, savedDarkModeRef.current)) return true;
+      setError("");
+      try {
+        return await persistCustomizationSnapshot(snapshot);
+      } catch (saveError) {
+        setError(ownerFacingError(saveError));
+        return false;
+      }
+    };
+    const queued = customizationSaveQueueRef.current.then(run, run);
+    customizationSaveQueueRef.current = queued.then(() => true, () => true);
+    return queued;
+  }, [persistCustomizationSnapshot, user]);
+
   function updateFeature(key, checked) {
     setError("");
     if (key === "messagesEnabled" && !checked && !featureState.canDisableMessages) {
       setError(`Delete all ${featureState.conversationCount} conversation${featureState.conversationCount === 1 ? "" : "s"} before turning Messages off.`);
       return;
     }
-    setFeatures((current) => ({ ...current, [key]: checked }));
+    const nextFeatures = { ...featuresRef.current, [key]: checked };
+    featuresRef.current = nextFeatures;
+    setFeatures(nextFeatures);
+    queueCustomizationSave({ features: nextFeatures, darkMode: darkModeRef.current });
   }
   function updateTheme(checked) {
+    darkModeRef.current = checked;
     setDarkMode(checked);
     document.documentElement.classList.toggle("ark-dark", checked);
+    queueCustomizationSave({ features: featuresRef.current, darkMode: checked });
   }
   async function saveCustomization() {
-    if (!user || !receptionist || isSavingCustomization || !customizationDirty) return true;
-    setIsSavingCustomization(true); setError("");
-    try {
-      if (businessDirty && !await saveBusinessInformation()) return false;
-      const token = await user.getIdToken(true);
-      const response = await fetch("/api/account/features", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(features) });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Could not update account features.");
-      const nextFeatures = featureValues(data);
-      setFeatures(nextFeatures);
-      setSavedFeatures(nextFeatures);
-      updateProfile(nextFeatures);
-      setFeatureState({
-        conversationCount: Number(data.conversationCount || 0),
-        canDisableMessages: data.canDisableMessages !== false,
-      });
-      try { window.localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light"); } catch {}
-      setSavedDarkMode(darkMode);
-      return true;
-    } catch (featureError) {
-      setError(ownerFacingError(featureError));
-      return false;
-    } finally { setIsSavingCustomization(false); }
+    if (!user) return true;
+    setError("");
+    if (businessDirty && !await saveBusinessInformation()) return false;
+    const latest = { features: featuresRef.current, darkMode: darkModeRef.current };
+    if (customizationKey(latest.features, latest.darkMode) === customizationKey(savedFeaturesRef.current, savedDarkModeRef.current)) return true;
+    return queueCustomizationSave(latest);
   }
   async function backToSettings() {
     const saved = activeSection === "business" ? await saveBusinessInformation() : activeSection === "customization" ? await saveCustomization() : true;

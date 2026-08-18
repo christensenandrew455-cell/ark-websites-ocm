@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { isStandardRole } from "./accountRoles";
+import { readAccountSections } from "./accountSections";
 import { getAdminMessaging } from "./firebase-admin";
 import { MESSAGES_AVAILABLE } from "./launchFeatures";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
@@ -12,8 +13,8 @@ function invalidToken(error) {
 export async function sendInboundMessageNotification({ db, clientId, conversationId, conversation }) {
   if (!MESSAGES_AVAILABLE) return { attempted: 0, sent: 0, failed: 0 };
   const businessSnapshot = await db.collection("accounts").doc(clientId).get();
-  const business = businessSnapshot.exists ? businessSnapshot.data() : {};
-  if (business.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };
+  const sections = businessSnapshot.exists ? await readAccountSections(businessSnapshot) : null;
+  if (sections?.customization.messagesEnabled !== true) return { attempted: 0, sent: 0, failed: 0 };
 
   const devicesSnapshot = await db.collection("accounts").doc(clientId).collection("notificationDevices").get();
   const devices = devicesSnapshot.docs

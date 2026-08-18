@@ -34,6 +34,13 @@ test("leads load and save through the owner server route", async () => {
   assert.ok(route.includes("leadContactFieldDeletionPatch(FieldValue.delete())"));
 });
 
+test("lead intake saves the lead and its account activity metadata", async () => {
+  const route = await source("app/api/intake/route.js");
+  assert.ok(route.includes("batch.set(targetRef"));
+  assert.ok(route.includes("batch.set(accountSnapshot.ref"));
+  assert.equal(route.includes("connectionSnapshot"), false);
+});
+
 test("dashboard keeps number assignment simple and does not open unavailable Messages", async () => {
   const [dashboard, messages] = await Promise.all([
     source("app/components/ClientStats.js"),
@@ -48,17 +55,23 @@ test("dashboard keeps number assignment simple and does not open unavailable Mes
   assert.ok(messages.includes("if (!MESSAGES_AVAILABLE) return null"));
 });
 
-test("guided tour is eligible only for new accounts and is consumed on first open", async () => {
-  const [tutorial, completion, profile] = await Promise.all([
+test("guided tour eligibility and completion are persisted in Firestore", async () => {
+  const [tutorial, completion, profile, tourRoute] = await Promise.all([
     source("app/components/GuidedOnboarding.js"),
     source("app/lib/ownerPaymentSetup.js"),
     source("app/api/account/profile/route.js"),
+    source("app/api/account/onboarding-tour/route.js"),
   ]);
-  assert.ok(tutorial.includes("ark-guided-onboarding-seen-v3"));
+  assert.equal(tutorial.includes("localStorage"), false);
+  assert.equal(tutorial.includes("sessionStorage"), false);
+  assert.ok(tutorial.includes('["pending", "started"].includes(profile?.onboardingTourStatus)'));
   assert.ok(tutorial.includes('body: JSON.stringify({ status: "started" })'));
   assert.ok(tutorial.includes("profile?.onboardingTourEligible === true"));
   assert.ok(completion.includes("onboardingTourEligible: true"));
+  assert.ok(completion.includes('onboardingTourStatus: "pending"'));
   assert.ok(profile.includes("onboardingTourEligible: account.onboardingTourEligible === true"));
+  assert.ok(tourRoute.includes("sections.customizationRef"));
+  assert.ok(tourRoute.includes("onboardingTourStatus: status"));
   assert.ok(tutorial.includes("const below = bottom + gap"));
   assert.ok(tutorial.includes("const above = top - panelHeight - gap"));
   assert.ok(tutorial.includes("onClick={runAction}"));
@@ -110,8 +123,18 @@ test("business information auto-saves edits and flushes the latest change before
 test("business settings replace the Firestore services map so removed services stay removed", async () => {
   const route = await source("app/api/receptionist/settings/route.js");
   assert.ok(route.includes("services: profile.services"));
-  assert.ok(route.includes("await loaded.ref.update({"));
-  assert.equal(route.includes("await loaded.ref.set({"), false);
+  assert.ok(route.includes("batch.set(loaded.businessRef"));
+  assert.ok(route.includes("batch.update(loaded.ref"));
+  assert.equal(route.includes("batch.set(loaded.businessRef") && route.includes("{ merge: true }"), false);
+});
+
+test("customization changes save immediately through a serialized Firestore queue", async () => {
+  const settings = await source("app/components/SettingsPanel.js");
+  assert.ok(settings.includes("customizationSaveQueueRef"));
+  assert.ok(settings.includes("queueCustomizationSave({ features: nextFeatures"));
+  assert.ok(settings.includes("queueCustomizationSave({ features: featuresRef.current, darkMode: checked })"));
+  assert.ok(settings.includes('fetch("/api/account/features"'));
+  assert.ok(settings.includes("keepalive: true"));
 });
 
 test("profile refreshes keep the existing client center visible", async () => {

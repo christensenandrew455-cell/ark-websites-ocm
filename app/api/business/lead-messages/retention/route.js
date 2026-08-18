@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
+import { customizationRootFieldDeletes, readAccountSections } from "../../../../lib/accountSections";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../../lib/launchFeatures";
 import { cleanupExpiredConversations, normalizeMessageRetentionDays } from "../../../../lib/messageRetention";
@@ -21,13 +22,14 @@ async function authorizeOwner(request) {
   const db = getAdminDb();
   const accountSnapshot = await db.collection("accounts").doc(clientId).get();
   if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
-  return { db, decoded, clientId, accountRef: accountSnapshot.ref, account: accountSnapshot.data() };
+  const sections = await readAccountSections(accountSnapshot);
+  return { db, decoded, clientId, accountRef: accountSnapshot.ref, customizationRef: sections.customizationRef, customization: sections.customization };
 }
 
 export async function GET(request) {
   const access = await authorizeOwner(request);
   if (access.response) return access.response;
-  return NextResponse.json({ ok: true, retentionDays: normalizeMessageRetentionDays(access.account.messageRetentionDays) });
+  return NextResponse.json({ ok: true, retentionDays: normalizeMessageRetentionDays(access.customization.messageRetentionDays) });
 }
 
 export async function POST(request) {
@@ -39,8 +41,14 @@ export async function POST(request) {
     const retentionDays = normalizeMessageRetentionDays(requested);
     if (retentionDays !== requested) return NextResponse.json({ error: "Choose never, 1 day, 1 week, or 1 month." }, { status: 400 });
 
-    const update = { messageRetentionDays: retentionDays, updatedAt: FieldValue.serverTimestamp() };
-    await access.accountRef.set(update, { merge: true });
+    const update = { ...access.customization, messageRetentionDays: retentionDays, updatedAt: FieldValue.serverTimestamp() };
+    const batch = access.db.batch();
+    batch.set(access.customizationRef, update, { merge: true });
+    batch.update(access.accountRef, {
+      ...customizationRootFieldDeletes(FieldValue.delete()),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
 
     const deleted = await cleanupExpiredConversations(access.db, access.clientId, retentionDays);
     return NextResponse.json({ ok: true, retentionDays, deleted });

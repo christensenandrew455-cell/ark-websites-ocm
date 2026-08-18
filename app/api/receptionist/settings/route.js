@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
+import { businessRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
@@ -83,7 +84,9 @@ async function resolveClient(request) {
 async function loadProfile(db, clientId) {
   const ref = db.collection("accounts").doc(clientId);
   const snapshot = await ref.get();
-  return snapshot.exists ? { ref, account: snapshot.data() } : null;
+  if (!snapshot.exists) return null;
+  const sections = await readAccountSections(snapshot);
+  return { ref, businessRef: sections.businessRef, account: sections.combined };
 }
 function validateProfile(profile) {
   if (!profile.businessName) return "Enter the business name.";
@@ -159,16 +162,9 @@ export async function POST(request) {
   if (nameCheck.error) return NextResponse.json({ error: nameCheck.error }, { status: 409 });
   if (phoneCheck.error) return NextResponse.json({ error: phoneCheck.error }, { status: phoneCheck.error.startsWith("Enter") ? 400 : 409 });
 
-  const update = {
-    businessSetupComplete: true,
-    enabled: profile.enabled,
-    receptionistEnabled: Boolean(profile.receptionistPhoneNormalized) && profile.enabled,
-    receptionistPhone: profile.receptionistPhone,
-    receptionistPhoneNormalized: profile.receptionistPhoneNormalized,
+  const businessUpdate = {
     businessName: profile.businessName,
-    ownerName: profile.ownerName,
     businessPhone: profile.businessPhone,
-    businessPhoneNormalized: phoneCheck.normalized,
     businessEmail: profile.businessEmail,
     timeZone: profile.timeZone,
     estimateWeekdays: profile.estimateWeekdays,
@@ -179,11 +175,28 @@ export async function POST(request) {
     services: profile.services,
     businessInformation: profile.businessInformation,
     extraInformation: businessInformationText(profile.businessInformation),
+  };
+  const rootUpdate = {
+    businessSetupComplete: true,
+    enabled: profile.enabled,
+    receptionistEnabled: Boolean(profile.receptionistPhoneNormalized) && profile.enabled,
+    receptionistPhone: profile.receptionistPhone,
+    receptionistPhoneNormalized: profile.receptionistPhoneNormalized,
+    businessName: profile.businessName,
+    ownerName: profile.ownerName,
+    businessPhoneNormalized: phoneCheck.normalized,
     updatedBy: access.user.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
   };
-  await loaded.ref.update({
-    ...update,
+  const batch = db.batch();
+  batch.set(loaded.businessRef, {
+    ...businessUpdate,
+    updatedBy: access.user.decodedToken.uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  batch.update(loaded.ref, {
+    ...rootUpdate,
+    ...businessRootFieldDeletes(FieldValue.delete()),
     businessNameKey: nameCheck.businessNameKey === access.clientId ? FieldValue.delete() : nameCheck.businessNameKey,
     accountPhoneNormalized: FieldValue.delete(),
     estimateDays: FieldValue.delete(),
@@ -195,5 +208,6 @@ export async function POST(request) {
     businessEndHour: FieldValue.delete(),
     businessEndPeriod: FieldValue.delete(),
   });
-  return NextResponse.json({ profile: profilePayload(access.clientId, { ...loaded.account, ...update }) });
+  await batch.commit();
+  return NextResponse.json({ profile: profilePayload(access.clientId, { ...loaded.account, ...rootUpdate, ...businessUpdate }) });
 }

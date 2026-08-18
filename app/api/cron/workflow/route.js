@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { isStandardRole } from "../../../lib/accountRoles";
+import { readAccountSections } from "../../../lib/accountSections";
 import { purgeExpiredUnverifiedAccounts } from "../../../lib/accountVerificationCleanup";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { purgeExpiredPendingOwnerSignups } from "../../../lib/pendingOwnerSignup";
@@ -8,7 +9,7 @@ import {
   estimateRequestCreatedAt,
   estimateRequestLifecycle,
 } from "../../../lib/estimateRequestLifecycle";
-import { sendEstimateRequestStatusNotice } from "../../../lib/estimateRequestStatusNotice";
+import { estimateRequestStatusNoticesEnabled, sendEstimateRequestStatusNotice } from "../../../lib/estimateRequestStatusNotice";
 import { cleanupExpiredClients, normalizeClientRetentionDays } from "../../../lib/clientRetention";
 import { cleanupExpiredLeads, normalizeLeadRetentionDays } from "../../../lib/leadRetention";
 import { validTimeZone } from "../../../lib/timeWindows";
@@ -44,9 +45,10 @@ function safeWorkflowError(error) {
 
 async function listActiveBusinesses(db) {
   const snapshot = await db.collection("accounts").where("status", "==", "active").get();
-  return new Map(snapshot.docs
+  const entries = await Promise.all(snapshot.docs
     .filter((documentSnapshot) => isStandardRole(documentSnapshot.data().role))
-    .map((documentSnapshot) => [documentSnapshot.id, documentSnapshot.data()]));
+    .map(async (documentSnapshot) => [documentSnapshot.id, (await readAccountSections(documentSnapshot)).combined]));
+  return new Map(entries);
 }
 
 async function accountTimeZone(business = {}) {
@@ -64,7 +66,7 @@ async function autoDeclineExpiredEstimateRequests(db, clientId, business, now) {
     const createdAt = estimateRequestCreatedAt(lead);
     if (!estimateRequestLifecycle(createdAt, now).expired) continue;
 
-    if (business?.clientDeclineNoticeEnabled !== false) {
+    if (estimateRequestStatusNoticesEnabled(business)) {
       try {
         const notice = await sendEstimateRequestStatusNotice({
           db,

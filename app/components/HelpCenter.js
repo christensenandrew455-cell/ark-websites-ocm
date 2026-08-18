@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import BackButton from "./BackButton";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
@@ -22,72 +22,60 @@ function makeMessage(role, text, links = []) {
 export default function HelpCenter() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const storageKey = useMemo(() => user?.uid ? `ark-help-chat:${user.uid}` : "", [user?.uid]);
-  const selfHelpKey = useMemo(() => user?.uid ? `ark-help-self-service:${user.uid}` : "", [user?.uid]);
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [expiresAt, setExpiresAt] = useState(0);
-  const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setHydrated(false);
     setMessages([]);
     setExpiresAt(0);
-    if (!storageKey) {
-      setHydrated(true);
-      return;
+    if (!user) {
+      return undefined;
     }
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const saved = raw ? JSON.parse(raw) : null;
-      if (!saved?.expiresAt || saved.expiresAt <= Date.now() || !Array.isArray(saved.messages)) localStorage.removeItem(storageKey);
-      else {
-        setMessages(saved.messages);
-        setExpiresAt(saved.expiresAt);
-      }
-    } catch {
-      localStorage.removeItem(storageKey);
-    }
-    setHydrated(true);
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!hydrated || !storageKey) return;
-    if (!messages.length) {
-      localStorage.removeItem(storageKey);
-      setExpiresAt(0);
-      return;
-    }
-    const nextExpiry = Date.now() + CHAT_TTL_MS;
-    setExpiresAt(nextExpiry);
-    localStorage.setItem(storageKey, JSON.stringify({ messages, expiresAt: nextExpiry }));
-  }, [hydrated, messages, storageKey]);
+    let active = true;
+    user.getIdToken(true).then((token) => fetch("/api/help", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })).then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not load AI help history.");
+      if (!active) return;
+      setMessages(Array.isArray(data.messages) ? data.messages : []);
+      setExpiresAt(Number(data.expiresAt || 0));
+    }).catch((loadError) => active && setError(ownerFacingError(loadError)));
+    return () => { active = false; };
+  }, [user]);
 
   useEffect(() => {
     if (!expiresAt) return undefined;
     const remaining = expiresAt - Date.now();
     if (remaining <= 0) {
       setMessages([]);
-      if (storageKey) localStorage.removeItem(storageKey);
       return undefined;
     }
     const timer = window.setTimeout(() => {
       setMessages([]);
       setExpiresAt(0);
-      if (storageKey) localStorage.removeItem(storageKey);
     }, Math.min(remaining, 2147483647));
     return () => window.clearTimeout(timer);
-  }, [expiresAt, storageKey]);
+  }, [expiresAt]);
 
-  function clearChat() {
+  async function clearChat() {
     setMessages([]);
     setInput("");
     setError("");
     setExpiresAt(0);
-    if (storageKey) localStorage.removeItem(storageKey);
+    if (!user) return;
+    try {
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/help", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) throw new Error("Could not delete AI help history.");
+    } catch (deleteError) {
+      setError(ownerFacingError(deleteError));
+    }
   }
 
   async function submitQuestion(event) {
@@ -109,7 +97,7 @@ export default function HelpCenter() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "AI help is unavailable right now.");
       setMessages((current) => [...current, makeMessage("assistant", data.answer, data.links || [])]);
-      if (selfHelpKey) localStorage.setItem(selfHelpKey, String(Date.now()));
+      setExpiresAt(Date.now() + CHAT_TTL_MS);
     } catch (requestError) {
       setError(ownerFacingError(requestError));
     } finally {

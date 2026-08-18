@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
 const PhonePermissions = registerPlugin("PhonePermissions");
-const PHONE_SETUP_PENDING_KEY = "ark-phone-setup-pending-v1";
 const PERMISSION_KEYS = ["notifications", "calendar", "contacts"];
 const EMPTY_PERMISSIONS = Object.freeze({
   notifications: "unknown",
@@ -26,6 +25,21 @@ async function updateDevice(user, payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "Could not save notification settings.");
+  return data;
+}
+
+async function updateNativeSetupStatus(user, status) {
+  const token = await user.getIdToken(true);
+  const response = await fetch("/api/account/native-setup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Could not save phone setup status.");
   return data;
 }
 
@@ -118,7 +132,7 @@ function PermissionRow({ permissionKey, title, description, status, busy, onEnab
 
 export default function NativeAppSetup() {
   const router = useRouter();
-  const { user, profile } = useAuth();
+  const { user, profile, updateProfile } = useAuth();
   const pushPluginRef = useRef(null);
   const registrationRequestedRef = useRef(false);
   const promptSessionActiveRef = useRef(false);
@@ -127,6 +141,7 @@ export default function NativeAppSetup() {
   const resumeTimerRef = useRef(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [busyPermission, setBusyPermission] = useState("");
+  const [savingPrompt, setSavingPrompt] = useState(false);
   const [permissions, setPermissions] = useState(EMPTY_PERMISSIONS);
   const [foregroundNotification, setForegroundNotification] = useState(null);
   const [error, setError] = useState("");
@@ -168,7 +183,11 @@ export default function NativeAppSetup() {
 
         if (updatePrompt && promptSessionActiveRef.current && !promptDismissedRef.current) {
           setShowPrompt(missing.length > 0);
-          if (!missing.length) promptSessionActiveRef.current = false;
+          if (!missing.length) {
+            promptSessionActiveRef.current = false;
+            await updateNativeSetupStatus(user, "complete");
+            if (active) updateProfile({ nativeSetupPromptStatus: "complete" });
+          }
         }
         if (!missing.length) setError("");
         return nextPermissions;
@@ -235,18 +254,27 @@ export default function NativeAppSetup() {
     }
 
     async function offerOneTimePhoneSetup() {
-      const shouldOffer = window.localStorage.getItem(PHONE_SETUP_PENDING_KEY) === "true";
-      if (!shouldOffer) return;
+      const savedStatus = String(profile?.nativeSetupPromptStatus || "pending").trim().toLowerCase();
+      if (["shown", "dismissed", "complete"].includes(savedStatus)) return;
 
-      window.localStorage.removeItem(PHONE_SETUP_PENDING_KEY);
       promptSessionActiveRef.current = true;
       promptDismissedRef.current = false;
 
-      const currentPermissions = await readNativePermissions({ updatePrompt: true });
+      const currentPermissions = await readNativePermissions();
       if (!currentPermissions) {
         promptSessionActiveRef.current = false;
         setShowPrompt(false);
+        return;
       }
+      if (!missingPermissions(currentPermissions).length) {
+        promptSessionActiveRef.current = false;
+        await updateNativeSetupStatus(user, "complete");
+        if (active) updateProfile({ nativeSetupPromptStatus: "complete" });
+        return;
+      }
+
+      await updateNativeSetupStatus(user, "shown");
+      if (active) setShowPrompt(true);
     }
 
     function refreshWhileOneTimePromptIsOpen() {
@@ -278,7 +306,7 @@ export default function NativeAppSetup() {
       document.removeEventListener("visibilitychange", refreshWhileOneTimePromptIsOpen);
       window.removeEventListener("focus", refreshWhileOneTimePromptIsOpen);
     };
-  }, [profile?.clientId, router, user]);
+  }, [profile?.clientId, profile?.nativeSetupPromptStatus, router, updateProfile, user]);
 
   async function enablePermission(permissionKey) {
     setBusyPermission(permissionKey);
@@ -294,9 +322,14 @@ export default function NativeAppSetup() {
       const nextPermissions = normalizePermissions(result);
       const missing = missingPermissions(nextPermissions);
       setPermissions(nextPermissions);
-      setShowPrompt(missing.length > 0);
-
-      if (!missing.length) promptSessionActiveRef.current = false;
+      if (!missing.length) {
+        await updateNativeSetupStatus(user, "complete");
+        updateProfile({ nativeSetupPromptStatus: "complete" });
+        setShowPrompt(false);
+        promptSessionActiveRef.current = false;
+      } else {
+        setShowPrompt(true);
+      }
 
       if (result.openedSettings) {
         setError(`Android opened the ${permissionName(permissionKey).toLowerCase()} settings. Allow it there, then return to ARK Client Center.`);
@@ -324,10 +357,21 @@ export default function NativeAppSetup() {
     }
   }
 
-  function dismissSetup() {
-    promptDismissedRef.current = true;
-    promptSessionActiveRef.current = false;
-    setShowPrompt(false);
+  async function dismissSetup() {
+    if (savingPrompt) return;
+    setSavingPrompt(true);
+    setError("");
+    try {
+      await updateNativeSetupStatus(user, "dismissed");
+      updateProfile({ nativeSetupPromptStatus: "dismissed" });
+      promptDismissedRef.current = true;
+      promptSessionActiveRef.current = false;
+      setShowPrompt(false);
+    } catch (saveError) {
+      setError(saveError.message || "Could not save phone setup status.");
+    } finally {
+      setSavingPrompt(false);
+    }
   }
 
   const isAndroidApp = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
@@ -362,6 +406,7 @@ export default function NativeAppSetup() {
             <button
               type="button"
               onClick={dismissSetup}
+              disabled={savingPrompt}
               aria-label="Close phone access setup"
               className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-lg font-black text-slate-600 hover:bg-slate-200"
             >
@@ -402,8 +447,8 @@ export default function NativeAppSetup() {
               />
             </div>
 
-            <button type="button" onClick={dismissSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white">
-              Done
+            <button type="button" disabled={savingPrompt} onClick={dismissSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:opacity-50">
+              {savingPrompt ? "Saving…" : "Done"}
             </button>
             <p className="mt-2 text-center text-[10px] font-semibold leading-4 text-slate-500">
               This permission setup will not be shown again after it is closed.

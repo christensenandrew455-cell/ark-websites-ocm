@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
+import { customizationRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { estimateRequestStatusNoticesEnabled } from "../../../lib/estimateRequestStatusNotice";
 import { requireUser } from "../../../lib/userRequest";
@@ -24,7 +25,8 @@ async function authorizeOwner(request) {
   if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || text(accountSnapshot.data().uid) !== text(decoded.uid)) {
     return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   }
-  return { db, decoded, clientId, accountRef, account: accountSnapshot.data() };
+  const sections = await readAccountSections(accountSnapshot);
+  return { db, decoded, clientId, accountRef, customizationRef: sections.customizationRef, customization: sections.customization };
 }
 
 export async function GET(request) {
@@ -32,7 +34,7 @@ export async function GET(request) {
   if (access.response) return access.response;
   return NextResponse.json({
     ok: true,
-    enabled: estimateRequestStatusNoticesEnabled(access.account),
+    enabled: estimateRequestStatusNoticesEnabled(access.customization),
   });
 }
 
@@ -43,11 +45,18 @@ export async function POST(request) {
     const body = await request.json();
     const enabled = body.enabled === true;
     const update = {
+      ...access.customization,
       clientStatusNoticeEnabled: enabled,
       clientDeclineNoticeEnabled: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     };
-    await access.accountRef.set(update, { merge: true });
+    const batch = access.db.batch();
+    batch.set(access.customizationRef, update, { merge: true });
+    batch.update(access.accountRef, {
+      ...customizationRootFieldDeletes(FieldValue.delete()),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
     return NextResponse.json({ ok: true, enabled });
   } catch (error) {
     console.error("Unable to update lead status notice setting", error);

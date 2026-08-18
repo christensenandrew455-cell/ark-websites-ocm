@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { cleanupExpiredConversations, normalizeMessageRetentionDays } from "../../../lib/messageRetention";
 
@@ -21,7 +22,8 @@ export async function GET(request) {
   const results = [];
 
   for (const business of businesses.docs) {
-    const retentionDays = normalizeMessageRetentionDays(business.data().messageRetentionDays);
+    const sections = await readAccountSections(business);
+    const retentionDays = normalizeMessageRetentionDays(sections.customization.messageRetentionDays);
     if (!retentionDays) continue;
     try {
       const deleted = await cleanupExpiredConversations(db, business.id, retentionDays);
