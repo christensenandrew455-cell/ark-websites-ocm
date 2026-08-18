@@ -9,6 +9,7 @@ import {
   USAGE_POINT_CENTS,
 } from "../../../lib/billingPricing";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { reconcileNonAcceptedLeadUsage } from "../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,8 +26,12 @@ export async function GET(request) {
   const authorization = await requireAuthenticatedCustomer(request);
   if (authorization.response) return authorization.response;
   try {
-    const snapshot = await getAdminDb().collection("accounts").doc(authorization.clientId).get();
+    const db = getAdminDb();
+    const accountRef = db.collection("accounts").doc(authorization.clientId);
+    let snapshot = await accountRef.get();
     if (!snapshot.exists) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
+    await reconcileNonAcceptedLeadUsage({ db, clientId: authorization.clientId });
+    snapshot = await accountRef.get();
     const account = snapshot.data();
     const usageBalancePoints = Math.max(0, Math.floor(Number(account.usageBalancePoints || 0)));
     return NextResponse.json({

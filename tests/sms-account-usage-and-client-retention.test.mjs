@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
+import {
+  ACCEPTED_LEAD_BILLING_SOURCE,
+  acceptedLeadBillingSourceId,
+  billingLeadEventRef,
+} from "../app/lib/billingLeadUsage.js";
 import { billingMessageEventRef } from "../app/lib/billingMessageUsage.js";
 import {
   cleanupExpiredClients,
@@ -11,7 +16,13 @@ import {
   normalizeClientRetentionDays,
 } from "../app/lib/clientRetention.js";
 import { cleanupExpiredLeads } from "../app/lib/leadRetention.js";
-import { recordSmsPartUsage } from "../app/lib/usageThresholdBilling.js";
+import {
+  reconcileNonAcceptedLeadUsage,
+  recordLeadUsage,
+  recordSmsPartUsage,
+  recordUsage,
+  usageEventDocumentId,
+} from "../app/lib/usageThresholdBilling.js";
 
 const root = new URL("../", import.meta.url);
 const source = (path) => readFile(new URL(path, root), "utf8");
@@ -72,6 +83,37 @@ class MemoryCollectionReference {
       .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
       .map(([path, value]) => new MemorySnapshot(new MemoryDocumentReference(this.db, path), value));
     return Promise.resolve({ docs, empty: docs.length === 0, size: docs.length });
+  }
+
+  where(field, operator, value) {
+    if (operator !== "==") throw new Error(`Unsupported memory query operator: ${operator}`);
+    return new MemoryQuery(this.db, this.path, [{ field, value }]);
+  }
+}
+
+class MemoryQuery {
+  constructor(db, path, filters, maximum = Infinity) {
+    this.db = db;
+    this.path = path;
+    this.filters = filters;
+    this.maximum = maximum;
+  }
+
+  where(field, operator, value) {
+    if (operator !== "==") throw new Error(`Unsupported memory query operator: ${operator}`);
+    return new MemoryQuery(this.db, this.path, [...this.filters, { field, value }], this.maximum);
+  }
+
+  limit(maximum) {
+    return new MemoryQuery(this.db, this.path, this.filters, maximum);
+  }
+
+  async get() {
+    const snapshot = await new MemoryCollectionReference(this.db, this.path).get();
+    const docs = snapshot.docs
+      .filter((document) => this.filters.every(({ field, value }) => document.data()?.[field] === value))
+      .slice(0, this.maximum);
+    return { docs, empty: docs.length === 0, size: docs.length };
   }
 }
 
@@ -172,6 +214,87 @@ test("retrying the same SMS event cannot add its parts twice", async () => {
   assert.equal(first.duplicate, false);
   assert.equal(duplicate.duplicate, true);
   assert.equal((await accountData(db)).usageSmsPartRemainder, 3);
+});
+
+test("four legacy call or intake charges are removed while an accepted lead remains billable", async () => {
+  const db = new MemoryFirestore();
+  const clientId = "account-one";
+  const account = db.collection("accounts").doc(clientId);
+  await account.set({
+    uid: "owner-one",
+    status: "active",
+    usageBalancePoints: 10,
+    usageSmsPartRemainder: 0,
+    usageChargeStatus: "idle",
+  });
+
+  const invalidEventIds = [];
+  for (const sourceId of ["call-1", "call-2", "call-3", "submitted-intake-1"]) {
+    const id = usageEventDocumentId(clientId, "lead", sourceId);
+    invalidEventIds.push(id);
+    await account.collection("usageEvents").doc(id).set({ type: "lead", points: 2 });
+  }
+
+  const acceptedLedger = billingLeadEventRef(db, {
+    clientId,
+    sourceId: acceptedLeadBillingSourceId("accepted-lead-1"),
+  });
+  await acceptedLedger.set({
+    leadId: "accepted-lead-1",
+    sourceType: ACCEPTED_LEAD_BILLING_SOURCE,
+    usageRecorded: true,
+  });
+  const acceptedUsageEventId = usageEventDocumentId(clientId, "lead", acceptedLedger.id);
+  await account.collection("usageEvents").doc(acceptedUsageEventId).set({ type: "lead", points: 2 });
+
+  const correction = await reconcileNonAcceptedLeadUsage({ db, clientId });
+  assert.equal(correction.voided, 4);
+  assert.equal(correction.pointsVoided, 8);
+  assert.equal(correction.balancePointsRemoved, 8);
+  assert.equal(correction.balancePoints, 2);
+  assert.equal((await accountData(db)).usageBalancePoints, 2);
+  for (const id of invalidEventIds) {
+    const event = (await account.collection("usageEvents").doc(id).get()).data();
+    assert.equal(event.voided, true);
+    assert.equal(event.voidReason, "lead-not-accepted");
+  }
+  assert.notEqual((await account.collection("usageEvents").doc(acceptedUsageEventId).get()).data().voided, true);
+
+  const cachedCorrection = await reconcileNonAcceptedLeadUsage({ db, clientId });
+  assert.equal(cachedCorrection.skipped, true);
+  assert.equal(cachedCorrection.balancePoints, 2);
+
+  const duplicateCorrection = await reconcileNonAcceptedLeadUsage({ db, clientId, force: true });
+  assert.equal(duplicateCorrection.voided, 0);
+  assert.equal(duplicateCorrection.balancePointsRemoved, 0);
+  assert.equal((await accountData(db)).usageBalancePoints, 2);
+});
+
+test("lead usage cannot be recorded without an accepted-lead ledger", async () => {
+  const db = new MemoryFirestore();
+  const clientId = "account-one";
+  await db.collection("accounts").doc(clientId).set({
+    uid: "owner-one",
+    status: "active",
+    usageBalancePoints: 0,
+    usageSmsPartRemainder: 0,
+    usageChargeStatus: "idle",
+  });
+
+  await assert.rejects(
+    recordUsage({ db, clientId, type: "lead", sourceId: "call-without-acceptance", points: 2 }),
+    /LEAD_ACCEPTANCE_REQUIRED/,
+  );
+  assert.equal((await accountData(db)).usageBalancePoints, 0);
+
+  const ledgerRef = billingLeadEventRef(db, {
+    clientId,
+    sourceId: acceptedLeadBillingSourceId("lead-1"),
+  });
+  await ledgerRef.set({ sourceType: ACCEPTED_LEAD_BILLING_SOURCE, usageRecorded: false });
+  const accepted = await recordLeadUsage({ db, clientId, sourceId: ledgerRef.id, ledgerRef });
+  assert.equal(accepted.addedPoints, 2);
+  assert.equal((await accountData(db)).usageBalancePoints, 2);
 });
 
 test("lead and client retention are independent account settings", async () => {
