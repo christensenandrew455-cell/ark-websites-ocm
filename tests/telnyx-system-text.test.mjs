@@ -3,10 +3,6 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 import {
-  estimateRequestReceivedMessage,
-  sendEstimateRequestReceivedNotice,
-} from "../app/lib/estimateRequestReceivedNotice.js";
-import {
   estimateRequestStatusMessage,
   sendEstimateRequestStatusNotice,
 } from "../app/lib/estimateRequestStatusNotice.js";
@@ -106,11 +102,7 @@ test("system texts use the same configured sender as account verification", { co
   }
 });
 
-test("lead messages cover receipt, acceptance, and decline", () => {
-  assert.equal(
-    estimateRequestReceivedMessage("Tabor Painting"),
-    "Your service request was received by Tabor Painting. They'll review it and follow up with you.",
-  );
+test("lead messages cover acceptance and decline", () => {
   assert.equal(
     estimateRequestStatusMessage("accepted", "Tabor Painting"),
     "Your estimate request has been accepted by Tabor Painting.",
@@ -121,7 +113,7 @@ test("lead messages cover receipt, acceptance, and decline", () => {
   );
 });
 
-test("receipt and decision deliveries are idempotently recorded", { concurrency: false }, async () => {
+test("acceptance and decline deliveries are idempotently recorded", { concurrency: false }, async () => {
   const originalFetch = global.fetch;
   const originalApiKey = process.env.TELNYX_API_KEY;
   const originalFrom = process.env.TELNYX_SIGNUP_FROM_NUMBER;
@@ -145,25 +137,18 @@ test("receipt and decision deliveries are idempotently recorded", { concurrency:
       leadName: "Jordan Smith",
       phone: "+15085550199",
     };
-    const receipt = await sendEstimateRequestReceivedNotice({ ...common, leadId: "lead-1" });
-    const duplicateReceipt = await sendEstimateRequestReceivedNotice({ ...common, leadId: "lead-1" });
     const accepted = await sendEstimateRequestStatusNotice({ ...common, leadId: "lead-1", status: "accepted" });
+    const duplicateAccepted = await sendEstimateRequestStatusNotice({ ...common, leadId: "lead-1", status: "accepted" });
     const declined = await sendEstimateRequestStatusNotice({ ...common, leadId: "lead-2", status: "declined" });
 
-    assert.equal(receipt.sent, true);
-    assert.equal(duplicateReceipt.duplicate, true);
     assert.equal(accepted.sent, true);
+    assert.equal(duplicateAccepted.duplicate, true);
     assert.equal(declined.sent, true);
-    assert.equal(payloads.length, 3);
+    assert.equal(payloads.length, 2);
     assert.deepEqual(payloads.map((payload) => payload.from), [
       "+17745550123",
       "+17745550123",
-      "+17745550123",
     ]);
-    assert.equal(
-      db.documents.get("accounts/tabor-painting/serviceRequestReceivedNotices/lead-1").status,
-      "sent",
-    );
     assert.equal(
       db.documents.get("accounts/tabor-painting/clientAcceptNotices/lead-1").status,
       "sent",
@@ -179,6 +164,13 @@ test("receipt and decision deliveries are idempotently recorded", { concurrency:
     if (originalFrom === undefined) delete process.env.TELNYX_SIGNUP_FROM_NUMBER;
     else process.env.TELNYX_SIGNUP_FROM_NUMBER = originalFrom;
   }
+});
+
+test("lead intake never sends a customer text before an owner decision", async () => {
+  const intakeRoute = await source("app/api/intake/route.js");
+  assert.equal(intakeRoute.includes("sendTelnyxSystemText"), false);
+  assert.equal(intakeRoute.includes("sendEstimateRequestStatusNotice"), false);
+  assert.equal(intakeRoute.includes("confirmationText"), false);
 });
 
 test("lead status texts are independent from unreleased chat messaging", async () => {

@@ -6,7 +6,6 @@ import { sendAdminEvent } from "../../lib/adminEvents";
 import { billingLeadEventRef } from "../../lib/billingLeadUsage";
 import { stripLeadContactFields } from "../../lib/leadContactFields";
 import { calculateLeadRisk } from "../../lib/leadRiskAssessment";
-import { sendEstimateRequestReceivedNotice } from "../../lib/estimateRequestReceivedNotice";
 import { sendNewLeadNotification } from "../../lib/notificationService";
 import {
   createJob,
@@ -308,37 +307,7 @@ export async function POST(request) {
       throw commitError;
     }
 
-    let confirmationText = { ok: true, skipped: "not-requested", sent: false };
     if (sectionKey === "contactedMe") {
-      if (data.consentToContact === true && row.Phone) {
-        try {
-          confirmationText = await sendEstimateRequestReceivedNotice({
-            db,
-            clientId,
-            businessName: text(account.businessName || account.name),
-            leadId: targetRef.id,
-            leadName: row.Name,
-            phone: row.Phone,
-          });
-        } catch (textError) {
-          confirmationText = {
-            ok: true,
-            sent: false,
-            status: "delivery-error",
-            error: text(textError?.message) || "The confirmation text could not be sent.",
-          };
-          console.error("Lead saved but confirmation text delivery failed", {
-            leadId: targetRef.id,
-            detail: confirmationText.error,
-          });
-        }
-      } else {
-        confirmationText = {
-          ok: true,
-          skipped: row.Phone ? "contact-consent-not-supplied" : "missing-phone",
-          sent: false,
-        };
-      }
       try {
         await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
       } catch (notificationError) {
@@ -364,11 +333,6 @@ export async function POST(request) {
         totalJobs: Jobs.length,
         repeatClient: Jobs.length > 1,
         duplicate: false,
-        confirmationTextSent: confirmationText.sent === true,
-        confirmationTextStatus: confirmationText.status || confirmationText.skipped || null,
-        confirmationTextError: confirmationText.sent === false && !confirmationText.skipped
-          ? confirmationText.error || null
-          : null,
       },
       { status: 201, headers: corsHeaders() }
     );
