@@ -290,3 +290,58 @@ html.ark-dark .hover\:bg-slate-50:hover,
 html.ark-dark .hover\:bg-slate-100:hover {
   background-color: #1e293b !important;
 }
+
+/* Login keeps the intended navy background and light card even when a saved dark theme is active. */
+.ark-login-page {
+  background-color: #0f172a;
+}
+
+.ark-login-card {
+  background-color: #f8fafc;
+  color: #020617;
+}
+
+html.ark-dark .ark-login-page {
+  background-color: #0f172a !important;
+}
+
+html.ark-dark .ark-login-card {
+  background-color: #f8fafc !important;
+  color: #020617 !important;
+}
+
+html.ark-dark .ark-login-card .text-slate-950 {
+  color: #020617 !important;
+}
+
+html.ark-dark .ark-login-card .text-slate-700 {
+  color: #334155 !important;
+}
+
+html.ark-dark .ark-login-card .text-slate-600,
+html.ark-dark .ark-login-card .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.ark-dark .ark-login-card input {
+  border-color: #cbd5e1 !important;
+  background-color: #ffffff !important;
+  color: #020617 !important;
+}
+
+html.ark-dark .ark-login-card input::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.ark-dark .ark-login-card button.bg-slate-950 {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+html.ark-dark .ark-login-card .hover\\:bg-slate-100:hover {
+  background-color: #f1f5f9 !important;
+}
+
+html.ark-dark .ark-login-card .hover\\:text-slate-950:hover {
+  color: #020617 !important;
+}
