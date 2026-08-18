@@ -1,5 +1,8 @@
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { getAdminAuth } from "../../lib/firebase-admin";
+import { requireAuthenticatedCustomer } from "../../lib/authenticatedRequest";
+import { readAccountSections } from "../../lib/accountSections";
+import { getAdminDb } from "../../lib/firebase-admin";
 import { HELP_KNOWLEDGE, HELP_LINKS } from "../../lib/helpContent";
 
 export const runtime = "nodejs";
@@ -8,24 +11,30 @@ export const dynamic = "force-dynamic";
 const ALLOWED_LINKS = new Map(HELP_LINKS.map((link) => [link.href, link.label]));
 const MAX_MESSAGES = 12;
 const MAX_MESSAGE_LENGTH = 1500;
+const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_ANSWER = "Sorry, I can’t find any information on that. Open Requests and submit a Request a Change explaining what you are having difficulty with. You can also open Docs and look through the full guide yourself.";
 const FALLBACK_LINKS = [
   { href: "/messages", label: "Requests" },
   { href: "/docs", label: "Docs" },
 ];
 
-async function requireUser(request) {
-  const authorization = String(request.headers.get("authorization") || "");
-  const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  if (!token) return { response: NextResponse.json({ error: "Sign in to use AI help." }, { status: 401 }) };
-
-  try {
-    const decodedToken = await getAdminAuth().verifyIdToken(token);
-    return { decodedToken };
-  } catch (error) {
-    console.error("Unable to verify help-chat user", error);
-    return { response: NextResponse.json({ error: "Your session expired. Sign in again." }, { status: 401 }) };
+async function helpAccess(request) {
+  const authorization = await requireAuthenticatedCustomer(request);
+  if (authorization.response) return authorization;
+  const db = getAdminDb();
+  const accountRef = db.collection("accounts").doc(authorization.clientId);
+  const accountSnapshot = await accountRef.get();
+  if (!accountSnapshot.exists || String(accountSnapshot.data().uid || "") !== String(authorization.decodedToken.uid || "")) {
+    return { response: NextResponse.json({ error: "This account could not be found." }, { status: 404 }) };
   }
+  const sections = await readAccountSections(accountSnapshot);
+  return {
+    ...authorization,
+    db,
+    helpRef: accountRef.collection("help").doc("current"),
+    customizationRef: sections.customizationRef,
+    customization: sections.customization,
+  };
 }
 
 function cleanMessages(value) {
@@ -51,13 +60,73 @@ function cleanLinks(value) {
   });
 }
 
-function fallbackResponse() {
-  return NextResponse.json({ answer: FALLBACK_ANSWER, links: FALLBACK_LINKS });
+function millis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (Number.isFinite(value.seconds)) return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function savedMessages(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-MAX_MESSAGES * 2).flatMap((message) => {
+    const role = message?.role === "assistant" ? "assistant" : message?.role === "user" ? "user" : "";
+    const text = String(message?.text || message?.content || "").trim().slice(0, MAX_MESSAGE_LENGTH);
+    if (!role || !text) return [];
+    return [{
+      id: String(message.id || crypto.randomUUID()),
+      role,
+      text,
+      links: role === "assistant" ? cleanLinks(message.links) : [],
+      createdAt: String(message.createdAt || new Date().toISOString()),
+    }];
+  });
+}
+
+async function saveHistory(access, incoming, answer, links) {
+  const now = Date.now();
+  const messages = [
+    ...savedMessages(incoming),
+    { id: crypto.randomUUID(), role: "assistant", text: answer, links, createdAt: new Date(now).toISOString() },
+  ].slice(-MAX_MESSAGES * 2);
+  const batch = access.db.batch();
+  batch.set(access.helpRef, {
+    messages,
+    expiresAt: Timestamp.fromMillis(now + CHAT_TTL_MS),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  batch.set(access.customizationRef, {
+    helpSelfServiceLastUsedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await batch.commit();
+}
+
+export async function GET(request) {
+  const access = await helpAccess(request);
+  if (access.response) return access.response;
+  const snapshot = await access.helpRef.get();
+  const data = snapshot.exists ? snapshot.data() : {};
+  const expiresAt = millis(data.expiresAt);
+  if (snapshot.exists && (!expiresAt || expiresAt <= Date.now())) await access.helpRef.delete();
+  return NextResponse.json({
+    messages: expiresAt > Date.now() ? savedMessages(data.messages) : [],
+    expiresAt: expiresAt > Date.now() ? expiresAt : 0,
+    selfHelpLastUsedAt: millis(access.customization.helpSelfServiceLastUsedAt),
+  });
+}
+
+export async function DELETE(request) {
+  const access = await helpAccess(request);
+  if (access.response) return access.response;
+  await access.helpRef.delete();
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(request) {
-  const user = await requireUser(request);
-  if (user.response) return user.response;
+  const access = await helpAccess(request);
+  if (access.response) return access.response;
 
   try {
     const body = await request.json();
@@ -123,10 +192,14 @@ ${HELP_KNOWLEDGE}`;
     const answer = String(parsed?.answer || "").trim();
     const answerSoundsUnknown = /(?:can(?:not|'t)|could(?: not|n't)) find|do not know|don't know|not in (?:the )?(?:docs|documentation)|no information/i.test(answer);
     if (parsed?.found === false || !answer || answerSoundsUnknown) {
-      return fallbackResponse();
+      await saveHistory(access, body.messages, FALLBACK_ANSWER, FALLBACK_LINKS);
+      return NextResponse.json({ answer: FALLBACK_ANSWER, links: FALLBACK_LINKS });
     }
 
-    return NextResponse.json({ answer: answer.slice(0, 2500), links: cleanLinks(parsed?.links) });
+    const finalAnswer = answer.slice(0, 2500);
+    const finalLinks = cleanLinks(parsed?.links);
+    await saveHistory(access, body.messages, finalAnswer, finalLinks);
+    return NextResponse.json({ answer: finalAnswer, links: finalLinks });
   } catch (error) {
     console.error("Unable to answer help question", error);
     return NextResponse.json({ error: "AI help could not answer right now. Open Docs or try again." }, { status: 500 });

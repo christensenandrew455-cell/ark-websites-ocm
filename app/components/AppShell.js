@@ -15,7 +15,6 @@ import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
 const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
-const THEME_KEY = "ark-theme-v1";
 
 function matchesPath(pathname, paths) {
   return paths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
@@ -133,12 +132,8 @@ export default function AppShell({ children }) {
   const isPublic = isAuthPublic || isPolicyPublic;
 
   useEffect(() => {
-    try {
-      document.documentElement.classList.toggle("ark-dark", window.localStorage.getItem(THEME_KEY) === "dark");
-    } catch {
-      document.documentElement.classList.remove("ark-dark");
-    }
-  }, []);
+    document.documentElement.classList.toggle("ark-dark", profile?.darkMode === true);
+  }, [profile?.darkMode]);
 
   useEffect(() => {
     const stiffDashboard = pathname === "/";

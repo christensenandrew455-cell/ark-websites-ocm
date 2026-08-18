@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
+import { readAccountSections } from "../../lib/accountSections";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { sendAdminEvent } from "../../lib/adminEvents";
 import {
@@ -210,7 +211,7 @@ export async function POST(request) {
       );
     }
 
-    const account = accountSnapshot.data();
+    const account = (await readAccountSections(accountSnapshot)).combined;
     if (!text(account.connectionKey)) {
       return Response.json(
         { ok: false, error: "This business has not been connected by the administrator." },
@@ -335,7 +336,7 @@ export async function POST(request) {
       if (match.ref.path !== targetRef.path) batch.delete(match.ref);
     });
 
-    batch.set(connectionSnapshot.ref, {
+    batch.set(accountSnapshot.ref, {
       lastLeadAt: FieldValue.serverTimestamp(),
       lastLeadSource: source,
       lastLeadDocumentId: targetRef.id,

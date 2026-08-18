@@ -24,6 +24,18 @@ export function accountPrivateRef(db, clientId, documentId) {
   return accountRef(db, clientId).collection("private").doc(text(documentId));
 }
 
+export function accountBusinessRef(db, clientId) {
+  return accountRef(db, clientId).collection("business").doc("profile");
+}
+
+export function accountCustomizationRef(db, clientId) {
+  return accountRef(db, clientId).collection("customization").doc("preferences");
+}
+
+export function accountHelpRef(db, clientId) {
+  return accountRef(db, clientId).collection("help").doc("current");
+}
+
 export function pendingSignupCollection(db) {
   return db.collection(TOP_LEVEL_COLLECTIONS.PENDING_SIGNUPS);
 }

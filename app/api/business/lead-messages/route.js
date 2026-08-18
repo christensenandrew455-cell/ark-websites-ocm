@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
+import { readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../lib/launchFeatures";
 import { addBillingConversationEventToBatch, isBillableConversationData } from "../../../lib/billingConversationUsage";
@@ -65,10 +66,11 @@ async function authorizeMessaging(request) {
   const account = accountSnapshot.data();
   if (text(account.clientId) !== clientId || text(account.uid) !== text(decoded.uid)) return { response: NextResponse.json({ error: "This account does not match the requested workspace." }, { status: 403 }) };
   if (!isStandardRole(account.role) || account.status !== "active") return { response: NextResponse.json({ error: "This account is not active." }, { status: 403 }) };
-  if (account.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
+  const sections = await readAccountSections(accountSnapshot);
+  if (sections.customization.messagesEnabled !== true) return { response: NextResponse.json({ error: "Turn on Messages in Settings to use lead messaging." }, { status: 403 }) };
   const fromPhone = normalizePhone(account.receptionistPhoneNormalized || account.receptionistPhone);
   const businessName = text(account.businessName || account.name) || "the business";
-  return { db, decoded, account, business: account, businessName, clientId, fromPhone };
+  return { db, decoded, account, business: sections.combined, businessName, clientId, fromPhone };
 }
 
 async function loadLead(access, collectionKey, leadId) {

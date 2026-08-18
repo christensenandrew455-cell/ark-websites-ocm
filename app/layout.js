@@ -25,18 +25,9 @@ export const viewport = {
   colorScheme: "light dark",
 };
 
-const themeScript = `
-try {
-  if (window.localStorage.getItem("ark-theme-v1") === "dark") {
-    document.documentElement.classList.add("ark-dark");
-  }
-} catch {}
-`;
-
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
         <ViewportMetrics />
         <AuthProvider>

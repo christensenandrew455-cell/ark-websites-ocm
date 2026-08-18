@@ -198,6 +198,8 @@ test("successful payment promotes the already-verified temp data and starts only
   assert.ok(completion.includes("ensureCustomerBillingSubscription({"));
   assert.ok(completion.includes("createIfMissing: true"));
   assert.ok(completion.includes("batch.create(accountRef, accountData)"));
+  assert.ok(completion.includes("batch.create(businessRef"));
+  assert.ok(completion.includes("batch.create(customizationRef"));
   assert.ok(completion.includes("batch.delete(pending.ref)"));
   assert.ok(completion.includes("pendingOwnerSignupVerified(temporary)"));
   assert.equal(completion.includes("sendAccountVerificationCodes({"), false);

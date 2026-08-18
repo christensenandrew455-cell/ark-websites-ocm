@@ -1,6 +1,7 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { readAccountSections } from "../../../../lib/accountSections";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { systemCollection } from "../../../../lib/firestoreLayout";
 import { MESSAGES_AVAILABLE } from "../../../../lib/launchFeatures";
@@ -167,7 +168,8 @@ export async function POST(request) {
 
     const root = db.collection("accounts").doc(clientId);
     const businessSnapshot = await db.collection("accounts").doc(clientId).get();
-    const business = businessSnapshot.exists ? businessSnapshot.data() : {};
+    const sections = await readAccountSections(businessSnapshot);
+    const business = sections?.combined || {};
     if (!businessSnapshot.exists || business.status !== "active" || business.billingPastDue === true) {
       return NextResponse.json({ ok: true, ignored: true, reason: "payment-disabled" });
     }

@@ -59,13 +59,17 @@ function CustomerMessages({ user, requests, onRefresh }) {
   const hasOpenRequest = requests.some((item) => item.status === "new" || item.status === "in-progress");
 
   useEffect(() => {
-    try {
-      const lastUsed = Number(localStorage.getItem(`ark-help-self-service:${user.uid}`) || 0);
-      if (Date.now() - lastUsed < 24 * 60 * 60 * 1000) setSelfHelpConfirmed(true);
-    } catch {
-      setSelfHelpConfirmed(false);
-    }
-  }, [user.uid]);
+    let active = true;
+    user.getIdToken(true).then((token) => fetch("/api/help", {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    })).then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      const lastUsed = Number(data.selfHelpLastUsedAt || 0);
+      if (active) setSelfHelpConfirmed(response.ok && Date.now() - lastUsed < 24 * 60 * 60 * 1000);
+    }).catch(() => active && setSelfHelpConfirmed(false));
+    return () => { active = false; };
+  }, [user]);
 
   async function submit(event) {
     event.preventDefault();

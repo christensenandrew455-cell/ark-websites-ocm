@@ -5,7 +5,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useAuth } from "./AuthProvider";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
-const TOUR_SEEN_KEY = "ark-guided-onboarding-seen-v3";
 const STEPS = [
   { path: "/", target: "settings", title: "Settings", body: "Business, preferences, payment, and help.", action: "activate", actionLabel: "Open Settings" },
   { path: "/settings", target: "settings-business", title: "Business Information", body: "What your receptionist knows.", action: "next", actionLabel: "Next" },
@@ -39,16 +38,10 @@ export default function GuidedOnboarding() {
   useEffect(() => {
     const eligible = profile?.identityVerificationVerified === true
       && profile?.onboardingTourEligible === true
-      && profile?.onboardingTourStatus === "pending";
+      && ["pending", "started"].includes(profile?.onboardingTourStatus);
     if (!eligible || !user || startedRef.current) return;
     startedRef.current = true;
-    const seenKey = `${TOUR_SEEN_KEY}:${profile.clientId}`;
-    let seen = false;
-    try {
-      seen = window.localStorage.getItem(seenKey) === "true";
-      window.localStorage.setItem(seenKey, "true");
-    } catch {}
-    setOpen(!seen);
+    setOpen(true);
     user.getIdToken(true).then((token) => fetch("/api/account/onboarding-tour", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -127,7 +120,6 @@ export default function GuidedOnboarding() {
 
   async function finish(status) {
     setOpen(false);
-    try { window.localStorage.setItem(`${TOUR_SEEN_KEY}:${profile?.clientId || "account"}`, "true"); } catch {}
     try {
       const token = await user.getIdToken(true);
       await fetch("/api/account/onboarding-tour", {

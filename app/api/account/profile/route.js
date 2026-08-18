@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
+import { readAccountSections } from "../../../lib/accountSections";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { availableAccountFeatures } from "../../../lib/launchFeatures";
 import {
@@ -49,6 +50,8 @@ function ownerProfile({ account, decodedToken, clientId }) {
     phoneVerificationStatus: text(account.phoneVerificationStatus),
     onboardingTourEligible: account.onboardingTourEligible === true,
     onboardingTourStatus: text(account.onboardingTourStatus),
+    darkMode: account.darkMode === true,
+    nativeSetupPromptStatus: text(account.nativeSetupPromptStatus),
     termsAccepted: account.termsAccepted === true || decodedToken.termsAccepted === true,
     privacyAccepted: account.privacyAccepted === true || decodedToken.privacyAccepted === true,
     termsVersion: text(account.termsVersion || decodedToken.termsVersion),
@@ -137,8 +140,9 @@ export async function GET(request) {
       return NextResponse.json({ error: "This owner account does not match the signed-in user." }, { status: 403 });
     }
 
+    const sections = await readAccountSections(snapshot);
     return NextResponse.json(
-      { profile: ownerProfile({ account, decodedToken, clientId }) },
+      { profile: ownerProfile({ account: sections.combined, decodedToken, clientId }) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readAccountSections } from "../../../lib/accountSections";
 import { computeBillingState } from "../../../lib/billingDelinquency";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { systemCollection } from "../../../lib/firestoreLayout";
@@ -52,17 +53,19 @@ export async function GET(request) {
       systemCollection(db, "supportRequests").where("clientId", "==", clientId).get(),
     ]);
 
-    const account = accountSnapshot.exists ? accountSnapshot.data() : {};
+    const sections = accountSnapshot.exists ? await readAccountSections(accountSnapshot) : null;
+    const account = sections?.account || {};
     if (computeBillingState(account).restricted) {
       return NextResponse.json({ error: "Client-data downloads are unavailable while the account is payment-restricted." }, { status: 402 });
     }
 
     const payload = {
-      exportVersion: "1.1",
+      exportVersion: "1.2",
       exportedAt: new Date().toISOString(),
       clientId,
       account: accountSummary(account),
-      settings: serializeFirestoreValue(account),
+      businessInformation: serializeFirestoreValue(sections?.business || {}),
+      customization: serializeFirestoreValue(sections?.customization || {}),
       contactedMe: leadDocuments(contactedSnapshot),
       clients: leadDocuments(clientsSnapshot),
       requests: documents(requestsSnapshot),

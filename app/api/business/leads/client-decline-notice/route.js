@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
+import { readAccountSections } from "../../../../lib/accountSections";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { estimateRequestStatusNoticesEnabled, sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
 import { requireUser } from "../../../../lib/userRequest";
@@ -26,7 +27,8 @@ async function authorizeOwner(request) {
     return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   }
 
-  return { db, decoded, clientId, business: accountSnapshot.data() };
+  const sections = await readAccountSections(accountSnapshot);
+  return { db, decoded, clientId, business: sections.combined };
 }
 
 export async function POST(request) {

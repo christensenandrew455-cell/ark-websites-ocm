@@ -55,10 +55,26 @@ test("browser components do not read Firestore directly", async () => {
   assert.equal(source.includes('from "firebase/firestore"'), false);
 });
 
-test("account settings live on the account document instead of a settings subcollection", async () => {
+test("application state never uses browser storage", async () => {
   const source = await applicationSource();
+  assert.equal(source.includes("localStorage"), false);
+  assert.equal(source.includes("sessionStorage"), false);
+});
+
+test("account identity, business information, and customization have organized Firestore documents", async () => {
+  const [source, layout, completion] = await Promise.all([
+    applicationSource(),
+    readFile(join(root, "app/lib/firestoreLayout.js"), "utf8"),
+    readFile(join(root, "app/lib/ownerPaymentSetup.js"), "utf8"),
+  ]);
   assert.equal(source.includes('.collection("settings")'), false);
-  assert.equal(/(?:collection|doc)\(db,\s*"accounts"[^\n]*"settings"/.test(source), false);
+  assert.ok(layout.includes('.collection("business").doc("profile")'));
+  assert.ok(layout.includes('.collection("customization").doc("preferences")'));
+  assert.ok(layout.includes('.collection("help").doc("current")'));
+  assert.ok(completion.includes("batch.create(accountRef, accountData)"));
+  assert.ok(completion.includes("batch.create(businessRef"));
+  assert.ok(completion.includes("batch.create(customizationRef"));
+  assert.ok(completion.includes("batch.delete(pending.ref)"));
 });
 
 test("temporary signup is one flat document with an exact one-hour lifetime", async () => {

@@ -1,5 +1,6 @@
 import { createPublicKey, verify } from "node:crypto";
 import { NextResponse } from "next/server";
+import { readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 
@@ -173,7 +174,8 @@ export async function POST(request) {
     }
 
     const clientId = accountSnapshot.id;
-    const account = accountSnapshot.data();
+    const sections = await readAccountSections(accountSnapshot);
+    const account = sections.combined;
 
     if (account.status !== "active" || account.billingPastDue === true) {
       return NextResponse.json({ ok: false, error: "The connected business account is not active." }, { status: 404 });

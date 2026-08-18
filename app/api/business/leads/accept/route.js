@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
+import { readAccountSections } from "../../../../lib/accountSections";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { estimateRequestStatusNoticesEnabled, sendEstimateRequestStatusNotice } from "../../../../lib/estimateRequestStatusNotice";
 import { stripLeadContactFields } from "../../../../lib/leadContactFields";
@@ -58,7 +59,7 @@ export async function POST(request) {
     batch.delete(sourceRef);
     await batch.commit();
 
-    const account = accountSnapshot.data();
+    const account = (await readAccountSections(accountSnapshot)).combined;
     const businessName = text(account.businessName || account.name) || "the business";
     const notice = estimateRequestStatusNoticesEnabled(account)
       ? await sendEstimateRequestStatusNotice({
