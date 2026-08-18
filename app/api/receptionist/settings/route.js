@@ -182,7 +182,7 @@ export async function POST(request) {
     updatedBy: access.user.decodedToken.uid,
     updatedAt: FieldValue.serverTimestamp(),
   };
-  await loaded.ref.set({
+  await loaded.ref.update({
     ...update,
     businessNameKey: nameCheck.businessNameKey === access.clientId ? FieldValue.delete() : nameCheck.businessNameKey,
     accountPhoneNormalized: FieldValue.delete(),
@@ -194,6 +194,6 @@ export async function POST(request) {
     businessStartPeriod: FieldValue.delete(),
     businessEndHour: FieldValue.delete(),
     businessEndPeriod: FieldValue.delete(),
-  }, { merge: true });
+  });
   return NextResponse.json({ profile: profilePayload(access.clientId, { ...loaded.account, ...update }) });
 }
