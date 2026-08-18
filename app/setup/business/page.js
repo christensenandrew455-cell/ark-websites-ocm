@@ -83,16 +83,16 @@ export default function BusinessSetupPage() {
   }
 
   if (loading || !ready) {
-    return <main className="grid min-h-screen place-items-center bg-slate-950 text-sm font-semibold text-white">Opening business information…</main>;
+    return <main className="ark-auth-page grid min-h-screen place-items-center text-sm font-semibold text-white">Opening business information…</main>;
   }
 
   if (!receptionist) {
-    return <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-slate-950"><section className="w-full max-w-lg rounded-3xl bg-white p-7 text-center shadow-2xl"><p className="text-sm font-bold text-red-700">{error || "Unable to load business information."}</p><Link href="/signup/verify" className="mt-5 inline-block rounded-xl border border-slate-300 px-5 py-3 text-sm font-black text-slate-700">Back</Link></section></main>;
+    return <main className="ark-auth-page grid min-h-screen place-items-center px-5"><section className="ark-auth-card w-full max-w-lg rounded-3xl p-7 text-center shadow-2xl"><p className="text-sm font-bold text-red-700">{error || "Unable to load business information."}</p><Link href="/signup/verify" className="mt-5 inline-block rounded-xl border border-slate-300 px-5 py-3 text-sm font-black text-slate-700">Back</Link></section></main>;
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10 text-slate-950">
-      <section className="mx-auto w-full max-w-4xl rounded-3xl bg-white p-6 shadow-2xl sm:p-9">
+    <main className="ark-auth-page min-h-screen px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
+      <section className="ark-auth-card mx-auto w-full max-w-4xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 3 of 4 · Business information</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Set up your business</h1>

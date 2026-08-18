@@ -184,8 +184,8 @@ export default function PaymentSetupClient() {
   } : null, [configuration?.clientSecret]);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-5 py-10 text-slate-950">
-      <section className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-9">
+    <main className="ark-auth-page grid min-h-screen place-items-center px-5 py-10">
+      <section className="ark-auth-card w-full max-w-xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment</p>
         {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">account set up complete</p> : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment method…</p> : configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div> : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Opening secure payment fields…</p> : null}

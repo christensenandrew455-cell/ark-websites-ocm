@@ -10,7 +10,7 @@ function routeMatches(pathname, values) {
 }
 
 function Waiting({ children }) {
-  return <main className="grid min-h-screen place-items-center bg-slate-950 p-6 text-sm font-semibold text-blue-50">{children}</main>;
+  return <main className="ark-auth-page grid min-h-screen place-items-center p-6 text-sm font-semibold text-blue-50">{children}</main>;
 }
 
 function requiredOnboardingPath(profile) {

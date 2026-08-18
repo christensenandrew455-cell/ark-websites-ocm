@@ -199,8 +199,8 @@ export default function AccountVerificationGate() {
     }
   }
 
-  return <main className="fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto bg-slate-950 px-4 py-8">
-    <section className="w-full max-w-md rounded-[2rem] bg-white p-6 text-slate-950 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
+  return <main className="ark-auth-page fixed inset-0 z-[200] grid min-h-screen place-items-center overflow-y-auto px-4 py-8">
+    <section className="ark-auth-card w-full max-w-md rounded-[2rem] p-6 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 2 of 4 · Verify</p>
       <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{expired ? "Verification time expired" : checking ? "Checking your account" : verified ? "Account verified" : editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
       {!expired && !checking && !verified && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
