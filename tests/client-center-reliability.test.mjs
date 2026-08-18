@@ -107,6 +107,13 @@ test("business information auto-saves edits and flushes the latest change before
   assert.ok(form.includes("{ saveImmediately: true }"));
 });
 
+test("business settings replace the Firestore services map so removed services stay removed", async () => {
+  const route = await source("app/api/receptionist/settings/route.js");
+  assert.ok(route.includes("services: profile.services"));
+  assert.ok(route.includes("await loaded.ref.update({"));
+  assert.equal(route.includes("await loaded.ref.set({"), false);
+});
+
 test("profile refreshes keep the existing client center visible", async () => {
   const provider = await source("app/components/AuthProvider.js");
   const refreshBlock = provider.slice(provider.indexOf("const refreshProfile"), provider.indexOf("const updateProfile"));
