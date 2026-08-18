@@ -338,10 +338,10 @@ html.ark-dark .ark-login-card button.bg-slate-950 {
   color: #ffffff !important;
 }
 
-html.ark-dark .ark-login-card .hover\\:bg-slate-100:hover {
+html.ark-dark .ark-login-card .hover\:bg-slate-100:hover {
   background-color: #f1f5f9 !important;
 }
 
-html.ark-dark .ark-login-card .hover\\:text-slate-950:hover {
+html.ark-dark .ark-login-card .hover\:text-slate-950:hover {
   color: #020617 !important;
 }
