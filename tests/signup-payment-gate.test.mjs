@@ -4,6 +4,7 @@ import { access, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { validateReceptionistBusinessInformation } from "../app/lib/ownerSignup.js";
+import { normalizeServiceAreas, serviceAreaFields } from "../app/lib/serviceAreas.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
@@ -32,7 +33,7 @@ test("onboarding follows main information, verification, business, then payment"
   assert.ok(shell.includes('status === "pending_payment"'));
 });
 
-test("business setup uses in-app suggestions, flexible areas, and a 24-hours shortcut", async () => {
+test("business setup uses in-app business fields and a 24-hours shortcut", async () => {
   const [form, settingsRoute] = await Promise.all([
     source("app/components/ReceptionistBusinessForm.js"),
     source("app/api/receptionist/settings/route.js"),
@@ -43,8 +44,13 @@ test("business setup uses in-app suggestions, flexible areas, and a 24-hours sho
   assert.ok(form.includes("SuggestionInput"));
   assert.ok(form.includes('autoCorrect="on"'));
   assert.ok(form.includes("Choose a suggestion or type your own."));
-  assert.ok(form.includes("City, county, state, or travel radius"));
-  assert.ok(form.includes("Within 25 miles of Worcester"));
+  assert.ok(form.includes('label="State"'));
+  assert.ok(form.includes('label="County (optional)"'));
+  assert.ok(form.includes('placeholder="Worcester County"'));
+  assert.ok(form.includes("return matched?.[1] || [];"));
+  assert.ok(form.includes("grid-cols-[minmax(0,1fr)_88px]"));
+  assert.ok(form.includes('ariaLabel={`${label} hour`}'));
+  assert.ok(form.includes('ariaLabel={`${label} AM or PM`}'));
   assert.ok(form.includes(">24 hours<"));
   assert.ok(form.includes("{!acceptsAllHours && <HourPeriodPicker"));
   assert.ok(form.includes('estimateStartHour: 12'));
@@ -52,6 +58,14 @@ test("business setup uses in-app suggestions, flexible areas, and a 24-hours sho
   assert.ok(form.includes('estimateEndHour: 11'));
   assert.ok(form.includes('estimateEndPeriod: "PM"'));
   assert.equal(settingsRoute.includes("earliest > latest"), false);
+  assert.deepEqual(normalizeServiceAreas(["Within 25 miles of Worcester", "MA", "Worcester County"]), ["Massachusetts", "Worcester County"]);
+  assert.deepEqual(serviceAreaFields(["Massachusetts"]), { state: "Massachusetts", county: "" });
+  assert.equal(validateReceptionistBusinessInformation({
+    timeZone: "America/New_York",
+    businessType: "Landscaping",
+    serviceAreas: ["Worcester County"],
+    services: { mowing: "mowing" },
+  }), "Choose a state.");
   assert.equal(validateReceptionistBusinessInformation({
     timeZone: "America/New_York",
     businessType: "Snow Removal",
