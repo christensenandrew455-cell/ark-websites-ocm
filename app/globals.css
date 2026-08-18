@@ -293,7 +293,7 @@ html.ark-dark .hover\:bg-slate-100:hover {
 
 /* Authentication and onboarding keep a navy page and light card regardless of the saved app theme. */
 .ark-auth-page {
-  background-color: #0f172a;
+  background-color: #0b1120;
 }
 
 .ark-auth-card {
@@ -303,7 +303,7 @@ html.ark-dark .hover\:bg-slate-100:hover {
 }
 
 html.ark-dark .ark-auth-page {
-  background-color: #0f172a !important;
+  background-color: #0b1120 !important;
 }
 
 html.ark-dark .ark-auth-card {
