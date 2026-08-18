@@ -91,3 +91,25 @@ test("payment separates usage pricing from the recurring charge", async () => {
   assert.equal(settings.includes(">New chat<"), false);
   assert.equal(settings.includes("Last successful payment"), false);
 });
+
+test("business information auto-saves edits and flushes the latest change before going back", async () => {
+  const [settings, form] = await Promise.all([
+    source("app/components/SettingsPanel.js"),
+    source("app/components/ReceptionistBusinessForm.js"),
+  ]);
+  assert.ok(settings.includes("BUSINESS_AUTO_SAVE_DELAY_MS"));
+  assert.ok(settings.includes("queueBusinessSave(receptionist)"));
+  assert.ok(settings.includes("queueBusinessSave(latest)"));
+  assert.ok(settings.includes("savedReceptionistRef.current"));
+  assert.ok(settings.includes("options.saveImmediately"));
+  assert.ok(settings.includes("All changes saved"));
+  assert.ok(form.includes("{ saveImmediately: true }"));
+});
+
+test("profile refreshes keep the existing client center visible", async () => {
+  const provider = await source("app/components/AuthProvider.js");
+  const refreshBlock = provider.slice(provider.indexOf("const refreshProfile"), provider.indexOf("const updateProfile"));
+  assert.equal(refreshBlock.includes("setLoading(true)"), false);
+  assert.equal(refreshBlock.includes("setLoading(false)"), false);
+  assert.ok(provider.includes("updateProfile"));
+});

@@ -66,13 +66,8 @@ function clockMinutes(value) {
   return (hour + (match[3] === "PM" ? 12 : 0)) * 60 + Number(match[2] || 0);
 }
 function validateEstimateSchedule(profile) {
-  const hasSchedule = Boolean(profile.estimateWeekdays.length || profile.earliestEstimateStart || profile.latestEstimateStart);
-  if (!hasSchedule) return "";
-  if (!profile.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
-  const earliest = clockMinutes(profile.earliestEstimateStart);
-  const latest = clockMinutes(profile.latestEstimateStart);
-  if (earliest === null) return "Complete the earliest estimate time or leave the estimate schedule blank.";
-  if (latest === null) return "Complete the latest estimate time or leave the estimate schedule blank.";
+  if (profile.earliestEstimateStart && clockMinutes(profile.earliestEstimateStart) === null) return "Choose a valid earliest estimate time.";
+  if (profile.latestEstimateStart && clockMinutes(profile.latestEstimateStart) === null) return "Choose a valid latest estimate time.";
   return "";
 }
 

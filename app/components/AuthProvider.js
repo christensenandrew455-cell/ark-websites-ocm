@@ -81,17 +81,21 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => signOut(auth), []);
   const refreshProfile = useCallback(async () => {
     if (!auth.currentUser) return null;
-    setLoading(true);
     try {
       return await loadProfile(auth.currentUser);
     } catch (error) {
       console.error("Unable to refresh owner account profile", error);
       setProfileError("We couldn’t load your account information. Check your connection and try again.");
       return null;
-    } finally {
-      setLoading(false);
     }
   }, [loadProfile]);
+  const updateProfile = useCallback((updates) => {
+    setProfile((current) => {
+      if (!current) return current;
+      const patch = typeof updates === "function" ? updates(current) : updates;
+      return { ...current, ...(patch || {}) };
+    });
+  }, []);
 
   const value = useMemo(() => ({
     user,
@@ -101,9 +105,10 @@ export function AuthProvider({ children }) {
     login,
     logout,
     refreshProfile,
+    updateProfile,
     isOwner: isStandardRole(profile?.role),
     isBusinessOwner: isStandardRole(profile?.role),
-  }), [user, profile, profileError, loading, login, logout, refreshProfile]);
+  }), [user, profile, profileError, loading, login, logout, refreshProfile, updateProfile]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

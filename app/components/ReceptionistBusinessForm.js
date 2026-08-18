@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
 import { dashBusinessName } from "../lib/valueUtils";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
-const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
+const HOURS = [12, ...Array.from({ length: 11 }, (_, index) => index + 1)];
 const PERIODS = ["AM", "PM"];
+const TIME_OPTIONS = [
+  { value: "", label: "No set time" },
+  ...PERIODS.flatMap((period) => HOURS.map((hour) => ({ value: `${hour}|${period}`, label: `${hour}:00 ${period}` }))),
+];
 const BUSINESS_TYPE_SUGGESTIONS = [
   "Auto Repair",
   "Cleaning Service",
@@ -135,8 +139,143 @@ function Input({ value, onChange, type = "text", placeholder = "", readOnly = fa
   return <input {...inputProps} aria-label={ariaLabel} type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
 }
 
-function Select({ value, onChange, children, ariaLabel }) {
-  return <select aria-label={ariaLabel} value={value ?? ""} onChange={onChange} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950">{children}</select>;
+function normalizedOptions(options = []) {
+  return options.map((option) => typeof option === "string" ? { value: option, label: option } : option);
+}
+
+function InAppSelect({ value, onChange, options, ariaLabel, placeholder = "Choose" }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const items = normalizedOptions(options);
+  const selected = items.find((item) => String(item.value) === String(value ?? ""));
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function dismiss(event) {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    }
+    function dismissWithKeyboard(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismissWithKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", dismissWithKeyboard);
+    };
+  }, [open]);
+
+  function choose(nextValue) {
+    onChange(nextValue);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={rootRef} className="relative min-w-0">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm outline-none focus:border-slate-950"
+      >
+        <span className={selected ? "truncate text-slate-900" : "truncate text-slate-500"}>{selected?.label || placeholder}</span>
+        <span aria-hidden="true" className={`shrink-0 text-xs text-slate-500 transition ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+      {open && (
+        <div role="listbox" aria-label={ariaLabel} className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-40 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white p-1.5 shadow-2xl">
+          {items.map((item) => {
+            const itemSelected = String(item.value) === String(value ?? "");
+            return <button key={`${item.label}-${String(item.value)}`} type="button" role="option" aria-selected={itemSelected} onClick={() => choose(item.value)} className={itemSelected ? "flex w-full items-center justify-between rounded-lg bg-slate-950 px-3 py-3 text-left text-sm font-bold text-white" : "flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm font-semibold text-slate-800 active:bg-slate-100"}><span>{item.label}</span>{itemSelected && <span aria-hidden="true">✓</span>}</button>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SuggestionInput({ value, onChange, onBlur, onSubmit, suggestions = [], ariaLabel, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(-1);
+  const rootRef = useRef(null);
+  const listboxId = useId();
+  const query = String(value || "").trim().toLowerCase();
+  const matches = [...new Set(suggestions.map((item) => String(item || "").trim()).filter(Boolean))]
+    .filter((item) => !query || item.toLowerCase().includes(query))
+    .sort((left, right) => {
+      const leftStarts = left.toLowerCase().startsWith(query);
+      const rightStarts = right.toLowerCase().startsWith(query);
+      return leftStarts === rightStarts ? left.localeCompare(right) : leftStarts ? -1 : 1;
+    })
+    .slice(0, 8);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function dismiss(event) {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [open]);
+
+  function selectSuggestion(suggestion) {
+    onChange(suggestion, { selectedSuggestion: true });
+    setHighlighted(-1);
+    setOpen(false);
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "ArrowDown" && matches.length) {
+      event.preventDefault();
+      setOpen(true);
+      setHighlighted((current) => (current + 1) % matches.length);
+      return;
+    }
+    if (event.key === "ArrowUp" && matches.length) {
+      event.preventDefault();
+      setOpen(true);
+      setHighlighted((current) => (current <= 0 ? matches.length - 1 : current - 1));
+      return;
+    }
+    if (event.key === "Escape") {
+      setOpen(false);
+      setHighlighted(-1);
+      return;
+    }
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (open && highlighted >= 0 && matches[highlighted]) selectSuggestion(matches[highlighted]);
+    else onSubmit?.();
+  }
+
+  return (
+    <div ref={rootRef} className="relative min-w-0">
+      <input
+        aria-label={ariaLabel}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-expanded={open && matches.length > 0}
+        autoComplete="off"
+        autoCapitalize="words"
+        autoCorrect="on"
+        spellCheck
+        value={value}
+        onFocus={() => { setOpen(true); setHighlighted(-1); }}
+        onChange={(event) => { onChange(event.target.value, { selectedSuggestion: false }); setOpen(true); setHighlighted(-1); }}
+        onBlur={onBlur}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className="h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"
+      />
+      {open && matches.length > 0 && (
+        <div id={listboxId} role="listbox" aria-label={`${ariaLabel} suggestions`} className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-40 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white p-1.5 shadow-2xl">
+          {matches.map((suggestion, index) => <button key={suggestion} type="button" role="option" aria-selected={highlighted === index} onPointerDown={(event) => event.preventDefault()} onClick={() => selectSuggestion(suggestion)} className={highlighted === index ? "w-full rounded-lg bg-slate-950 px-3 py-3 text-left text-sm font-bold text-white" : "w-full rounded-lg px-3 py-3 text-left text-sm font-semibold text-slate-800 active:bg-slate-100"}>{suggestion}</button>)}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DayCheckboxes({ label, explanation, selected, onChange }) {
@@ -156,28 +295,19 @@ function DayCheckboxes({ label, explanation, selected, onChange }) {
   );
 }
 
-function HourPeriodPicker({ label, explanation, hour, period, onHourChange, onPeriodChange }) {
+function HourPeriodPicker({ label, explanation, hour, period, onChange }) {
   const selectedHour = Number.isInteger(Number(hour)) && Number(hour) >= 1 && Number(hour) <= 12 ? Number(hour) : "";
   const selectedPeriod = PERIODS.includes(period) ? period : "";
+  const selectedTime = selectedHour && selectedPeriod ? `${selectedHour}|${selectedPeriod}` : "";
   return (
     <Field label={label} explanation={explanation}>
-      <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
-        <Select ariaLabel={`${label} hour`} value={selectedHour} onChange={(event) => onHourChange(event.target.value ? Number(event.target.value) : "")}>
-          <option value="">Choose</option>
-          {HOURS.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
-        <Select ariaLabel={`${label} AM or PM`} value={selectedPeriod} onChange={(event) => onPeriodChange(event.target.value)}>
-          <option value="">Choose</option>
-          {PERIODS.map((value) => <option key={value} value={value}>{value}</option>)}
-        </Select>
-      </div>
+      <InAppSelect ariaLabel={label} value={selectedTime} options={TIME_OPTIONS} placeholder="Choose a time" onChange={(nextValue) => { const [nextHour = "", nextPeriod = ""] = String(nextValue).split("|"); onChange({ hour: nextHour ? Number(nextHour) : "", period: nextPeriod }); }} />
     </Field>
   );
 }
 
-function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel, suggestions = [], suggestionListId, autoComplete = "off" }) {
+function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel, suggestions = [] }) {
   const normalizedItems = Array.isArray(items) ? items.map((item) => String(item || "").trim()).filter(Boolean) : [];
-  const normalizedSuggestions = [...new Set(suggestions.map((item) => String(item || "").trim()).filter(Boolean))];
   const [entry, setEntry] = useState("");
 
   function addItem() {
@@ -195,10 +325,9 @@ function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel,
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <input aria-label={inputLabel} list={normalizedSuggestions.length ? suggestionListId : undefined} autoComplete={autoComplete} autoCapitalize="words" autoCorrect="on" spellCheck value={entry} onChange={(event) => setEntry(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addItem(); } }} placeholder={placeholder} className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
+        <SuggestionInput ariaLabel={inputLabel} value={entry} onChange={setEntry} onSubmit={addItem} suggestions={suggestions} placeholder={placeholder} />
         <button type="button" disabled={!entry.trim()} onClick={addItem} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{addLabel}</button>
       </div>
-      {normalizedSuggestions.length > 0 && <datalist id={suggestionListId}>{normalizedSuggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>}
       {normalizedItems.map((item, index) => (
         <div key={`${item}-${index}`} className="flex items-center gap-2">
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm text-slate-800">{item}</div>
@@ -215,7 +344,7 @@ function ServicesEditor({ services, onChange, businessType }) {
   function updateServices(nextNames) {
     onChange(Object.fromEntries(nextNames.map((name) => { const key = name.trim().toLowerCase(); return [key, key]; }).filter(([key]) => key)));
   }
-  return <StackedListEditor items={names} onChange={updateServices} placeholder="Start typing a service" addLabel="Add Service" inputLabel="Service" suggestions={serviceSuggestionsFor(businessType)} suggestionListId="ark-service-suggestions" />;
+  return <StackedListEditor items={names} onChange={updateServices} placeholder="Start typing a service" addLabel="Add Service" inputLabel="Service" suggestions={serviceSuggestionsFor(businessType)} />;
 }
 
 function BusinessInformationEditor({ items, onChange }) {
@@ -304,9 +433,9 @@ export function receptionistRequestPayload(profile = {}) {
 
 export default function ReceptionistBusinessForm({ profile, onChange, onboardingMode = false }) {
   if (!profile) return null;
-  function update(field, value) { onChange({ ...profile, [field]: value }); }
+  function update(field, value, options = {}) { onChange({ ...profile, [field]: value }, options); }
   function updateEstimateWeekdays(days) {
-    onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" });
+    onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
   }
   const acceptsAllHours = profile.estimateStartHour === 12
     && profile.estimateStartPeriod === "AM"
@@ -315,16 +444,16 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
   function updateAllHours(enabled) {
     onChange(enabled
       ? { ...profile, estimateStartHour: 12, estimateStartPeriod: "AM", estimateEndHour: 11, estimateEndPeriod: "PM" }
-      : { ...profile, estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" });
+      : { ...profile, estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
   }
   const identitySection = !onboardingMode && (
     <section>
       <h3 className="text-lg font-black">Business details</h3>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <Field label="Business name" explanation="Enter the name customers know the business by."><Input ariaLabel="Business name" value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} /></Field>
-        <Field label="Owner name" explanation="Enter the business owner&apos;s name."><Input ariaLabel="Owner name" value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></Field>
-        <Field label="Business phone" explanation="Enter the main phone number used for this business account."><Input ariaLabel="Business phone" type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} /></Field>
-        <Field label="Business email" explanation="Enter the main email address used for this business account."><Input ariaLabel="Business email" type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} /></Field>
+        <Field label="Business name" explanation="Enter the name customers know the business by."><Input ariaLabel="Business name" value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} onBlur={() => update("businessName", profile.businessName, { saveImmediately: true })} /></Field>
+        <Field label="Owner name" explanation="Enter the business owner&apos;s name."><Input ariaLabel="Owner name" value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} onBlur={() => update("ownerName", profile.ownerName, { saveImmediately: true })} /></Field>
+        <Field label="Business phone" explanation="Enter the main phone number used for this business account."><Input ariaLabel="Business phone" type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} onBlur={() => update("businessPhone", profile.businessPhone, { saveImmediately: true })} /></Field>
+        <Field label="Business email" explanation="Enter the main email address used for this business account."><Input ariaLabel="Business email" type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} onBlur={() => update("businessEmail", profile.businessEmail, { saveImmediately: true })} /></Field>
       </div>
     </section>
   );
@@ -333,8 +462,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       <h3 className="text-lg font-black">Business type</h3>
       <div className="mt-4">
         <Field label="Type of business" explanation="Choose a suggestion or enter the general kind of work this business does.">
-          <Input ariaLabel="Type of business" list="ark-business-type-suggestions" autoComplete="off" autoCapitalize="words" autoCorrect="on" spellCheck value={profile.businessType} onChange={(event) => update("businessType", event.target.value)} placeholder="Start typing a business type" />
-          <datalist id="ark-business-type-suggestions">{BUSINESS_TYPE_SUGGESTIONS.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>
+          <SuggestionInput ariaLabel="Type of business" value={profile.businessType} suggestions={BUSINESS_TYPE_SUGGESTIONS} onChange={(value, details) => update("businessType", value, { saveImmediately: details.selectedSuggestion })} onBlur={() => update("businessType", profile.businessType, { saveImmediately: true })} placeholder="Start typing a business type" />
           <p className="mt-1 text-xs font-semibold text-slate-500">Choose a suggestion or type your own.</p>
         </Field>
       </div>
@@ -343,28 +471,29 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       <h3 className="text-lg font-black">Estimate availability</h3>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Time zone" explanation="Choose the time zone where the business is located so appointment times are interpreted correctly.">
-          <Select ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{onboardingMode && <option value="">Choose</option>}{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select>
+          <InAppSelect ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
         </Field>
         <DayCheckboxes label="Estimate days" explanation="Choose the days customers may request estimates, or leave them unchecked if there is no set schedule." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
         <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:col-span-2">
           <input type="checkbox" checked={acceptsAllHours} onChange={(event) => updateAllHours(event.target.checked)} />
-          <span><strong className="block text-sm text-slate-900">Accept estimates at all hours</strong><span className="block text-xs font-semibold text-slate-600">Uses every hourly time slot on the selected days.</span></span>
+          <span><strong className="block text-sm text-slate-900">24 hours</strong><span className="block text-xs font-semibold text-slate-600">Accept estimate requests all day on the selected days.</span></span>
         </label>
-        <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
-        <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
+        {!acceptsAllHours && <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onChange={({ hour, period }) => onChange({ ...profile, estimateStartHour: hour, estimateStartPeriod: period }, { saveImmediately: true })} />}
+        {!acceptsAllHours && <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onChange={({ hour, period }) => onChange({ ...profile, estimateEndHour: hour, estimateEndPeriod: period }, { saveImmediately: true })} />}
       </div>
     </section>
     <section>
-      <ExplainedLabel label="Service areas" explanation="Add each town, city, county, or state where the business accepts jobs." heading />
-      <div className="mt-4"><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Start typing a city, county, or state" addLabel="Add Area" inputLabel="Service area" suggestions={SERVICE_AREA_SUGGESTIONS} suggestionListId="ark-service-area-suggestions" autoComplete="address-level2" /></div>
+      <ExplainedLabel label="Service areas" explanation="Add any mix of towns, cities, counties, states, or a written travel radius. This avoids forcing every business into the same size area." heading />
+      <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Examples: Worcester · Worcester County · Massachusetts · Within 25 miles of Worcester</p>
+      <div className="mt-4"><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items, { saveImmediately: true })} placeholder="City, county, state, or travel radius" addLabel="Add Area" inputLabel="Service area" suggestions={SERVICE_AREA_SUGGESTIONS} /></div>
     </section>
     <section>
       <ExplainedLabel label="Services" explanation="Add each type of work customers can request from the business." heading />
-      <div className="mt-4"><ServicesEditor services={profile.services} businessType={profile.businessType} onChange={(services) => update("services", services)} /></div>
+      <div className="mt-4"><ServicesEditor services={profile.services} businessType={profile.businessType} onChange={(services) => update("services", services, { saveImmediately: true })} /></div>
     </section>
     <section>
       <ExplainedLabel label="Additional business information" explanation="Add optional titled facts the AI receptionist can use when answering customer questions." heading />
-      <div className="mt-4"><BusinessInformationEditor items={profile.businessInformation} onChange={(items) => update("businessInformation", items)} /></div>
+      <div className="mt-4"><BusinessInformationEditor items={profile.businessInformation} onChange={(items) => update("businessInformation", items, { saveImmediately: true })} /></div>
     </section>
   </>;
   return (

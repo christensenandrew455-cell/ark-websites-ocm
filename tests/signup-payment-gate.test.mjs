@@ -32,17 +32,21 @@ test("onboarding follows main information, verification, business, then payment"
   assert.ok(shell.includes('status === "pending_payment"'));
 });
 
-test("business setup offers flexible suggestions and an all-hours shortcut", async () => {
+test("business setup uses in-app suggestions, flexible areas, and a 24-hours shortcut", async () => {
   const [form, settingsRoute] = await Promise.all([
     source("app/components/ReceptionistBusinessForm.js"),
     source("app/api/receptionist/settings/route.js"),
   ]);
-  assert.ok(form.includes('list="ark-business-type-suggestions"'));
-  assert.ok(form.includes('suggestionListId="ark-service-area-suggestions"'));
-  assert.ok(form.includes('suggestionListId="ark-service-suggestions"'));
+  assert.equal(form.includes("<select"), false);
+  assert.equal(form.includes("<datalist"), false);
+  assert.ok(form.includes('role="listbox"'));
+  assert.ok(form.includes("SuggestionInput"));
   assert.ok(form.includes('autoCorrect="on"'));
   assert.ok(form.includes("Choose a suggestion or type your own."));
-  assert.ok(form.includes("Accept estimates at all hours"));
+  assert.ok(form.includes("City, county, state, or travel radius"));
+  assert.ok(form.includes("Within 25 miles of Worcester"));
+  assert.ok(form.includes(">24 hours<"));
+  assert.ok(form.includes("{!acceptsAllHours && <HourPeriodPicker"));
   assert.ok(form.includes('estimateStartHour: 12'));
   assert.ok(form.includes('estimateStartPeriod: "AM"'));
   assert.ok(form.includes('estimateEndHour: 11'));

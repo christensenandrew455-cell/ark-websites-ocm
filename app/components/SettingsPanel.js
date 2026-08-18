@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
 import MessageRetentionSettings from "./MessageRetentionSettings";
@@ -14,6 +14,7 @@ import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
 const DEFAULT_SETTINGS = { paymentMethodLabel: "", stripeCustomerId: "" };
 const THEME_KEY = "ark-theme-v1";
+const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "What your receptionist knows" },
   { key: "customization", title: "Customization", description: "Appearance and preferences" },
@@ -49,7 +50,7 @@ function profileKey(value) { return JSON.stringify(receptionistRequestPayload(va
 
 export default function SettingsPanel() {
   const router = useRouter();
-  const { user, profile, isOwner, refreshProfile, logout } = useAuth();
+  const { user, profile, isOwner, updateProfile, logout } = useAuth();
   const clientId = profile?.clientId || "";
   const [activeSection, setActiveSection] = useState("");
   const [accountSettings, setAccountSettings] = useState(DEFAULT_SETTINGS);
@@ -68,9 +69,14 @@ export default function SettingsPanel() {
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [businessSaveStatus, setBusinessSaveStatus] = useState("idle");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [downloadNotice, setDownloadNotice] = useState("");
   const [error, setError] = useState("");
+  const receptionistRef = useRef(null);
+  const savedReceptionistRef = useRef(null);
+  const businessSaveQueueRef = useRef(Promise.resolve(true));
+  const businessAutosaveTimerRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -117,8 +123,11 @@ export default function SettingsPanel() {
       if (active) {
         const prepared = prepareReceptionistProfile(receptionistData.profile);
         const nextFeatures = featureValues(featureData);
+        receptionistRef.current = prepared;
+        savedReceptionistRef.current = prepared;
         setReceptionist(prepared);
         setSavedReceptionist(prepared);
+        setBusinessSaveStatus("saved");
         setFeatures(nextFeatures);
         setSavedFeatures(nextFeatures);
         setFeatureState({
@@ -157,28 +166,82 @@ export default function SettingsPanel() {
   const businessDirty = useMemo(() => Boolean(receptionist && savedReceptionist && profileKey(receptionist) !== profileKey(savedReceptionist)), [receptionist, savedReceptionist]);
   const customizationDirty = useMemo(() => businessDirty || Boolean(savedFeatures && JSON.stringify(features) !== JSON.stringify(savedFeatures)) || darkMode !== savedDarkMode, [businessDirty, darkMode, features, savedDarkMode, savedFeatures]);
 
-  async function saveReceptionistProfile() {
+  const persistBusinessSnapshot = useCallback(async (snapshot) => {
+    if (!user || !snapshot) return false;
+    const snapshotKey = profileKey(snapshot);
     const token = await user.getIdToken(true);
-    const response = await fetch("/api/receptionist/settings", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(receptionistRequestPayload(receptionist)) });
+    const response = await fetch("/api/receptionist/settings", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(receptionistRequestPayload(snapshot)) });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Could not save AI receptionist information.");
+    if (!response.ok) throw new Error(data.error || "Could not save business information.");
     const prepared = prepareReceptionistProfile(data.profile);
-    setReceptionist(prepared);
-    return { token, prepared };
+    savedReceptionistRef.current = prepared;
+    setSavedReceptionist(prepared);
+    if (profileKey(receptionistRef.current) === snapshotKey) {
+      receptionistRef.current = prepared;
+      setReceptionist(prepared);
+    }
+    updateProfile({
+      businessName: prepared.businessName,
+      ownerName: prepared.ownerName,
+      businessEmail: prepared.businessEmail,
+      businessPhone: prepared.businessPhone,
+    });
+    return true;
+  }, [updateProfile, user]);
+
+  const queueBusinessSave = useCallback((snapshot) => {
+    if (!user || !snapshot) return Promise.resolve(false);
+    const snapshotKey = profileKey(snapshot);
+    setBusinessSaveStatus("pending");
+    const run = async () => {
+      if (snapshotKey === profileKey(savedReceptionistRef.current)) {
+        setBusinessSaveStatus(profileKey(receptionistRef.current) === snapshotKey ? "saved" : "pending");
+        return true;
+      }
+      setIsSaving(true);
+      setBusinessSaveStatus("saving");
+      setError("");
+      try {
+        await persistBusinessSnapshot(snapshot);
+        setBusinessSaveStatus(profileKey(receptionistRef.current) === profileKey(savedReceptionistRef.current) ? "saved" : "pending");
+        return true;
+      } catch (saveError) {
+        setBusinessSaveStatus("error");
+        setError(publicFormError(saveError, "Could not save business information."));
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    const queued = businessSaveQueueRef.current.then(run, run);
+    businessSaveQueueRef.current = queued.then(() => true, () => true);
+    return queued;
+  }, [persistBusinessSnapshot, user]);
+
+  function changeReceptionist(next, options = {}) {
+    receptionistRef.current = next;
+    setReceptionist(next);
+    setError("");
+    setBusinessSaveStatus("pending");
+    if (options.saveImmediately) {
+      window.clearTimeout(businessAutosaveTimerRef.current);
+      queueBusinessSave(next);
+    }
   }
+
+  useEffect(() => {
+    if (activeSection !== "business" || !businessDirty || !receptionist) return undefined;
+    window.clearTimeout(businessAutosaveTimerRef.current);
+    businessAutosaveTimerRef.current = window.setTimeout(() => queueBusinessSave(receptionist), BUSINESS_AUTO_SAVE_DELAY_MS);
+    return () => window.clearTimeout(businessAutosaveTimerRef.current);
+  }, [activeSection, businessDirty, queueBusinessSave, receptionist]);
+
   async function saveBusinessInformation() {
-    if (!user || !receptionist || isSaving) return true;
-    if (!businessDirty) return true;
-    setIsSaving(true); setError("");
-    try {
-      const result = await saveReceptionistProfile();
-      setSavedReceptionist(result.prepared);
-      await refreshProfile();
-      return true;
-    } catch (saveError) {
-      setError(publicFormError(saveError));
-      return false;
-    } finally { setIsSaving(false); }
+    window.clearTimeout(businessAutosaveTimerRef.current);
+    const latest = receptionistRef.current;
+    if (!latest || profileKey(latest) === profileKey(savedReceptionistRef.current)) return true;
+    const saved = await queueBusinessSave(latest);
+    return saved && profileKey(latest) === profileKey(savedReceptionistRef.current);
   }
   function updateFeature(key, checked) {
     setError("");
@@ -196,21 +259,21 @@ export default function SettingsPanel() {
     if (!user || !receptionist || isSavingCustomization || !customizationDirty) return true;
     setIsSavingCustomization(true); setError("");
     try {
-      const result = await saveReceptionistProfile();
-      const response = await fetch("/api/account/features", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${result.token}` }, body: JSON.stringify(features) });
+      if (businessDirty && !await saveBusinessInformation()) return false;
+      const token = await user.getIdToken(true);
+      const response = await fetch("/api/account/features", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(features) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Could not update account features.");
       const nextFeatures = featureValues(data);
       setFeatures(nextFeatures);
       setSavedFeatures(nextFeatures);
-      setSavedReceptionist(result.prepared);
+      updateProfile(nextFeatures);
       setFeatureState({
         conversationCount: Number(data.conversationCount || 0),
         canDisableMessages: data.canDisableMessages !== false,
       });
       try { window.localStorage.setItem(THEME_KEY, darkMode ? "dark" : "light"); } catch {}
       setSavedDarkMode(darkMode);
-      await refreshProfile();
       return true;
     } catch (featureError) {
       setError(ownerFacingError(featureError));
@@ -272,7 +335,9 @@ export default function SettingsPanel() {
   const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
 
   function businessSection() {
-    return <><SectionHeader title="Business Information" onBack={backToSettings} /><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={setReceptionist} /></div>}</SectionPanel></>;
+    const saveMessage = businessSaveStatus === "error" ? "Some changes could not be saved." : isSaving || businessSaveStatus === "saving" ? "Saving changes…" : businessSaveStatus === "pending" ? "Saving shortly…" : businessSaveStatus === "saved" ? "All changes saved" : "Changes save automatically";
+    const saveClass = businessSaveStatus === "error" ? "border-red-200 bg-red-50 text-red-700" : businessSaveStatus === "saved" ? "border-green-200 bg-green-50 text-green-700" : "border-slate-200 bg-slate-50 text-slate-600";
+    return <><SectionHeader title="Business Information" onBack={backToSettings} /><div role="status" aria-live="polite" className={`mb-3 rounded-xl border px-3 py-2 text-xs font-bold ${saveClass}`}>{saveMessage}</div><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={changeReceptionist} /></div>}</SectionPanel></>;
   }
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;
