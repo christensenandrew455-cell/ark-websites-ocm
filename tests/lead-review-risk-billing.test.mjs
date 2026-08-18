@@ -159,8 +159,10 @@ test("only accepting a lead creates the two-dollar usage event", async () => {
   assert.ok(acceptance.includes("recordLeadUsage"));
   assert.ok(acceptance.includes("sourceType: ACCEPTED_LEAD_BILLING_SOURCE"));
   assert.equal(callUsage.includes("recordLeadUsage"), false);
-  assert.ok(component.includes("Accept · $2"));
-  assert.ok(component.includes("Decline · $0"));
+  assert.ok(component.includes('"Accept"'));
+  assert.ok(component.includes('>Decline</button>'));
+  assert.equal(component.includes("Accept · $2"), false);
+  assert.equal(component.includes("Decline · $0"), false);
 });
 
 test("pending lead details cannot be recovered through another owner-facing path", async () => {

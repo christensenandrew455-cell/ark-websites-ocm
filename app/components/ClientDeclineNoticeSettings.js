@@ -59,8 +59,8 @@ export default function ClientDeclineNoticeSettings() {
     <div>
       <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
         <span>
-          <span className={LABEL_CLASS}>Lead status notices</span>
-          <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Automatically text customers when you accept or decline their lead.</span>
+          <span className={LABEL_CLASS}>Customer decision texts</span>
+          <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Text customers when you accept or decline their lead.</span>
         </span>
         <input
           type="checkbox"

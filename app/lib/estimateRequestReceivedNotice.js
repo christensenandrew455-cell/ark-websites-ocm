@@ -5,39 +5,24 @@ function text(value) {
   return String(value || "").trim();
 }
 
-export function normalizeStatusPhone(value) {
-  return normalizeTelnyxPhone(value);
-}
-
-export function estimateRequestStatusMessage(status, businessName) {
+export function estimateRequestReceivedMessage(businessName) {
   const brand = text(businessName) || "the business";
-  const statusLine = status === "accepted"
-    ? `Your estimate request has been accepted by ${brand}.`
-    : `We're sorry, but your estimate request has been declined by ${brand}.`;
-  return statusLine;
+  return `Your service request was received by ${brand}. They'll review it and follow up with you.`;
 }
 
-export function estimateRequestStatusNoticesEnabled(account = {}) {
-  if (Object.hasOwn(account, "clientStatusNoticeEnabled")) return account.clientStatusNoticeEnabled !== false;
-  return account.clientDeclineNoticeEnabled !== false;
-}
-
-export async function sendEstimateRequestStatusNotice({
+export async function sendEstimateRequestReceivedNotice({
   db,
   clientId,
   businessName,
   leadId,
   leadName,
   phone,
-  status,
 }) {
-  const normalizedPhone = normalizeStatusPhone(phone);
-  const normalizedStatus = status === "accepted" ? "accepted" : "declined";
+  const normalizedPhone = normalizeTelnyxPhone(phone);
   if (!normalizedPhone) return { ok: true, skipped: "missing-phone", sent: false };
 
-  const root = db.collection("accounts").doc(clientId);
-  const collectionName = normalizedStatus === "accepted" ? "clientAcceptNotices" : "clientDeclineNotices";
-  const noticeRef = root.collection(collectionName).doc(leadId);
+  const noticeRef = db.collection("accounts").doc(clientId)
+    .collection("serviceRequestReceivedNotices").doc(leadId);
   const reserved = await db.runTransaction(async (transaction) => {
     const existing = await transaction.get(noticeRef);
     if (existing.exists && ["sending", "sent"].includes(text(existing.data().status))) return false;
@@ -45,7 +30,6 @@ export async function sendEstimateRequestStatusNotice({
       leadId,
       leadName: text(leadName) || null,
       phone: normalizedPhone,
-      requestStatus: normalizedStatus,
       status: "sending",
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: existing.exists
@@ -57,7 +41,7 @@ export async function sendEstimateRequestStatusNotice({
 
   if (!reserved) return { ok: true, duplicate: true, sent: false };
 
-  const message = estimateRequestStatusMessage(normalizedStatus, businessName);
+  const message = estimateRequestReceivedMessage(businessName);
   const delivery = await sendTelnyxSystemText({ to: normalizedPhone, message });
   await noticeRef.set({
     status: delivery.ok ? "sent" : "failed",

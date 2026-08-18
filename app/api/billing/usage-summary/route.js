@@ -3,7 +3,6 @@ import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest"
 import {
   MESSAGE_PARTS_PER_BUNDLE,
   MONTHLY_BASE_CENTS,
-  PER_CHAT_CENTS,
   PER_LEAD_CENTS,
   USAGE_CHARGE_THRESHOLD_POINTS,
   USAGE_POINT_CENTS,
@@ -44,7 +43,6 @@ export async function GET(request) {
       smsPartRemainder: Math.max(0, Math.floor(Number(account.usageSmsPartRemainder || 0))) % MESSAGE_PARTS_PER_BUNDLE,
       messagePartsPerPoint: MESSAGE_PARTS_PER_BUNDLE,
       leadPoints: PER_LEAD_CENTS / USAGE_POINT_CENTS,
-      chatPoints: PER_CHAT_CENTS / USAGE_POINT_CENTS,
       usageChargeStatus: String(account.usageChargeStatus || "idle"),
       lastUsagePaymentAt: iso(account.lastUsagePaymentAt),
       lastPaymentAt: iso(account.lastPaymentAt),
