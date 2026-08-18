@@ -14,6 +14,7 @@ import {
   retiredPendingOwnerSignupFieldDeletes,
 } from "./pendingOwnerSignup";
 import { checkSignupAvailability, normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability";
+import { sendTelnyxSystemText } from "./telnyxSystemText.js";
 
 export const ACCOUNT_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 export const ACCOUNT_VERIFICATION_RESEND_MS = 60 * 1000;
@@ -92,12 +93,11 @@ async function sendVerificationEmail({ email, code }) {
 }
 
 async function sendTelnyxText({ phone, message }) {
-  const response = await fetch("https://api.telnyx.com/v2/messages", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${text(process.env.TELNYX_API_KEY)}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: normalizedPhone(process.env.TELNYX_SIGNUP_FROM_NUMBER), to: normalizedPhone(phone), text: message }),
-  });
-  if (!response.ok) throw new Error(`Telnyx delivery failed (${response.status}).`);
+  const delivery = await sendTelnyxSystemText({ to: normalizedPhone(phone), message });
+  if (!delivery.ok) {
+    const suffix = delivery.httpStatus ? ` (${delivery.httpStatus})` : "";
+    throw new Error(`Telnyx delivery failed${suffix}.`);
+  }
 }
 
 export async function sendSignupText({ phone, message }) {

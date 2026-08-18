@@ -38,6 +38,8 @@ test("lead intake saves the lead and its account activity metadata", async () =>
   const route = await source("app/api/intake/route.js");
   assert.ok(route.includes("batch.create(targetRef"));
   assert.ok(route.includes("batch.set(accountSnapshot.ref"));
+  assert.ok(route.includes("sendEstimateRequestReceivedNotice"));
+  assert.ok(route.includes("data.consentToContact === true"));
   assert.equal(route.includes("connectionSnapshot"), false);
 });
 
@@ -104,6 +106,8 @@ test("payment separates usage pricing from the recurring charge", async () => {
   assert.ok(settings.includes("$50 per month"));
   assert.equal(settings.includes(">New chat<"), false);
   assert.equal(settings.includes("Last successful payment"), false);
+  const summaryRoute = await source("app/api/billing/usage-summary/route.js");
+  assert.equal(summaryRoute.includes("chatPoints"), false);
 });
 
 test("business information auto-saves edits and flushes the latest change before going back", async () => {
