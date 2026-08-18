@@ -38,8 +38,8 @@ test("lead intake saves the lead and its account activity metadata", async () =>
   const route = await source("app/api/intake/route.js");
   assert.ok(route.includes("batch.create(targetRef"));
   assert.ok(route.includes("batch.set(accountSnapshot.ref"));
-  assert.ok(route.includes("sendEstimateRequestReceivedNotice"));
-  assert.ok(route.includes("data.consentToContact === true"));
+  assert.equal(route.includes("sendEstimateRequestReceivedNotice"), false);
+  assert.equal(route.includes("confirmationText"), false);
   assert.equal(route.includes("connectionSnapshot"), false);
 });
 
