@@ -65,11 +65,6 @@ function timeSummary(selectedHour, selectedPeriod) {
   return `${selectedHour}:00 ${selectedPeriod}`;
 }
 
-function timeMinutes(selectedHour, selectedPeriod) {
-  const normalizedHour = selectedHour % 12;
-  return (normalizedHour + (selectedPeriod === "PM" ? 12 : 0)) * 60;
-}
-
 export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}) {
   const receptionist = value.receptionist && typeof value.receptionist === "object" ? value.receptionist : {};
   const businessName = cleanText(value.businessName || receptionist.businessName, 120);
@@ -152,7 +147,6 @@ export function validateReceptionistBusinessInformation(value = {}) {
   if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
   if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest estimate time or leave the estimate schedule blank.";
   if (hasEstimateSchedule && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Complete the latest estimate time or leave the estimate schedule blank.";
-  if (hasEstimateSchedule && timeMinutes(receptionist.estimateStartHour, receptionist.estimateStartPeriod) > timeMinutes(receptionist.estimateEndHour, receptionist.estimateEndPeriod)) return "The latest estimate time must be after the earliest estimate time.";
   if (!receptionist.serviceAreas.length) return "Add at least one service area.";
   if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";

@@ -8,6 +8,51 @@ const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "satur
 const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const PERIODS = ["AM", "PM"];
+const BUSINESS_TYPE_SUGGESTIONS = [
+  "Auto Repair",
+  "Cleaning Service",
+  "Construction",
+  "Electrical",
+  "General Contractor",
+  "HVAC",
+  "Landscaping",
+  "Lawn Care",
+  "Moving Company",
+  "Painting",
+  "Pest Control",
+  "Plumbing",
+  "Property Maintenance",
+  "Roofing",
+  "Snow Removal",
+  "Tree Service",
+];
+const SERVICE_AREA_SUGGESTIONS = [
+  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
+  "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
+  "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
+  "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island",
+  "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin",
+  "Wyoming", "Nationwide",
+];
+const COMMON_SERVICE_SUGGESTIONS = ["Consultation", "Emergency service", "Inspection", "Installation", "Maintenance", "Repair"];
+const SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE = {
+  "auto repair": ["Brake service", "Diagnostics", "Oil change", "Tire service"],
+  cleaning: ["Deep cleaning", "House cleaning", "Move-in or move-out cleaning", "Office cleaning"],
+  construction: ["Additions", "Remodeling", "Repairs", "Renovations"],
+  electrical: ["Electrical repair", "Lighting installation", "Outlet installation", "Panel upgrade"],
+  "general contractor": ["Additions", "Remodeling", "Repairs", "Renovations"],
+  hvac: ["Air conditioning repair", "Heating repair", "HVAC installation", "Seasonal maintenance"],
+  landscaping: ["Fall cleanup", "Hedge trimming", "Lawn mowing", "Mulching", "Spring cleanup"],
+  "lawn care": ["Fall cleanup", "Fertilization", "Lawn mowing", "Spring cleanup"],
+  moving: ["Commercial moving", "Local moving", "Long-distance moving", "Packing"],
+  painting: ["Cabinet painting", "Exterior painting", "Interior painting", "Touch-ups"],
+  "pest control": ["Inspection", "Pest removal", "Preventive treatment", "Wildlife removal"],
+  plumbing: ["Drain cleaning", "Leak repair", "Pipe repair", "Water heater service"],
+  "property maintenance": ["General repairs", "Preventive maintenance", "Property inspection", "Seasonal cleanup"],
+  roofing: ["Gutter service", "Roof inspection", "Roof repair", "Roof replacement"],
+  "snow removal": ["De-icing", "Driveway plowing", "Sidewalk clearing", "Snow hauling"],
+  "tree service": ["Emergency tree removal", "Stump grinding", "Tree removal", "Tree trimming"],
+};
 const RAILWAY_OWNED_FIELDS = new Set([
   "receptionistName",
   "aiVoice",
@@ -32,6 +77,13 @@ const REMOVED_BUSINESS_HOUR_FIELDS = new Set([
 function titleCase(value) {
   const text = String(value || "");
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function serviceSuggestionsFor(businessType) {
+  const normalizedType = String(businessType || "").trim().toLowerCase();
+  const matched = Object.entries(SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE)
+    .find(([type]) => normalizedType.includes(type) || (normalizedType && type.includes(normalizedType)));
+  return [...new Set([...(matched?.[1] || []), ...COMMON_SERVICE_SUGGESTIONS])];
 }
 
 function parseTime(value) {
@@ -79,8 +131,8 @@ function Field({ label, explanation, children }) {
   );
 }
 
-function Input({ value, onChange, type = "text", placeholder = "", readOnly = false, ariaLabel }) {
-  return <input aria-label={ariaLabel} type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
+function Input({ value, onChange, type = "text", placeholder = "", readOnly = false, ariaLabel, ...inputProps }) {
+  return <input {...inputProps} aria-label={ariaLabel} type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
 }
 
 function Select({ value, onChange, children, ariaLabel }) {
@@ -123,8 +175,9 @@ function HourPeriodPicker({ label, explanation, hour, period, onHourChange, onPe
   );
 }
 
-function StackedListEditor({ items, onChange, placeholder, addLabel }) {
+function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel, suggestions = [], suggestionListId, autoComplete = "off" }) {
   const normalizedItems = Array.isArray(items) ? items.map((item) => String(item || "").trim()).filter(Boolean) : [];
+  const normalizedSuggestions = [...new Set(suggestions.map((item) => String(item || "").trim()).filter(Boolean))];
   const [entry, setEntry] = useState("");
 
   function addItem() {
@@ -142,9 +195,10 @@ function StackedListEditor({ items, onChange, placeholder, addLabel }) {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <input value={entry} onChange={(event) => setEntry(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addItem(); } }} placeholder={placeholder} className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
+        <input aria-label={inputLabel} list={normalizedSuggestions.length ? suggestionListId : undefined} autoComplete={autoComplete} autoCapitalize="words" autoCorrect="on" spellCheck value={entry} onChange={(event) => setEntry(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addItem(); } }} placeholder={placeholder} className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950" />
         <button type="button" disabled={!entry.trim()} onClick={addItem} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{addLabel}</button>
       </div>
+      {normalizedSuggestions.length > 0 && <datalist id={suggestionListId}>{normalizedSuggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>}
       {normalizedItems.map((item, index) => (
         <div key={`${item}-${index}`} className="flex items-center gap-2">
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm text-slate-800">{item}</div>
@@ -155,13 +209,13 @@ function StackedListEditor({ items, onChange, placeholder, addLabel }) {
   );
 }
 
-function ServicesEditor({ services, onChange }) {
+function ServicesEditor({ services, onChange, businessType }) {
   const current = services && typeof services === "object" && !Array.isArray(services) ? services : {};
   const names = Object.keys(current).map(titleCase);
   function updateServices(nextNames) {
     onChange(Object.fromEntries(nextNames.map((name) => { const key = name.trim().toLowerCase(); return [key, key]; }).filter(([key]) => key)));
   }
-  return <StackedListEditor items={names} onChange={updateServices} placeholder="Snow plowing" addLabel="Add Service" />;
+  return <StackedListEditor items={names} onChange={updateServices} placeholder="Start typing a service" addLabel="Add Service" inputLabel="Service" suggestions={serviceSuggestionsFor(businessType)} suggestionListId="ark-service-suggestions" />;
 }
 
 function BusinessInformationEditor({ items, onChange }) {
@@ -254,6 +308,15 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" });
   }
+  const acceptsAllHours = profile.estimateStartHour === 12
+    && profile.estimateStartPeriod === "AM"
+    && profile.estimateEndHour === 11
+    && profile.estimateEndPeriod === "PM";
+  function updateAllHours(enabled) {
+    onChange(enabled
+      ? { ...profile, estimateStartHour: 12, estimateStartPeriod: "AM", estimateEndHour: 11, estimateEndPeriod: "PM" }
+      : { ...profile, estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" });
+  }
   const identitySection = !onboardingMode && (
     <section>
       <h3 className="text-lg font-black">Business details</h3>
@@ -269,7 +332,11 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
     <section>
       <h3 className="text-lg font-black">Business type</h3>
       <div className="mt-4">
-        <Field label="Type of business" explanation="Enter the general kind of work this business does."><Input ariaLabel="Type of business" value={profile.businessType} onChange={(event) => update("businessType", event.target.value)} placeholder="Landscaping" /></Field>
+        <Field label="Type of business" explanation="Choose a suggestion or enter the general kind of work this business does.">
+          <Input ariaLabel="Type of business" list="ark-business-type-suggestions" autoComplete="off" autoCapitalize="words" autoCorrect="on" spellCheck value={profile.businessType} onChange={(event) => update("businessType", event.target.value)} placeholder="Start typing a business type" />
+          <datalist id="ark-business-type-suggestions">{BUSINESS_TYPE_SUGGESTIONS.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Choose a suggestion or type your own.</p>
+        </Field>
       </div>
     </section>
     <section>
@@ -279,17 +346,21 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
           <Select ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} onChange={(event) => update("timeZone", event.target.value)}>{onboardingMode && <option value="">Choose</option>}{TIME_ZONES.map((zone) => <option key={zone} value={zone}>{zone}</option>)}</Select>
         </Field>
         <DayCheckboxes label="Estimate days" explanation="Choose the days customers may request estimates, or leave them unchecked if there is no set schedule." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:col-span-2">
+          <input type="checkbox" checked={acceptsAllHours} onChange={(event) => updateAllHours(event.target.checked)} />
+          <span><strong className="block text-sm text-slate-900">Accept estimates at all hours</strong><span className="block text-xs font-semibold text-slate-600">Uses every hourly time slot on the selected days.</span></span>
+        </label>
         <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(value) => update("estimateStartHour", value)} onPeriodChange={(value) => update("estimateStartPeriod", value)} />
         <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(value) => update("estimateEndHour", value)} onPeriodChange={(value) => update("estimateEndPeriod", value)} />
       </div>
     </section>
     <section>
       <ExplainedLabel label="Service areas" explanation="Add each town, city, county, or state where the business accepts jobs." heading />
-      <div className="mt-4"><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Worcester, Massachusetts" addLabel="Add Area" /></div>
+      <div className="mt-4"><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items)} placeholder="Start typing a city, county, or state" addLabel="Add Area" inputLabel="Service area" suggestions={SERVICE_AREA_SUGGESTIONS} suggestionListId="ark-service-area-suggestions" autoComplete="address-level2" /></div>
     </section>
     <section>
       <ExplainedLabel label="Services" explanation="Add each type of work customers can request from the business." heading />
-      <div className="mt-4"><ServicesEditor services={profile.services} onChange={(services) => update("services", services)} /></div>
+      <div className="mt-4"><ServicesEditor services={profile.services} businessType={profile.businessType} onChange={(services) => update("services", services)} /></div>
     </section>
     <section>
       <ExplainedLabel label="Additional business information" explanation="Add optional titled facts the AI receptionist can use when answering customer questions." heading />

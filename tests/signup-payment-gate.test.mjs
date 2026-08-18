@@ -3,6 +3,7 @@ import test from "node:test";
 import { access, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { validateReceptionistBusinessInformation } from "../app/lib/ownerSignup.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
@@ -29,6 +30,35 @@ test("onboarding follows main information, verification, business, then payment"
   assert.ok(shell.includes('status === "pending_verification"'));
   assert.ok(shell.includes('status === "pending_business_setup"'));
   assert.ok(shell.includes('status === "pending_payment"'));
+});
+
+test("business setup offers flexible suggestions and an all-hours shortcut", async () => {
+  const [form, settingsRoute] = await Promise.all([
+    source("app/components/ReceptionistBusinessForm.js"),
+    source("app/api/receptionist/settings/route.js"),
+  ]);
+  assert.ok(form.includes('list="ark-business-type-suggestions"'));
+  assert.ok(form.includes('suggestionListId="ark-service-area-suggestions"'));
+  assert.ok(form.includes('suggestionListId="ark-service-suggestions"'));
+  assert.ok(form.includes('autoCorrect="on"'));
+  assert.ok(form.includes("Choose a suggestion or type your own."));
+  assert.ok(form.includes("Accept estimates at all hours"));
+  assert.ok(form.includes('estimateStartHour: 12'));
+  assert.ok(form.includes('estimateStartPeriod: "AM"'));
+  assert.ok(form.includes('estimateEndHour: 11'));
+  assert.ok(form.includes('estimateEndPeriod: "PM"'));
+  assert.equal(settingsRoute.includes("earliest > latest"), false);
+  assert.equal(validateReceptionistBusinessInformation({
+    timeZone: "America/New_York",
+    businessType: "Snow Removal",
+    estimateWeekdays: ["monday"],
+    estimateStartHour: 8,
+    estimateStartPeriod: "PM",
+    estimateEndHour: 4,
+    estimateEndPeriod: "AM",
+    serviceAreas: ["Massachusetts"],
+    services: { plowing: "plowing" },
+  }), "");
 });
 
 test("main information creates only a short-lived temporary signup", async () => {
