@@ -63,13 +63,11 @@ export default function SettingsPanel() {
   const [darkMode, setDarkMode] = useState(false);
   const [savedDarkMode, setSavedDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [isSavingCustomization, setIsSavingCustomization] = useState(false);
   const [isOpeningBilling, setIsOpeningBilling] = useState(false);
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [businessSaveStatus, setBusinessSaveStatus] = useState("idle");
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [downloadNotice, setDownloadNotice] = useState("");
   const [error, setError] = useState("");
@@ -127,7 +125,6 @@ export default function SettingsPanel() {
         savedReceptionistRef.current = prepared;
         setReceptionist(prepared);
         setSavedReceptionist(prepared);
-        setBusinessSaveStatus("saved");
         setFeatures(nextFeatures);
         setSavedFeatures(nextFeatures);
         setFeatureState({
@@ -192,25 +189,15 @@ export default function SettingsPanel() {
   const queueBusinessSave = useCallback((snapshot) => {
     if (!user || !snapshot) return Promise.resolve(false);
     const snapshotKey = profileKey(snapshot);
-    setBusinessSaveStatus("pending");
     const run = async () => {
-      if (snapshotKey === profileKey(savedReceptionistRef.current)) {
-        setBusinessSaveStatus(profileKey(receptionistRef.current) === snapshotKey ? "saved" : "pending");
-        return true;
-      }
-      setIsSaving(true);
-      setBusinessSaveStatus("saving");
+      if (snapshotKey === profileKey(savedReceptionistRef.current)) return true;
       setError("");
       try {
         await persistBusinessSnapshot(snapshot);
-        setBusinessSaveStatus(profileKey(receptionistRef.current) === profileKey(savedReceptionistRef.current) ? "saved" : "pending");
         return true;
       } catch (saveError) {
-        setBusinessSaveStatus("error");
         setError(publicFormError(saveError, "Could not save business information."));
         return false;
-      } finally {
-        setIsSaving(false);
       }
     };
     const queued = businessSaveQueueRef.current.then(run, run);
@@ -222,7 +209,6 @@ export default function SettingsPanel() {
     receptionistRef.current = next;
     setReceptionist(next);
     setError("");
-    setBusinessSaveStatus("pending");
     if (options.saveImmediately) {
       window.clearTimeout(businessAutosaveTimerRef.current);
       queueBusinessSave(next);
@@ -335,9 +321,7 @@ export default function SettingsPanel() {
   const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
 
   function businessSection() {
-    const saveMessage = businessSaveStatus === "error" ? "Some changes could not be saved." : isSaving || businessSaveStatus === "saving" ? "Saving changes…" : businessSaveStatus === "pending" ? "Saving shortly…" : businessSaveStatus === "saved" ? "All changes saved" : "Changes save automatically";
-    const saveClass = businessSaveStatus === "error" ? "border-red-200 bg-red-50 text-red-700" : businessSaveStatus === "saved" ? "border-green-200 bg-green-50 text-green-700" : "border-slate-200 bg-slate-50 text-slate-600";
-    return <><SectionHeader title="Business Information" onBack={backToSettings} /><div role="status" aria-live="polite" className={`mb-3 rounded-xl border px-3 py-2 text-xs font-bold ${saveClass}`}>{saveMessage}</div><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={changeReceptionist} /></div>}</SectionPanel></>;
+    return <><SectionHeader title="Business Information" onBack={backToSettings} /><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={changeReceptionist} /></div>}</SectionPanel></>;
   }
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;

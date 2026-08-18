@@ -102,7 +102,8 @@ test("business information auto-saves edits and flushes the latest change before
   assert.ok(settings.includes("queueBusinessSave(latest)"));
   assert.ok(settings.includes("savedReceptionistRef.current"));
   assert.ok(settings.includes("options.saveImmediately"));
-  assert.ok(settings.includes("All changes saved"));
+  assert.equal(settings.includes("All changes saved"), false);
+  assert.equal(settings.includes("businessSaveStatus"), false);
   assert.ok(form.includes("{ saveImmediately: true }"));
 });
 

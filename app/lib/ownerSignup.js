@@ -1,5 +1,6 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
+import { normalizeServiceAreas, serviceAreaFields } from "./serviceAreas.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
 export const OWNER_SIGNUP_VERSION = 4;
@@ -108,7 +109,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       earliestEstimateStart: estimateStartComplete ? timeSummary(estimateStartHour, estimateStartPeriod) : "",
       latestEstimateStart: estimateEndComplete ? timeSummary(estimateEndHour, estimateEndPeriod) : "",
       businessType: cleanText(receptionist.businessType || receptionist.businessBase, 120),
-      serviceAreas: textList(receptionist.serviceAreas),
+      serviceAreas: normalizeServiceAreas(textList(receptionist.serviceAreas)),
       services: servicesObject(receptionist.services),
       ...(businessInformation.length ? { businessInformation } : {}),
       extraInformation: businessInformation.length ? businessInformationText(businessInformation) : cleanText(receptionist.extraInformation, 2_000),
@@ -147,7 +148,7 @@ export function validateReceptionistBusinessInformation(value = {}) {
   if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
   if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest estimate time or leave the estimate schedule blank.";
   if (hasEstimateSchedule && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Complete the latest estimate time or leave the estimate schedule blank.";
-  if (!receptionist.serviceAreas.length) return "Add at least one service area.";
+  if (!serviceAreaFields(receptionist.serviceAreas).state) return "Choose a state.";
   if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";
 }

@@ -2,16 +2,15 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
+import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
-const HOURS = [12, ...Array.from({ length: 11 }, (_, index) => index + 1)];
+const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const PERIODS = ["AM", "PM"];
-const TIME_OPTIONS = [
-  { value: "", label: "No set time" },
-  ...PERIODS.flatMap((period) => HOURS.map((hour) => ({ value: `${hour}|${period}`, label: `${hour}:00 ${period}` }))),
-];
+const HOUR_OPTIONS = [{ value: "", label: "Choose" }, ...HOURS];
+const PERIOD_OPTIONS = [{ value: "", label: "Choose" }, ...PERIODS];
 const BUSINESS_TYPE_SUGGESTIONS = [
   "Auto Repair",
   "Cleaning Service",
@@ -30,15 +29,6 @@ const BUSINESS_TYPE_SUGGESTIONS = [
   "Snow Removal",
   "Tree Service",
 ];
-const SERVICE_AREA_SUGGESTIONS = [
-  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia",
-  "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
-  "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey",
-  "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island",
-  "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin",
-  "Wyoming", "Nationwide",
-];
-const COMMON_SERVICE_SUGGESTIONS = ["Consultation", "Emergency service", "Inspection", "Installation", "Maintenance", "Repair"];
 const SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE = {
   "auto repair": ["Brake service", "Diagnostics", "Oil change", "Tire service"],
   cleaning: ["Deep cleaning", "House cleaning", "Move-in or move-out cleaning", "Office cleaning"],
@@ -86,8 +76,8 @@ function titleCase(value) {
 function serviceSuggestionsFor(businessType) {
   const normalizedType = String(businessType || "").trim().toLowerCase();
   const matched = Object.entries(SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE)
-    .find(([type]) => normalizedType.includes(type) || (normalizedType && type.includes(normalizedType)));
-  return [...new Set([...(matched?.[1] || []), ...COMMON_SERVICE_SUGGESTIONS])];
+    .find(([type]) => normalizedType === type || normalizedType.includes(type));
+  return matched?.[1] || [];
 }
 
 function parseTime(value) {
@@ -295,13 +285,15 @@ function DayCheckboxes({ label, explanation, selected, onChange }) {
   );
 }
 
-function HourPeriodPicker({ label, explanation, hour, period, onChange }) {
+function HourPeriodPicker({ label, explanation, hour, period, onHourChange, onPeriodChange }) {
   const selectedHour = Number.isInteger(Number(hour)) && Number(hour) >= 1 && Number(hour) <= 12 ? Number(hour) : "";
   const selectedPeriod = PERIODS.includes(period) ? period : "";
-  const selectedTime = selectedHour && selectedPeriod ? `${selectedHour}|${selectedPeriod}` : "";
   return (
     <Field label={label} explanation={explanation}>
-      <InAppSelect ariaLabel={label} value={selectedTime} options={TIME_OPTIONS} placeholder="Choose a time" onChange={(nextValue) => { const [nextHour = "", nextPeriod = ""] = String(nextValue).split("|"); onChange({ hour: nextHour ? Number(nextHour) : "", period: nextPeriod }); }} />
+      <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
+        <InAppSelect ariaLabel={`${label} hour`} value={selectedHour} options={HOUR_OPTIONS} placeholder="Choose" onChange={(value) => onHourChange(value ? Number(value) : "")} />
+        <InAppSelect ariaLabel={`${label} AM or PM`} value={selectedPeriod} options={PERIOD_OPTIONS} placeholder="Choose" onChange={onPeriodChange} />
+      </div>
     </Field>
   );
 }
@@ -404,7 +396,7 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
   const explicitPeriod = (value) => PERIODS.includes(value) ? value : "";
   return {
     ...editableProfile,
-    serviceAreas: Array.isArray(profile.serviceAreas) ? profile.serviceAreas : [],
+    serviceAreas: normalizeServiceAreas(profile.serviceAreas),
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
     businessInformation: normalizeBusinessInformation(profile.businessInformation),
     businessType: String(profile.businessType || profile.businessBase || ""),
@@ -423,6 +415,7 @@ export function receptionistRequestPayload(profile = {}) {
   const businessInformation = normalizeBusinessInformation(profile.businessInformation);
   return {
     ...editableProfile,
+    serviceAreas: normalizeServiceAreas(profile.serviceAreas),
     businessInformation,
     extraInformation: businessInformationText(businessInformation),
     estimateWeekdays,
@@ -433,6 +426,7 @@ export function receptionistRequestPayload(profile = {}) {
 
 export default function ReceptionistBusinessForm({ profile, onChange, onboardingMode = false }) {
   if (!profile) return null;
+  const { state: serviceState, county: serviceCounty } = serviceAreaFields(profile.serviceAreas);
   function update(field, value, options = {}) { onChange({ ...profile, [field]: value }, options); }
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
@@ -478,14 +472,20 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
           <input type="checkbox" checked={acceptsAllHours} onChange={(event) => updateAllHours(event.target.checked)} />
           <span><strong className="block text-sm text-slate-900">24 hours</strong><span className="block text-xs font-semibold text-slate-600">Accept estimate requests all day on the selected days.</span></span>
         </label>
-        {!acceptsAllHours && <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onChange={({ hour, period }) => onChange({ ...profile, estimateStartHour: hour, estimateStartPeriod: period }, { saveImmediately: true })} />}
-        {!acceptsAllHours && <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onChange={({ hour, period }) => onChange({ ...profile, estimateEndHour: hour, estimateEndPeriod: period }, { saveImmediately: true })} />}
+        {!acceptsAllHours && <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />}
+        {!acceptsAllHours && <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(hour) => update("estimateEndHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateEndPeriod", period, { saveImmediately: true })} />}
       </div>
     </section>
     <section>
-      <ExplainedLabel label="Service areas" explanation="Add any mix of towns, cities, counties, states, or a written travel radius. This avoids forcing every business into the same size area." heading />
-      <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">Examples: Worcester · Worcester County · Massachusetts · Within 25 miles of Worcester</p>
-      <div className="mt-4"><StackedListEditor items={profile.serviceAreas} onChange={(items) => update("serviceAreas", items, { saveImmediately: true })} placeholder="City, county, state, or travel radius" addLabel="Add Area" inputLabel="Service area" suggestions={SERVICE_AREA_SUGGESTIONS} /></div>
+      <ExplainedLabel label="Service area" explanation="Choose the state the business serves. Add a county only when the business is limited to or focused on one county." heading />
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Field label="State" explanation="Choose the state where this business provides service.">
+          <InAppSelect ariaLabel="State" value={serviceState} options={US_STATES} placeholder="Choose a state" onChange={(state) => update("serviceAreas", serviceAreaValues(state, serviceCounty), { saveImmediately: true })} />
+        </Field>
+        <Field label="County (optional)" explanation="Enter a county only if it helps define the service area more precisely.">
+          <Input ariaLabel="County (optional)" value={serviceCounty} placeholder="Worcester County" onChange={(event) => update("serviceAreas", serviceAreaValues(serviceState, event.target.value))} onBlur={(event) => update("serviceAreas", serviceAreaValues(serviceState, event.currentTarget.value), { saveImmediately: true })} />
+        </Field>
+      </div>
     </section>
     <section>
       <ExplainedLabel label="Services" explanation="Add each type of work customers can request from the business." heading />

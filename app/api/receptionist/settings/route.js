@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
+import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
 import { normalizeSignupPhone, signupPhoneVariants } from "../../../lib/signupAvailability";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
@@ -52,7 +53,7 @@ function profilePayload(clientId, account = {}) {
     earliestEstimateStart: text(account.earliestEstimateStart),
     latestEstimateStart: text(account.latestEstimateStart),
     businessType: text(account.businessType || account.businessBase),
-    serviceAreas: list(account.serviceAreas),
+    serviceAreas: normalizeServiceAreas(account.serviceAreas),
     services,
     businessInformation,
     extraInformation: businessInformationText(businessInformation),
@@ -90,6 +91,7 @@ function validateProfile(profile) {
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
   if (!profile.businessPhone) return "Enter the business phone number.";
   if (!profile.businessType) return "Enter the type of business.";
+  if (!serviceAreaFields(profile.serviceAreas).state) return "Choose a state.";
   if (!Object.keys(profile.services).length) return "Add at least one service.";
   try { new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format(); } catch { return "Choose a valid time zone."; }
   return validateEstimateSchedule(profile);
@@ -144,7 +146,7 @@ export async function POST(request) {
     earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
     latestEstimateStart: text(body.latestEstimateStart ?? current.latestEstimateStart),
     businessType: text(body.businessType ?? current.businessType),
-    serviceAreas: list(body.serviceAreas ?? current.serviceAreas),
+    serviceAreas: normalizeServiceAreas(body.serviceAreas ?? current.serviceAreas),
     services: servicesObject(body.services ?? current.services),
     businessInformation: normalizeBusinessInformation(body.businessInformation ?? current.businessInformation),
   };
