@@ -31,8 +31,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 p-5">
-      <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl md:p-9">
+    <main className="ark-login-page grid min-h-screen place-items-center p-5">
+      <div className="ark-login-card w-full max-w-md rounded-3xl p-7 shadow-2xl md:p-9">
         <h1 className="text-3xl font-bold text-slate-950">Welcome to ARK Client Center</h1>
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <label className="block"><span className="text-sm font-semibold text-slate-700">Business name</span><input required autoComplete="organization" value={businessName} onChange={(event) => setBusinessName(normalizeBusinessIdentifier(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" placeholder="Your business name" /></label>
