@@ -3,6 +3,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import Stripe from "stripe";
 import { isStandardRole } from "./accountRoles.js";
 import { sendAdminEvent } from "./adminEvents.js";
+import { ACCEPTED_LEAD_BILLING_SOURCE } from "./billingLeadUsage.js";
 import {
   smsUsageResult,
   USAGE_CHARGE_THRESHOLD_POINTS,
@@ -111,7 +112,7 @@ async function pendingLedgerDocuments(root, collectionName, maximum) {
 
 export async function reconcilePendingUsageEvents({ db, stripe = null, maximumBusinesses = 100, maximumEvents = 500 } = {}) {
   const businesses = await db.collection("accounts").where("status", "==", "active").limit(Math.max(1, maximumBusinesses)).get();
-  const results = { businesses: businesses.size, checked: 0, recorded: 0, failed: 0 };
+  const results = { businesses: businesses.size, checked: 0, recorded: 0, skipped: 0, failed: 0 };
   for (const business of businesses.docs) {
     if (!isStandardRole(business.data().role)) continue;
     if (results.checked >= maximumEvents) break;
@@ -128,6 +129,15 @@ export async function reconcilePendingUsageEvents({ db, stripe = null, maximumBu
         results.checked += 1;
         try {
           const data = document.data();
+          if (ledger.type === "lead" && text(data.sourceType) !== ACCEPTED_LEAD_BILLING_SOURCE) {
+            await document.ref.set({
+              usageRecorded: true,
+              usageRecordedAt: FieldValue.serverTimestamp(),
+              usageSkippedReason: "lead-not-accepted",
+            }, { merge: true });
+            results.skipped += 1;
+            continue;
+          }
           await recordUsage({
             db,
             stripe,

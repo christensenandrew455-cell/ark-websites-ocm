@@ -3,31 +3,20 @@ import { FieldValue } from "firebase-admin/firestore";
 import { readAccountSections } from "../../lib/accountSections";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { sendAdminEvent } from "../../lib/adminEvents";
-import {
-  addBillingLeadEventToBatch,
-  billingLeadEventId,
-  billingLeadEventRef,
-} from "../../lib/billingLeadUsage";
-import {
-  leadContactFieldDeletionPatch,
-  stripLeadContactFields,
-} from "../../lib/leadContactFields";
-import { mergeablePropertyMatches } from "../../lib/intakeLeadRecords";
+import { billingLeadEventRef } from "../../lib/billingLeadUsage";
+import { stripLeadContactFields } from "../../lib/leadContactFields";
+import { calculateLeadRisk } from "../../lib/leadRiskAssessment";
 import { sendNewLeadNotification } from "../../lib/notificationService";
-import { recordLeadUsage } from "../../lib/usageThresholdBilling";
 import {
   createJob,
   mergeJobs,
   normalizeAddressKey,
-  normalizeJobs,
   uniqueTexts,
 } from "../../lib/propertyProfiles";
 import { validTimeZone } from "../../lib/timeWindows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const allowedSections = ["clients", "contactedMe"];
 
 function cleanClientId(value) {
   return String(value || "")
@@ -36,10 +25,6 @@ function cleanClientId(value) {
     .replace(/[^a-z0-9-_]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-function cleanSectionKey(value) {
-  return allowedSections.includes(value) ? value : "contactedMe";
 }
 
 function text(value) {
@@ -64,9 +49,7 @@ function secretMatches(expected, provided) {
 
 function alreadyExists(error) {
   const code = String(error?.code || "").trim().toLowerCase();
-  return Number(error?.code) === 6
-    || code === "already-exists"
-    || code === "already_exists";
+  return Number(error?.code) === 6 || code === "already-exists" || code === "already_exists";
 }
 
 function corsHeaders() {
@@ -120,6 +103,13 @@ function fallbackPropertyKey(address, phone) {
   return "";
 }
 
+function intakeRecordId(clientId, sourceId) {
+  return createHash("sha256")
+    .update(`${text(clientId)}:${text(sourceId)}`)
+    .digest("hex")
+    .slice(0, 48);
+}
+
 function buildRow(input, source) {
   const data = stripLeadContactFields(input || {});
   const { FirstName, LastName, Name } = nameFields(data);
@@ -127,6 +117,7 @@ function buildRow(input, source) {
   const { StreetAddress, TownOrCity, Address } = addressFields(data);
 
   const ClientNotes = text(data.ClientNotes || data.clientNotes || data.Notes || data.notes || data.message || data.summary || data.Body || data.TranscriptionText || data.CallStatus);
+  const riskAssessment = calculateLeadRisk(data);
   return {
     FirstName,
     LastName,
@@ -145,29 +136,14 @@ function buildRow(input, source) {
     PreferredTime: text(data.PreferredTime || data.preferredTime || data.EstimateTime || data.estimateTime),
     ClientNotes,
     Notes: ClientNotes,
+    riskAssessment,
+    riskAssessed: riskAssessment.assessed,
+    riskScore: riskAssessment.score,
+    riskLevel: riskAssessment.level,
     source,
     rawSubmission: safeSubmission(data),
     updatedAt: FieldValue.serverTimestamp(),
   };
-}
-
-async function findPropertyMatches(db, clientId, propertyKey) {
-  if (!propertyKey) return [];
-
-  const matches = [];
-  for (const stageKey of allowedSections) {
-    const snapshot = await db.collection("accounts").doc(clientId).collection(stageKey).get();
-    snapshot.docs.forEach((documentSnapshot) => {
-      const data = stripLeadContactFields(documentSnapshot.data());
-      const existingAddress = data.Address || [data.StreetAddress, data.TownOrCity].filter(Boolean).join(", ");
-      const existingKey = data.PropertyKey || fallbackPropertyKey(existingAddress, data.Phone || data.phone);
-      if (existingKey === propertyKey) {
-        matches.push({ stageKey, id: documentSnapshot.id, ref: documentSnapshot.ref, data });
-      }
-    });
-  }
-
-  return matches;
 }
 
 export async function OPTIONS() {
@@ -227,10 +203,8 @@ export async function POST(request) {
       );
     }
 
-    const requestedStage = cleanSectionKey(data.sectionKey || data.section || data.status);
-    const sectionKey = connection.allowStageOverride === true
-      ? requestedStage
-      : cleanSectionKey(connection.defaultStage);
+    // Every new request must be reviewed before it becomes a billable client.
+    const sectionKey = "contactedMe";
     const channel = text(url.searchParams.get("source") || data.source || (data.From || data.Caller ? "phone" : "website")).toLowerCase();
     const source = text(connection.sourceLabel)
       ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
@@ -252,73 +226,52 @@ export async function POST(request) {
       );
     }
 
-    const suppliedBillingSourceId = text(
+    const suppliedIntakeSourceId = text(
       request.headers.get("idempotency-key")
       || data.idempotencyKey
       || data.callControlId
     ).slice(0, 500);
-    const suppliedBillingEventRef = sectionKey === "contactedMe" && suppliedBillingSourceId
-      ? billingLeadEventRef(db, { clientId, sourceId: suppliedBillingSourceId })
-      : null;
-    if (suppliedBillingEventRef) {
-      const existingEvent = await suppliedBillingEventRef.get();
-      if (existingEvent.exists) {
-        await recordLeadUsage({ db, clientId, sourceId: suppliedBillingEventRef.id, ledgerRef: suppliedBillingEventRef }).catch((usageError) => {
-          if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Unable to finish duplicate lead usage accounting", usageError);
-        });
+    const targetCollection = db.collection("accounts").doc(clientId).collection(sectionKey);
+    const stableIntakeId = suppliedIntakeSourceId ? intakeRecordId(clientId, suppliedIntakeSourceId) : "";
+    const targetRef = stableIntakeId ? targetCollection.doc(stableIntakeId) : targetCollection.doc();
+    if (stableIntakeId) {
+      const [legacyBillingEvent, existingLead] = await Promise.all([
+        billingLeadEventRef(db, { clientId, sourceId: suppliedIntakeSourceId }).get(),
+        targetRef.get(),
+      ]);
+      if (legacyBillingEvent.exists) {
         return Response.json({
           ok: true,
-          id: text(existingEvent.data().leadId),
+          id: text(legacyBillingEvent.data().leadId),
           clientId,
           sectionKey,
           propertyKey: row.PropertyKey,
           duplicate: true,
         }, { status: 200, headers: corsHeaders() });
       }
+      if (existingLead.exists) {
+        return Response.json({
+          ok: true,
+          id: targetRef.id,
+          clientId,
+          sectionKey,
+          propertyKey: text(existingLead.data().PropertyKey || row.PropertyKey),
+          duplicate: true,
+        }, { status: 200, headers: corsHeaders() });
+      }
     }
 
-    const propertyMatches = sectionKey === "contactedMe"
-      ? []
-      : await findPropertyMatches(db, clientId, row.PropertyKey);
-    const matches = mergeablePropertyMatches(sectionKey, propertyMatches);
-    const existingInTarget = matches.find((match) => match.stageKey === sectionKey);
-    const primary = existingInTarget || matches[0] || null;
-    const primaryData = stripLeadContactFields(primary?.data || {});
-    const targetCollection = db.collection("accounts").doc(clientId).collection(sectionKey);
-    const targetRef = primary ? targetCollection.doc(primary.id) : targetCollection.doc();
-
-    const previousJobs = mergeJobs(
-      ...matches.map((match) => normalizeJobs(match.data, match.stageKey))
-    );
-    const generatedJob = createJob(row, previousJobs.length + 1, sectionKey);
-    const billingSourceId = suppliedBillingSourceId || generatedJob.id;
-    const nextJob = sectionKey === "contactedMe"
-      ? { ...generatedJob, id: `job-${billingLeadEventId(clientId, billingSourceId)}` }
-      : generatedJob;
-    const duplicateSubmission = previousJobs.some((job) => job.id === nextJob.id);
-    const Jobs = mergeJobs(previousJobs, nextJob);
-
-    const ContactNames = uniqueTexts(
-      ...matches.map((match) => match.data.ContactNames || match.data.Name),
-      row.ContactNames
-    );
-    const Phones = uniqueTexts(
-      ...matches.map((match) => match.data.Phones || match.data.Phone),
-      row.Phones
-    );
+    const generatedJob = createJob(row, 1, sectionKey);
+    const nextJob = stableIntakeId ? { ...generatedJob, id: `job-${stableIntakeId}` } : generatedJob;
+    const Jobs = mergeJobs(nextJob);
+    const ContactNames = uniqueTexts(row.ContactNames);
+    const Phones = uniqueTexts(row.Phones);
 
     const batch = db.batch();
-    batch.set(targetRef, {
-      ...primaryData,
+    batch.create(targetRef, {
       ...row,
-      FirstName: row.FirstName || primaryData.FirstName || "",
-      LastName: row.LastName || primaryData.LastName || "",
-      Name: row.Name || ContactNames.at(-1) || primaryData.Name || "",
-      Phone: row.Phone || Phones.at(-1) || primaryData.Phone || "",
-      StreetAddress: row.StreetAddress || primaryData.StreetAddress || "",
-      TownOrCity: row.TownOrCity || primaryData.TownOrCity || "",
-      Address: row.Address || primaryData.Address || "",
-      PropertyKey: row.PropertyKey || primaryData.PropertyKey || "",
+      Name: row.Name || ContactNames.at(-1) || "",
+      Phone: row.Phone || Phones.at(-1) || "",
       ContactNames,
       Phones,
       Jobs,
@@ -327,13 +280,8 @@ export async function POST(request) {
       currentStage: sectionKey,
       connectionClientId: clientId,
       BusinessTimeZone: timeZone,
-      createdAt: primaryData.createdAt || FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      ...leadContactFieldDeletionPatch(FieldValue.delete()),
-    }, { merge: true });
-
-    matches.forEach((match) => {
-      if (match.ref.path !== targetRef.path) batch.delete(match.ref);
     });
 
     batch.set(accountSnapshot.ref, {
@@ -343,48 +291,25 @@ export async function POST(request) {
       lastLeadStage: sectionKey,
     }, { merge: true });
 
-    let billingEventRef = null;
-    if (sectionKey === "contactedMe") {
-      billingEventRef = addBillingLeadEventToBatch(batch, db, {
-        clientId,
-        sourceId: billingSourceId,
-        leadId: targetRef.id,
-        jobId: nextJob.id,
-        occurredAt: nextJob.createdAt,
-      });
-    }
-
     try {
       await batch.commit();
     } catch (commitError) {
-      if (billingEventRef && alreadyExists(commitError)) {
-        const existingEvent = await billingEventRef.get();
-        if (existingEvent.exists) {
-          await recordLeadUsage({ db, clientId, sourceId: billingEventRef.id, ledgerRef: billingEventRef }).catch((usageError) => {
-            if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Unable to finish duplicate lead usage accounting", usageError);
-          });
-          return Response.json({
-            ok: true,
-            id: text(existingEvent.data().leadId),
-            clientId,
-            sectionKey,
-            propertyKey: row.PropertyKey,
-            duplicate: true,
-          }, { status: 200, headers: corsHeaders() });
-        }
+      if (stableIntakeId && alreadyExists(commitError) && (await targetRef.get()).exists) {
+        return Response.json({
+          ok: true,
+          id: targetRef.id,
+          clientId,
+          sectionKey,
+          propertyKey: row.PropertyKey,
+          duplicate: true,
+        }, { status: 200, headers: corsHeaders() });
       }
       throw commitError;
     }
 
-    if (sectionKey === "contactedMe" && !duplicateSubmission) {
-      let usagePayment = null;
+    if (sectionKey === "contactedMe") {
       try {
-        usagePayment = (await recordLeadUsage({ db, clientId, sourceId: billingEventRef.id, ledgerRef: billingEventRef })).payment || null;
-      } catch (usageError) {
-        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Lead saved but usage accounting needs a retry", usageError);
-      }
-      try {
-        if (usagePayment?.status !== "declined") await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
+        await sendNewLeadNotification({ db, clientId, row, leadId: targetRef.id });
       } catch (notificationError) {
         console.error("Lead saved but push notification delivery failed", notificationError);
       }
@@ -407,9 +332,9 @@ export async function POST(request) {
         propertyKey: row.PropertyKey,
         totalJobs: Jobs.length,
         repeatClient: Jobs.length > 1,
-        duplicate: duplicateSubmission,
+        duplicate: false,
       },
-      { status: duplicateSubmission ? 200 : 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders() }
     );
   } catch (error) {
     console.error("Unable to process connected intake", error);

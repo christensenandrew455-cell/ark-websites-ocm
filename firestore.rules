@@ -11,27 +11,12 @@ service cloud.firestore {
         && request.auth.token.clientId == clientId;
     }
 
-    function isActiveOwner(clientId) {
-      return isOwner(clientId)
-        && (!('identityVerificationRequired' in request.auth.token)
-          || request.auth.token.identityVerificationRequired == false
-          || request.auth.token.identityVerificationVerified == true)
-        && (!('accountStatus' in request.auth.token)
-          || request.auth.token.accountStatus == "active");
-    }
-
-    function isOwnerManagedCollection(collectionId) {
-      return collectionId == "contactedMe" || collectionId == "clients";
-    }
-
     match /accounts/{clientId} {
       allow get: if isOwner(clientId);
       allow write: if false;
 
       match /{collectionId}/{document=**} {
-        allow read, write: if collectionId != "private"
-          && isActiveOwner(clientId)
-          && isOwnerManagedCollection(collectionId);
+        allow read, write: if false;
       }
     }
 

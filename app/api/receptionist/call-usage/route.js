@@ -1,13 +1,14 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { sendAdminEvent } from "../../../lib/adminEvents";
-import { billingLeadEventId } from "../../../lib/billingLeadUsage";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { recordLeadUsage } from "../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function text(value) { return String(value || "").trim(); }
+function callEventId(clientId, callId) {
+  return createHash("sha256").update(`${text(clientId)}:${text(callId)}`).digest("hex").slice(0, 48);
+}
 function cleanClientId(value) {
   return text(value).toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
@@ -47,15 +48,7 @@ export async function POST(request) {
     const callId = text(data.callId);
     if (!callId) return Response.json({ ok: false, error: "A call ID is required." }, { status: 400 });
     const occurredAt = Number.isFinite(Date.parse(data.startedAt)) ? Date.parse(data.startedAt) : Date.now();
-    const usageEventId = billingLeadEventId(authorization.clientId, callId);
-    const usage = await recordLeadUsage({
-      db: authorization.db,
-      clientId: authorization.clientId,
-      // Intake uses the same deterministic ID when this call also creates a lead,
-      // so a call and its saved lead can never be charged twice.
-      sourceId: usageEventId,
-      occurredAt,
-    });
+    const usageEventId = callEventId(authorization.clientId, callId);
     await sendAdminEvent({
       id: `receptionist-call-${usageEventId}`,
       type: "receptionist.call.completed",
@@ -69,7 +62,13 @@ export async function POST(request) {
       },
       occurredAt: new Date(occurredAt).toISOString(),
     });
-    return Response.json({ ok: true, duplicate: usage.duplicate === true, balancePoints: usage.balancePoints, paymentStatus: usage.payment?.status || "not_due" });
+    return Response.json({
+      ok: true,
+      duplicate: false,
+      balancePoints: null,
+      paymentStatus: "not_due",
+      billingDeferredToAcceptance: true,
+    });
   } catch (error) {
     console.error("Unable to process receptionist call usage", error);
     return Response.json({ ok: false, error: "Could not process receptionist call usage." }, { status: 500 });

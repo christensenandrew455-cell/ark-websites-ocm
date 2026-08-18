@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { leadContactFieldDeletionPatch, stripLeadContactFields } from "../../../lib/leadContactFields";
+import { pendingLeadSummary } from "../../../lib/leadVisibility";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, serializeFirestoreValue } from "../../../lib/valueUtils";
 
@@ -17,11 +18,11 @@ function text(value, maximum = 4_000) {
 }
 
 function leadDocuments(snapshot, collectionKey) {
-  return snapshot.docs.map((document) => ({
-    id: document.id,
-    collectionKey,
-    ...stripLeadContactFields(serializeFirestoreValue(document.data())),
-  }));
+  return snapshot.docs.map((document) => {
+    const data = stripLeadContactFields(serializeFirestoreValue(document.data()));
+    if (collectionKey === "contactedMe") return pendingLeadSummary(document.id, data);
+    return { id: document.id, collectionKey, ...data };
+  });
 }
 
 async function authorizeOwner(request) {
