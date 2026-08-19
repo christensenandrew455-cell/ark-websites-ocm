@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { businessRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
+import { canonicalBusinessType, isSupportedBusinessType } from "../../../lib/businessCatalog";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaValidationError } from "../../../lib/serviceAreas";
@@ -53,7 +54,7 @@ function profilePayload(clientId, account = {}) {
     estimateWeekdays: list(account.estimateWeekdays).map((day) => day.toLowerCase()),
     earliestEstimateStart: text(account.earliestEstimateStart),
     latestEstimateStart: text(account.latestEstimateStart),
-    businessType: text(account.businessType || account.businessBase),
+    businessType: canonicalBusinessType(account.businessType || account.businessBase) || text(account.businessType || account.businessBase),
     serviceAreas: normalizeServiceAreas(account.serviceAreas),
     services,
     businessInformation,
@@ -94,6 +95,7 @@ function validateProfile(profile) {
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
   if (!profile.businessPhone) return "Enter the business phone number.";
   if (!profile.businessType) return "Enter the type of business.";
+  if (!isSupportedBusinessType(profile.businessType)) return "Choose a business type from the list.";
   const serviceAreaError = serviceAreaValidationError(profile.serviceAreas);
   if (serviceAreaError) return serviceAreaError;
   if (!Object.keys(profile.services).length) return "Add at least one service.";
@@ -152,7 +154,7 @@ export async function POST(request) {
     estimateWeekdays: list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
     earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
     latestEstimateStart: text(body.latestEstimateStart ?? current.latestEstimateStart),
-    businessType: text(body.businessType ?? current.businessType),
+    businessType: canonicalBusinessType(body.businessType ?? current.businessType) || text(body.businessType ?? current.businessType),
     serviceAreas: normalizeServiceAreas(serviceAreas),
     services: servicesObject(body.services ?? current.services),
     businessInformation: normalizeBusinessInformation(body.businessInformation ?? current.businessInformation),

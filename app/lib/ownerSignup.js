@@ -1,4 +1,5 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
+import { canonicalBusinessType, isSupportedBusinessType } from "./businessCatalog.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
 import { normalizeServiceAreas, serviceAreaValidationError } from "./serviceAreas.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
@@ -108,7 +109,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       estimateEndPeriod,
       earliestEstimateStart: estimateStartComplete ? timeSummary(estimateStartHour, estimateStartPeriod) : "",
       latestEstimateStart: estimateEndComplete ? timeSummary(estimateEndHour, estimateEndPeriod) : "",
-      businessType: cleanText(receptionist.businessType || receptionist.businessBase, 120),
+      businessType: canonicalBusinessType(receptionist.businessType || receptionist.businessBase) || cleanText(receptionist.businessType || receptionist.businessBase, 120),
       serviceAreas: normalizeServiceAreas(textList(receptionist.serviceAreas)),
       services: servicesObject(receptionist.services),
       ...(businessInformation.length ? { businessInformation } : {}),
@@ -145,6 +146,7 @@ export function validateReceptionistBusinessInformation(value = {}) {
     return "Choose a valid time zone.";
   }
   if (!receptionist.businessType) return "Enter the type of business.";
+  if (!isSupportedBusinessType(receptionist.businessType)) return "Choose a business type from the list.";
   const hasEstimateSchedule = Boolean(receptionist.estimateWeekdays.length || receptionist.estimateStartHour || receptionist.estimateStartPeriod || receptionist.estimateEndHour || receptionist.estimateEndPeriod);
   if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
   if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest estimate time or leave the estimate schedule blank.";

@@ -1,0 +1,172 @@
+export const BUSINESS_TYPES = Object.freeze([
+  "Plumbing",
+  "Drain & Sewer",
+  "HVAC",
+  "Electrical",
+  "Pest & Termite Control",
+  "Appliance Repair",
+  "Garage & Overhead Door",
+  "Commercial Refrigeration",
+  "Commercial Kitchen Equipment",
+  "Painting",
+]);
+
+export const SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE = Object.freeze({
+  Plumbing: Object.freeze([
+    "Emergency plumbing",
+    "Leak repair",
+    "Burst pipe repair",
+    "Frozen pipe repair",
+    "Water heater repair",
+    "Water heater replacement",
+    "Toilet repair",
+    "Faucet and fixture repair",
+    "Pipe repair",
+    "Repiping",
+    "Sump pump service",
+    "Gas line repair",
+  ]),
+  "Drain & Sewer": Object.freeze([
+    "Clogged drain clearing",
+    "Sewer backup service",
+    "Sewer camera inspection",
+    "Hydro jetting",
+    "Sewer line repair",
+    "Sewer line replacement",
+    "Trenchless sewer repair",
+    "Root removal",
+    "Drain pipe repair",
+    "Sewer cleanout service",
+    "Storm drain service",
+  ]),
+  HVAC: Object.freeze([
+    "Air conditioning repair",
+    "Heating repair",
+    "Furnace repair",
+    "Boiler repair",
+    "Heat pump repair",
+    "HVAC replacement",
+    "HVAC installation",
+    "Refrigerant leak repair",
+    "Ductwork repair",
+    "Thermostat service",
+    "Indoor air quality service",
+    "Preventive maintenance",
+  ]),
+  Electrical: Object.freeze([
+    "Emergency electrical repair",
+    "Electrical troubleshooting",
+    "Power outage diagnostics",
+    "Wiring repair",
+    "Electrical panel repair",
+    "Electrical panel upgrade",
+    "Breaker and circuit repair",
+    "Outlet and switch repair",
+    "Rewiring",
+    "Lighting installation",
+    "Generator connection",
+    "EV charger installation",
+  ]),
+  "Pest & Termite Control": Object.freeze([
+    "Pest inspection",
+    "General pest control",
+    "Termite inspection",
+    "Termite treatment",
+    "Rodent control",
+    "Bed bug treatment",
+    "Cockroach treatment",
+    "Ant control",
+    "Wasp and hornet removal",
+    "Flea and tick treatment",
+    "Mosquito control",
+    "Preventive treatment",
+  ]),
+  "Appliance Repair": Object.freeze([
+    "Refrigerator repair",
+    "Freezer repair",
+    "Washer repair",
+    "Dryer repair",
+    "Oven and range repair",
+    "Dishwasher repair",
+    "Garbage disposal repair",
+    "Ice maker repair",
+    "Microwave repair",
+    "Gas appliance repair",
+    "Appliance installation",
+  ]),
+  "Garage & Overhead Door": Object.freeze([
+    "Emergency garage door repair",
+    "Broken spring replacement",
+    "Cable repair",
+    "Track repair",
+    "Garage door opener repair",
+    "Garage door opener installation",
+    "Panel replacement",
+    "Safety sensor repair",
+    "Garage door replacement",
+    "Commercial overhead door repair",
+    "Loading dock equipment repair",
+    "Preventive maintenance",
+  ]),
+  "Commercial Refrigeration": Object.freeze([
+    "Emergency refrigeration repair",
+    "Walk-in cooler repair",
+    "Walk-in freezer repair",
+    "Reach-in cooler repair",
+    "Reach-in freezer repair",
+    "Ice machine repair",
+    "Display case repair",
+    "Compressor repair",
+    "Refrigerant leak repair",
+    "Temperature control repair",
+    "Refrigeration installation",
+    "Preventive maintenance",
+  ]),
+  "Commercial Kitchen Equipment": Object.freeze([
+    "Emergency equipment repair",
+    "Commercial oven repair",
+    "Commercial range repair",
+    "Fryer repair",
+    "Griddle repair",
+    "Commercial dishwasher repair",
+    "Ice machine repair",
+    "Steam table repair",
+    "Food warmer repair",
+    "Gas equipment repair",
+    "Electrical equipment repair",
+    "Preventive maintenance",
+  ]),
+  Painting: Object.freeze([
+    "Interior painting",
+    "Exterior painting",
+    "Residential painting",
+    "Commercial painting",
+    "Cabinet painting",
+    "Ceiling painting",
+    "Trim and door painting",
+    "Deck and fence staining",
+    "Drywall repair and painting",
+    "Wallpaper removal",
+    "Touch-up painting",
+    "Epoxy floor coating",
+  ]),
+});
+
+const BUSINESS_TYPE_LOOKUP = new Map(BUSINESS_TYPES.map((businessType) => [businessType.toLowerCase(), businessType]));
+const LEGACY_BUSINESS_TYPE_ALIASES = new Map([
+  ["pest control", "Pest & Termite Control"],
+]);
+
+export function canonicalBusinessType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return BUSINESS_TYPE_LOOKUP.get(normalized) || LEGACY_BUSINESS_TYPE_ALIASES.get(normalized) || "";
+}
+
+export function isSupportedBusinessType(value) {
+  return Boolean(canonicalBusinessType(value));
+}
+
+export function serviceSuggestionsForBusinessType(value) {
+  const businessType = canonicalBusinessType(value);
+  return businessType ? SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE[businessType] : [];
+}

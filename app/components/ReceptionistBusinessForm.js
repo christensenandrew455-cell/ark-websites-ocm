@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { BUSINESS_TYPES, canonicalBusinessType, serviceSuggestionsForBusinessType } from "../lib/businessCatalog";
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
@@ -11,42 +12,6 @@ const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const PERIODS = ["AM", "PM"];
 const HOUR_OPTIONS = [{ value: "", label: "Choose" }, ...HOURS];
 const PERIOD_OPTIONS = [{ value: "", label: "Choose" }, ...PERIODS];
-const BUSINESS_TYPE_SUGGESTIONS = [
-  "Auto Repair",
-  "Cleaning Service",
-  "Construction",
-  "Electrical",
-  "General Contractor",
-  "HVAC",
-  "Landscaping",
-  "Lawn Care",
-  "Moving Company",
-  "Painting",
-  "Pest Control",
-  "Plumbing",
-  "Property Maintenance",
-  "Roofing",
-  "Snow Removal",
-  "Tree Service",
-];
-const SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE = {
-  "auto repair": ["Brake service", "Diagnostics", "Oil change", "Tire service"],
-  cleaning: ["Deep cleaning", "House cleaning", "Move-in or move-out cleaning", "Office cleaning"],
-  construction: ["Additions", "Remodeling", "Repairs", "Renovations"],
-  electrical: ["Electrical repair", "Lighting installation", "Outlet installation", "Panel upgrade"],
-  "general contractor": ["Additions", "Remodeling", "Repairs", "Renovations"],
-  hvac: ["Air conditioning repair", "Heating repair", "HVAC installation", "Seasonal maintenance"],
-  landscaping: ["Fall cleanup", "Hedge trimming", "Lawn mowing", "Mulching", "Spring cleanup"],
-  "lawn care": ["Fall cleanup", "Fertilization", "Lawn mowing", "Spring cleanup"],
-  moving: ["Commercial moving", "Local moving", "Long-distance moving", "Packing"],
-  painting: ["Cabinet painting", "Exterior painting", "Interior painting", "Touch-ups"],
-  "pest control": ["Inspection", "Pest removal", "Preventive treatment", "Wildlife removal"],
-  plumbing: ["Drain cleaning", "Leak repair", "Pipe repair", "Water heater service"],
-  "property maintenance": ["General repairs", "Preventive maintenance", "Property inspection", "Seasonal cleanup"],
-  roofing: ["Gutter service", "Roof inspection", "Roof repair", "Roof replacement"],
-  "snow removal": ["De-icing", "Driveway plowing", "Sidewalk clearing", "Snow hauling"],
-  "tree service": ["Emergency tree removal", "Stump grinding", "Tree removal", "Tree trimming"],
-};
 const RAILWAY_OWNED_FIELDS = new Set([
   "receptionistName",
   "aiVoice",
@@ -71,13 +36,6 @@ const REMOVED_BUSINESS_HOUR_FIELDS = new Set([
 function titleCase(value) {
   const text = String(value || "");
   return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-function serviceSuggestionsFor(businessType) {
-  const normalizedType = String(businessType || "").trim().toLowerCase();
-  const matched = Object.entries(SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE)
-    .find(([type]) => normalizedType === type || normalizedType.includes(type));
-  return matched?.[1] || [];
 }
 
 function parseTime(value) {
@@ -199,7 +157,7 @@ function SuggestionInput({ value, onChange, onBlur, onSubmit, suggestions = [], 
       const rightStarts = right.toLowerCase().startsWith(query);
       return leftStarts === rightStarts ? left.localeCompare(right) : leftStarts ? -1 : 1;
     })
-    .slice(0, 8);
+    .slice(0, 20);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -400,7 +358,7 @@ function ServicesEditor({ services, onChange, businessType }) {
   function updateServices(nextNames) {
     onChange(Object.fromEntries(nextNames.map((name) => { const key = name.trim().toLowerCase(); return [key, key]; }).filter(([key]) => key)));
   }
-  return <StackedListEditor items={names} onChange={updateServices} placeholder="Start typing a service" addLabel="Add Service" inputLabel="Service" suggestions={serviceSuggestionsFor(businessType)} />;
+  return <StackedListEditor items={names} onChange={updateServices} placeholder="Start typing a service" addLabel="Add Service" inputLabel="Service" suggestions={serviceSuggestionsForBusinessType(businessType)} />;
 }
 
 function BusinessInformationEditor({ items, onChange }) {
@@ -463,7 +421,7 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
     serviceAreas: normalizeServiceAreas(profile.serviceAreas),
     services: profile.services && typeof profile.services === "object" && !Array.isArray(profile.services) ? profile.services : {},
     businessInformation: normalizeBusinessInformation(profile.businessInformation),
-    businessType: String(profile.businessType || profile.businessBase || ""),
+    businessType: canonicalBusinessType(profile.businessType || profile.businessBase),
     timeZone: requireExplicitSelections ? String(profile.timeZone || "") : profile.timeZone || "America/New_York",
     estimateWeekdays: Array.isArray(profile.estimateWeekdays) ? profile.estimateWeekdays : [],
     estimateStartHour: explicitHour(profile.estimateStartHour || estimateStart.hour),
@@ -518,9 +476,8 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
     <section>
       <h3 className="text-lg font-black">Business type</h3>
       <div className="mt-4">
-        <Field label="Type of business" explanation="Choose a suggestion or enter the general kind of work this business does.">
-          <SuggestionInput ariaLabel="Type of business" value={profile.businessType} suggestions={BUSINESS_TYPE_SUGGESTIONS} onChange={(value, details) => update("businessType", value, { saveImmediately: details.selectedSuggestion })} onBlur={() => update("businessType", profile.businessType, { saveImmediately: true })} placeholder="Start typing a business type" />
-          <p className="mt-1 text-xs font-semibold text-slate-500">Choose a suggestion or type your own.</p>
+        <Field label="Type of business" explanation="Choose the business&apos;s primary type from the supported list.">
+          <InAppSelect ariaLabel="Type of business" value={profile.businessType} options={BUSINESS_TYPES} onChange={(value) => update("businessType", value, { saveImmediately: true })} placeholder="Choose a business type" />
         </Field>
       </div>
     </section>

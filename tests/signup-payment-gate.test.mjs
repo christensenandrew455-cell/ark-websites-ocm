@@ -3,6 +3,7 @@ import test from "node:test";
 import { access, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { BUSINESS_TYPES, canonicalBusinessType, serviceSuggestionsForBusinessType } from "../app/lib/businessCatalog.js";
 import { validateReceptionistBusinessInformation } from "../app/lib/ownerSignup.js";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValidationError } from "../app/lib/serviceAreas.js";
 
@@ -46,7 +47,11 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   assert.ok(form.includes('role="listbox"'));
   assert.ok(form.includes("SuggestionInput"));
   assert.ok(form.includes('autoCorrect="on"'));
-  assert.ok(form.includes("Choose a suggestion or type your own."));
+  assert.ok(form.includes('options={BUSINESS_TYPES}'));
+  assert.ok(form.includes('placeholder="Choose a business type"'));
+  assert.equal(form.includes("Choose a suggestion or type your own."), false);
+  assert.ok(form.includes("serviceSuggestionsForBusinessType(businessType)"));
+  assert.ok(form.includes(".slice(0, 20)"));
   assert.ok(form.includes('label="States"'));
   assert.ok(form.includes('label="Counties (optional)"'));
   assert.ok(form.includes('ariaLabel="State to add"'));
@@ -55,7 +60,6 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   assert.ok(form.includes("Remove every county before adding another state."));
   assert.ok(form.includes("Counties are unavailable while multiple states are selected."));
   assert.ok(form.includes('placeholder="Worcester County"'));
-  assert.ok(form.includes("return matched?.[1] || [];"));
   assert.ok(form.includes("grid-cols-[minmax(0,1fr)_88px]"));
   assert.ok(form.includes('ariaLabel={`${label} hour`}'));
   assert.ok(form.includes('ariaLabel={`${label} AM or PM`}'));
@@ -76,9 +80,9 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   assert.equal(serviceAreaValidationError(["Massachusetts", "New York", "Worcester County"]), "Remove all counties before adding more than one state.");
   assert.equal(validateReceptionistBusinessInformation({
     timeZone: "America/New_York",
-    businessType: "Landscaping",
+    businessType: "Plumbing",
     serviceAreas: ["Worcester County"],
-    services: { mowing: "mowing" },
+    services: { plumbing: "plumbing" },
   }), "Choose at least one state.");
   assert.equal(validateReceptionistBusinessInformation({
     timeZone: "America/New_York",
@@ -88,15 +92,46 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   }), "Remove all counties before adding more than one state.");
   assert.equal(validateReceptionistBusinessInformation({
     timeZone: "America/New_York",
-    businessType: "Snow Removal",
+    businessType: "Painting",
     estimateWeekdays: ["monday"],
     estimateStartHour: 8,
     estimateStartPeriod: "PM",
     estimateEndHour: 4,
     estimateEndPeriod: "AM",
     serviceAreas: ["Massachusetts"],
-    services: { plowing: "plowing" },
+    services: { painting: "painting" },
   }), "");
+  assert.equal(validateReceptionistBusinessInformation({
+    timeZone: "America/New_York",
+    businessType: "Landscaping",
+    serviceAreas: ["Massachusetts"],
+    services: { mowing: "mowing" },
+  }), "Choose a business type from the list.");
+});
+
+test("business catalog is strict while service suggestions remain business-specific and customizable", () => {
+  assert.deepEqual(BUSINESS_TYPES, [
+    "Plumbing",
+    "Drain & Sewer",
+    "HVAC",
+    "Electrical",
+    "Pest & Termite Control",
+    "Appliance Repair",
+    "Garage & Overhead Door",
+    "Commercial Refrigeration",
+    "Commercial Kitchen Equipment",
+    "Painting",
+  ]);
+  assert.equal(canonicalBusinessType("pest control"), "Pest & Termite Control");
+  assert.equal(canonicalBusinessType("Landscaping"), "");
+  for (const businessType of BUSINESS_TYPES) {
+    const suggestions = serviceSuggestionsForBusinessType(businessType);
+    assert.ok(suggestions.length >= 10, `${businessType} should have common service suggestions`);
+    assert.equal(new Set(suggestions.map((service) => service.toLowerCase())).size, suggestions.length);
+  }
+  assert.ok(serviceSuggestionsForBusinessType("Plumbing").includes("Burst pipe repair"));
+  assert.ok(serviceSuggestionsForBusinessType("Painting").includes("Interior painting"));
+  assert.ok(serviceSuggestionsForBusinessType("Commercial Refrigeration").includes("Walk-in freezer repair"));
 });
 
 test("main information creates only a short-lived temporary signup", async () => {
