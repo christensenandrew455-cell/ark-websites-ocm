@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
+import { sendAdminEvent } from "../../../lib/adminEvents";
 import { deleteCustomerPermanently } from "../../../lib/customerLifecycle";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { requireUser } from "../../../lib/userRequest";
@@ -27,6 +28,19 @@ export async function POST(request) {
     if (!confirmation || confirmation.toLowerCase() !== expected.toLowerCase()) return NextResponse.json({ error: `Type ${expected} exactly to confirm deletion.` }, { status: 400 });
 
     await deleteCustomerPermanently(clientId);
+    try {
+      const delivery = await sendAdminEvent({
+        id: `account-deleted-${clientId}-${Date.now()}`,
+        type: "account.deleted",
+        clientId,
+        businessName: expected || clientId,
+        summary: `${expected || clientId} permanently deleted their ARC account.`,
+        metadata: { deletedBy: "owner" },
+      });
+      if (!delivery.delivered) console.warn("Account deleted but Arc Admin notification was not delivered", clientId);
+    } catch (eventError) {
+      console.warn("Account deleted but Arc Admin notification was not delivered", clientId, eventError);
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("Unable to delete owner account", error);

@@ -49,3 +49,11 @@ test("Arc Admin sends number assignments back through the signed Client Center w
   assert.ok(route.includes("sendAccountPushNotification"));
   assert.ok(route.includes("PUSH_NOTIFICATION_COPY.numberAssigned"));
 });
+
+test("permanent owner deletion notifies Arc Admin only after deletion succeeds", async () => {
+  const route = await source("app/api/account/delete/route.js");
+  assert.ok(route.includes('type: "account.deleted"'));
+  assert.ok(route.includes("sendAdminEvent"));
+  assert.ok(route.includes('metadata: { deletedBy: "owner" }'));
+  assert.ok(route.indexOf("await deleteCustomerPermanently(clientId)") < route.indexOf("await sendAdminEvent"));
+});
