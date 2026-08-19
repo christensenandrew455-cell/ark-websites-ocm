@@ -63,6 +63,7 @@ function PaymentForm({ clientSecret, returnUrl, onSucceeded, onDeclined }) {
   return (
     <form onSubmit={submit} className="space-y-5">
       <PaymentElement options={{ layout: "accordion" }} />
+      <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to a $50 monthly recurring fee, plus additional usage of $2 per accepted lead. Calls, declined leads, and unaccepted leads are not charged.</p>
       <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay & Continue</button>
       {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
     </form>
