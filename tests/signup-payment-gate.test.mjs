@@ -4,7 +4,7 @@ import { access, readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { validateReceptionistBusinessInformation } from "../app/lib/ownerSignup.js";
-import { normalizeServiceAreas, serviceAreaFields } from "../app/lib/serviceAreas.js";
+import { normalizeServiceAreas, serviceAreaFields, serviceAreaValidationError } from "../app/lib/serviceAreas.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
@@ -36,9 +36,10 @@ test("onboarding follows main information, verification, business, then payment"
 });
 
 test("business setup uses in-app business fields and a 24-hours shortcut", async () => {
-  const [form, settingsRoute] = await Promise.all([
+  const [form, settingsRoute, runtimeRoute] = await Promise.all([
     source("app/components/ReceptionistBusinessForm.js"),
     source("app/api/receptionist/settings/route.js"),
+    source("app/api/receptionist/runtime/route.js"),
   ]);
   assert.equal(form.includes("<select"), false);
   assert.equal(form.includes("<datalist"), false);
@@ -46,8 +47,13 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   assert.ok(form.includes("SuggestionInput"));
   assert.ok(form.includes('autoCorrect="on"'));
   assert.ok(form.includes("Choose a suggestion or type your own."));
-  assert.ok(form.includes('label="State"'));
-  assert.ok(form.includes('label="County (optional)"'));
+  assert.ok(form.includes('label="States"'));
+  assert.ok(form.includes('label="Counties (optional)"'));
+  assert.ok(form.includes('ariaLabel="State to add"'));
+  assert.ok(form.includes(">Add State<"));
+  assert.ok(form.includes('addLabel="Add County"'));
+  assert.ok(form.includes("Remove every county before adding another state."));
+  assert.ok(form.includes("Counties are unavailable while multiple states are selected."));
   assert.ok(form.includes('placeholder="Worcester County"'));
   assert.ok(form.includes("return matched?.[1] || [];"));
   assert.ok(form.includes("grid-cols-[minmax(0,1fr)_88px]"));
@@ -60,14 +66,26 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   assert.ok(form.includes('estimateEndHour: 11'));
   assert.ok(form.includes('estimateEndPeriod: "PM"'));
   assert.equal(settingsRoute.includes("earliest > latest"), false);
-  assert.deepEqual(normalizeServiceAreas(["Within 25 miles of Worcester", "MA", "Worcester County"]), ["Massachusetts", "Worcester County"]);
-  assert.deepEqual(serviceAreaFields(["Massachusetts"]), { state: "Massachusetts", county: "" });
+  assert.ok(runtimeRoute.includes("serviceAreaStates"));
+  assert.ok(runtimeRoute.includes("serviceAreaCounties"));
+  assert.ok(runtimeRoute.includes('serviceAreaMode: serviceAreaCounties.length ? "counties" : "states"'));
+  assert.deepEqual(normalizeServiceAreas(["Within 25 miles of Worcester", "MA", "Worcester County"]), ["Massachusetts", "Within 25 miles of Worcester", "Worcester County"]);
+  assert.deepEqual(normalizeServiceAreas(["MA", "NY", "New Jersey"]), ["Massachusetts", "New York", "New Jersey"]);
+  assert.deepEqual(normalizeServiceAreas(["MA", "Worcester County", "Middlesex County"]), ["Massachusetts", "Worcester County", "Middlesex County"]);
+  assert.deepEqual(serviceAreaFields(["Massachusetts"]), { states: ["Massachusetts"], counties: [], state: "Massachusetts", county: "" });
+  assert.equal(serviceAreaValidationError(["Massachusetts", "New York", "Worcester County"]), "Remove all counties before adding more than one state.");
   assert.equal(validateReceptionistBusinessInformation({
     timeZone: "America/New_York",
     businessType: "Landscaping",
     serviceAreas: ["Worcester County"],
     services: { mowing: "mowing" },
-  }), "Choose a state.");
+  }), "Choose at least one state.");
+  assert.equal(validateReceptionistBusinessInformation({
+    timeZone: "America/New_York",
+    businessType: "Plumbing",
+    serviceAreas: ["Massachusetts", "New York", "Worcester County"],
+    services: { plumbing: "plumbing" },
+  }), "Remove all counties before adding more than one state.");
   assert.equal(validateReceptionistBusinessInformation({
     timeZone: "America/New_York",
     businessType: "Snow Removal",

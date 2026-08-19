@@ -24,6 +24,6 @@ No receptionist configuration secret is required. The removed `/api/receptionist
 
 Railway must post each completed call once to the returned `usageUrl` with `action: "record"` and a stable `callId`. If that call also saves a lead through `intakeUrl`, send the identical value as `callControlId` (or the intake idempotency key). ARK derives the same usage ID from both requests, so the $2 call/lead unit is charged once rather than twice.
 
-The business profile includes the business name, owner, phone, email, hours, time zone, estimate availability, service areas, services, and business facts. AI runtime controls do not come from ARK Client Center.
+The business profile includes the business name, owner, phone, email, hours, time zone, estimate availability, service areas, services, and business facts. Service areas use one of two valid shapes: multiple states with no counties, or exactly one state with any number of counties. Firestore keeps the backward-compatible flat `serviceAreas` array, while the receptionist runtime also supplies `serviceAreaMode`, `serviceAreaStates`, and `serviceAreaCounties` so county restrictions are evaluated within their selected state. AI runtime controls do not come from ARK Client Center.
 
 The model, voice, turn timing, output limits, context limits, response ceiling, call-duration ceiling, and provider credentials remain on Railway. ARK Client Center is the business-information control panel, connection router, intake destination, and Firestore-backed lead store.

@@ -4,7 +4,7 @@ import { isStandardRole } from "../../../lib/accountRoles";
 import { businessRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
-import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
+import { normalizeServiceAreas, serviceAreaValidationError } from "../../../lib/serviceAreas";
 import { normalizeSignupPhone, signupPhoneVariants } from "../../../lib/signupAvailability";
 import { requireUser } from "../../../lib/userRequest";
 import { normalizeClientId, trimmedText } from "../../../lib/valueUtils";
@@ -94,7 +94,8 @@ function validateProfile(profile) {
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
   if (!profile.businessPhone) return "Enter the business phone number.";
   if (!profile.businessType) return "Enter the type of business.";
-  if (!serviceAreaFields(profile.serviceAreas).state) return "Choose a state.";
+  const serviceAreaError = serviceAreaValidationError(profile.serviceAreas);
+  if (serviceAreaError) return serviceAreaError;
   if (!Object.keys(profile.services).length) return "Add at least one service.";
   try { new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format(); } catch { return "Choose a valid time zone."; }
   return validateEstimateSchedule(profile);
@@ -138,6 +139,9 @@ export async function POST(request) {
   if (!loaded) return NextResponse.json({ error: "That business account does not exist." }, { status: 404 });
 
   const current = profilePayload(access.clientId, loaded.account);
+  const serviceAreas = body.serviceAreas ?? current.serviceAreas;
+  const serviceAreaError = serviceAreaValidationError(serviceAreas);
+  if (serviceAreaError) return NextResponse.json({ error: serviceAreaError }, { status: 400 });
   const profile = {
     ...current,
     businessName: text(body.businessName ?? current.businessName),
@@ -149,7 +153,7 @@ export async function POST(request) {
     earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
     latestEstimateStart: text(body.latestEstimateStart ?? current.latestEstimateStart),
     businessType: text(body.businessType ?? current.businessType),
-    serviceAreas: normalizeServiceAreas(body.serviceAreas ?? current.serviceAreas),
+    serviceAreas: normalizeServiceAreas(serviceAreas),
     services: servicesObject(body.services ?? current.services),
     businessInformation: normalizeBusinessInformation(body.businessInformation ?? current.businessInformation),
   };

@@ -23,26 +23,56 @@ function clean(value) {
   return String(value || "").trim().replace(/\s+/g, " ");
 }
 
+function unique(values, normalize = (value) => value.toLowerCase()) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const key = normalize(value);
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function items(value) {
+  const source = Array.isArray(value) ? value : String(value || "").split(/[\n,]/);
+  return source.map(clean).filter(Boolean);
+}
+
 export function canonicalUsState(value) {
   return STATE_LOOKUP.get(clean(value).toLowerCase()) || "";
 }
 
 export function serviceAreaFields(value = []) {
-  const items = (Array.isArray(value) ? value : String(value || "").split(/[\n,]/))
-    .map(clean)
-    .filter(Boolean);
-  const stateIndex = items.findIndex((item) => canonicalUsState(item));
-  const state = stateIndex >= 0 ? canonicalUsState(items[stateIndex]) : "";
-  const countyCandidates = items.filter((_, index) => index !== stateIndex);
-  const county = countyCandidates.find((item) => /\bcounty\b/i.test(item)) || countyCandidates[0] || "";
-  return { state, county };
+  const values = items(value);
+  const states = unique(values.map(canonicalUsState).filter(Boolean));
+  const areaCandidates = values.filter((item) => !canonicalUsState(item)).map(clean);
+  const counties = unique(areaCandidates);
+  return {
+    states,
+    counties,
+    state: states[0] || "",
+    county: counties[0] || "",
+  };
 }
 
-export function serviceAreaValues(state, county) {
-  return [canonicalUsState(state), clean(county)].filter(Boolean);
+export function serviceAreaValues(states, counties = []) {
+  const normalizedStates = unique(items(states).map(canonicalUsState).filter(Boolean));
+  if (!normalizedStates.length) return [];
+  if (normalizedStates.length > 1) return normalizedStates;
+  const normalizedCounties = unique(items(counties).filter((item) => !canonicalUsState(item)).map(clean));
+  return [...normalizedStates, ...normalizedCounties];
 }
 
 export function normalizeServiceAreas(value) {
   const fields = serviceAreaFields(value);
-  return serviceAreaValues(fields.state, fields.county);
+  return serviceAreaValues(fields.states, fields.counties);
+}
+
+export function serviceAreaValidationError(value) {
+  const { states, counties } = serviceAreaFields(value);
+  if (!states.length) return "Choose at least one state.";
+  if (states.length > 1 && counties.length) return "Remove all counties before adding more than one state.";
+  return "";
 }

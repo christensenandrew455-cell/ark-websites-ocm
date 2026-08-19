@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
+import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,7 +102,8 @@ async function findConnection(db, calledPhone) {
 }
 
 function buildProfile(clientId, account) {
-  const serviceAreas = list(account.serviceAreas);
+  const serviceAreas = normalizeServiceAreas(account.serviceAreas);
+  const { states: serviceAreaStates, counties: serviceAreaCounties } = serviceAreaFields(serviceAreas);
   const services = servicesObject(account.services);
   const businessInformation = normalizeBusinessInformation(account.businessInformation);
   const businessType = text(account.businessType || account.businessBase);
@@ -125,6 +127,9 @@ function buildProfile(clientId, account) {
     businessType,
     businessBase,
     serviceAreas: normalizedServiceAreas,
+    serviceAreaMode: serviceAreaCounties.length ? "counties" : "states",
+    serviceAreaStates,
+    serviceAreaCounties,
     services,
     businessInformation,
     extraInformation: businessInformationText(businessInformation),

@@ -87,6 +87,8 @@ export async function POST(request) {
 
   try {
     const body = await request.json().catch(() => ({}));
+    const submittedValidationError = validateReceptionistBusinessInformation(body);
+    if (submittedValidationError) return NextResponse.json({ error: submittedValidationError }, { status: 400 });
     const account = pendingOwnerSignupAccount(access.pending.data);
     const normalized = normalizeOwnerSignup({
       businessName: account.businessName,

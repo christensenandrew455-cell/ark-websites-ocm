@@ -133,7 +133,7 @@ function normalizedOptions(options = []) {
   return options.map((option) => typeof option === "string" ? { value: option, label: option } : option);
 }
 
-function InAppSelect({ value, onChange, options, ariaLabel, placeholder = "Choose" }) {
+function InAppSelect({ value, onChange, options, ariaLabel, placeholder = "Choose", disabled = false }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const items = normalizedOptions(options);
@@ -167,8 +167,9 @@ function InAppSelect({ value, onChange, options, ariaLabel, placeholder = "Choos
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
+        disabled={disabled}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm outline-none focus:border-slate-950"
+        className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm outline-none focus:border-slate-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       >
         <span className={selected ? "truncate text-slate-900" : "truncate text-slate-500"}>{selected?.label || placeholder}</span>
         <span aria-hidden="true" className={`shrink-0 text-xs text-slate-500 transition ${open ? "rotate-180" : ""}`}>▼</span>
@@ -330,6 +331,69 @@ function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel,
   );
 }
 
+function ServiceAreaEditor({ serviceAreas, onChange }) {
+  const { states, counties } = serviceAreaFields(serviceAreas);
+  const [stateToAdd, setStateToAdd] = useState("");
+  const availableStates = US_STATES.filter((state) => !states.includes(state));
+  const countiesRequireOneState = states.length !== 1;
+  const addingStateBlocked = counties.length > 0;
+  const selectedStateToAdd = availableStates.includes(stateToAdd) ? stateToAdd : "";
+
+  function addState() {
+    if (!selectedStateToAdd || addingStateBlocked) return;
+    onChange(serviceAreaValues([...states, selectedStateToAdd], counties));
+    setStateToAdd("");
+  }
+
+  function removeState(state) {
+    if (states.length === 1 && counties.length) return;
+    onChange(serviceAreaValues(states.filter((item) => item !== state), counties));
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <ExplainedLabel label="States" explanation="Add every state the business serves. Counties can only be used when exactly one state is selected." />
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <InAppSelect
+            ariaLabel="State to add"
+            value={selectedStateToAdd}
+            options={availableStates}
+            placeholder={availableStates.length ? "Choose a state" : "All states selected"}
+            disabled={addingStateBlocked || !availableStates.length}
+            onChange={setStateToAdd}
+          />
+          <button type="button" disabled={!selectedStateToAdd || addingStateBlocked} onClick={addState} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">Add State</button>
+        </div>
+        {addingStateBlocked && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">Remove every county before adding another state.</p>}
+        <div className="mt-2 space-y-2">
+          {states.map((state) => {
+            const removalBlocked = states.length === 1 && counties.length > 0;
+            return (
+              <div key={state} className="flex items-center gap-2">
+                <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm text-slate-800">{state}</div>
+                <button type="button" disabled={removalBlocked} onClick={() => removeState(state)} aria-label={`Remove ${state}`} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-200 bg-white text-xl font-black text-red-600 disabled:cursor-not-allowed disabled:opacity-35">×</button>
+              </div>
+            );
+          })}
+          {!states.length && <p className="rounded-xl border border-dashed border-slate-300 px-3 py-3 text-sm font-semibold text-slate-500">Add at least one state.</p>}
+        </div>
+      </div>
+
+      <div>
+        <ExplainedLabel label="Counties (optional)" explanation="When the business serves exactly one state, add as many counties as needed." />
+        {states.length === 1 ? (
+          <div className="mt-2">
+            <StackedListEditor items={counties} onChange={(nextCounties) => onChange(serviceAreaValues(states, nextCounties))} placeholder="Worcester County" addLabel="Add County" inputLabel="County" />
+          </div>
+        ) : (
+          <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">{countiesRequireOneState && states.length > 1 ? "Counties are unavailable while multiple states are selected." : "Choose one state before adding counties."}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ServicesEditor({ services, onChange, businessType }) {
   const current = services && typeof services === "object" && !Array.isArray(services) ? services : {};
   const names = Object.keys(current).map(titleCase);
@@ -426,7 +490,6 @@ export function receptionistRequestPayload(profile = {}) {
 
 export default function ReceptionistBusinessForm({ profile, onChange, onboardingMode = false }) {
   if (!profile) return null;
-  const { state: serviceState, county: serviceCounty } = serviceAreaFields(profile.serviceAreas);
   function update(field, value, options = {}) { onChange({ ...profile, [field]: value }, options); }
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
@@ -477,15 +540,8 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       </div>
     </section>
     <section>
-      <ExplainedLabel label="Service area" explanation="Choose the state the business serves. Add a county only when the business is limited to or focused on one county." heading />
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <Field label="State" explanation="Choose the state where this business provides service.">
-          <InAppSelect ariaLabel="State" value={serviceState} options={US_STATES} placeholder="Choose a state" onChange={(state) => update("serviceAreas", serviceAreaValues(state, serviceCounty), { saveImmediately: true })} />
-        </Field>
-        <Field label="County (optional)" explanation="Enter a county only if it helps define the service area more precisely.">
-          <Input ariaLabel="County (optional)" value={serviceCounty} placeholder="Worcester County" onChange={(event) => update("serviceAreas", serviceAreaValues(serviceState, event.target.value))} onBlur={(event) => update("serviceAreas", serviceAreaValues(serviceState, event.currentTarget.value), { saveImmediately: true })} />
-        </Field>
-      </div>
+      <ExplainedLabel label="Service area" explanation="Choose multiple states, or choose one state and any number of counties. Counties cannot be combined with multiple states." heading />
+      <div className="mt-4"><ServiceAreaEditor serviceAreas={profile.serviceAreas} onChange={(serviceAreas) => update("serviceAreas", serviceAreas, { saveImmediately: true })} /></div>
     </section>
     <section>
       <ExplainedLabel label="Services" explanation="Add each type of work customers can request from the business." heading />
