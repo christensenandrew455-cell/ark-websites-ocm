@@ -54,14 +54,17 @@ test("payment warnings show the plain message, recovery deadline, and payment up
   }), "2026-08-20T12:00:00.000Z");
 });
 
-test("help renders once, legal back arrows sit outside the cards, and Android navigation stays immersive", async () => {
-  const [shell, helpPage, terms, privacy, legalHeader, androidSetup] = await Promise.all([
+test("help, legal pages, and every mobile scroll surface stay clear of system UI", async () => {
+  const [shell, helpPage, terms, privacy, legalHeader, androidSetup, globals, mobileViewport, modalOverlays] = await Promise.all([
     readFile(new URL("../app/components/AppShell.js", import.meta.url), "utf8"),
     readFile(new URL("../app/help/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/terms/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/privacy/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/LegalPageHeader.js", import.meta.url), "utf8"),
     readFile(new URL("../scripts/configure-android.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/mobile-viewport.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/modal-overlays.css", import.meta.url), "utf8"),
   ]);
 
   assert.equal(shell.includes("HelpCenter"), false);
@@ -73,4 +76,9 @@ test("help renders once, legal back arrows sit outside the cards, and Android na
   assert.ok(androidSetup.includes("BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE"));
   assert.ok(androidSetup.includes("public void onResume()"));
   assert.equal(androidSetup.includes("WindowInsetsCompat.Type.systemBars()"), false);
+  assert.ok(globals.includes("--safe-area-inset-bottom"));
+  assert.ok(globals.includes("--ark-bottom-scroll-clearance"));
+  assert.ok(globals.includes("body::after"));
+  assert.ok(mobileViewport.includes("padding-bottom: var(--ark-bottom-scroll-clearance)"));
+  assert.ok(modalOverlays.includes("var(--ark-bottom-scroll-clearance)"));
 });

@@ -2,10 +2,27 @@
 
 :root {
   --ark-top-safe-area-color: #020617;
+  --ark-safe-area-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --ark-safe-area-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --ark-safe-area-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --ark-safe-area-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --ark-bottom-scroll-clearance: max(2rem, calc(var(--ark-safe-area-bottom) + 1rem));
   --ark-workspace-header-height: 65px;
   --ark-navy: #071a3d;
   --ark-blue: #1d4ed8;
   --ark-canvas: #eff6ff;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  :root {
+    /*
+     * Android's transient three-button navigation can overlay a fullscreen
+     * WebView while reporting a zero inset. Keep enough fallback room to
+     * scroll the final card above it; real iOS/Android insets can make this
+     * clearance larger when necessary.
+     */
+    --ark-bottom-scroll-clearance: max(4.5rem, calc(var(--ark-safe-area-bottom) + 1.25rem));
+  }
 }
 
 html,
@@ -28,7 +45,7 @@ html {
 
 body {
   min-height: 100dvh;
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--ark-safe-area-top);
   background:
     radial-gradient(circle at 8% 2%, rgba(99, 102, 241, 0.09), transparent 28rem),
     radial-gradient(circle at 92% 16%, rgba(245, 158, 11, 0.08), transparent 24rem),
@@ -47,7 +64,7 @@ body {
 }
 
 .ark-workspace-header {
-  top: env(safe-area-inset-top, 0px);
+  top: var(--ark-safe-area-top);
 }
 
 .ark-workspace-header-spacer {
@@ -55,8 +72,8 @@ body {
 }
 
 .ark-referral-button {
-  right: max(1rem, env(safe-area-inset-right, 0px));
-  bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  right: max(1rem, var(--ark-safe-area-right));
+  bottom: max(1rem, var(--ark-safe-area-bottom));
 }
 
 @media (min-width: 640px) {
@@ -80,7 +97,7 @@ html.ark-stiff-settings body {
 
 html.ark-stiff-dashboard .ark-pull-to-refresh,
 html.ark-stiff-settings .ark-pull-to-refresh {
-  height: calc(100dvh - var(--ark-workspace-header-height) - env(safe-area-inset-top, 0px));
+  height: calc(100dvh - var(--ark-workspace-header-height) - var(--ark-safe-area-top));
   min-height: 0 !important;
   overflow: hidden;
 }
@@ -117,8 +134,23 @@ body::before {
   top: 0;
   right: 0;
   left: 0;
-  height: env(safe-area-inset-top, 0px);
+  height: var(--ark-safe-area-top);
   background: var(--ark-top-safe-area-color);
+  pointer-events: none;
+}
+
+/*
+ * A real final scroll spacer keeps long pages above iPhone's home indicator
+ * and Android's gesture/three-button navigation. Padding individual pages is
+ * easy to miss; keeping it on the root makes Docs, Support, and future pages
+ * behave consistently.
+ */
+body::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: var(--ark-bottom-scroll-clearance);
+  flex: none;
   pointer-events: none;
 }
 

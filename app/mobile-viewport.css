@@ -40,6 +40,6 @@
 
   body:has(main textarea[placeholder="Message"]) main form,
   body:has(main textarea[placeholder="Customer opted out"]) main form {
-    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--ark-bottom-scroll-clearance);
   }
 }

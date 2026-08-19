@@ -14,7 +14,7 @@ body:has(.fixed.inset-0 > button[aria-label="Close"]) {
 .fixed.inset-0.z-50.overflow-y-auto:has(> button[aria-label="Close"]) {
   display: grid !important;
   place-items: center !important;
-  padding: max(1rem, env(safe-area-inset-top, 0px)) !important;
+  padding: max(1rem, var(--ark-safe-area-top)) max(1rem, var(--ark-safe-area-right)) var(--ark-bottom-scroll-clearance) max(1rem, var(--ark-safe-area-left)) !important;
   background: rgba(15, 23, 42, 0.66) !important;
   backdrop-filter: blur(8px);
 }
@@ -38,7 +38,7 @@ body:has(.fixed.inset-0 > button[aria-label="Close"]) {
   display: grid;
   place-items: center;
   overflow-y: auto;
-  padding: max(1rem, env(safe-area-inset-top, 0px)) max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) max(1rem, env(safe-area-inset-left, 0px));
+  padding: max(1rem, var(--ark-safe-area-top)) max(1rem, var(--ark-safe-area-right)) var(--ark-bottom-scroll-clearance) max(1rem, var(--ark-safe-area-left));
   background: rgba(15, 23, 42, 0.66);
   backdrop-filter: blur(8px);
 }
@@ -52,7 +52,7 @@ body:has(.fixed.inset-0 > button[aria-label="Close"]) {
 .ark-modal-surface {
   position: relative;
   width: 100%;
-  max-height: calc(100dvh - max(2rem, calc(env(safe-area-inset-top, 0px) + env(safe-area-inset-bottom, 0px))));
+  max-height: calc(100dvh - var(--ark-safe-area-top) - var(--ark-bottom-scroll-clearance));
   overflow: hidden;
   border: 1px solid rgb(148 163 184);
   border-radius: 1.75rem;
