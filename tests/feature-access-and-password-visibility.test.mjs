@@ -54,9 +54,11 @@ test("payment warnings show the plain message, recovery deadline, and payment up
   }), "2026-08-20T12:00:00.000Z");
 });
 
-test("help, legal pages, and every mobile scroll surface stay clear of system UI", async () => {
-  const [shell, helpPage, terms, privacy, legalHeader, androidSetup, globals, mobileViewport, modalOverlays] = await Promise.all([
+test("account help controls, legal pages, and every mobile scroll surface stay clear of system UI", async () => {
+  const [shell, settings, helpChat, helpRedirect, terms, privacy, legalHeader, androidSetup, globals, mobileViewport, modalOverlays] = await Promise.all([
     readFile(new URL("../app/components/AppShell.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/SettingsPanel.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/HelpCenter.js", import.meta.url), "utf8"),
     readFile(new URL("../app/help/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/terms/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/privacy/page.js", import.meta.url), "utf8"),
@@ -68,7 +70,14 @@ test("help, legal pages, and every mobile scroll surface stay clear of system UI
   ]);
 
   assert.equal(shell.includes("HelpCenter"), false);
-  assert.ok(helpPage.includes("<HelpCenter />"));
+  assert.ok(settings.includes("<HelpCenter className={ACCOUNT_RESOURCE_CLASS} />"));
+  assert.ok(settings.includes('title="Docs"'));
+  assert.ok(settings.includes('title="Support"'));
+  assert.ok(settings.includes('title="Terms of Use"'));
+  assert.ok(settings.includes('title="Privacy Policy"'));
+  assert.equal(settings.includes('href="/help"'), false);
+  assert.ok(helpChat.includes("AI Chat"));
+  assert.ok(helpRedirect.includes('redirect("/settings?section=account&chat=open")'));
   assert.ok(terms.indexOf("<LegalBackButton />") < terms.indexOf("<article"));
   assert.ok(privacy.indexOf("<LegalBackButton />") < privacy.indexOf("<article"));
   assert.ok(legalHeader.includes("export function LegalBackButton"));

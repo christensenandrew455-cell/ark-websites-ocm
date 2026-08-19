@@ -23,7 +23,7 @@ const PAGE_GUIDES = Object.freeze({
       "Update what your AI receptionist knows about your business, services, hours, and service area.",
       "Customize the app and your client preferences.",
       "Review the $2 accepted-lead price, current usage, and payment method.",
-      "Open Help or Docs, download your client data, or delete your account.",
+      "Use Docs, AI Chat, or Support, download your client data, or delete your account.",
     ],
   },
   leads: {

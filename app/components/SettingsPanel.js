@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
+import HelpCenter from "./HelpCenter";
 import MessageRetentionSettings from "./MessageRetentionSettings";
 import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
@@ -14,6 +15,7 @@ import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
 const DEFAULT_SETTINGS = { paymentMethodLabel: "", stripeCustomerId: "" };
 const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
+const ACCOUNT_RESOURCE_CLASS = "min-h-28 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "What your receptionist knows" },
   { key: "customization", title: "Customization", description: "Appearance and preferences" },
@@ -41,6 +43,9 @@ function SectionPanel({ children }) {
 }
 function FieldLabel({ children }) {
   return <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{children}</span>;
+}
+function AccountResourceLink({ href, title, description }) {
+  return <Link href={href} className={ACCOUNT_RESOURCE_CLASS}><p className="text-lg font-black text-slate-950">{title}</p><p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{description}</p></Link>;
 }
 function featureValues(data = {}) {
   return { messagesEnabled: data.messagesEnabled === true };
@@ -77,6 +82,11 @@ export default function SettingsPanel() {
   const businessSaveQueueRef = useRef(Promise.resolve(true));
   const businessAutosaveTimerRef = useRef(null);
   const customizationSaveQueueRef = useRef(Promise.resolve(true));
+
+  useEffect(() => {
+    const requestedSection = new URLSearchParams(window.location.search).get("section");
+    if (SETTINGS_BLOCKS.some((block) => block.key === requestedSection)) setActiveSection(requestedSection);
+  }, []);
 
   useEffect(() => {
     const enabled = profile?.darkMode === true;
@@ -396,7 +406,7 @@ export default function SettingsPanel() {
     </SectionPanel></>;
   }
   function accountSection() {
-    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-2 sm:grid-cols-2"><Link href="/help" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Open Help</Link><Link href="/docs" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Documentation</Link><Link href="/terms" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Terms of Use</Link><Link href="/privacy" className="rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-black">Privacy Policy</Link></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">This cancels the subscription and permanently deletes the owner account, leads, clients, and conversations. Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
+    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><AccountResourceLink href="/docs" title="Docs" description="App guide" /><HelpCenter className={ACCOUNT_RESOURCE_CLASS} /><AccountResourceLink href="/messages" title="Support" description="Account or technical help" /><AccountResourceLink href="/terms" title="Terms of Use" description="Service agreement" /><AccountResourceLink href="/privacy" title="Privacy Policy" description="How your data is handled" /></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">This cancels the subscription and permanently deletes the owner account, leads, clients, and conversations. Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
   }
 
   return (

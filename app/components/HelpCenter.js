@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import BackButton from "./BackButton";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
 
@@ -19,7 +18,7 @@ function makeMessage(role, text, links = []) {
   };
 }
 
-export default function HelpCenter() {
+export default function HelpCenter({ className = "" }) {
   const pathname = usePathname();
   const { user } = useAuth();
   const [chatOpen, setChatOpen] = useState(false);
@@ -28,6 +27,10 @@ export default function HelpCenter() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("chat") === "open") setChatOpen(true);
+  }, []);
 
   useEffect(() => {
     setMessages([]);
@@ -105,36 +108,17 @@ export default function HelpCenter() {
     }
   }
 
-  if (!pathname.startsWith("/help")) return null;
-
   return (
-    <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
-      <div className="mx-auto max-w-3xl">
-        <BackButton href="/settings" />
-        <header className="mt-5 text-slate-950">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">ARK Client Center</p>
-          <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Help</h1>
-        </header>
-        <section className="mt-5 grid gap-3 sm:grid-cols-3">
-          <Link href="/docs" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-lg font-black text-slate-950">Docs</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">App guide</p>
-          </Link>
-          <button type="button" onClick={() => setChatOpen(true)} className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
-            <p className="text-lg font-black text-slate-950">Ask AI</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Quick answers</p>
-          </button>
-          <Link href="/messages" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-lg font-black text-slate-950">Support</p>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Account or technical help</p>
-          </Link>
-        </section>
-      </div>
+    <>
+      <button type="button" onClick={() => setChatOpen(true)} className={className || "min-h-28 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]"}>
+        <p className="text-lg font-black text-slate-950">AI Chat</p>
+        <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Quick answers</p>
+      </button>
       {chatOpen && (
         <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="help-chat-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}>
           <section className="ark-modal-surface flex h-[min(720px,88vh)] max-w-lg flex-col">
             <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
-              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p><h2 id="help-chat-title" className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">Ask AI</h2></div>
+              <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p><h2 id="help-chat-title" className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">AI Chat</h2></div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={clearChat} className="rounded-xl border border-slate-300 px-3 py-2 text-[11px] font-black text-slate-700">Delete Chat</button>
                 <button type="button" onClick={() => setChatOpen(false)} aria-label="Close help chat" className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white">×</button>
@@ -165,6 +149,6 @@ export default function HelpCenter() {
           </section>
         </div>
       )}
-    </main>
+    </>
   );
 }

@@ -1,5 +1,5 @@
-import HelpCenter from "../components/HelpCenter";
+import { redirect } from "next/navigation";
 
 export default function HelpPage() {
-  return <HelpCenter />;
+  redirect("/settings?section=account&chat=open");
 }

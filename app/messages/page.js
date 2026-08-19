@@ -109,7 +109,7 @@ function CustomerMessages({ user, requests, onRefresh }) {
           <p className="text-sm font-black text-blue-950">Quick help</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Link href="/docs" className="rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-center text-xs font-black text-blue-900">Docs</Link>
-            <Link href="/help" className="rounded-xl bg-blue-800 px-3 py-2.5 text-center text-xs font-black text-white">Ask AI</Link>
+            <Link href="/settings?section=account&chat=open" className="rounded-xl bg-blue-800 px-3 py-2.5 text-center text-xs font-black text-white">AI Chat</Link>
           </div>
         </section>
 
@@ -126,7 +126,7 @@ function CustomerMessages({ user, requests, onRefresh }) {
           </label>
           <label className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
             <input type="checkbox" checked={selfHelpConfirmed} onChange={(event) => setSelfHelpConfirmed(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-slate-950" />
-            <span className="text-xs font-bold leading-5 text-slate-700">I tried Docs or Ask AI.</span>
+            <span className="text-xs font-bold leading-5 text-slate-700">I tried Docs or AI Chat.</span>
           </label>
           <button disabled={sending || !selfHelpConfirmed || hasOpenRequest} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : hasOpenRequest ? "Request open" : "Send request"}</button>
         </form>
