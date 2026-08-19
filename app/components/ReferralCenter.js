@@ -49,7 +49,7 @@ export default function ReferralCenter({ clientId = "" }) {
   }
 
   return <>
-    <button type="button" data-tour-id="referral-star" onClick={() => setOpen(true)} className="ark-referral-button fixed z-[70] flex items-center gap-2 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 px-3 py-3 text-left text-slate-950 shadow-xl ring-1 ring-amber-600/30 transition hover:scale-[1.02] active:scale-[0.98]" aria-label="Open referral savings">
+    <button type="button" onClick={() => setOpen(true)} className="ark-referral-button fixed z-[70] flex items-center gap-2 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-400 to-orange-500 px-3 py-3 text-left text-slate-950 shadow-xl ring-1 ring-amber-600/30 transition hover:scale-[1.02] active:scale-[0.98]" aria-label="Open referral savings">
       <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-white/75 text-xl shadow-sm">★</span>
       <span className="pr-1 leading-tight"><span className="block text-[9px] font-black uppercase tracking-[0.14em]">Refer & save</span><span className="block text-sm font-black">Up to 50% off</span></span>
     </button>

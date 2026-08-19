@@ -13,10 +13,10 @@ function BackArrow() {
 
 const baseClass = "grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-blue-200 bg-white text-blue-950 shadow-sm shadow-blue-950/10 transition active:scale-95";
 
-export default function BackButton({ href, onClick, className = "", label = "Back", tourId = "" }) {
+export default function BackButton({ href, onClick, className = "", label = "Back" }) {
   const classes = `${baseClass} ${className}`.trim();
   if (href) {
-    return <Link href={href} data-tour-id={tourId || undefined} aria-label={label} title={label} className={classes}><BackArrow /></Link>;
+    return <Link href={href} aria-label={label} title={label} className={classes}><BackArrow /></Link>;
   }
-  return <button type="button" onClick={onClick} data-tour-id={tourId || undefined} aria-label={label} title={label} className={classes}><BackArrow /></button>;
+  return <button type="button" onClick={onClick} aria-label={label} title={label} className={classes}><BackArrow /></button>;
 }

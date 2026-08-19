@@ -1,167 +1,184 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
-const STEPS = [
-  { path: "/", target: "settings", title: "Settings", body: "Business, preferences, payment, and help.", action: "activate", actionLabel: "Open Settings" },
-  { path: "/settings", target: "settings-business", title: "Business Information", body: "What your receptionist knows.", action: "next", actionLabel: "Next" },
-  { path: "/settings", target: "settings-customization", title: "Customization", body: "Appearance and preferences.", action: "next", actionLabel: "Next" },
-  { path: "/settings", target: "settings-menu-back", title: "Dashboard", body: "Back to your main screen.", action: "activate", actionLabel: "Open Dashboard" },
-  { path: "/", target: "dashboard-leads", title: "Leads", body: "New leads and clients.", action: "next", actionLabel: "Next" },
-  { path: "/", target: "dashboard-messages", title: "Messages", body: MESSAGES_AVAILABLE ? "Client texts." : UPCOMING_FEATURE_LABEL, action: "next", actionLabel: "Next" },
-  { path: "/", target: "referral-star", title: "Referral Savings", body: "Your account ID and savings.", action: "activate", actionLabel: "Finish", finishAfter: true },
-];
+const PAGE_GUIDES = Object.freeze({
+  dashboard: {
+    eyebrow: "Welcome",
+    title: "Welcome to your ARK Client Center",
+    body: "This is your dashboard. It gives you a quick look at your new leads and shows where Messages will appear once it is available.",
+    points: [
+      "Open Leads to review people under Contacted You and Clients.",
+      "Messages is not available yet, but it will appear here when it launches.",
+      "Tap around and explore. The first time you open a main section, we’ll quickly explain what is inside.",
+    ],
+  },
+  settings: {
+    eyebrow: "Settings",
+    title: "This is Settings",
+    body: "Settings is where you control your business, your AI receptionist, your app, and your account.",
+    points: [
+      "Update what your AI receptionist knows about your business, services, hours, and service area.",
+      "Customize the app and your client preferences.",
+      "Review the $2 accepted-lead price, current usage, and payment method.",
+      "Open Help or Docs, download your client data, or delete your account.",
+    ],
+  },
+  leads: {
+    eyebrow: "Leads",
+    title: "This is your Leads page",
+    body: "Everything your AI receptionist collects is organized here.",
+    points: [
+      "Contacted You holds new leads. Accept one to move it to Clients for $2, or decline it for free.",
+      "Clients holds accepted customers. Open one to edit details and notes, save the contact, or add the appointment to your calendar.",
+      "You can text clients when Messages becomes available, or delete a client you no longer need.",
+      "Your payment method and current usage are under Settings, then Payment.",
+    ],
+  },
+});
 
-function targetElement(id) {
-  return document.querySelector(`[data-tour-id="${id}"]`);
+function pageGuide(pathname) {
+  if (pathname === "/") return "dashboard";
+  if (pathname === "/settings" || pathname.startsWith("/settings/")) return "settings";
+  if (pathname === "/leads" || pathname.startsWith("/leads/")) return "leads";
+  return "";
 }
 
-function bounded(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
+function guideSeen(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    dashboard: source.dashboard === true,
+    settings: source.settings === true,
+    leads: source.leads === true,
+  };
 }
 
-export default function GuidedOnboarding() {
+function normalizedPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return "";
+}
+
+function displayPhone(value) {
+  const digits = normalizedPhone(value).replace(/^\+1/, "");
+  if (digits.length !== 10) return String(value || "").trim();
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function assignedNumberGuide(phone) {
+  return {
+    id: "number-assigned",
+    eyebrow: "Your number is ready",
+    title: "Great—you’ve been assigned a number",
+    body: `Your ARK AI receptionist number is ${displayPhone(phone)}.`,
+    points: [
+      "Replace the phone number anywhere you advertise your business with this one.",
+      "Calls to this number will go through your AI receptionist so you can reap the benefits of the app.",
+    ],
+    phone,
+  };
+}
+
+export default function FirstVisitGuides() {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, profile, refreshProfile } = useAuth();
-  const panelRef = useRef(null);
-  const startedRef = useRef(false);
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState(0);
-  const [rect, setRect] = useState(null);
-  const [panelStyle, setPanelStyle] = useState({ left: 12, right: 12, bottom: "max(12px, env(safe-area-inset-bottom))" });
-  const current = STEPS[step];
+  const { user, profile, updateProfile } = useAuth();
+  const [activeGuide, setActiveGuide] = useState(null);
+  const shownKeys = useRef(new Set());
+  const dismissedPath = useRef("");
+
+  const candidate = useMemo(() => {
+    if (!user || !profile || profile.identityVerificationVerified !== true || profile.onboardingTourEligible !== true) return null;
+
+    const currentPage = pageGuide(pathname);
+    const seen = guideSeen(profile.onboardingGuideSeen);
+    const legacyStatus = String(profile.onboardingTourStatus || "").trim().toLowerCase();
+    const pageGuidesAvailable = ["pending", "started"].includes(legacyStatus);
+    if (currentPage && pageGuidesAvailable && !seen[currentPage]) {
+      return { id: currentPage, ...PAGE_GUIDES[currentPage] };
+    }
+
+    if (pathname !== "/" || Number(profile.onboardingGuideVersion || 0) < 2) return null;
+    const assignedPhone = normalizedPhone(profile.receptionistPhoneNormalized || profile.receptionistPhone);
+    const acknowledgedPhone = normalizedPhone(profile.onboardingNumberGuidePhone);
+    if (profile.numberAssignmentStatus === "assigned" && assignedPhone && assignedPhone !== acknowledgedPhone) {
+      return assignedNumberGuide(assignedPhone);
+    }
+    return null;
+  }, [pathname, profile, user]);
 
   useEffect(() => {
-    const eligible = profile?.identityVerificationVerified === true
-      && profile?.onboardingTourEligible === true
-      && ["pending", "started"].includes(profile?.onboardingTourStatus);
-    if (!eligible || !user || startedRef.current) return;
-    startedRef.current = true;
-    setOpen(true);
-    user.getIdToken(true).then((token) => fetch("/api/account/onboarding-tour", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ status: "started" }),
-    })).catch((error) => console.warn("Unable to save guided tour start", error));
-  }, [profile?.clientId, profile?.identityVerificationVerified, profile?.onboardingTourEligible, profile?.onboardingTourStatus, user]);
+    if (activeGuide || !candidate || dismissedPath.current === pathname) return;
+    const key = `${profile?.clientId || "account"}:${candidate.id}:${candidate.phone || ""}`;
+    if (shownKeys.current.has(key)) return;
+    shownKeys.current.add(key);
+    setActiveGuide(candidate);
+  }, [activeGuide, candidate, pathname, profile?.clientId]);
 
-  const measure = useCallback(() => {
-    if (!open || !current || pathname !== current.path) {
-      setRect(null);
-      return;
-    }
-    const target = targetElement(current.target);
-    if (!target) {
-      setRect(null);
-      return;
-    }
+  useEffect(() => {
+    if (!activeGuide) return undefined;
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    return () => { document.documentElement.style.overflow = previousOverflow; };
+  }, [activeGuide]);
 
-    const bounds = target.getBoundingClientRect();
-    const padding = 10;
-    const gap = 14;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const top = bounded(bounds.top - 6, padding, viewportHeight - padding);
-    const left = bounded(bounds.left - 6, padding, viewportWidth - padding);
-    const right = bounded(bounds.right + 6, padding, viewportWidth - padding);
-    const bottom = bounded(bounds.bottom + 6, padding, viewportHeight - padding);
-    const width = Math.max(0, right - left);
-    const height = Math.max(0, bottom - top);
-    const panelWidth = Math.min(420, viewportWidth - padding * 2);
-    const panelHeight = panelRef.current?.offsetHeight || 230;
-    const centeredLeft = bounds.left + bounds.width / 2 - panelWidth / 2;
-    const cardLeft = bounded(centeredLeft, padding, viewportWidth - panelWidth - padding);
-    const below = bottom + gap;
-    const above = top - panelHeight - gap;
-    const preferredTop = below + panelHeight <= viewportHeight - padding ? below : above;
-    const cardTop = bounded(preferredTop, padding, viewportHeight - panelHeight - padding);
+  async function dismiss() {
+    if (!activeGuide || !user) return;
+    const dismissed = activeGuide;
+    dismissedPath.current = pathname;
+    setActiveGuide(null);
 
-    setRect({ top, left, width, height });
-    setPanelStyle({ top: cardTop, left: cardLeft, width: panelWidth });
-  }, [current, open, pathname]);
-
-  useLayoutEffect(() => {
-    if (!open || !current) return undefined;
-    if (pathname !== current.path) {
-      setRect(null);
-      router.replace(current.path);
-      return undefined;
+    const previousSeen = guideSeen(profile?.onboardingGuideSeen);
+    if (dismissed.id === "number-assigned") {
+      updateProfile({
+        onboardingGuideVersion: 2,
+        onboardingNumberGuidePhone: dismissed.phone,
+      });
+    } else {
+      const nextSeen = { ...previousSeen, [dismissed.id]: true };
+      updateProfile({
+        onboardingGuideVersion: 2,
+        onboardingGuideSeen: nextSeen,
+        onboardingTourStatus: Object.values(nextSeen).every(Boolean) ? "completed" : "started",
+      });
     }
 
-    let attempts = 0;
-    const locate = () => {
-      const target = targetElement(current.target);
-      if (!target) {
-        attempts += 1;
-        if (attempts > 40) window.clearInterval(timer);
-        return;
-      }
-      target.scrollIntoView({ block: "center", behavior: "auto" });
-      window.requestAnimationFrame(measure);
-      window.clearInterval(timer);
-    };
-    const timer = window.setInterval(locate, 100);
-    const observer = new MutationObserver(locate);
-    observer.observe(document.body, { childList: true, subtree: true });
-    locate();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-    return () => {
-      window.clearInterval(timer);
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
-    };
-  }, [current, measure, open, pathname, router]);
-
-  async function finish(status) {
-    setOpen(false);
     try {
       const token = await user.getIdToken(true);
-      await fetch("/api/account/onboarding-tour", {
+      const response = await fetch("/api/account/onboarding-tour", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ guide: dismissed.id }),
       });
-      await refreshProfile();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not save the guide progress.");
+      updateProfile({
+        onboardingGuideVersion: Number(data.onboardingGuideVersion || 2),
+        onboardingGuideSeen: guideSeen(data.onboardingGuideSeen),
+        onboardingNumberGuidePhone: String(data.onboardingNumberGuidePhone || dismissed.phone || ""),
+        onboardingTourStatus: String(data.onboardingTourStatus || profile?.onboardingTourStatus || ""),
+      });
     } catch (error) {
-      console.warn("Unable to save guided tour status", error);
+      console.warn("Unable to save first-visit guide progress", error);
     }
   }
 
-  function next() {
-    if (step >= STEPS.length - 1) finish("completed");
-    else setStep((value) => value + 1);
-  }
-
-  function runAction() {
-    if (!rect) return;
-    if (current.action === "activate") targetElement(current.target)?.click();
-    if (current.finishAfter) window.setTimeout(() => finish("completed"), 250);
-    else window.setTimeout(next, current.action === "activate" ? 160 : 0);
-  }
-
-  if (!open || !current) return null;
-  const edge = rect || { top: 0, left: 0, width: 0, height: 0 };
-  return <div className="fixed inset-0 z-[230]" role="dialog" aria-modal="true" aria-label="ARK Client Center guided tour">
-    {rect ? <>
-      <div className="fixed inset-x-0 top-0 bg-slate-950/80 backdrop-grayscale" style={{ height: edge.top }} />
-      <div className="fixed left-0 bg-slate-950/80 backdrop-grayscale" style={{ top: edge.top, width: edge.left, height: edge.height }} />
-      <div className="fixed right-0 bg-slate-950/80 backdrop-grayscale" style={{ top: edge.top, left: edge.left + edge.width, height: edge.height }} />
-      <div className="fixed inset-x-0 bottom-0 bg-slate-950/80 backdrop-grayscale" style={{ top: edge.top + edge.height }} />
-      <button type="button" onClick={runAction} aria-label={`${current.actionLabel}: ${current.title}`} className="fixed z-[231] rounded-2xl border-4 border-yellow-300 bg-yellow-300/10 shadow-[0_0_0_4px_rgba(250,204,21,0.3),0_0_30px_rgba(250,204,21,0.75)]" style={edge} />
-    </> : <div className="fixed inset-0 bg-slate-950/80 backdrop-grayscale" />}
-    <section ref={panelRef} style={panelStyle} className="fixed z-[232] max-h-[calc(100dvh-24px)] overflow-y-auto rounded-3xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl">
-      <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700">Quick tour</p><p className="text-xs font-black text-slate-400">{step + 1} of {STEPS.length}</p></div>
-      <div className="mt-3 flex gap-1.5" aria-hidden="true">{STEPS.map((item, index) => <span key={`${item.target}-${index}`} className={index <= step ? "h-1.5 flex-1 rounded-full bg-indigo-700" : "h-1.5 flex-1 rounded-full bg-slate-200"} />)}</div>
-      <h2 className="mt-4 text-xl font-black tracking-tight">{current.title}</h2>
-      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{current.body}</p>
-      <p className="mt-3 text-xs font-bold text-yellow-700">Tap the highlighted item.</p>
-      <div className="mt-5 grid grid-cols-[auto_1fr] gap-2"><button type="button" onClick={() => finish("skipped")} className="rounded-xl px-3 py-3 text-xs font-black text-slate-500">Skip</button><button type="button" disabled={!rect} onClick={runAction} className="rounded-xl bg-slate-950 px-4 py-3 text-xs font-black text-white disabled:bg-slate-300">{rect ? current.actionLabel : "Finding this item…"}</button></div>
-    </section>
-  </div>;
+  if (!activeGuide) return null;
+  const descriptionId = `first-visit-guide-${activeGuide.id}`;
+  return (
+    <div className="fixed inset-0 z-[230]" role="dialog" aria-modal="true" aria-labelledby={`${descriptionId}-title`} aria-describedby={`${descriptionId}-body`}>
+      <button type="button" onClick={dismiss} aria-label="Continue exploring ARK Client Center" className="fixed inset-0 cursor-default bg-slate-950/75 backdrop-blur-[2px]" />
+      <section className="pointer-events-none fixed inset-x-4 top-1/2 z-[231] mx-auto max-h-[calc(100dvh-32px)] max-w-md -translate-y-1/2 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 text-slate-950 shadow-2xl sm:p-7">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">{activeGuide.eyebrow}</p>
+        <h2 id={`${descriptionId}-title`} className="mt-3 text-2xl font-black tracking-tight">{activeGuide.title}</h2>
+        <p id={`${descriptionId}-body`} className="mt-3 text-sm font-semibold leading-6 text-slate-600">{activeGuide.body}</p>
+        <ul className="mt-5 space-y-3 text-sm font-semibold leading-6 text-slate-700">
+          {activeGuide.points.map((point) => <li key={point} className="flex gap-3"><span aria-hidden="true" className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-700" /><span>{point}</span></li>)}
+        </ul>
+        <p className="mt-6 border-t border-slate-200 pt-4 text-center text-xs font-black uppercase tracking-[0.14em] text-indigo-700">Tap anywhere to continue</p>
+      </section>
+    </div>
+  );
 }

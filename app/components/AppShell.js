@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import GuidedOnboarding from "./GuidedOnboarding";
+import FirstVisitGuides from "./GuidedOnboarding";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
@@ -104,7 +104,7 @@ function WorkspaceHeader({ profile, pathname, logout }) {
         <div className="min-w-0 leading-tight"><p className="truncate text-lg font-black tracking-tight text-white sm:text-2xl">ARK Client Center</p><p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.14em] text-blue-200 sm:text-xs">{subtitle}</p></div>
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => requestUnsavedNavigation("Sign Out", logout)} className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-blue-50 shadow-sm sm:px-4 sm:py-2.5">Sign out</button>
-          <Link href={settingsHref} data-tour-id="settings" aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-white text-lg text-blue-950 shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-white/20 bg-white/10 text-lg text-blue-50 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>
+          <Link href={settingsHref} aria-label="Settings" title="Settings" className={settingsActive ? "grid h-9 w-9 place-items-center rounded-xl bg-white text-lg text-blue-950 shadow-sm sm:h-10 sm:w-10" : "grid h-9 w-9 place-items-center rounded-xl border border-white/20 bg-white/10 text-lg text-blue-50 shadow-sm sm:h-10 sm:w-10"}><span aria-hidden="true">⚙</span></Link>
         </div>
       </div>
     </header>
@@ -120,7 +120,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <GuidedOnboarding />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <FirstVisitGuides />}</>;
 }
 
 export default function AppShell({ children }) {

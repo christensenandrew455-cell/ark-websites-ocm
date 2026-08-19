@@ -57,28 +57,39 @@ test("dashboard keeps number assignment simple and does not open unavailable Mes
   assert.ok(messages.includes("if (!MESSAGES_AVAILABLE) return null"));
 });
 
-test("guided tour eligibility and completion are persisted in Firestore", async () => {
-  const [tutorial, completion, profile, tourRoute] = await Promise.all([
+test("first-visit guides are contextual and their progress is persisted in Firestore", async () => {
+  const [tutorial, completion, profile, tourRoute, accountSections] = await Promise.all([
     source("app/components/GuidedOnboarding.js"),
     source("app/lib/ownerPaymentSetup.js"),
     source("app/api/account/profile/route.js"),
     source("app/api/account/onboarding-tour/route.js"),
+    source("app/lib/accountSections.js"),
   ]);
   assert.equal(tutorial.includes("localStorage"), false);
   assert.equal(tutorial.includes("sessionStorage"), false);
-  assert.ok(tutorial.includes('["pending", "started"].includes(profile?.onboardingTourStatus)'));
-  assert.ok(tutorial.includes('body: JSON.stringify({ status: "started" })'));
-  assert.ok(tutorial.includes("profile?.onboardingTourEligible === true"));
+  assert.ok(tutorial.includes('["pending", "started"].includes(legacyStatus)'));
+  assert.ok(tutorial.includes('body: JSON.stringify({ guide: dismissed.id })'));
+  assert.ok(tutorial.includes("profile.onboardingTourEligible !== true"));
+  assert.ok(tutorial.includes("Welcome to your ARK Client Center"));
+  assert.ok(tutorial.includes("Contacted You holds new leads"));
+  assert.ok(tutorial.includes("Review the $2 accepted-lead price"));
+  assert.ok(tutorial.includes("Tap anywhere to continue"));
+  assert.ok(tutorial.includes('id: "number-assigned"'));
+  assert.ok(tutorial.includes("reap the benefits of the app"));
+  for (const retiredCopy of ["Quick tour", "Open Settings", "Open Dashboard", "Finding this item…", ">Skip<", ">Next<"]) assert.equal(tutorial.includes(retiredCopy), false);
+  assert.equal(tutorial.includes("Tap the highlighted item."), false);
+  assert.equal(tutorial.includes("MutationObserver"), false);
+  assert.equal(tutorial.includes("data-tour-id"), false);
   assert.ok(completion.includes("onboardingTourEligible: true"));
   assert.ok(completion.includes('onboardingTourStatus: "pending"'));
+  assert.ok(completion.includes("onboardingGuideVersion: 2"));
+  assert.ok(completion.includes("onboardingGuideSeen: { dashboard: false, settings: false, leads: false }"));
   assert.ok(profile.includes("onboardingTourEligible: account.onboardingTourEligible === true"));
+  assert.ok(profile.includes("onboardingGuideSeen: onboardingGuideSeen(account.onboardingGuideSeen)"));
   assert.ok(tourRoute.includes("sections.customizationRef"));
-  assert.ok(tourRoute.includes("onboardingTourStatus: status"));
-  assert.ok(tutorial.includes("const below = bottom + gap"));
-  assert.ok(tutorial.includes("const above = top - panelHeight - gap"));
-  assert.ok(tutorial.includes("onClick={runAction}"));
-  assert.ok(tutorial.includes("Tap the highlighted item."));
-  assert.ok(tutorial.includes("new MutationObserver(locate)"));
+  assert.ok(tourRoute.includes("onboardingGuideSeen: seen"));
+  assert.ok(tourRoute.includes("onboardingNumberGuidePhone: assignedPhone"));
+  for (const field of ["onboardingGuideVersion", "onboardingGuideSeen", "onboardingNumberGuidePhone"]) assert.ok(accountSections.includes(`"${field}"`));
 });
 
 test("customization keeps lead retention and lead status notices available before Messages launches", async () => {

@@ -30,11 +30,11 @@ function money(cents = 0) {
     maximumFractionDigits: 2,
   }).format(dollars);
 }
-function SettingsBlock({ title, description, onClick, tourId = "" }) {
-  return <button type="button" data-tour-id={tourId || undefined} onClick={onClick} className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-slate-600 sm:text-sm sm:leading-6">{description}</p></button>;
+function SettingsBlock({ title, description, onClick }) {
+  return <button type="button" onClick={onClick} className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-slate-600 sm:text-sm sm:leading-6">{description}</p></button>;
 }
 function SectionHeader({ title, onBack }) {
-  return <div className="mb-4 sm:mb-6"><BackButton onClick={onBack} tourId="settings-section-back" /><h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">{title}</h2></div>;
+  return <div className="mb-4 sm:mb-6"><BackButton onClick={onBack} /><h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">{title}</h2></div>;
 }
 function SectionPanel({ children }) {
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-7">{children}</section>;
@@ -402,10 +402,10 @@ export default function SettingsPanel() {
   return (
     <main className="ark-settings-page min-h-screen bg-transparent px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-slate-950 sm:p-5 md:p-8">
       <div className="mx-auto max-w-4xl">
-        {!activeSection && <header className="mb-4 sm:mb-7"><BackButton href="/" className="mb-4" tourId="settings-menu-back" /><h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Settings</h1></header>}
+        {!activeSection && <header className="mb-4 sm:mb-7"><BackButton href="/" className="mb-4" /><h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Settings</h1></header>}
         {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         {downloadNotice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700">{downloadNotice}</div>}
-        {isOwner && !activeSection ? <div className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} tourId={`settings-${block.key}`} onClick={() => setActiveSection(block.key)} />)}</div></div>
+        {isOwner && !activeSection ? <div className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="space-y-3 sm:space-y-4">{SETTINGS_BLOCKS.map((block) => <SettingsBlock key={block.key} {...block} onClick={() => setActiveSection(block.key)} />)}</div></div>
             : isOwner && activeSection === "business" ? businessSection()
               : isOwner && activeSection === "customization" ? customizationSection()
                 : isOwner && activeSection === "payment" ? paymentSection()

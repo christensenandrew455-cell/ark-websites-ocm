@@ -71,11 +71,12 @@ function PaymentForm({ clientSecret, returnUrl, onSucceeded, onDeclined }) {
 
 export default function PaymentSetupClient() {
   const router = useRouter();
-  const { user, profile, loading, refreshProfile } = useAuth();
+  const { user, profile, loading } = useAuth();
   const [configuration, setConfiguration] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const completionStarted = useRef(false);
 
   const leaveCanceledSignup = useCallback(async () => {
@@ -109,10 +110,7 @@ export default function PaymentSetupClient() {
       const data = await readApiJson(response, FAILURE_MESSAGE);
       if (data.status !== "succeeded") throw new Error(FAILURE_MESSAGE);
       setSuccess(true);
-      window.setTimeout(() => window.location.replace(data.nextPath || "/"), 900);
-      void user.getIdToken(true)
-        .then(() => refreshProfile())
-        .catch((refreshError) => console.warn("Payment setup completed, but the local account state could not refresh before redirect.", refreshError));
+      setChecking(false);
     } catch (setupError) {
       console.error("Unable to verify payment-method setup", setupError);
       if (setupError?.data?.signupCanceled === true) {
@@ -123,7 +121,14 @@ export default function PaymentSetupClient() {
       setChecking(false);
       completionStarted.current = false;
     }
-  }, [leaveCanceledSignup, refreshProfile, user]);
+  }, [leaveCanceledSignup, user]);
+
+  async function backToSignIn() {
+    if (leaving) return;
+    setLeaving(true);
+    await signOut(auth).catch((signOutError) => console.warn("Unable to clear the completed signup sign-in", signOutError));
+    window.location.replace("/login");
+  }
 
   useEffect(() => {
     if (loading) return;
@@ -183,14 +188,22 @@ export default function PaymentSetupClient() {
     },
   } : null, [configuration?.clientSecret]);
 
-  return (
+  return <>
     <main className="ark-auth-page grid min-h-screen place-items-center px-5 py-10">
       <section className="ark-auth-card w-full max-w-xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment</p>
-        {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">account set up complete</p> : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment method…</p> : configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div> : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Opening secure payment fields…</p> : null}
+        {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">Payment setup complete</p> : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment method…</p> : configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div> : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Opening secure payment fields…</p> : null}
         {error && <p id="error-message" className="mt-7 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
       </section>
     </main>
-  );
+    {success && <div className="fixed inset-0 z-[240] grid place-items-center bg-slate-950/75 p-5 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-labelledby="payment-complete-title" aria-describedby="payment-complete-message">
+      <section className="w-full max-w-md rounded-3xl border border-emerald-200 bg-white p-7 text-center text-slate-950 shadow-2xl sm:p-9">
+        <div aria-hidden="true" className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-100 text-2xl font-black text-emerald-800">✓</div>
+        <h1 id="payment-complete-title" className="mt-5 text-2xl font-black tracking-tight">Your account is ready</h1>
+        <p id="payment-complete-message" className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your payment information is set up. Now, go sign in to your ARK Client Center.</p>
+        <button type="button" onClick={backToSignIn} disabled={leaving} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-60">{leaving ? "Opening sign in…" : "Back to sign in"}</button>
+      </section>
+    </div>}
+  </>;
 }

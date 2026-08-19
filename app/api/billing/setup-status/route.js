@@ -50,7 +50,7 @@ export async function POST(request) {
     return NextResponse.json({
       status: result.status,
       message: "account set up complete",
-      nextPath: result.nextPath || "/",
+      nextPath: result.nextPath || "/login",
     });
   } catch (error) {
     console.error("Unable to verify Stripe payment-method setup", error);

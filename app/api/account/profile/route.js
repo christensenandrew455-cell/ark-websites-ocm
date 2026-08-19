@@ -20,6 +20,15 @@ function text(value) {
   return String(value || "").trim();
 }
 
+function onboardingGuideSeen(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    dashboard: source.dashboard === true,
+    settings: source.settings === true,
+    leads: source.leads === true,
+  };
+}
+
 function ownerProfile({ account, decodedToken, clientId }) {
   const receptionistPhone = text(account.receptionistPhone || account.receptionistPhoneNormalized);
   return {
@@ -50,6 +59,9 @@ function ownerProfile({ account, decodedToken, clientId }) {
     phoneVerificationStatus: text(account.phoneVerificationStatus),
     onboardingTourEligible: account.onboardingTourEligible === true,
     onboardingTourStatus: text(account.onboardingTourStatus),
+    onboardingGuideVersion: Math.max(0, Math.floor(Number(account.onboardingGuideVersion || 0))),
+    onboardingGuideSeen: onboardingGuideSeen(account.onboardingGuideSeen),
+    onboardingNumberGuidePhone: text(account.onboardingNumberGuidePhone),
     darkMode: account.darkMode === true,
     nativeSetupPromptStatus: text(account.nativeSetupPromptStatus),
     termsAccepted: account.termsAccepted === true || decodedToken.termsAccepted === true,
@@ -85,6 +97,9 @@ function temporaryOwnerProfile({ pending, decodedToken, clientId }) {
     phoneVerificationStatus: text(pending.verification?.phoneStatus),
     onboardingTourStatus: "",
     onboardingTourEligible: false,
+    onboardingGuideVersion: 0,
+    onboardingGuideSeen: onboardingGuideSeen(),
+    onboardingNumberGuidePhone: "",
     numberAssignmentStatus: "",
     termsAccepted: legal.termsAccepted === true,
     privacyAccepted: legal.privacyAccepted === true,

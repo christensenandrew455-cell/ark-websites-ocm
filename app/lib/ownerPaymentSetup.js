@@ -36,7 +36,7 @@ function completedResult(account, setupIntentId) {
     setupIntentId,
     paymentMethodId: text(account.stripePaymentMethodId),
     paymentMethodLabel: text(account.paymentMethodLabel),
-    nextPath: "/",
+    nextPath: "/login",
   };
 }
 
@@ -163,6 +163,9 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientStatusNoticeEnabled: true,
     onboardingTourEligible: true,
     onboardingTourStatus: "pending",
+    onboardingGuideVersion: 2,
+    onboardingGuideSeen: { dashboard: false, settings: false, leads: false },
+    onboardingNumberGuidePhone: "",
     nativeSetupPromptStatus: "pending",
     createdAt: now,
     updatedAt: now,
@@ -225,6 +228,6 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientId,
     paymentMethodId: savedPaymentMethodId,
     paymentMethodLabel,
-    nextPath: "/",
+    nextPath: "/login",
   };
 }

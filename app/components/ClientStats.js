@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
-function DashboardCard({ value, label, description, onClick, disabled = false, tourId = "" }) {
+function DashboardCard({ value, label, description, onClick, disabled = false }) {
   const displayValue = typeof value === "number" ? value.toLocaleString("en-US") : String(value ?? "");
   const content = (
     <div className="flex h-full items-start justify-between gap-4">
@@ -18,10 +18,10 @@ function DashboardCard({ value, label, description, onClick, disabled = false, t
   );
 
   if (disabled) {
-    return <div aria-disabled="true" data-tour-id={tourId || undefined} className="min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</div>;
+    return <div aria-disabled="true" className="min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</div>;
   }
 
-  return <button type="button" onClick={onClick} data-tour-id={tourId || undefined} className="min-h-28 w-full rounded-2xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
+  return <button type="button" onClick={onClick} className="min-h-28 w-full rounded-2xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
 }
 
 function displayPhone(value) {
@@ -106,8 +106,8 @@ export default function ClientStats() {
         </section>
         <section className="mt-3 rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:mt-5 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-            <DashboardCard tourId="dashboard-leads" value={newLeads} label="Leads" description="New leads and clients" onClick={() => router.push("/leads")} />
-            <DashboardCard tourId="dashboard-messages" value={MESSAGES_AVAILABLE ? unreadMessages : ""} label="Messages" description={MESSAGES_AVAILABLE ? "Client texts" : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
+            <DashboardCard value={newLeads} label="Leads" description="New leads and clients" onClick={() => router.push("/leads")} />
+            <DashboardCard value={MESSAGES_AVAILABLE ? unreadMessages : ""} label="Messages" description={MESSAGES_AVAILABLE ? "Client texts" : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
           </div>
         </section>
       </div>

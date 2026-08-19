@@ -27,7 +27,9 @@ test("onboarding follows main information, verification, business, then payment"
   assert.ok(business.includes("window.location.replace(destination)"));
   assert.equal(business.includes("refreshProfile"), false);
   assert.ok(payment.includes("Step 4 of 4 · Payment"));
-  assert.ok(payment.includes('data.nextPath || "/"'));
+  assert.ok(payment.includes("Back to sign in"));
+  assert.ok(payment.includes("Now, go sign in to your ARK Client Center."));
+  assert.equal(payment.includes("window.setTimeout(() => window.location.replace(data.nextPath"), false);
   assert.ok(shell.includes('status === "pending_verification"'));
   assert.ok(shell.includes('status === "pending_business_setup"'));
   assert.ok(shell.includes('status === "pending_payment"'));
@@ -263,6 +265,10 @@ test("payment page uses Stripe Payment Element without raw card fields", async (
   assert.ok(client.includes("stripe.confirmSetup({"));
   assert.ok(client.includes('redirect: "if_required"'));
   assert.ok(client.includes("Pay & Continue"));
+  assert.ok(client.includes("Your account is ready"));
+  assert.ok(client.includes("Back to sign in"));
+  assert.ok(client.includes('window.location.replace("/login")'));
+  assert.equal(client.includes("refreshProfile"), false);
   assert.equal(client.includes('name="cardNumber"'), false);
   assert.equal(client.includes('name="cvc"'), false);
 });
