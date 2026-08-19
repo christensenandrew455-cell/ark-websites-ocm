@@ -134,22 +134,31 @@ test("business catalog is strict while service suggestions remain business-speci
   assert.ok(serviceSuggestionsForBusinessType("Commercial Refrigeration").includes("Walk-in freezer repair"));
 });
 
-test("main information creates only a short-lived temporary signup", async () => {
+test("main information creates only a verification request, then verification creates the temporary signup", async () => {
   const route = await source("app/api/signup/apply/route.js");
+  const request = await source("app/lib/signupVerificationRequest.js");
   const pending = await source("app/lib/pendingOwnerSignup.js");
   assert.ok(route.includes("auth.createUser({"));
-  assert.ok(route.includes("createPendingOwnerSignup({"));
+  assert.ok(route.includes("createSignupVerificationRequest({"));
+  assert.equal(route.includes("createPendingOwnerSignup({"), false);
   assert.ok(route.includes("role: ACCOUNT_ROLES.STANDARD"));
-  assert.ok(route.includes('initialStage: "pending_verification"'));
   assert.ok(route.includes('accountStatus: "pending_verification"'));
-  assert.ok(route.includes("temporaryAccount: true"));
+  assert.ok(route.includes("temporaryAccount: false"));
+  assert.ok(route.includes("signupVerification: true"));
   assert.equal(route.includes('collection("accounts")'), false);
   assert.equal(route.includes('collection("businesses")'), false);
-  assert.ok(route.includes("sendPendingSignupVerificationCodes"));
+  assert.ok(route.includes("sendSignupVerificationCodes"));
   assert.equal(route.includes("new Stripe("), false);
+  assert.ok(request.includes('SIGNUP_VERIFICATION_REQUEST_COLLECTION = "signupVerificationRequests"'));
+  assert.ok(request.includes("SIGNUP_VERIFICATION_REQUEST_TTL_MS = 60 * 60 * 1000"));
+  assert.ok(request.includes("transaction.create(requestRef, data)"));
   assert.ok(pending.includes('PENDING_OWNER_SIGNUP_COLLECTION = "pendingOwnerSignups"'));
   assert.ok(pending.includes("PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000"));
-  assert.ok(pending.includes("transaction.create(pendingRef, data)"));
+  assert.ok(pending.includes("createPendingOwnerSignupFromVerification"));
+  assert.ok(pending.includes("transaction.create(pendingRef, prepared.data)"));
+  assert.ok(pending.includes("transaction.delete(requestRef)"));
+  assert.ok(pending.includes('stage: "pending_business_setup"'));
+  assert.ok(pending.includes("verification: { verified: true"));
   assert.equal(pending.includes("businessNameRegistry"), false);
   assert.equal(pending.includes("accountPhoneRegistry"), false);
 });
@@ -164,7 +173,7 @@ test("pending signup uses one canonical field for each value", async () => {
     source("app/api/billing/setup-status/route.js"),
     source("app/signup/payment/PaymentSetupClient.js"),
   ]);
-  const createdRecord = pending.slice(pending.indexOf("const data = {"), pending.indexOf("const pendingRef"));
+  const createdRecord = pending.slice(pending.indexOf("function verifiedPendingSignupData"), pending.indexOf("export async function createPendingOwnerSignup"));
   for (const section of ["account: {", "legal: {", "verification:", "business:", "payment:"]) assert.ok(createdRecord.includes(section));
   for (const retired of [
     "moveToRegularAfterPayment",
@@ -210,12 +219,16 @@ test("business setup is saved into the temporary record before payment", async (
   assert.ok(route.includes("export async function DELETE"));
 });
 
-test("business-name login resumes temporary setup while regular accounts have two statuses", async () => {
+test("business-name login resumes verification or temporary setup while regular accounts have two statuses", async () => {
   const route = await source("app/api/auth/business-login/route.js");
   assert.ok(route.includes('REGULAR_ACCOUNT_STATUSES = new Set(["active", "disabled"])'));
+  assert.ok(route.includes("readSignupVerificationRequest({ db, clientId, allowExpired: true })"));
+  assert.ok(route.includes('signupVerification: true'));
+  assert.ok(route.includes('accountStatus: "pending_verification"'));
+  assert.ok(route.includes('temporaryAccount: false'));
   assert.ok(route.includes("readPendingOwnerSignup({ db, clientId, allowExpired: true })"));
   assert.ok(route.includes('temporary: true'));
-  assert.ok(route.includes('["pending_verification", "pending_business_setup", "pending_payment"].includes(stage)'));
+  assert.ok(route.includes('["pending_business_setup", "pending_payment"].includes(stage)'));
   for (const retiredStatus of ["pending_admin_approval", "approved_pending_payment"]) {
     assert.equal(route.includes(retiredStatus), false);
   }
@@ -278,15 +291,16 @@ test("verification completes on the server and automatically opens the saved nex
   assert.ok(verification.includes('codeHash(uid, "email"'));
   assert.ok(verification.includes('codeHash(uid, "phone"'));
   assert.ok(verification.includes("ACCOUNT_VERIFICATION_SECRET"));
-  assert.ok(verification.includes("sendPendingSignupVerificationCodes"));
-  assert.ok(verification.includes("verifyPendingSignupCodes"));
-  assert.ok(verification.includes("pending.ref"));
+  assert.ok(verification.includes("sendSignupVerificationCodes"));
+  assert.ok(verification.includes("verifySignupCodes"));
+  assert.ok(verification.includes("request.ref"));
+  assert.ok(verification.includes("createPendingOwnerSignupFromVerification"));
   assert.ok(verification.includes("role: ACCOUNT_ROLES.STANDARD"));
   assert.ok(verification.includes("verified: identityVerified"));
   assert.ok(verification.includes("challenge.verified === true"));
   assert.equal(verification.includes("identityVerified = emailVerified && phoneVerified"), false);
-  assert.ok(route.includes("decoded.temporaryAccount === true"));
-  assert.ok(route.includes("verifyPendingSignupCodes"));
+  assert.ok(route.includes("decoded.signupVerification === true"));
+  assert.ok(route.includes("verifySignupCodes"));
   assert.ok(route.includes("statusWithContinuation"));
   assert.ok(route.includes("auth.createCustomToken"));
   assert.ok(gate.includes("Checking your account"));
@@ -298,13 +312,16 @@ test("verification completes on the server and automatically opens the saved nex
   assert.equal(gate.includes("refreshProfile"), false);
 });
 
-test("backgrounded verification resumes from the server-side temporary signup", async () => {
-  const [route, gate, pending] = await Promise.all([
+test("backgrounded verification resumes from the server-side verification request", async () => {
+  const [route, gate, request, pending] = await Promise.all([
     source("app/api/account/verification/route.js"),
     source("app/components/AccountVerificationGate.js"),
+    source("app/lib/signupVerificationRequest.js"),
     source("app/lib/pendingOwnerSignup.js"),
   ]);
+  assert.ok(request.includes("SIGNUP_VERIFICATION_REQUEST_TTL_MS = 60 * 60 * 1000"));
   assert.ok(pending.includes("PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000"));
+  assert.ok(route.includes("readSignupVerificationStatus"));
   assert.ok(route.includes("readPendingSignupVerificationStatus"));
   assert.ok(route.includes("Repair a stale token as part of resume"));
   assert.ok(route.includes("accountStatus,"));
@@ -321,6 +338,7 @@ test("payment page uses Stripe Payment Element without raw card fields", async (
   assert.ok(client.includes("Your account is ready"));
   assert.ok(client.includes("Back to sign in"));
   assert.ok(client.includes('window.location.replace("/login")'));
+  assert.equal(client.includes('router.replace("/")'), false);
   assert.equal(client.includes("refreshProfile"), false);
   assert.equal(client.includes('name="cardNumber"'), false);
   assert.equal(client.includes('name="cvc"'), false);
@@ -372,8 +390,9 @@ test("retired multi-user account surface does not remain in source or documentat
   assert.deepEqual(matches, []);
 });
 
-test("temporary and unverified accounts both have permanent cleanup workflows", async () => {
-  const [pending, cleanup, workflow, login, authProvider, shell, operations, userRequest, authenticatedRequest] = await Promise.all([
+test("verification requests, temporary signups, and unverified legacy accounts have cleanup workflows", async () => {
+  const [request, pending, cleanup, workflow, login, authProvider, shell, operations, userRequest, authenticatedRequest] = await Promise.all([
+    source("app/lib/signupVerificationRequest.js"),
     source("app/lib/pendingOwnerSignup.js"),
     source("app/lib/accountVerificationCleanup.js"),
     source("app/api/cron/workflow/route.js"),
@@ -384,15 +403,20 @@ test("temporary and unverified accounts both have permanent cleanup workflows", 
     source("app/lib/userRequest.js"),
     source("app/lib/authenticatedRequest.js"),
   ]);
+  assert.ok(request.includes("purgeExpiredSignupVerificationRequests"));
+  assert.ok(request.includes("deleteSignupVerificationRequest"));
   assert.ok(pending.includes("purgeExpiredPendingOwnerSignups"));
   assert.ok(pending.includes("deletePendingOwnerSignup"));
   assert.ok(pending.includes("deletePendingStripeCustomer"));
   assert.ok(cleanup.includes("deleteCustomerPermanently"));
+  assert.ok(workflow.includes("purgeExpiredSignupVerificationRequests({ db, auth: getAdminAuth(), now })"));
   assert.ok(workflow.includes("purgeExpiredPendingOwnerSignups({ db, auth: getAdminAuth(), now })"));
   assert.ok(workflow.includes("purgeExpiredUnverifiedAccounts({ db, now })"));
   assert.ok(operations.includes('cron: "*/15 * * * *"'));
   assert.ok(login.includes("pendingOwnerSignupExpired(pending)"));
   assert.ok(login.includes("deletePendingOwnerSignup({"));
+  assert.ok(login.includes("signupVerificationRequestExpired(signupRequest)"));
+  assert.ok(login.includes("deleteSignupVerificationRequest({"));
   assert.ok(authProvider.includes("Unable to clear the expired local sign-in"));
   assert.ok(shell.includes("if (requiredPath && !allowedPendingPath"));
   assert.ok(userRequest.includes("decodedToken.temporaryAccount === true"));
@@ -412,6 +436,6 @@ test("legal and help copy describe threshold billing and immediate enforcement",
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));
   assert.ok(help.includes("starts the $50 monthly subscription"));
-  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_ACCOUNT_BASE_PRICE_ID", "STRIPE_USAGE_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_ACCOUNT_BASE_PRICE_ID", "STRIPE_USAGE_PRICE_ID", "REFERRAL_IDENTITY_SECRET"]) assert.ok(env.includes(`${name}=`));
   for (const name of ["STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID"]) assert.equal(env.includes(`${name}=`), false);
 });

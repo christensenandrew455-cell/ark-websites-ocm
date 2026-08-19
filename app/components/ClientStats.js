@@ -18,7 +18,7 @@ function DashboardCard({ value, label, description, onClick, disabled = false })
   );
 
   if (disabled) {
-    return <div aria-disabled="true" className="min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</div>;
+    return <button type="button" disabled aria-disabled="true" className="min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
   }
 
   return <button type="button" onClick={onClick} className="min-h-28 w-full rounded-2xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;

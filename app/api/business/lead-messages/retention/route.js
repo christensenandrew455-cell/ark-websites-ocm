@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
 import { customizationRootFieldDeletes, readAccountSections } from "../../../../lib/accountSections";
 import { getAdminDb } from "../../../../lib/firebase-admin";
-import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../../lib/launchFeatures";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../../../../lib/launchFeatures";
 import { cleanupExpiredConversations, normalizeMessageRetentionDays } from "../../../../lib/messageRetention";
 import { requireUser } from "../../../../lib/userRequest";
 
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 function text(value) { return String(value || "").trim(); }
 
 async function authorizeOwner(request) {
-  if (!MESSAGES_AVAILABLE) return { response: NextResponse.json({ error: `Messages are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 }) };
+  if (!MESSAGES_AVAILABLE) return { response: NextResponse.json({ error: UPCOMING_FEATURE_MESSAGE }, { status: 403 }) };
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;

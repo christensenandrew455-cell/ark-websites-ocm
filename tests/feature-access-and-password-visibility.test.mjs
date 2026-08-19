@@ -5,9 +5,10 @@ import { billingPaymentDeadline } from "../app/lib/billingNotice.js";
 
 test("unavailable dashboard features are non-interactive status cards", async () => {
   const source = await readFile(new URL("../app/components/ClientStats.js", import.meta.url), "utf8");
-  assert.ok(source.includes('<div aria-disabled="true"'));
+  assert.ok(source.includes('<button type="button" disabled aria-disabled="true"'));
   assert.ok(source.includes("if (disabled)"));
   assert.ok(source.includes("disabled={!MESSAGES_AVAILABLE}"));
+  assert.ok(source.includes("UPCOMING_FEATURE_LABEL"));
 });
 
 test("launch switch disables messaging across UI and APIs", async () => {
@@ -20,6 +21,7 @@ test("launch switch disables messaging across UI and APIs", async () => {
   ]);
 
   assert.ok(switches.includes('messages: "off"'));
+  assert.ok(switches.includes('UPCOMING_FEATURE_LABEL = "Not available until next month"'));
   assert.ok(dashboard.includes('value={MESSAGES_AVAILABLE ? unreadMessages : ""}'));
   assert.ok(dashboard.includes("disabled={!MESSAGES_AVAILABLE}"));
   assert.ok(settings.includes("MESSAGES_AVAILABLE && <label"));

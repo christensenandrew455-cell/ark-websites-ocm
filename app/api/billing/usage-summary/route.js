@@ -8,6 +8,7 @@ import {
   USAGE_POINT_CENTS,
 } from "../../../lib/billingPricing";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { activeReferralSavings } from "../../../lib/referrals";
 import { reconcileNonAcceptedLeadUsage } from "../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
@@ -33,6 +34,7 @@ export async function GET(request) {
     snapshot = await accountRef.get();
     const account = snapshot.data();
     const usageBalancePoints = Math.max(0, Math.floor(Number(account.usageBalancePoints || 0)));
+    const referralSavings = await activeReferralSavings({ db, clientId: authorization.clientId });
     return NextResponse.json({
       monthlyBaseCents: MONTHLY_BASE_CENTS,
       usageBalancePoints,
@@ -43,6 +45,9 @@ export async function GET(request) {
       smsPartRemainder: Math.max(0, Math.floor(Number(account.usageSmsPartRemainder || 0))) % MESSAGE_PARTS_PER_BUNDLE,
       messagePartsPerPoint: MESSAGE_PARTS_PER_BUNDLE,
       leadPoints: PER_LEAD_CENTS / USAGE_POINT_CENTS,
+      activeReferralCount: referralSavings.count,
+      referralDiscountPercent: referralSavings.percent,
+      referralDiscountEndsAt: referralSavings.nextExpirationAt ? new Date(referralSavings.nextExpirationAt).toISOString() : "",
       usageChargeStatus: String(account.usageChargeStatus || "idle"),
       lastUsagePaymentAt: iso(account.lastUsagePaymentAt),
       lastPaymentAt: iso(account.lastPaymentAt),

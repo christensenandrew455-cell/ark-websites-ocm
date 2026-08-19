@@ -8,10 +8,10 @@ const PAGE_GUIDES = Object.freeze({
   dashboard: {
     eyebrow: "Welcome",
     title: "Welcome to your ARK Client Center",
-    body: "This is your dashboard. It gives you a quick look at your new leads and shows where Messages will appear once it is available.",
+    body: "This is your dashboard. It gives you a quick look at new leads and the main parts of your client center.",
     points: [
-      "Open Leads to review people under Contacted You and Clients.",
-      "Messages is not available yet, but it will appear here when it launches.",
+      "Open “Leads” to review people under “Contacted You” and “Clients.”",
+      "Open “Settings” to update your business information, preferences, and payment method.",
       "Tap around and explore. The first time you open a main section, we’ll quickly explain what is inside.",
     ],
   },
@@ -20,10 +20,10 @@ const PAGE_GUIDES = Object.freeze({
     title: "This is Settings",
     body: "Settings is where you control your business, your AI receptionist, your app, and your account.",
     points: [
-      "Update what your AI receptionist knows about your business, services, hours, and service area.",
+      "Use “Business Information” to update what your AI receptionist knows about your services, hours, and service area.",
       "Customize the app and your client preferences.",
       "Review the $2 accepted-lead price, current usage, and payment method.",
-      "Use Docs, AI Chat, or Support, download your client data, or delete your account.",
+      "Use “Docs,” “AI Chat,” or “Support,” download your client data, or delete your account.",
     ],
   },
   leads: {
@@ -31,10 +31,10 @@ const PAGE_GUIDES = Object.freeze({
     title: "This is your Leads page",
     body: "Everything your AI receptionist collects is organized here.",
     points: [
-      "Contacted You holds new leads. Accept one to move it to Clients for $2, or decline it for free.",
-      "Clients holds accepted customers. Open one to edit details and notes, save the contact, or add the appointment to your calendar.",
-      "You can text clients when Messages becomes available, or delete a client you no longer need.",
-      "Your payment method and current usage are under Settings, then Payment.",
+      "“Contacted You” holds new leads. Choose “Accept” to move one to “Clients” for $2, or choose “Decline” for free.",
+      "“Clients” holds accepted customers. Open one to edit details and notes, save the contact, or add the appointment to your calendar.",
+      "Delete a client you no longer need from its client details.",
+      "Your payment method, referral percentage, and current usage are under “Settings,” then “Payment.”",
     ],
   },
 });

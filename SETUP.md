@@ -6,15 +6,15 @@ The owner signup flow is:
 2. Email and phone verification
 3. Business information
 4. In-app Stripe payment setup and $50 monthly subscription
-5. Dashboard
+5. Sign-in page
 
-Steps 1 through 4 use one `pendingOwnerSignups/{clientId}` record with a hard one-hour expiration. The verification code hashes are stored inside that temporary record. After Stripe confirms the payment method and starts the base subscription, the server creates `accounts/{clientId}` and deletes the temporary record.
+Step 1 creates only a Firebase Authentication user and a server-only signup-verification request under `system/global/signupVerificationRequests`; it does not create a Firestore account or temporary account. After both the email and phone are verified, the server atomically deletes that request and creates one verified `pendingOwnerSignups/{clientId}` temporary record with a hard one-hour expiration. After Stripe confirms the payment method and starts the base subscription, the server creates `accounts/{clientId}`, deletes the temporary record, signs the browser out, and sends the owner to `/login`.
 
 Firestore has exactly three top-level collections:
 
 - `accounts` — regular account state and account-owned subcollections
-- `pendingOwnerSignups` — one-hour temporary signup records
-- `system` — server-only operational records under `system/global`
+- `pendingOwnerSignups` — verified, one-hour temporary signup records awaiting business information or payment
+- `system` — server-only operational records under `system/global`, including pre-account verification requests and referral identity claims
 
 ## Firebase Authentication and Admin
 
@@ -41,9 +41,9 @@ The `$50 USD per month` amount and interval live in `app/lib/billingPricing.js`.
 
 When switching to live mode, replace only the secret and publishable keys together. The onboarding API rejects mixed test/live keys. If a temporary signup contains a Customer or SetupIntent from the other mode, the server safely creates matching live-mode objects.
 
-The payment return URL uses the domain of the incoming request and successful signup returns to `/`, so `YOUR_DOMAIN` and `APP_HOME_PATH` are not used.
+The payment return URL uses the domain of the incoming request and successful signup returns to `/login`, so `YOUR_DOMAIN` and `APP_HOME_PATH` are not used.
 
-There are no Stripe metered Prices or billing meters. A completed receptionist call or other new lead adds two usage points, a new chat adds one, and each rolling 50 SMS parts adds one. A lead saved from the same receptionist call uses the same event ID and counts once. Whenever the balance reaches or exceeds 20, Stripe uses `STRIPE_USAGE_PRICE_ID` to charge an exact $20 off-session PaymentIntent to the saved card and carries any excess forward. For example, 19 plus a two-point call or lead charges $20 and leaves one point.
+There are no Stripe metered Prices or billing meters. Accepting a lead adds two usage points, while reviewing or declining it adds none. The accepted-lead event ID makes retries count once. Whenever the balance reaches or exceeds 20, Stripe uses `STRIPE_USAGE_PRICE_ID` to charge an exact $20 off-session PaymentIntent to the saved card and carries any excess forward. For example, 19 points plus one accepted lead charges $20 and leaves one point.
 
 Signup does not require a webhook. After Stripe confirms the Payment Element, the browser calls the protected setup-status route, which verifies the SetupIntent, starts the `$50` subscription, and creates the regular account. The existing webhook route can be enabled later for asynchronous recurring-payment notifications; only then does it need its own Stripe signing secret.
 
@@ -58,8 +58,11 @@ Configure:
 - `TELNYX_API_KEY`
 - `TELNYX_SIGNUP_FROM_NUMBER=+17742316164`
 - `ACCOUNT_VERIFICATION_SECRET` with a long random server-only value
+- `REFERRAL_IDENTITY_SECRET` with a stable long random server-only value
 
 Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `TELNYX_SIGNUP_FROM_NUMBER` sends signup codes and later number-ready messages.
+
+`REFERRAL_IDENTITY_SECRET` creates private, deterministic claims for the referred helper account's verified email and phone. Keep it stable across deployments. Those claims survive account deletion so the same helper identity cannot qualify another referral. If it is not set, the server falls back to `ACCOUNT_VERIFICATION_SECRET`.
 
 ## Arc Admin event bridge
 
@@ -73,32 +76,34 @@ Publish the repository rules:
 firebase deploy --only firestore:rules
 ```
 
-Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. The workflow job also deletes expired temporary signups and expired unverified regular accounts.
+Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. The workflow job also deletes expired signup-verification requests, expired verified temporary signups, and expired unverified legacy accounts.
 
-Temporary signup access expires exactly one hour after creation. Every protected signup route rejects and deletes an expired record when it is encountered, and the ARK Operations workflow performs a permanent cleanup sweep every 15 minutes. That sweep deletes the temporary Firebase Authentication user, temporary Firestore record, and any current-mode Stripe Customer. A valid unexpired temporary login resumes its saved verification, business-information, or payment step; it never opens the regular app shell.
+The pre-account verification request expires exactly one hour after main information is submitted. Once verification succeeds, the verified temporary signup gets its own one-hour window for business information and payment. Every protected signup route rejects and deletes an expired record when it is encountered, and the ARK Operations workflow performs a permanent cleanup sweep every 15 minutes. That sweep deletes the Firebase Authentication user, the applicable server-only request or temporary record, and any current-mode Stripe Customer. A valid unexpired login resumes verification, business information, or payment; it never opens the regular app shell.
 
 ## Signup behavior
 
-1. Main information creates a Firebase Auth user and one temporary `pendingOwnerSignups/{clientId}` record. It does not create a regular `accounts` record.
-2. Separate four-digit email and phone codes are sent, hashed in the temporary record, and both must be verified before business setup opens.
-3. Business settings are validated and saved into the temporary record.
+1. Main information creates a Firebase Auth user and a server-only verification request. It creates neither `accounts/{clientId}` nor `pendingOwnerSignups/{clientId}`.
+2. Separate four-digit email and phone codes are sent and hashed in the verification request. Both must be verified before the server creates the temporary signup and opens business setup.
+3. Business settings are validated and saved into the verified temporary record.
 4. Stripe confirms an off-session SetupIntent.
 5. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the verified temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
-6. Arc Admin shows the account under **Needs a Number**, where the private APK assigns the receptionist number.
+6. The browser signs out and opens the regular sign-in page. After the owner signs in, Arc Admin shows the account under **Needs a Number**, where the private APK assigns the receptionist number.
 
-If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake, receptionist calls, and inbound/outbound chat stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.
+If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake and receptionist calls stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.
 
 ## Test-mode acceptance checklist
 
-- A new signup has one Auth user and one temporary Firestore record before payment, and that record expires after exactly one hour.
+- Before verification, a new signup has one Auth user and one server-only verification request but no account or temporary-account document.
+- After email and phone verification, the verification request is replaced by one temporary Firestore record that expires after exactly one hour.
 - Business information must be complete before the Payment Element opens.
 - Stripe test card `4242 4242 4242 4242` completes the SetupIntent with a future expiry and any valid security code.
 - Successful setup starts exactly one $50 monthly base subscription with no metered items.
 - A SetupIntent belonging to another user, Customer, or account metadata cannot promote the signup.
 - Payment success removes the temporary record and creates one `standard` regular account.
+- Payment success signs the browser out and opens `/login`, never the dashboard or signup page.
 - Email and phone verification happens before business information and payment, and refreshes the token before navigation.
 - At 19 usage points, a new two-point call or lead produces one $20 charge and leaves one point.
-- A decline immediately disables receptionist calls, chat, and new lead intake.
+- A decline immediately disables receptionist calls and new lead intake.
 - Billing retries occur at most daily; the account is deleted after seven full days unpaid.
 - Stripe keys never appear in frontend code or API responses.
 - If the optional webhook is enabled later, it rejects missing or invalid signatures.

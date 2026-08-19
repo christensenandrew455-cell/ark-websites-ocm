@@ -203,12 +203,12 @@ export default function AccountVerificationGate() {
     <section className="ark-auth-card w-full max-w-md rounded-[2rem] p-6 shadow-2xl sm:p-8" role="dialog" aria-modal="true" aria-labelledby="verification-title">
       <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 2 of 4 · Verify</p>
       <h1 id="verification-title" className="mt-2 text-3xl font-black tracking-tight">{expired ? "Verification time expired" : checking ? "Checking your account" : verified ? "Account verified" : editingContact ? "Correct your contact details" : status?.phoneRequired ? "Verify your email and phone" : "Verify your email"}</h1>
-      {!expired && !checking && !verified && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this account will be permanently deleted.</p>}
+      {!expired && !checking && !verified && deadlineWait !== null && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900" role="status">Finish both verifications within {formatRemaining(deadlineWait)} or this signup will be canceled and its saved information deleted.</p>}
       {checking ? <div className="py-10 text-center" role="status" aria-live="polite">
         <span className="mx-auto block h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-indigo-700" aria-hidden="true" />
         <p className="mt-5 text-sm font-bold text-slate-600">Checking both codes with the server…</p>
       </div> : expired ? <>
-        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold leading-6 text-red-800" role="alert">The one-hour verification window ended. This account is locked and scheduled for permanent deletion. Sign out and start signup again.</p>
+        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold leading-6 text-red-800" role="alert">The one-hour verification window ended. This signup is locked and scheduled for permanent deletion. Sign out and start signup again.</p>
       </> : verified ? <div className="py-8 text-center" role="status" aria-live="polite">
         <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
           <svg viewBox="0 0 24 24" className="h-9 w-9" fill="none" stroke="currentColor" strokeWidth="3"><path d="m5 12 4 4L19 6" /></svg>

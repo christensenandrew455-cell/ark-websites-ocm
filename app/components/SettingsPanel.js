@@ -10,7 +10,7 @@ import MessageRetentionSettings from "./MessageRetentionSettings";
 import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
-import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
+import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 
 const DEFAULT_SETTINGS = { paymentMethodLabel: "", stripeCustomerId: "" };
@@ -382,7 +382,6 @@ export default function SettingsPanel() {
     const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
     return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
       <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
-      {!MESSAGES_AVAILABLE && <div className="rounded-xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">Messages</p><p className="mt-1 text-xs font-bold text-blue-700">{UPCOMING_FEATURE_LABEL}</p></div>}
       {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
       <MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
       <ClientDeclineNoticeSettings />
@@ -393,13 +392,15 @@ export default function SettingsPanel() {
     const balanceCents = Number(usageSummary?.usageBalanceCents || 0);
     const thresholdCents = Number(usageSummary?.usageThresholdCents || 2000);
     const progress = Math.max(0, Math.min(100, Number(usageSummary?.usageProgressPercent || 0)));
+    const referralDiscount = Math.max(0, Math.min(50, Number(usageSummary?.referralDiscountPercent || 0)));
+    const activeReferrals = Math.max(0, Number(usageSummary?.activeReferralCount || 0));
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
       <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
         <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Usage toward next charge</p><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
         <p className="mt-3 text-3xl font-black">{usageSummary ? `${money(balanceCents)} out of ${money(thresholdCents)}` : "—"}</p>
         <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Usage toward next twenty dollar charge" aria-valuemin={0} aria-valuemax={20} aria-valuenow={Math.min(20, balanceCents / 100)}><div className="h-full rounded-full bg-blue-500 transition-[width]" style={{ width: `${progress}%` }} /></div>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">Accepted lead</p><p className="mt-1 text-2xl font-black text-blue-950">$2</p><p className="mt-1 text-xs font-bold text-blue-700">Declined leads are free</p></div><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">50 SMS parts</p><p className="mt-1 text-2xl font-black text-blue-950">$1</p><p className="mt-1 text-xs font-bold text-blue-700">{Number(usageSummary?.smsPartRemainder || 0)}/50</p></div></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">Accepted lead</p><p className="mt-1 text-2xl font-black text-blue-950">$2</p><p className="mt-1 text-xs font-bold text-blue-700">Declined leads are free</p></div><div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-black text-amber-950">Referral discount</p><p className="mt-1 text-2xl font-black text-amber-950">{referralDiscount}% off</p><p className="mt-1 text-xs font-bold text-amber-800">{activeReferrals ? `${activeReferrals} active referral${activeReferrals === 1 ? "" : "s"} · usage charges` : "No active referral discount"}</p></div></div>
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recurring charge</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div>
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
       <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>

@@ -7,8 +7,8 @@ export const RELEASE_SWITCHES = Object.freeze({
 export const MESSAGES_AVAILABLE = RELEASE_SWITCHES.messages === "on";
 export const PHONE_VERIFICATION_REQUIRED = RELEASE_SWITCHES.phoneVerification === "on";
 
-export const UPCOMING_FEATURE_LABEL = "Available next month";
-export const UPCOMING_FEATURE_MESSAGE = `Messages are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.`;
+export const UPCOMING_FEATURE_LABEL = "Not available until next month";
+export const UPCOMING_FEATURE_MESSAGE = "This feature is not available.";
 
 export function availableAccountFeatures(source = {}) {
   return {

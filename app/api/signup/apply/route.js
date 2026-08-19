@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES } from "../../../lib/accountRoles";
 import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
-import { missingAccountVerificationConfiguration, sendPendingSignupVerificationCodes } from "../../../lib/accountVerification";
+import { missingAccountVerificationConfiguration, sendSignupVerificationCodes } from "../../../lib/accountVerification";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateOwnerAccountInformation } from "../../../lib/ownerSignup";
-import { createPendingOwnerSignup, deletePendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { validateReferrerAccount } from "../../../lib/referrals";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
+import { createSignupVerificationRequest, deleteSignupVerificationRequest } from "../../../lib/signupVerificationRequest";
 import { checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
@@ -20,7 +20,7 @@ function text(value) {
 function safeSignupError(error) {
   const code = text(error?.code || error?.errorInfo?.code);
   const message = text(error?.message || error?.errorInfo?.message);
-  if (code.includes("already-exists")) return { status: 409, message: "That business name or phone number was just registered. Use different information." };
+  if (code.includes("already-exists")) return { status: 409, message: "That business name, email address, or phone number was just registered. Use different information." };
   if (code === "auth/email-already-exists" || message === "EMAIL_TAKEN") return { status: 409, message: "That email address is already registered." };
   if (message === "PHONE_TAKEN") return { status: 409, message: "That phone number is already registered." };
   if (message === "BUSINESS_TAKEN") return { status: 409, message: "That business name is already registered. Use a different business name." };
@@ -31,7 +31,7 @@ function safeSignupError(error) {
 
 export async function POST(request) {
   let createdUid = "";
-  let pendingSaved = false;
+  let verificationRequestSaved = false;
   try {
     const missingVerification = missingAccountVerificationConfiguration();
     if (missingVerification.length) {
@@ -73,15 +73,14 @@ export async function POST(request) {
     createdUid = createdUser.uid;
 
     const accountPhone = normalizeSignupPhone(signup.accountPhone);
-    await createPendingOwnerSignup({
+    await createSignupVerificationRequest({
       db,
       uid: createdUid,
       clientId,
       signup: { ...signup, accountPhone },
       referrer,
-      initialStage: "pending_verification",
     });
-    pendingSaved = true;
+    verificationRequestSaved = true;
 
     const claims = {
       role: ACCOUNT_ROLES.STANDARD,
@@ -89,7 +88,8 @@ export async function POST(request) {
       businessRole: "owner",
       clientId,
       accountStatus: "pending_verification",
-      temporaryAccount: true,
+      temporaryAccount: false,
+      signupVerification: true,
       identityVerificationRequired: true,
       identityVerificationVerified: false,
     };
@@ -97,7 +97,7 @@ export async function POST(request) {
 
     let verificationDelivery = "sent";
     try {
-      await sendPendingSignupVerificationCodes({
+      await sendSignupVerificationCodes({
         db,
         uid: createdUid,
         clientId,
@@ -119,14 +119,14 @@ export async function POST(request) {
   } catch (error) {
     if (createdUid) {
       const auth = getAdminAuth();
-      const rollback = pendingSaved
-        ? deletePendingOwnerSignup({ db: getAdminDb(), auth, uid: createdUid })
+      const rollback = verificationRequestSaved
+        ? deleteSignupVerificationRequest({ db: getAdminDb(), auth, uid: createdUid })
         : auth.deleteUser(createdUid);
       await rollback.catch((rollbackError) => {
         console.error("Unable to roll back a failed temporary signup", rollbackError);
       });
     }
-    console.error("Unable to create temporary owner signup", error);
+    console.error("Unable to create signup verification request", error);
     const safe = safeSignupError(error);
     return NextResponse.json({ error: safe.message }, { status: safe.status });
   }

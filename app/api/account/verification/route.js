@@ -5,16 +5,18 @@ import { accountRef } from "../../../lib/firestoreLayout";
 import {
   readAccountVerificationStatus,
   readPendingSignupVerificationStatus,
+  readSignupVerificationStatus,
   sendAccountVerificationCodes,
-  sendPendingSignupVerificationCodes,
+  sendSignupVerificationCodes,
   updateAccountVerificationContact,
-  updatePendingSignupVerificationContact,
+  updateSignupVerificationContact,
   verifyAccountCodes,
-  verifyPendingSignupCodes,
+  verifySignupCodes,
 } from "../../../lib/accountVerification";
 import { PHONE_VERIFICATION_REQUIRED } from "../../../lib/launchFeatures";
 import { pendingOwnerSignupAccount, readPendingOwnerSignup } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
+import { readSignupVerificationRequest, signupVerificationRequestAccount } from "../../../lib/signupVerificationRequest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +26,11 @@ function text(value) { return String(value || "").trim(); }
 async function statusWithContinuation(authorization, status) {
   if (status?.verified !== true) return status;
   const accountStatus = text(status.accountStatus);
-  if (authorization.temporary && !["pending_business_setup", "pending_payment"].includes(accountStatus)) {
+  const onboarding = authorization.signupVerification || authorization.temporary;
+  if (onboarding && !["pending_business_setup", "pending_payment"].includes(accountStatus)) {
     return { ...status, verified: false, nextPath: "/signup/verify" };
   }
-  if (!authorization.temporary) return status;
+  if (!onboarding) return status;
 
   const auth = getAdminAuth();
   const user = await auth.getUser(authorization.decoded.uid);
@@ -37,6 +40,7 @@ async function statusWithContinuation(authorization, status) {
     clientId: authorization.clientId,
     accountStatus,
     temporaryAccount: true,
+    signupVerification: false,
     identityVerificationRequired: false,
     identityVerificationVerified: true,
   };
@@ -58,13 +62,33 @@ async function authorize(request) {
     const clientId = text(decoded.clientId);
     if (!clientId) return { response: NextResponse.json({ error: "An active owner account in verification is required." }, { status: 403 }) };
     const db = getAdminDb();
+    const preVerification = decoded.signupVerification === true
+      || (text(decoded.accountStatus) === "pending_verification" && decoded.temporaryAccount !== true);
+    if (preVerification) {
+      const verificationRequest = await readSignupVerificationRequest({ db, uid: decoded.uid, clientId, allowExpired: true });
+      if (verificationRequest && text(verificationRequest.data.stage) === "pending_verification") {
+        return {
+          decoded,
+          account: signupVerificationRequestAccount(verificationRequest.data),
+          clientId,
+          verificationRequest,
+          signupVerification: true,
+          temporary: false,
+        };
+      }
+      const promoted = await readPendingOwnerSignup({ db, uid: decoded.uid, clientId, allowExpired: true });
+      if (promoted && ["pending_business_setup", "pending_payment"].includes(text(promoted.data.stage))) {
+        return { decoded, account: pendingOwnerSignupAccount(promoted.data), clientId, pending: promoted, signupVerification: false, temporary: true };
+      }
+      return { response: NextResponse.json({ error: "A signup verification request is required." }, { status: 403 }) };
+    }
     if (decoded.temporaryAccount === true) {
       const pending = await readPendingOwnerSignup({ db, uid: decoded.uid, clientId, allowExpired: true });
       const stage = text(pending?.data?.stage);
-      if (!pending || !["pending_verification", "pending_business_setup", "pending_payment"].includes(stage)) {
+      if (!pending || !["pending_business_setup", "pending_payment"].includes(stage)) {
         return { response: NextResponse.json({ error: "A temporary owner account in verification is required." }, { status: 403 }) };
       }
-      return { decoded, account: pendingOwnerSignupAccount(pending.data), clientId, pending, temporary: true };
+      return { decoded, account: pendingOwnerSignupAccount(pending.data), clientId, pending, signupVerification: false, temporary: true };
     }
     const accountSnapshot = await accountRef(db, clientId).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : null;
@@ -81,6 +105,7 @@ function verificationError(error) {
   if (message === "ACCOUNT_PHONE_INVALID") return { status: 400, error: "Enter a valid 10-digit U.S. phone number." };
   if (message === "EMAIL_TAKEN") return { status: 409, error: "That email address is already registered." };
   if (message === "PHONE_TAKEN") return { status: 409, error: "That phone number is already registered." };
+  if (message === "BUSINESS_TAKEN" || message === "SIGNUP_IDENTITY_ALREADY_EXISTS") return { status: 409, error: "That business name, email, or phone number was just registered. Start signup again with available information." };
   if (message === "ACCOUNT_ALREADY_VERIFIED") return { status: 409, error: "This account is already verified." };
   if (message === "ACCOUNT_VERIFICATION_EXPIRED") return { status: 410, error: "The one-hour verification window expired. This account is locked and will be deleted. Sign out and start signup again." };
   if (message === "VERIFICATION_RESEND_COOLDOWN") return { status: 429, error: "Please wait before requesting another code.", resendAvailableAt: error.resendAvailableAt?.toISOString?.() || "" };
@@ -98,7 +123,11 @@ export async function GET(request) {
   const authorization = await authorize(request);
   if (authorization.response) return authorization.response;
   try {
-    const readStatus = authorization.temporary ? readPendingSignupVerificationStatus : readAccountVerificationStatus;
+    const readStatus = authorization.signupVerification
+      ? readSignupVerificationStatus
+      : authorization.temporary
+        ? readPendingSignupVerificationStatus
+        : readAccountVerificationStatus;
     const status = await readStatus({ db: getAdminDb(), uid: authorization.decoded.uid, clientId: authorization.clientId });
     return NextResponse.json(await statusWithContinuation(authorization, status));
   } catch (error) {
@@ -123,8 +152,9 @@ export async function POST(request) {
     if (!selectedLimit) return NextResponse.json({ error: "Choose a verification action." }, { status: 400 });
     const rateLimit = await checkRequestRateLimit({ db, request, scope: `${selectedLimit.scope}:${authorization.decoded.uid}`, limit: selectedLimit.limit, windowMs: selectedLimit.windowMs });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
+    if (authorization.temporary) throw new Error("ACCOUNT_ALREADY_VERIFIED");
     if (action === "resend") {
-      const sendCodes = authorization.temporary ? sendPendingSignupVerificationCodes : sendAccountVerificationCodes;
+      const sendCodes = authorization.signupVerification ? sendSignupVerificationCodes : sendAccountVerificationCodes;
       return NextResponse.json(await sendCodes({
         db,
         uid: authorization.decoded.uid,
@@ -134,7 +164,7 @@ export async function POST(request) {
       }));
     }
     if (action === "update-contact") {
-      const updateContact = authorization.temporary ? updatePendingSignupVerificationContact : updateAccountVerificationContact;
+      const updateContact = authorization.signupVerification ? updateSignupVerificationContact : updateAccountVerificationContact;
       return NextResponse.json(await updateContact({
         db,
         auth: getAdminAuth(),
@@ -144,7 +174,7 @@ export async function POST(request) {
         phone: body.phone,
       }));
     }
-    const verifyCodes = authorization.temporary ? verifyPendingSignupCodes : verifyAccountCodes;
+    const verifyCodes = authorization.signupVerification ? verifySignupCodes : verifyAccountCodes;
     const status = await verifyCodes({
       db,
       auth: getAdminAuth(),

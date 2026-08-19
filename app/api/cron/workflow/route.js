@@ -4,6 +4,7 @@ import { readAccountSections } from "../../../lib/accountSections";
 import { purgeExpiredUnverifiedAccounts } from "../../../lib/accountVerificationCleanup";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { purgeExpiredPendingOwnerSignups } from "../../../lib/pendingOwnerSignup";
+import { purgeExpiredSignupVerificationRequests } from "../../../lib/signupVerificationRequest";
 import { businessNow, isDateDue } from "../../../lib/businessTime";
 import {
   estimateRequestCreatedAt,
@@ -179,6 +180,7 @@ async function runWorkflow(request) {
   try {
     const now = new Date();
     const db = getAdminDb();
+    const expiredVerificationRequests = await purgeExpiredSignupVerificationRequests({ db, auth: getAdminAuth(), now });
     const expiredTemporarySignups = await purgeExpiredPendingOwnerSignups({ db, auth: getAdminAuth(), now });
     const expiredUnverifiedAccounts = await purgeExpiredUnverifiedAccounts({ db, now });
     const activeBusinesses = await listActiveBusinesses(db);
@@ -214,6 +216,7 @@ async function runWorkflow(request) {
     return Response.json({
       ok: true,
       checkedAt: now.toISOString(),
+      expiredVerificationRequests,
       expiredTemporarySignups,
       expiredUnverifiedAccounts,
       businesses,

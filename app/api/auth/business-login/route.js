@@ -13,6 +13,13 @@ import {
   readPendingOwnerSignup,
 } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
+import {
+  deleteSignupVerificationRequest,
+  readSignupVerificationRequest,
+  signupVerificationRequestAccount,
+  signupVerificationRequestCollection,
+  signupVerificationRequestExpired,
+} from "../../../lib/signupVerificationRequest";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
 const REGULAR_ACCOUNT_STATUSES = new Set(["active", "disabled"]);
@@ -20,29 +27,51 @@ const REGULAR_ACCOUNT_STATUSES = new Set(["active", "disabled"]);
 async function resolveBusiness(db, identifier) {
   const clientId = normalizeClientId(identifier);
   if (!clientId) return null;
-  const [snapshot, pending] = await Promise.all([
+  const [snapshot, pending, verificationRequest] = await Promise.all([
     accountRef(db, clientId).get(),
     readPendingOwnerSignup({ db, clientId, allowExpired: true }),
+    readSignupVerificationRequest({ db, clientId, allowExpired: true }),
   ]);
   if (snapshot.exists) return { clientId, data: snapshot.data(), temporary: false };
-  if (!pending) return null;
-  const data = pending.data;
-  const stage = String(data.stage || "");
-  if (pendingOwnerSignupExpired(data)) {
-    await deletePendingOwnerSignup({ db, auth: getAdminAuth(), uid: data.uid, pending }).catch((error) => {
-      console.error(`Unable to remove expired temporary signup ${clientId}`, error);
+  if (pending) {
+    const data = pending.data;
+    const stage = String(data.stage || "");
+    if (pendingOwnerSignupExpired(data)) {
+      await deletePendingOwnerSignup({ db, auth: getAdminAuth(), uid: data.uid, pending }).catch((error) => {
+        console.error(`Unable to remove expired temporary signup ${clientId}`, error);
+      });
+      return null;
+    }
+    if (!["pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
+    return {
+      clientId,
+      uid: String(data.uid || "").trim(),
+      temporary: true,
+      data: {
+        ...data,
+        status: stage,
+        accountEmail: String(pendingOwnerSignupAccount(data).accountEmail || "").trim().toLowerCase(),
+      },
+    };
+  }
+  if (!verificationRequest) return null;
+  const data = verificationRequest.data;
+  if (signupVerificationRequestExpired(data)) {
+    await deleteSignupVerificationRequest({ db, auth: getAdminAuth(), uid: data.uid, request: verificationRequest }).catch((error) => {
+      console.error(`Unable to remove expired signup verification request ${clientId}`, error);
     });
     return null;
   }
-  if (!["pending_verification", "pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
+  if (String(data.stage || "") !== "pending_verification" || normalizeClientId(data.clientId) !== clientId) return null;
   return {
     clientId,
     uid: String(data.uid || "").trim(),
-    temporary: true,
+    temporary: false,
+    signupVerification: true,
     data: {
       ...data,
-      status: stage,
-      accountEmail: String(pendingOwnerSignupAccount(data).accountEmail || "").trim().toLowerCase(),
+      status: "pending_verification",
+      accountEmail: String(signupVerificationRequestAccount(data).accountEmail || "").trim().toLowerCase(),
     },
   };
 }
@@ -60,7 +89,7 @@ export async function POST(request) {
     let resolvedBusiness = null;
     if (!email.includes("@")) {
       resolvedBusiness = await resolveBusiness(db, normalizedIdentifier);
-      if (!resolvedBusiness || (!resolvedBusiness.temporary && !REGULAR_ACCOUNT_STATUSES.has(String(resolvedBusiness.data.status || "")))) return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
+      if (!resolvedBusiness || (!resolvedBusiness.temporary && !resolvedBusiness.signupVerification && !REGULAR_ACCOUNT_STATUSES.has(String(resolvedBusiness.data.status || "")))) return NextResponse.json({ error: "Business name or password is incorrect." }, { status: 401 });
       email = String(resolvedBusiness.data.accountEmail || "").toLowerCase();
     }
 
@@ -77,15 +106,47 @@ export async function POST(request) {
 
     const auth = getAdminAuth();
     const userRecord = await auth.getUser(passwordResult.localId);
-    const [accountMatches, pendingMatches] = await Promise.all([
+    const [accountMatches, pendingMatches, verificationMatches] = await Promise.all([
       accountCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
       pendingSignupCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
+      signupVerificationRequestCollection(db).where("uid", "==", userRecord.uid).limit(1).get(),
     ]);
-    const matchedAccount = resolvedBusiness?.temporary
+    const matchedAccount = resolvedBusiness?.temporary || resolvedBusiness?.signupVerification
       ? null
       : (resolvedBusiness ? { id: resolvedBusiness.clientId, data: () => resolvedBusiness.data } : accountMatches.docs[0] || null);
     const account = matchedAccount?.data?.() || {};
     const accountClientId = normalizeClientId(account.clientId || matchedAccount?.id);
+
+    const verificationDocument = resolvedBusiness?.signupVerification
+      ? { data: () => ({ ...resolvedBusiness.data, uid: resolvedBusiness.uid, clientId: resolvedBusiness.clientId, stage: "pending_verification" }) }
+      : verificationMatches.docs[0] || null;
+    if (!matchedAccount && verificationDocument) {
+      const signupRequest = verificationDocument.data();
+      if (String(signupRequest.uid || "") === userRecord.uid && signupVerificationRequestExpired(signupRequest)) {
+        await deleteSignupVerificationRequest({
+          db,
+          auth,
+          uid: userRecord.uid,
+          request: { data: signupRequest, ref: verificationDocument.ref || null },
+        });
+        return NextResponse.json({ error: "This verification request expired. Start signup again." }, { status: 403 });
+      }
+      if (String(signupRequest.uid || "") === userRecord.uid && String(signupRequest.stage || "") === "pending_verification") {
+        const claims = {
+          role: ACCOUNT_ROLES.STANDARD,
+          accountType: ACCOUNT_TYPES.OWNER,
+          businessRole: "owner",
+          clientId: signupRequest.clientId,
+          accountStatus: "pending_verification",
+          temporaryAccount: false,
+          signupVerification: true,
+          identityVerificationRequired: true,
+          identityVerificationVerified: false,
+        };
+        await auth.setCustomUserClaims(userRecord.uid, claims);
+        return NextResponse.json({ token: await auth.createCustomToken(userRecord.uid, claims), role: ACCOUNT_ROLES.STANDARD, accountType: ACCOUNT_TYPES.OWNER, status: "pending_verification" });
+      }
+    }
 
     const pendingDocument = resolvedBusiness?.temporary
       ? { data: () => ({ ...resolvedBusiness.data, uid: resolvedBusiness.uid, clientId: resolvedBusiness.clientId, stage: resolvedBusiness.data.status }) }
@@ -101,7 +162,7 @@ export async function POST(request) {
         });
         return NextResponse.json({ error: "This temporary signup expired. Start signup again." }, { status: 403 });
       }
-      if (String(pending.uid || "") === userRecord.uid && ["pending_verification", "pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
+      if (String(pending.uid || "") === userRecord.uid && ["pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
         const verified = pendingOwnerSignupVerified(pending);
         const claims = {
           role: ACCOUNT_ROLES.STANDARD,
@@ -110,6 +171,7 @@ export async function POST(request) {
           clientId: pending.clientId,
           accountStatus: pending.stage,
           temporaryAccount: true,
+          signupVerification: false,
           identityVerificationRequired: !verified,
           identityVerificationVerified: verified,
         };

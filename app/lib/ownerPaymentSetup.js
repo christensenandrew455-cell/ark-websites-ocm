@@ -207,6 +207,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientId,
     accountStatus: "active",
     temporaryAccount: false,
+    signupVerification: false,
     identityVerificationRequired: false,
     identityVerificationVerified: true,
     termsAccepted: legal.termsAccepted === true,

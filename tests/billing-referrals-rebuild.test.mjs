@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import {
   MAX_ACTIVE_REFERRALS,
   MESSAGE_PARTS_PER_BUNDLE,
@@ -28,7 +29,7 @@ import {
   ensureStripeUsagePrice,
   missingStripeResource,
 } from "../app/lib/stripeUsageBilling.js";
-import { referralDiscountEndsAt, referralDocumentId } from "../app/lib/referrals.js";
+import { referralDiscountEndsAt, referralDocumentId, referralIdentityClaimDocumentId } from "../app/lib/referrals.js";
 
 async function withBasePriceOverride(value, action) {
   const previous = process.env.STRIPE_ACCOUNT_BASE_PRICE_ID;
@@ -101,6 +102,39 @@ test("durable billing ledger IDs are deterministic and do not expose source valu
   assert.equal(chatId, billingConversationEventId("sample-business", "chat-1"));
   assert.equal(chatId.length, 48);
   assert.equal(referralDocumentId("one", "two"), referralDocumentId("one", "two"));
+});
+
+test("referral helper identity claims normalize and hide verified email and phone", () => {
+  const previous = process.env.REFERRAL_IDENTITY_SECRET;
+  process.env.REFERRAL_IDENTITY_SECRET = "referral-identity-test-secret";
+  try {
+    const email = referralIdentityClaimDocumentId("email", " Helper@Example.com ");
+    const phone = referralIdentityClaimDocumentId("phone", "(978) 555-1212");
+    assert.equal(email, referralIdentityClaimDocumentId("email", "helper@example.com"));
+    assert.equal(phone, referralIdentityClaimDocumentId("phone", "+1 978 555 1212"));
+    assert.equal(email.includes("helper@example.com"), false);
+    assert.equal(phone.includes("9785551212"), false);
+  } finally {
+    if (previous === undefined) delete process.env.REFERRAL_IDENTITY_SECRET;
+    else process.env.REFERRAL_IDENTITY_SECRET = previous;
+  }
+});
+
+test("qualified referral identity claims survive account deletion and block reuse", async () => {
+  const [referrals, lifecycle] = await Promise.all([
+    readFile(new URL("../app/lib/referrals.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/customerLifecycle.js", import.meta.url), "utf8"),
+  ]);
+  assert.ok(referrals.includes('systemCollection(db, "referralIdentityClaims")'));
+  assert.ok(referrals.includes("claimedByAnotherReferral"));
+  assert.ok(referrals.includes('referralStatus: "identity_already_used"'));
+  assert.ok(referrals.includes("identityHash: claim.hash"));
+  assert.ok(referrals.includes("normalizeSignupEmail"));
+  assert.ok(referrals.includes("normalizeSignupPhone"));
+  assert.ok(lifecycle.includes("data.qualified !== true"));
+  assert.ok(lifecycle.includes("referredDeleted: true"));
+  assert.ok(lifecycle.includes("referrerDeleted: true"));
+  assert.equal(lifecycle.includes('systemCollection(db, "referralIdentityClaims").where'), false);
 });
 
 test("message billing records retain counts without message bodies or phone numbers", () => {

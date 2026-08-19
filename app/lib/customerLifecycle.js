@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { getAdminAuth, getAdminBucket, getAdminDb } from "./firebase-admin";
 import { systemCollection } from "./firestoreLayout.js";
 import { pendingOwnerSignupRef } from "./pendingOwnerSignup";
+import { signupVerificationRequestRef } from "./signupVerificationRequest";
 import { missingStripeResource } from "./stripeUsageBilling";
 
 function text(value) { return String(value || "").trim(); }
@@ -99,31 +100,32 @@ async function deleteSupportRequests(db, clientId) {
 }
 
 async function deleteReferralData(db, clientId) {
-  const [asReferrer, asReferred, ownedPeriods, creditedPeriods] = await Promise.all([
+  const [asReferrer, asReferred, ownedPeriods] = await Promise.all([
     systemCollection(db, "referrals").where("referrerClientId", "==", clientId).get(),
     systemCollection(db, "referrals").where("referredClientId", "==", clientId).get(),
     systemCollection(db, "referralPeriods").where("referrerClientId", "==", clientId).get(),
-    systemCollection(db, "referralPeriods").where("referredClientIds", "array-contains", clientId).get(),
   ]);
-  const deleteRefs = new Map();
-  [...asReferrer.docs, ...asReferred.docs, ...ownedPeriods.docs].forEach((document) => deleteRefs.set(document.ref.path, document.ref));
-  for (let index = 0; index < [...deleteRefs.values()].length; index += 350) {
+  const referrals = new Map();
+  [...asReferrer.docs, ...asReferred.docs].forEach((document) => referrals.set(document.ref.path, document));
+  for (let index = 0; index < [...referrals.values()].length; index += 350) {
     const batch = db.batch();
-    [...deleteRefs.values()].slice(index, index + 350).forEach((ref) => batch.delete(ref));
-    await batch.commit();
-  }
-  for (let index = 0; index < creditedPeriods.docs.length; index += 350) {
-    const documents = creditedPeriods.docs.slice(index, index + 350).filter((document) => !deleteRefs.has(document.ref.path));
-    if (!documents.length) continue;
-    const batch = db.batch();
-    documents.forEach((document) => {
-      const current = Math.max(0, Number(document.data().qualifiedCount || 0));
+    [...referrals.values()].slice(index, index + 350).forEach((document) => {
+      const data = document.data();
+      if (data.qualified !== true) {
+        batch.delete(document.ref);
+        return;
+      }
       batch.set(document.ref, {
-        referredClientIds: FieldValue.arrayRemove(clientId),
-        qualifiedCount: Math.max(0, current - 1),
+        ...(text(data.referrerClientId) === clientId ? { referrerDeleted: true, referrerDeletedAt: FieldValue.serverTimestamp() } : {}),
+        ...(text(data.referredClientId) === clientId ? { referredDeleted: true, referredDeletedAt: FieldValue.serverTimestamp() } : {}),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
     });
+    await batch.commit();
+  }
+  for (let index = 0; index < ownedPeriods.docs.length; index += 350) {
+    const batch = db.batch();
+    ownedPeriods.docs.slice(index, index + 350).forEach((document) => batch.delete(document.ref));
     await batch.commit();
   }
 }
@@ -138,6 +140,7 @@ export async function deleteCustomerPermanently(clientId) {
   await Promise.all([
     db.recursiveDelete(businessRef),
     pendingOwnerSignupRef(db, clientId).delete().catch(() => null),
+    signupVerificationRequestRef(db, clientId).delete().catch(() => null),
     deleteQueryDocuments(systemCollection(db, "stripeWebhookEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "messagingComplianceEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "deletedAccountAudit").where("clientId", "==", clientId)),

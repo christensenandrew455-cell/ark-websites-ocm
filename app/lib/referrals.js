@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   MAX_ACTIVE_REFERRALS,
@@ -7,6 +7,7 @@ import {
   referralDiscountPercent,
 } from "./billingPricing.js";
 import { systemCollection } from "./firestoreLayout.js";
+import { normalizeSignupEmail, normalizeSignupPhone } from "./signupAvailability.js";
 import { normalizeClientId } from "./valueUtils.js";
 
 const REFERRAL_DISCOUNT_DURATION_MS = REFERRAL_DISCOUNT_DURATION_DAYS * 24 * 60 * 60 * 1000;
@@ -15,6 +16,34 @@ function text(value) { return String(value || "").trim(); }
 function stableId(...values) {
   return createHash("sha256").update(values.map(text).join(":"))
     .digest("hex").slice(0, 48);
+}
+function referralIdentitySecret() {
+  const secret = text(process.env.REFERRAL_IDENTITY_SECRET || process.env.ACCOUNT_VERIFICATION_SECRET || process.env.SESSION_COOKIE_SECRET || process.env.STRIPE_SECRET_KEY);
+  if (!secret) throw new Error("REFERRAL_IDENTITY_SECRET is required to protect referral identity claims.");
+  return secret;
+}
+function normalizedReferralIdentity(type, value) {
+  if (text(type) === "email") return normalizeSignupEmail(value);
+  if (text(type) === "phone") return normalizeSignupPhone(value);
+  return text(value);
+}
+function referralIdentityHash(type, value) {
+  return createHmac("sha256", referralIdentitySecret())
+    .update(`ark-referral-identity-v1:${text(type)}:${normalizedReferralIdentity(type, value)}`)
+    .digest("hex");
+}
+export function referralIdentityClaimDocumentId(type, value) {
+  return `${text(type)}-${referralIdentityHash(type, value)}`;
+}
+function referralIdentityClaims(db, business = {}) {
+  const email = normalizeSignupEmail(business.accountEmail || business.businessEmail);
+  const phone = normalizeSignupPhone(business.accountPhone || business.businessPhone);
+  if (!/^\S+@\S+\.\S+$/.test(email) || !/^\+1\d{10}$/.test(phone)) throw new Error("REFERRAL_VERIFIED_IDENTITY_REQUIRED");
+  const collection = systemCollection(db, "referralIdentityClaims");
+  return [
+    { type: "email", hash: referralIdentityHash("email", email), ref: collection.doc(referralIdentityClaimDocumentId("email", email)) },
+    { type: "phone", hash: referralIdentityHash("phone", phone), ref: collection.doc(referralIdentityClaimDocumentId("phone", phone)) },
+  ];
 }
 function millis(value) {
   if (!value) return 0;
@@ -71,9 +100,9 @@ export async function activeReferralSavings({ db, clientId, now = Date.now() }) 
       const data = document.data();
       const qualifiedAt = millis(data.qualifiedAt);
       const endsAt = millis(data.discountEndsAt) || referralDiscountEndsAt(qualifiedAt);
-      return { qualified: data.qualified === true, endsAt };
+      return { qualified: data.qualified === true, referrerDeleted: data.referrerDeleted === true, endsAt };
     })
-    .filter((entry) => entry.qualified && entry.endsAt > currentMs)
+    .filter((entry) => entry.qualified && entry.referrerDeleted !== true && entry.endsAt > currentMs)
     .sort((left, right) => left.endsAt - right.endsAt);
   const count = Math.min(MAX_ACTIVE_REFERRALS, active.length);
   return {
@@ -97,7 +126,8 @@ export async function qualifyReferralAfterActivation({ db, referredClientId, ref
   const paidAccountIsActive = text(business.status) === "active"
     && text(business.paymentSetupStatus) === "complete"
     && Boolean(text(business.stripeSubscriptionId))
-    && text(business.stripeSubscriptionStatus) === "active";
+    && text(business.stripeSubscriptionStatus) === "active"
+    && business.identityVerificationVerified === true;
   if (!paidAccountIsActive) {
     await markReferredAccount(db, referredClientId, {
       referralStatus: "pending_payment",
@@ -119,10 +149,46 @@ export async function qualifyReferralAfterActivation({ db, referredClientId, ref
   const discountEndsAtMs = qualifiedAtMs + REFERRAL_DISCOUNT_DURATION_MS;
   const referralRef = systemCollection(db, "referrals")
     .doc(referralDocumentId(referrerClientId, referredClientId));
+  const identityClaims = referralIdentityClaims(db, business);
   const result = await db.runTransaction(async (transaction) => {
-    const referralSnapshot = await transaction.get(referralRef);
+    const [referralSnapshot, ...identitySnapshots] = await Promise.all([
+      transaction.get(referralRef),
+      ...identityClaims.map((claim) => transaction.get(claim.ref)),
+    ]);
     const existingReferral = referralSnapshot.exists ? referralSnapshot.data() : {};
-    if (existingReferral.qualified === true) return { status: "qualified", existing: true };
+    const referralId = referralRef.id;
+    const claimedByAnotherReferral = identitySnapshots.some((snapshot) => snapshot.exists
+      && (text(snapshot.data().referralId) !== referralId || text(snapshot.data().referredClientId) !== referredClientId));
+    if (claimedByAnotherReferral) {
+      transaction.set(referralRef, {
+        qualified: false,
+        status: "identity_already_used",
+        rejectedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      transaction.set(referredBusinessRef, {
+        referralStatus: "identity_already_used",
+        referralRejectedAt: FieldValue.serverTimestamp(),
+        referralUpdatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { status: "identity_already_used", existing: false };
+    }
+    if (existingReferral.qualified === true) {
+      identityClaims.forEach((claim, index) => {
+        if (identitySnapshots[index].exists) return;
+        transaction.create(claim.ref, {
+          identityType: claim.type,
+          identityHash: claim.hash,
+          referralId,
+          referrerClientId,
+          referredClientId,
+          qualifiedAt: existingReferral.qualifiedAt || Timestamp.fromMillis(qualifiedAtMs),
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+      return { status: "qualified", existing: true };
+    }
     transaction.set(referralRef, {
       referrerClientId,
       referredClientId,
@@ -134,6 +200,19 @@ export async function qualifyReferralAfterActivation({ db, referredClientId, ref
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: existingReferral.createdAt || FieldValue.serverTimestamp(),
     }, { merge: true });
+    identityClaims.forEach((claim, index) => {
+      const claimData = {
+        identityType: claim.type,
+        identityHash: claim.hash,
+        referralId,
+        referrerClientId,
+        referredClientId,
+        qualifiedAt: Timestamp.fromMillis(qualifiedAtMs),
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: identitySnapshots[index].exists ? (identitySnapshots[index].data().createdAt || FieldValue.serverTimestamp()) : FieldValue.serverTimestamp(),
+      };
+      transaction.set(claim.ref, claimData, { merge: true });
+    });
     transaction.set(referredBusinessRef, {
       referralStatus: "qualified",
       referralQualifiedAt: Timestamp.fromMillis(qualifiedAtMs),
@@ -143,6 +222,7 @@ export async function qualifyReferralAfterActivation({ db, referredClientId, ref
     return { status: "qualified", existing: false };
   });
 
+  if (result.status !== "qualified") return result;
   const savings = await activeReferralSavings({ db, clientId: referrerClientId, now: qualifiedAtMs });
   await db.collection("accounts").doc(referrerClientId).set({
     currentReferralCount: savings.count,

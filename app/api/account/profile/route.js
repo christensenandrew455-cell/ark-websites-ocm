@@ -11,6 +11,12 @@ import {
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "../../../lib/pendingOwnerSignup";
+import {
+  readSignupVerificationRequest,
+  signupVerificationRequestAccount,
+  signupVerificationRequestExpired,
+  signupVerificationRequestLegal,
+} from "../../../lib/signupVerificationRequest";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -108,6 +114,41 @@ function temporaryOwnerProfile({ pending, decodedToken, clientId }) {
   };
 }
 
+function signupVerificationProfile({ request, decodedToken, clientId }) {
+  const account = signupVerificationRequestAccount(request);
+  const legal = signupVerificationRequestLegal(request);
+  return {
+    uid: text(decodedToken.uid),
+    email: text(decodedToken.email || account.accountEmail).toLowerCase(),
+    accountEmail: text(account.accountEmail || decodedToken.email).toLowerCase(),
+    accountPhone: text(account.accountPhone),
+    role: decodedToken.role || ACCOUNT_ROLES.STANDARD,
+    accountType: decodedToken.accountType || ACCOUNT_TYPES.OWNER,
+    businessRole: text(decodedToken.businessRole || "owner"),
+    clientId,
+    status: "pending_verification",
+    businessName: text(account.businessName || clientId),
+    ownerName: text(account.ownerName),
+    messagesEnabled: false,
+    paymentSetupStatus: "",
+    identityVerificationRequired: true,
+    identityVerificationVerified: false,
+    identityVerificationStatus: "pending",
+    emailVerificationStatus: request.verification?.emailVerified === true ? "verified" : "pending",
+    phoneVerificationStatus: request.verification?.phoneVerified === true ? "verified" : "pending",
+    onboardingTourStatus: "",
+    onboardingTourEligible: false,
+    onboardingGuideVersion: 0,
+    onboardingGuideSeen: onboardingGuideSeen(),
+    onboardingNumberGuidePhone: "",
+    numberAssignmentStatus: "",
+    termsAccepted: legal.termsAccepted === true,
+    privacyAccepted: legal.privacyAccepted === true,
+    termsVersion: text(legal.termsVersion),
+    privacyVersion: text(legal.privacyVersion),
+  };
+}
+
 async function verifiedToken(request) {
   const authorization = text(request.headers.get("authorization"));
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
@@ -132,8 +173,27 @@ export async function GET(request) {
 
   try {
     const db = getAdminDb();
+    const preVerification = decodedToken.signupVerification === true
+      || (text(decodedToken.accountStatus) === "pending_verification" && decodedToken.temporaryAccount !== true);
+    if (preVerification) {
+      const request = await readSignupVerificationRequest({ db, uid: decodedToken.uid, clientId, allowExpired: true });
+      if (request && !signupVerificationRequestExpired(request.data)) {
+        return NextResponse.json(
+          { profile: signupVerificationProfile({ request: request.data, decodedToken, clientId }) },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      const promoted = await readPendingOwnerSignup({ db, uid: decodedToken.uid, clientId, allowExpired: true });
+      if (promoted && !pendingOwnerSignupExpired(promoted.data)) {
+        return NextResponse.json(
+          { profile: temporaryOwnerProfile({ pending: promoted.data, decodedToken, clientId }) },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      }
+      return NextResponse.json({ error: "This verification request expired. Start signup again." }, { status: 410 });
+    }
     const temporary = decodedToken.temporaryAccount === true
-      || ["pending_verification", "pending_business_setup", "pending_payment"].includes(text(decodedToken.accountStatus));
+      || ["pending_business_setup", "pending_payment"].includes(text(decodedToken.accountStatus));
     if (temporary) {
       const pending = await readPendingOwnerSignup({ db, uid: decodedToken.uid, clientId, allowExpired: true });
       if (!pending || pendingOwnerSignupExpired(pending.data)) {

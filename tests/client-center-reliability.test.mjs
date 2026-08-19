@@ -57,6 +57,20 @@ test("dashboard keeps number assignment simple and does not open unavailable Mes
   assert.ok(messages.includes("if (!MESSAGES_AVAILABLE) return null"));
 });
 
+test("unreleased messaging is described only on the disabled dashboard button", async () => {
+  const [{ HELP_SECTIONS }, terms, messagingApi] = await Promise.all([
+    import(new URL("../app/lib/helpContent.js", import.meta.url)),
+    source("app/terms/page.js"),
+    source("app/api/business/lead-messages/route.js"),
+  ]);
+  const visibleHelp = JSON.stringify(HELP_SECTIONS);
+  assert.equal(visibleHelp.includes("Messages"), false);
+  assert.equal(visibleHelp.toLowerCase().includes("messaging"), false);
+  assert.equal(visibleHelp.includes("SMS-part"), false);
+  assert.equal(terms.includes("SMS-part progress"), false);
+  assert.equal(messagingApi.includes("UPCOMING_FEATURE_LABEL"), false);
+});
+
 test("first-visit guides are contextual and their progress is persisted in Firestore", async () => {
   const [tutorial, completion, profile, tourRoute, accountSections] = await Promise.all([
     source("app/components/GuidedOnboarding.js"),
@@ -71,7 +85,9 @@ test("first-visit guides are contextual and their progress is persisted in Fires
   assert.ok(tutorial.includes('body: JSON.stringify({ guide: dismissed.id })'));
   assert.ok(tutorial.includes("profile.onboardingTourEligible !== true"));
   assert.ok(tutorial.includes("Welcome to your ARK Client Center"));
-  assert.ok(tutorial.includes("Contacted You holds new leads"));
+  assert.ok(tutorial.includes("“Contacted You” holds new leads"));
+  assert.ok(tutorial.includes("“Settings,” then “Payment.”"));
+  assert.equal(tutorial.includes("Messages is not available"), false);
   assert.ok(tutorial.includes("Review the $2 accepted-lead price"));
   assert.ok(tutorial.includes("Tap anywhere to continue"));
   assert.ok(tutorial.includes('id: "number-assigned"'));
@@ -106,19 +122,23 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });
 
-test("payment separates usage pricing from the recurring charge", async () => {
+test("payment shows accepted-lead pricing, referral savings, and the recurring charge", async () => {
   const settings = await source("app/components/SettingsPanel.js");
   assert.ok(settings.includes("Usage toward next charge"));
   assert.ok(settings.includes("out of"));
   assert.ok(settings.includes(">Accepted lead<"));
   assert.ok(settings.includes("Declined leads are free"));
-  assert.ok(settings.includes(">50 SMS parts<"));
+  assert.equal(settings.includes(">50 SMS parts<"), false);
+  assert.ok(settings.includes(">Referral discount<"));
+  assert.ok(settings.includes("referralDiscountPercent"));
   assert.ok(settings.includes("Recurring charge"));
   assert.ok(settings.includes("$50 per month"));
   assert.equal(settings.includes(">New chat<"), false);
   assert.equal(settings.includes("Last successful payment"), false);
   const summaryRoute = await source("app/api/billing/usage-summary/route.js");
   assert.equal(summaryRoute.includes("chatPoints"), false);
+  assert.ok(summaryRoute.includes("activeReferralSavings({ db, clientId: authorization.clientId })"));
+  assert.ok(summaryRoute.includes("referralDiscountPercent: referralSavings.percent"));
 });
 
 test("business information auto-saves edits and flushes the latest change before going back", async () => {

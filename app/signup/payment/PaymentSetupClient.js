@@ -155,7 +155,9 @@ export default function PaymentSetupClient() {
       return;
     }
     if (profile?.status === "active") {
-      router.replace("/");
+      signOut(auth)
+        .catch((signOutError) => console.warn("Unable to clear the completed signup sign-in", signOutError))
+        .finally(() => window.location.replace("/login"));
       return;
     }
 

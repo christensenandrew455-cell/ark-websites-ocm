@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../../lib/accountRoles";
 import { getAdminDb } from "../../../../lib/firebase-admin";
-import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../../../../lib/launchFeatures";
+import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../../../../lib/launchFeatures";
 import { messageContactBlockRef, normalizeMessagePhone } from "../../../../lib/messageContactBlocks";
 import { requireUser } from "../../../../lib/userRequest";
 
@@ -24,7 +24,7 @@ async function deleteQuery(db, query) {
 }
 
 export async function POST(request) {
-  if (!MESSAGES_AVAILABLE) return NextResponse.json({ error: `Messages are ${UPCOMING_FEATURE_LABEL.toLowerCase()}.` }, { status: 403 });
+  if (!MESSAGES_AVAILABLE) return NextResponse.json({ error: UPCOMING_FEATURE_MESSAGE }, { status: 403 });
   const user = await requireUser(request);
   if (user.response) return user.response;
   const decoded = user.decodedToken;

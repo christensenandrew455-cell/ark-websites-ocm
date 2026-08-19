@@ -1,6 +1,13 @@
 import { FieldValue } from "firebase-admin/firestore";
 import Stripe from "stripe";
 import { accountCollection, pendingSignupCollection } from "./firestoreLayout.js";
+import {
+  signupVerificationRequestAccount,
+  signupVerificationRequestExpired,
+  signupVerificationRequestLegal,
+  signupVerificationRequestCollection,
+  signupVerificationRequestRef,
+} from "./signupVerificationRequest.js";
 
 export const PENDING_OWNER_SIGNUP_COLLECTION = "pendingOwnerSignups";
 export const PENDING_OWNER_SIGNUP_TTL_MS = 60 * 60 * 1000;
@@ -132,37 +139,44 @@ export async function readPendingOwnerSignup({ db, uid, clientId = "", allowExpi
   return { ref: snapshot.ref, data };
 }
 
-export async function createPendingOwnerSignup({ db, uid, clientId, signup, referrer = null, initialStage = "pending_business_setup" }) {
-  const now = new Date();
+function verifiedPendingSignupData({ uid, clientId, signup, legal = {}, referrer = null, now = new Date() }) {
   const expiresAt = new Date(now.getTime() + PENDING_OWNER_SIGNUP_TTL_MS);
-  const stage = initialStage === "pending_verification" ? "pending_verification" : "pending_business_setup";
-  const accountPhone = text(signup.accountPhoneNormalized || signup.accountPhone);
-  const data = {
-    uid,
-    clientId,
-    stage,
+  const accountPhone = text(signup.accountPhone);
+  return {
+    data: {
+      uid,
+      clientId,
+      stage: "pending_business_setup",
+      expiresAt,
+      account: {
+        businessName: text(signup.businessName),
+        ownerName: text(signup.ownerName),
+        accountEmail: text(signup.accountEmail).toLowerCase(),
+        accountPhone,
+        referrerAccountId: text(signup.referrerAccountId),
+      },
+      legal: {
+        termsAccepted: legal.termsAccepted === true || signup.termsAccepted === true,
+        privacyAccepted: legal.privacyAccepted === true || signup.privacyAccepted === true,
+        termsVersion: text(legal.termsVersion || signup.termsVersion),
+        privacyVersion: text(legal.privacyVersion || signup.privacyVersion),
+        acceptedAt: legal.acceptedAt || now,
+      },
+      ...(referrer?.referrerClientId ? { referral: referrer } : {}),
+      verification: { verified: true, completedAt: FieldValue.serverTimestamp() },
+      business: {},
+      payment: { status: "not_started" },
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
     expiresAt,
-    account: {
-      businessName: text(signup.businessName),
-      ownerName: text(signup.ownerName),
-      accountEmail: text(signup.accountEmail).toLowerCase(),
-      accountPhone,
-      referrerAccountId: text(signup.referrerAccountId),
-    },
-    legal: {
-      termsAccepted: true,
-      privacyAccepted: true,
-      termsVersion: text(signup.termsVersion),
-      privacyVersion: text(signup.privacyVersion),
-      acceptedAt: now,
-    },
-    ...(referrer ? { referral: referrer } : {}),
-    verification: { verified: stage !== "pending_verification" },
-    business: {},
-    payment: { status: "not_started" },
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
   };
+}
+
+export async function createPendingOwnerSignup({ db, uid, clientId, signup, referrer = null, legal = {} }) {
+  const now = new Date();
+  const { data, expiresAt } = verifiedPendingSignupData({ uid, clientId, signup, legal, referrer, now });
+  const accountPhone = text(data.account.accountPhone);
   const pendingRef = pendingOwnerSignupRef(db, clientId);
   const accounts = accountCollection(db);
   const pending = pendingSignupCollection(db);
@@ -183,6 +197,67 @@ export async function createPendingOwnerSignup({ db, uid, clientId, signup, refe
     transaction.create(pendingRef, data);
   });
   return { ...data, expiresAt };
+}
+
+export async function createPendingOwnerSignupFromVerification({ db, uid, clientId, email, phone }) {
+  const requestRef = signupVerificationRequestRef(db, clientId);
+  const requests = signupVerificationRequestCollection(db);
+  const pendingRef = pendingOwnerSignupRef(db, clientId);
+  const accounts = accountCollection(db);
+  const pending = pendingSignupCollection(db);
+  const verifiedEmail = text(email).toLowerCase();
+  const verifiedPhone = text(phone);
+  const result = await db.runTransaction(async (transaction) => {
+    const [requestSnapshot, regularName, temporaryName, regularEmail, temporaryEmail, requestEmail, challengedEmail, regularPhone, temporaryPhone, requestPhone, challengedPhone] = await Promise.all([
+      transaction.get(requestRef),
+      transaction.get(accounts.doc(clientId)),
+      transaction.get(pendingRef),
+      transaction.get(accounts.where("accountEmail", "==", verifiedEmail).limit(1)),
+      transaction.get(pending.where("account.accountEmail", "==", verifiedEmail).limit(1)),
+      transaction.get(requests.where("account.accountEmail", "==", verifiedEmail).limit(2)),
+      transaction.get(requests.where("verification.email", "==", verifiedEmail).limit(2)),
+      transaction.get(accounts.where("accountPhone", "==", verifiedPhone).limit(1)),
+      transaction.get(pending.where("account.accountPhone", "==", verifiedPhone).limit(1)),
+      transaction.get(requests.where("account.accountPhone", "==", verifiedPhone).limit(2)),
+      transaction.get(requests.where("verification.phone", "==", verifiedPhone).limit(2)),
+    ]);
+    if (!requestSnapshot.exists || text(requestSnapshot.data().uid) !== text(uid)) throw new Error("ACCOUNT_NOT_FOUND");
+    const request = requestSnapshot.data();
+    if (signupVerificationRequestExpired(request)) throw new Error("ACCOUNT_VERIFICATION_EXPIRED");
+    if (text(request.stage) !== "pending_verification") throw new Error("ACCOUNT_NOT_FOUND");
+    const challenge = request.verification || {};
+    if (challenge.emailVerified !== true || challenge.phoneVerified !== true
+      || text(challenge.email).toLowerCase() !== verifiedEmail || text(challenge.phone) !== verifiedPhone) {
+      throw new Error("VERIFICATION_CONTACT_CHANGED");
+    }
+    const requestBelongsToAnotherSignup = (snapshot) => snapshot.docs.some((document) => document.id !== clientId || text(document.data().uid) !== text(uid));
+    if (regularName.exists || temporaryName.exists
+      || !regularEmail.empty || !temporaryEmail.empty || requestBelongsToAnotherSignup(requestEmail) || requestBelongsToAnotherSignup(challengedEmail)
+      || !regularPhone.empty || !temporaryPhone.empty || requestBelongsToAnotherSignup(requestPhone) || requestBelongsToAnotherSignup(challengedPhone)) {
+      const error = new Error("SIGNUP_IDENTITY_ALREADY_EXISTS");
+      error.code = "already-exists";
+      throw error;
+    }
+    const account = {
+      ...signupVerificationRequestAccount(request),
+      accountEmail: verifiedEmail,
+      accountPhone: verifiedPhone,
+    };
+    const legal = signupVerificationRequestLegal(request);
+    const now = new Date();
+    const prepared = verifiedPendingSignupData({
+      uid,
+      clientId,
+      signup: account,
+      legal,
+      referrer: request.referral || null,
+      now,
+    });
+    transaction.create(pendingRef, prepared.data);
+    transaction.delete(requestRef);
+    return { ...prepared.data, expiresAt: prepared.expiresAt };
+  });
+  return result;
 }
 
 function missingStripeResource(error) {
