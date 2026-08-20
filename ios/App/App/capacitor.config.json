@@ -1,39 +1,39 @@
 {
-  "appId": "com.arkwebsites.clientcenter",
-  "appName": "ARK Client Center",
-  "webDir": "mobile-shell",
-  "appendUserAgent": " ARKClientCenter/1.4",
-  "backgroundColor": "#f8fafc",
-  "loggingBehavior": "debug",
-  "server": {
-    "url": "https://www.arkclientcenter.com",
-    "androidScheme": "https",
-    "iosScheme": "https",
-    "cleartext": false,
-    "errorPath": "offline.html"
-  },
-  "plugins": {
-    "PushNotifications": {
-      "presentationOptions": [
-        "sound",
-        "alert",
-        "banner",
-        "list"
-      ]
-    }
-  },
-  "ios": {
-    "contentInset": "automatic",
-    "backgroundColor": "#f8fafc"
-  },
-  "android": {
-    "backgroundColor": "#f8fafc",
-    "webContentsDebuggingEnabled": true
-  },
-  "packageClassList": [
-    "ContactsPlugin",
-    "AppPlugin",
-    "PushNotificationsPlugin",
-    "CapacitorCalendarPlugin"
-  ]
+	"appId": "com.arkwebsites.clientcenter",
+	"appName": "ARK Client Center",
+	"webDir": "mobile-shell",
+	"appendUserAgent": " ARKClientCenter/1.4",
+	"backgroundColor": "#f8fafc",
+	"loggingBehavior": "debug",
+	"server": {
+		"url": "https://www.arkclientcenter.com",
+		"androidScheme": "https",
+		"iosScheme": "https",
+		"cleartext": false,
+		"errorPath": "offline.html"
+	},
+	"plugins": {
+		"PushNotifications": {
+			"presentationOptions": [
+				"sound",
+				"alert",
+				"banner",
+				"list"
+			]
+		}
+	},
+	"ios": {
+		"contentInset": "automatic",
+		"backgroundColor": "#f8fafc"
+	},
+	"android": {
+		"backgroundColor": "#f8fafc",
+		"webContentsDebuggingEnabled": true
+	},
+	"packageClassList": [
+		"ContactsPlugin",
+		"AppPlugin",
+		"PushNotificationsPlugin",
+		"CapacitorCalendarPlugin"
+	]
 }
