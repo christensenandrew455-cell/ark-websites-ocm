@@ -86,11 +86,14 @@ jobs:
         with:
           gradle-version: wrapper
 
-      - name: Build Android APK
+      - name: Verify mobile release configuration
+        run: npm run mobile:verify
+
+      - name: Build Android test APK and release App Bundle
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug bundleRelease --no-daemon
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
@@ -112,7 +115,7 @@ jobs:
               sha: context.sha,
               state: 'success',
               context: 'Android Build',
-              description: 'Installable Android APK built successfully',
+              description: 'Android test APK and release App Bundle compiled successfully',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 

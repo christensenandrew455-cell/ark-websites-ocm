@@ -83,6 +83,18 @@ iOS setup and synchronization:
 npm run mobile:ios:sync
 ```
 
+Verify both store configurations after syncing:
+
+```bash
+npm run mobile:verify
+```
+
+Both native projects load the secure production app at `https://www.arkclientcenter.com`. Release builds disable Capacitor logging and WebView debugging. Android targets API level 36 and defaults to an Android App Bundle (`.aab`).
+
+For Google Play, run the Android setup, open the generated `android` folder in Android Studio, then use **Build → Generate Signed Bundle / APK → Android App Bundle**. The GitHub Android workflow compiles the release App Bundle to catch release-only errors, but its downloadable debug APK is only for device testing and must not be uploaded to Google Play.
+
+For the App Store, sync iOS, open `ios/App/App.xcodeproj` in Xcode, select **Any iOS Device (arm64)**, and use **Product → Archive**. The checked-in icon is a 1024-by-1024 alpha-free RGB PNG, and the GitHub iOS workflow compiles the Release configuration from a clean clone.
+
 The setup scripts regenerate required native configuration and app assets. Make source changes in the maintained scripts or source directories rather than editing generated output without updating its generator.
 
 ## Deployment checks

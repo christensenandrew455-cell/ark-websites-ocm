@@ -26,6 +26,17 @@ if (missing.length) {
   console.log("[Android configuration] Native permissions already present.");
 }
 
+if (manifest.includes('android:allowBackup="true"')) {
+  manifest = manifest.replace('android:allowBackup="true"', 'android:allowBackup="false"');
+}
+if (!manifest.includes("android:usesCleartextTraffic=")) {
+  manifest = manifest.replace(
+    /<application\b/,
+    '<application android:usesCleartextTraffic="false"',
+  );
+}
+await writeFile(manifestPath, manifest, "utf8");
+
 if (!manifest.includes('android:scheme="arkclientcenter"')) {
   const deepLinkFilter = `
             <intent-filter>
@@ -178,3 +189,4 @@ await Promise.all([
 
 console.log("[Android configuration] Native contact editor registered.");
 console.log("[Android configuration] Enlarged lower ARK Client Center launcher icon applied.");
+console.log("[Android configuration] Backups and cleartext traffic disabled for release safety.");

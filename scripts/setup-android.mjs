@@ -66,6 +66,7 @@ async function createOrSyncAndroidProject() {
 
 async function applyProjectConfiguration() {
   run(nodeCommand, ["scripts/configure-android.mjs"]);
+  run(nodeCommand, ["scripts/generate-ios-icon.mjs"]);
   run(nodeCommand, ["scripts/configure-orientation.mjs"]);
   run(nodeCommand, ["scripts/configure-phone-permissions.mjs"]);
   run(nodeCommand, ["scripts/configure-file-saver.mjs"]);

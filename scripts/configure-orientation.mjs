@@ -43,10 +43,16 @@ function configureIos() {
 
   let plist = fs.readFileSync(plistPath, "utf8");
   const portraitOnly = ["UIInterfaceOrientationPortrait"];
+  const ipadOrientations = [
+    "UIInterfaceOrientationPortrait",
+    "UIInterfaceOrientationPortraitUpsideDown",
+    "UIInterfaceOrientationLandscapeLeft",
+    "UIInterfaceOrientationLandscapeRight",
+  ];
   plist = setPlistArray(plist, "UISupportedInterfaceOrientations", portraitOnly);
-  plist = setPlistArray(plist, "UISupportedInterfaceOrientations~ipad", portraitOnly);
+  plist = setPlistArray(plist, "UISupportedInterfaceOrientations~ipad", ipadOrientations);
   fs.writeFileSync(plistPath, plist, "utf8");
-  console.log("[Orientation] iOS locked to portrait.");
+  console.log("[Orientation] iPhone locked to portrait; iPad supports multitasking orientations.");
   return true;
 }
 

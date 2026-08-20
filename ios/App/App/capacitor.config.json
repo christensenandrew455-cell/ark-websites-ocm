@@ -4,7 +4,7 @@
 	"webDir": "mobile-shell",
 	"appendUserAgent": " ARKClientCenter/1.4",
 	"backgroundColor": "#f8fafc",
-	"loggingBehavior": "debug",
+	"loggingBehavior": "none",
 	"server": {
 		"url": "https://www.arkclientcenter.com",
 		"androidScheme": "https",
@@ -24,11 +24,14 @@
 	},
 	"ios": {
 		"contentInset": "automatic",
-		"backgroundColor": "#f8fafc"
+		"backgroundColor": "#f8fafc",
+		"loggingBehavior": "none",
+		"webContentsDebuggingEnabled": false
 	},
 	"android": {
 		"backgroundColor": "#f8fafc",
-		"webContentsDebuggingEnabled": true
+		"loggingBehavior": "none",
+		"webContentsDebuggingEnabled": false
 	},
 	"packageClassList": [
 		"ContactsPlugin",

@@ -9,6 +9,9 @@ on:
       - "package-lock.json"
       - "capacitor.config.json"
       - "scripts/configure-ios.mjs"
+      - "scripts/configure-orientation.mjs"
+      - "scripts/generate-ios-icon.mjs"
+      - "scripts/verify-mobile-release.mjs"
       - "ios/.gitignore"
       - ".github/workflows/generate-ios-project.yml"
 
@@ -60,7 +63,10 @@ jobs:
             npx cap add ios
           fi
           npx cap sync ios
+          node scripts/generate-ios-icon.mjs
           node scripts/configure-ios.mjs
+          node scripts/configure-orientation.mjs
+          node scripts/verify-mobile-release.mjs
 
       - name: Validate a clean Xcode clone without node_modules
         run: |
@@ -77,7 +83,7 @@ jobs:
           xcodebuild \
             -project ios/App/App.xcodeproj \
             -scheme App \
-            -configuration Debug \
+            -configuration Release \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/ark-ios-source-packages" \
@@ -88,7 +94,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f ios package-lock.json package.json capacitor.config.json scripts/configure-ios.mjs .github/workflows/generate-ios-project.yml
+          git add -f ios package-lock.json package.json capacitor.config.json scripts/configure-ios.mjs scripts/configure-orientation.mjs scripts/generate-ios-icon.mjs scripts/verify-mobile-release.mjs .github/workflows/generate-ios-project.yml
           if git diff --cached --quiet; then
             echo "The self-contained iOS project is already current."
           else
@@ -108,7 +114,7 @@ jobs:
               sha: context.sha,
               state: 'success',
               context: 'iOS Xcode Project',
-              description: 'Fresh-clone iPhone build passed without node_modules',
+              description: 'Fresh-clone iPhone release build passed without node_modules',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 

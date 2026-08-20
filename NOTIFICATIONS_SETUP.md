@@ -12,19 +12,14 @@ Two account-level configurations are still required before push notifications an
    `com.arkwebsites.clientcenter`
 
 3. Download the generated `google-services.json` file.
-4. Convert the file to Base64 on Windows PowerShell:
-
-   ```powershell
-   [Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\Downloads\google-services.json")) | Set-Clipboard
-   ```
-
+4. Open the downloaded file and copy the complete JSON contents.
 5. In the GitHub repository, open **Settings → Secrets and variables → Actions**.
-6. Add a repository secret named:
+6. Add a repository secret named exactly:
 
-   `FIREBASE_ANDROID_GOOGLE_SERVICES_JSON_BASE64`
+   `FIREBASE_ANDROID_GOOGLE_SERVICES_JSON`
 
-7. Paste the Base64 value as the secret.
-8. Run the **Android Test APK** workflow again and install the newly generated APK.
+7. Paste the complete JSON text as the secret.
+8. Run the **Android Build** workflow again and install the newly generated test APK.
 
 Do not commit `google-services.json` directly to the repository.
 
