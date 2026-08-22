@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const expectedAppId = "com.arkwebsites.app";
+const expectedAndroidAppId = "com.arkwebsites.app";
+const expectedIosBundleId = "com.arkwebsites.clientcenter";
 const expectedAppName = "ARK Client Center";
 const expectedUrl = "https://www.arkclientcenter.com";
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -49,7 +50,7 @@ function plistArrayValues(plist, key) {
   return [...match[1].matchAll(/<string>([^<]+)<\/string>/g)].map((entry) => entry[1]);
 }
 
-function verifyCapacitorConfig(config, label, { requireBuildOptions = false } = {}) {
+function verifyCapacitorConfig(config, label, expectedAppId, { requireBuildOptions = false } = {}) {
   check(config.appId === expectedAppId, `${label} uses bundle/package ID ${expectedAppId}`);
   check(config.appName === expectedAppName, `${label} uses the ARK Client Center app name`);
   check(config.webDir === "mobile-shell", `${label} includes the offline mobile shell`);
@@ -69,14 +70,17 @@ function verifyCapacitorConfig(config, label, { requireBuildOptions = false } = 
 }
 
 const rootConfig = readJson("capacitor.config.json");
-verifyCapacitorConfig(rootConfig, "capacitor.config.json", { requireBuildOptions: true });
+verifyCapacitorConfig(rootConfig, "capacitor.config.json", expectedAndroidAppId, { requireBuildOptions: true });
 
 if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
   const iosConfig = readJson("ios/App/App/capacitor.config.json");
-  verifyCapacitorConfig(iosConfig, "the generated iOS configuration");
+  verifyCapacitorConfig(iosConfig, "the generated iOS configuration", expectedIosBundleId);
 
   const project = read("ios/App/App.xcodeproj/project.pbxproj");
-  check(project.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${expectedAppId};`), "the Xcode project uses the correct bundle ID");
+  check(
+    project.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${expectedIosBundleId};`),
+    "the Xcode project uses the correct bundle ID",
+  );
   check(project.includes("IPHONEOS_DEPLOYMENT_TARGET = 15.0;"), "the Xcode project targets iOS 15 or newer");
   check(/CURRENT_PROJECT_VERSION = \d+;/.test(project), "the Xcode project has a numeric build number");
   check(/MARKETING_VERSION = \d+(?:\.\d+){1,2};/.test(project), "the Xcode project has a valid release version");
@@ -93,6 +97,7 @@ if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
   ]) {
     check(ipadOrientations.includes(orientation), `the iPad app supports ${orientation}`);
   }
+  check(plist.includes(`<string>${expectedIosBundleId}</string>`), "the iOS URL type uses the iOS bundle ID");
   check(plist.includes("<string>arkclientcenter</string>"), "the iOS signup return URL scheme is registered");
 
   const iosIcon = pngMetadata("ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png");
@@ -102,11 +107,11 @@ if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
 
 if (fs.existsSync(file("android/app/build.gradle"))) {
   const androidConfig = readJson("android/app/src/main/assets/capacitor.config.json");
-  verifyCapacitorConfig(androidConfig, "the generated Android configuration");
+  verifyCapacitorConfig(androidConfig, "the generated Android configuration", expectedAndroidAppId);
 
   const build = read("android/app/build.gradle");
-  check(build.includes(`namespace = "${expectedAppId}"`), "the Android namespace is correct");
-  check(build.includes(`applicationId "${expectedAppId}"`), "the Android application ID is correct");
+  check(build.includes(`namespace = "${expectedAndroidAppId}"`), "the Android namespace is correct");
+  check(build.includes(`applicationId "${expectedAndroidAppId}"`), "the Android application ID is correct");
   check(/versionCode\s+[1-9]\d*/.test(build), "the Android app has a positive version code");
   check(/versionName\s+"\d+(?:\.\d+){1,2}"/.test(build), "the Android app has a valid release version");
 
@@ -137,4 +142,5 @@ if (fs.existsSync(file("android/app/build.gradle"))) {
 
 console.log(`[Mobile release verification] Passed ${checks.length} checks.`);
 console.log(`[Mobile release verification] Production URL: ${expectedUrl}`);
-console.log(`[Mobile release verification] App ID: ${expectedAppId}`);
+console.log(`[Mobile release verification] Android App ID: ${expectedAndroidAppId}`);
+console.log(`[Mobile release verification] iOS Bundle ID: ${expectedIosBundleId}`);

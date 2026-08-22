@@ -7,6 +7,9 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, "..");
 const iosRoot = path.join(projectRoot, "ios", "App");
 const appRoot = path.join(iosRoot, "App");
+const iosBundleId = "com.arkwebsites.clientcenter";
+const capacitorConfigPath = path.join(appRoot, "capacitor.config.json");
+const xcodeProjectPath = path.join(iosRoot, "App.xcodeproj", "project.pbxproj");
 const plistPath = path.join(appRoot, "Info.plist");
 const appDelegatePath = path.join(appRoot, "AppDelegate.swift");
 const swiftPackageRoot = path.join(iosRoot, "CapApp-SPM");
@@ -49,13 +52,17 @@ function addPlistString(plist, key, value) {
 }
 
 function addPlistUrlScheme(plist, scheme) {
-  if (plist.includes(`<string>${scheme}</string>`)) return plist;
+  if (plist.includes(`<string>${scheme}</string>`)) {
+    const urlNamePattern = /(<key>CFBundleURLName<\/key>\s*<string>)[^<]*(<\/string>)/;
+    if (!urlNamePattern.test(plist)) throw new Error("Info.plist URL type has an unexpected format.");
+    return plist.replace(urlNamePattern, (_, prefix, suffix) => `${prefix}${escapeXml(iosBundleId)}${suffix}`);
+  }
   const addition = `
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.arkwebsites.app</string>
+			<string>${escapeXml(iosBundleId)}</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>${escapeXml(scheme)}</string>
@@ -65,6 +72,25 @@ function addPlistUrlScheme(plist, scheme) {
   const closing = "\n</dict>\n</plist>";
   if (!plist.includes(closing)) throw new Error("Info.plist has an unexpected format.");
   return plist.replace(closing, `${addition}${closing}`);
+}
+
+function configureBundleIdentifier() {
+  requireFile(capacitorConfigPath);
+  const capacitorConfig = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
+  capacitorConfig.appId = iosBundleId;
+  fs.writeFileSync(capacitorConfigPath, `${JSON.stringify(capacitorConfig, null, "\t")}\n`);
+
+  requireFile(xcodeProjectPath);
+  let xcodeProject = fs.readFileSync(xcodeProjectPath, "utf8");
+  const bundleIdentifierPattern = /PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/g;
+  if (!bundleIdentifierPattern.test(xcodeProject)) {
+    throw new Error("The Xcode project does not contain a product bundle identifier.");
+  }
+  xcodeProject = xcodeProject.replace(
+    bundleIdentifierPattern,
+    `PRODUCT_BUNDLE_IDENTIFIER = ${iosBundleId};`,
+  );
+  fs.writeFileSync(xcodeProjectPath, xcodeProject);
 }
 
 function vendorNativePluginSources() {
@@ -161,6 +187,7 @@ let package = Package(
 
 requireFile(plistPath);
 requireFile(appDelegatePath);
+configureBundleIdentifier();
 
 let plist = fs.readFileSync(plistPath, "utf8");
 plist = addPlistString(
@@ -213,4 +240,6 @@ if (fs.existsSync("/usr/bin/plutil")) {
   if (plistCheck.status !== 0) throw new Error(plistCheck.stderr || plistCheck.stdout || "Info.plist validation failed.");
 }
 
-console.log("Configured a self-contained iOS project with contacts, calendar, and push-notification support.");
+console.log(
+  `Configured the self-contained iOS project as ${iosBundleId} with contacts, calendar, and push-notification support.`,
+);
