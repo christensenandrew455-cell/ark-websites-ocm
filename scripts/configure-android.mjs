@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 const manifestPath = "android/app/src/main/AndroidManifest.xml";
-const javaDirectory = "android/app/src/main/java/com/arkwebsites/clientcenter";
+const javaDirectory = "android/app/src/main/java/com/arkwebsites/app";
 const drawableDirectory = "android/app/src/main/res/drawable";
 const valuesDirectory = "android/app/src/main/res/values";
 const adaptiveIconDirectory = "android/app/src/main/res/mipmap-anydpi-v26";
@@ -58,7 +58,7 @@ await Promise.all([
   mkdir(adaptiveIconDirectory, { recursive: true }),
 ]);
 
-await writeFile(`${javaDirectory}/ContactEditorPlugin.java`, `package com.arkwebsites.clientcenter;
+await writeFile(`${javaDirectory}/ContactEditorPlugin.java`, `package com.arkwebsites.app;
 
 import android.content.Intent;
 import android.provider.ContactsContract;
@@ -97,7 +97,7 @@ public class ContactEditorPlugin extends Plugin {
 }
 `, "utf8");
 
-await writeFile(`${javaDirectory}/MainActivity.java`, `package com.arkwebsites.clientcenter;
+await writeFile(`${javaDirectory}/MainActivity.java`, `package com.arkwebsites.app;
 
 import android.os.Bundle;
 import androidx.core.view.WindowCompat;

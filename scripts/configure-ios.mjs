@@ -55,7 +55,7 @@ function addPlistUrlScheme(plist, scheme) {
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.arkwebsites.clientcenter</string>
+			<string>com.arkwebsites.app</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>${escapeXml(scheme)}</string>

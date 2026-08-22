@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 
-const EXPECTED_APP_ID = "com.arkwebsites.clientcenter";
+const EXPECTED_APP_ID = "com.arkwebsites.app";
 const root = process.cwd();
 const npxCommand = process.platform === "win32" ? "npx.cmd" : "npx";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";

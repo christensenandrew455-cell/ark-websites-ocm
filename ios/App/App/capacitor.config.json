@@ -1,5 +1,5 @@
 {
-	"appId": "com.arkwebsites.clientcenter",
+	"appId": "com.arkwebsites.app",
 	"appName": "ARK Client Center",
 	"webDir": "mobile-shell",
 	"appendUserAgent": " ARKClientCenter/1.4",

@@ -1,4 +1,4 @@
-package com.arkwebsites.clientcenter;
+package com.arkwebsites.app;
 
 import android.Manifest;
 import android.content.Intent;

@@ -9,7 +9,7 @@ Two account-level configurations are still required before push notifications an
 1. Open the Firebase project used by ARK Client Center.
 2. Add an Android app with package name:
 
-   `com.arkwebsites.clientcenter`
+   `com.arkwebsites.app`
 
 3. Download the generated `google-services.json` file.
 4. Open the downloaded file and copy the complete JSON contents.

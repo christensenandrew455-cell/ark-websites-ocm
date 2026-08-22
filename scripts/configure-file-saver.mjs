@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const javaDirectory = "android/app/src/main/java/com/arkwebsites/clientcenter";
+const javaDirectory = "android/app/src/main/java/com/arkwebsites/app";
 const mainActivityPath = `${javaDirectory}/MainActivity.java`;
 const pluginSourcePath = "mobile-shell/android/FileSaverPlugin.java";
 const pluginTargetPath = `${javaDirectory}/FileSaverPlugin.java`;
