@@ -3,12 +3,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
+import { appleIapAvailable, manageAppleSubscriptions } from "../lib/appleIapClient";
 
 const DEFAULT_STATUS = {
   phase: "current",
   restricted: false,
   showNotice: false,
   serviceAccess: "full",
+  billingProvider: "stripe",
   failureAt: "",
   retryAt: "",
   recoveryEndsAt: "",
@@ -78,6 +80,13 @@ export function BillingStatusProvider({ children }) {
     setOpeningBilling(true);
     setError("");
     try {
+      if (status.billingProvider === "apple") {
+        if (appleIapAvailable()) await manageAppleSubscriptions();
+        else window.location.assign("https://apps.apple.com/account/subscriptions");
+        setOpeningBilling(false);
+        return;
+      }
+      if (appleIapAvailable()) throw new Error("Billing changes for this existing account are not available inside the iPhone app.");
       const token = await user.getIdToken(true);
       const response = await fetch("/api/billing/create-portal-session", {
         method: "POST",
@@ -90,7 +99,7 @@ export function BillingStatusProvider({ children }) {
       setError(ownerFacingError(billingError));
       setOpeningBilling(false);
     }
-  }, [openingBilling, user]);
+  }, [openingBilling, status.billingProvider, user]);
 
   const value = useMemo(() => ({
     status,

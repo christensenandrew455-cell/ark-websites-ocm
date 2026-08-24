@@ -7,10 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import FirstVisitGuides from "./GuidedOnboarding";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
+import AppleUsagePurchaseNotice from "./AppleUsagePurchaseNotice";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
 import ReferralCenter from "./ReferralCenter";
 import { billingPaymentDeadline } from "../lib/billingNotice";
+import { appleIapAvailable } from "../lib/appleIapClient";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
 const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/docs"];
@@ -76,13 +78,21 @@ function BillingRefreshProblem({ refresh, loading, compact = false }) {
 
 function PaymentNotice() {
   const { status, error, refresh, loading, openBillingPortal, openingBilling } = useBillingStatus();
+  const [nativeIos, setNativeIos] = useState(false);
+  useEffect(() => { setNativeIos(appleIapAvailable()); }, []);
   if (!status.showNotice && !error) return null;
   if (!status.showNotice) return <section className="border-b border-slate-200 bg-slate-100 px-3 py-3"><BillingRefreshProblem refresh={refresh} loading={loading} /></section>;
 
   const restricted = status.restricted;
+  const appleBilling = status.billingProvider === "apple";
+  const stripeManagedOutsideIos = nativeIos && !appleBilling;
   const title = "You need to update your payment method.";
-  const body = "Your receptionist, new leads, and chats are paused. Update the payment method within seven days to keep the account.";
-  const deadlineValue = billingPaymentDeadline(status);
+  const body = appleBilling
+    ? "Your receptionist, new leads, and chats are paused. Manage the subscription with Apple to restore service."
+    : stripeManagedOutsideIos
+      ? "Your receptionist, new leads, and chats are paused. Billing changes for this existing account are not available inside the iPhone app."
+    : "Your receptionist, new leads, and chats are paused. Update the payment method within seven days to keep the account.";
+  const deadlineValue = appleBilling ? "" : billingPaymentDeadline(status);
   const deadline = formatDeadline(deadlineValue);
   const overdue = true;
   const sectionClass = restricted ? "border-b border-red-200 bg-red-50 px-3 py-4" : "border-b border-amber-200 bg-amber-50 px-3 py-4";
@@ -90,7 +100,7 @@ function PaymentNotice() {
   const titleClass = restricted ? "text-red-950" : "text-amber-950";
   const bodyClass = restricted ? "text-red-900" : "text-amber-900";
 
-  return <section className={sectionClass}><div className="mx-auto max-w-6xl"><div className="flex items-start gap-3"><span aria-hidden="true" className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg font-black shadow-sm ${accentClass}`}>!</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-base font-black ${titleClass}`}>{title}</h2>{overdue && <span className="rounded-full bg-red-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Paused</span>}</div><p className={`mt-1 text-xs font-semibold leading-5 ${bodyClass}`}>{body}</p></div></div><div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"><div className="rounded-2xl border border-white/90 bg-white/80 px-4 py-3 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Update before</p>{deadline ? <time dateTime={deadlineValue} className="mt-1 block text-base font-black text-slate-950">{deadline}</time> : <p className="mt-1 text-sm font-black text-slate-700">Checking the exact deadline…</p>}</div><button type="button" onClick={openBillingPortal} disabled={openingBilling} className="grid min-h-12 place-items-center rounded-xl bg-slate-950 px-5 py-3 text-center text-xs font-black text-white shadow-sm disabled:opacity-60">{openingBilling ? "Opening Stripe…" : "Update Payment Method"}</button></div>{error && <div className="mt-2"><BillingRefreshProblem refresh={refresh} loading={loading} compact /></div>}</div></section>;
+  return <section className={sectionClass}><div className="mx-auto max-w-6xl"><div className="flex items-start gap-3"><span aria-hidden="true" className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg font-black shadow-sm ${accentClass}`}>!</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className={`text-base font-black ${titleClass}`}>{title}</h2>{overdue && <span className="rounded-full bg-red-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-white">Paused</span>}</div><p className={`mt-1 text-xs font-semibold leading-5 ${bodyClass}`}>{body}</p></div></div><div className={`mt-3 grid gap-2 ${stripeManagedOutsideIos ? "" : "sm:grid-cols-[minmax(0,1fr)_auto]"}`}><div className="rounded-2xl border border-white/90 bg-white/80 px-4 py-3 shadow-sm"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{appleBilling ? "Billing recovery" : "Update before"}</p>{deadline ? <time dateTime={deadlineValue} className="mt-1 block text-base font-black text-slate-950">{deadline}</time> : <p className="mt-1 text-sm font-black text-slate-700">{appleBilling ? "Managed by Apple" : "Checking the exact deadline…"}</p>}</div>{!stripeManagedOutsideIos && <button type="button" onClick={openBillingPortal} disabled={openingBilling} className="grid min-h-12 place-items-center rounded-xl bg-slate-950 px-5 py-3 text-center text-xs font-black text-white shadow-sm disabled:opacity-60">{openingBilling ? appleBilling ? "Opening Apple…" : "Opening Stripe…" : appleBilling ? "Manage Apple Subscription" : "Update Payment Method"}</button>}</div>{error && <div className="mt-2"><BillingRefreshProblem refresh={refresh} loading={loading} compact /></div>}</div></section>;
 }
 
 function WorkspaceHeader({ profile, pathname, logout }) {
@@ -120,7 +130,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <FirstVisitGuides />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><AppleUsagePurchaseNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <FirstVisitGuides />}</>;
 }
 
 export default function AppShell({ children }) {

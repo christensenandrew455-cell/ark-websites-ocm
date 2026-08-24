@@ -13,6 +13,7 @@ import {
 import { PAYMENT_RETRY_INTERVAL_MS, registerPaymentFailure, resolvePayment } from "./billingDelinquency.js";
 import { ensureStripeUsagePrice } from "./stripeUsageBilling.js";
 import { activeReferralSavings } from "./referrals.js";
+import { appleUsageProduct } from "./appleIapCatalog.js";
 
 const PROCESSING_LOCK_MS = 5 * 60 * 1000;
 const ACCEPTED_LEAD_USAGE_CORRECTION_VERSION = 1;
@@ -35,7 +36,9 @@ export function usageEventDocumentId(clientId, type, sourceId) {
 }
 function correctedChargeStatus(status, balancePoints) {
   const current = text(status);
-  if (["processing", "retry_pending", "declined"].includes(current)) return current;
+  if (["processing", "retry_pending", "declined", "purchase_required"].includes(current)) {
+    return balancePoints >= USAGE_CHARGE_THRESHOLD_POINTS ? current : "idle";
+  }
   return balancePoints >= USAGE_CHARGE_THRESHOLD_POINTS ? "pending" : "idle";
 }
 async function requireAcceptedLeadLedger(ledgerRef, sourceId) {
@@ -82,13 +85,18 @@ export async function recordUsage({ db, stripe = null, clientId, type, sourceId,
     const smsPoints = smsUsage.addedPoints;
     const nextSmsRemainder = smsUsage.remainderParts;
     const addedPoints = whole(points) + smsPoints;
-    const nextBalance = whole(account.usageBalancePoints) + addedPoints;
+    const appleAccount = text(account.billingProvider) === "apple";
+    const availableAppleCredit = appleAccount ? whole(account.appleUsageCreditPoints) : 0;
+    const appliedAppleCredit = Math.min(availableAppleCredit, addedPoints);
+    const nextAppleCredit = availableAppleCredit - appliedAppleCredit;
+    const nextBalance = whole(account.usageBalancePoints) + addedPoints - appliedAppleCredit;
     const currentChargeStatus = text(account.usageChargeStatus);
-    const chargeAlreadyClaimed = ["processing", "retry_pending", "declined"].includes(currentChargeStatus);
+    const chargeAlreadyClaimed = ["processing", "retry_pending", "declined", "purchase_required"].includes(currentChargeStatus);
     transaction.create(usageEventRef, {
       type: safeType,
       sourceIdHash: createHash("sha256").update(safeSourceId).digest("hex"),
       points: addedPoints,
+      appleCreditPointsApplied: appliedAppleCredit,
       smsParts: whole(smsParts),
       occurredAt: Timestamp.fromMillis(Math.max(1, Number(occurredAt) || Date.now())),
       createdAt: FieldValue.serverTimestamp(),
@@ -96,11 +104,14 @@ export async function recordUsage({ db, stripe = null, clientId, type, sourceId,
     if (ledgerRef) transaction.set(ledgerRef, { usageRecorded: true, usageRecordedAt: FieldValue.serverTimestamp() }, { merge: true });
     transaction.set(accountRef, {
       usageBalancePoints: nextBalance,
+      ...(appleAccount ? { appleUsageCreditPoints: nextAppleCredit } : {}),
       usageSmsPartRemainder: nextSmsRemainder,
-      usageChargeStatus: nextBalance >= USAGE_CHARGE_THRESHOLD_POINTS && !chargeAlreadyClaimed ? "pending" : currentChargeStatus || "idle",
+      usageChargeStatus: nextBalance >= USAGE_CHARGE_THRESHOLD_POINTS && !chargeAlreadyClaimed
+        ? appleAccount ? "purchase_required" : "pending"
+        : currentChargeStatus || "idle",
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    return { duplicate: false, addedPoints, smsPoints, balancePoints: nextBalance, smsPartRemainder: nextSmsRemainder };
+    return { duplicate: false, addedPoints, smsPoints, appliedAppleCredit, balancePoints: nextBalance, smsPartRemainder: nextSmsRemainder };
   });
 
   if (result.balancePoints >= USAGE_CHARGE_THRESHOLD_POINTS) {
@@ -417,6 +428,24 @@ async function markPaid(db, claim, paymentIntent) {
 
 export async function settleUsageThreshold({ db, stripe = null, clientId }) {
   await reconcileNonAcceptedLeadUsage({ db, clientId: text(clientId), force: true });
+  const accountRef = db.collection("accounts").doc(text(clientId));
+  const accountSnapshot = await accountRef.get();
+  if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
+  if (text(accountSnapshot.data().billingProvider) === "apple") {
+    const account = accountSnapshot.data();
+    const balancePoints = whole(account.usageBalancePoints);
+    if (balancePoints < USAGE_CHARGE_THRESHOLD_POINTS) return { status: "not_due", balancePoints };
+    const referral = await activeReferralSavings({ db, clientId: text(clientId) });
+    const purchase = appleUsageProduct(referral.percent);
+    await accountRef.set({
+      usageChargeStatus: "purchase_required",
+      usageChargeAppleProductId: purchase.productId,
+      usageChargeAmountCents: purchase.amountCents,
+      usageChargeReferralDiscountPercent: purchase.discountPercent,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { status: "purchase_required", balancePoints, ...purchase };
+  }
   const client = stripeClient(stripe);
   if (!client) return { status: "pending", reason: "stripe_not_configured" };
   const usagePrice = await ensureStripeUsagePrice({ stripe: client });

@@ -5,10 +5,10 @@ The owner signup flow is:
 1. Main information
 2. Email and phone verification
 3. Business information
-4. In-app Stripe payment setup and $50 monthly subscription
+4. Apple In-App Purchase on iOS or Stripe elsewhere, with a $50 monthly subscription
 5. Sign-in page
 
-Step 1 creates only a Firebase Authentication user and a server-only signup-verification request under `system/global/signupVerificationRequests`; it does not create a Firestore account or temporary account. After both the email and phone are verified, the server atomically deletes that request and creates one verified `pendingOwnerSignups/{clientId}` temporary record with a hard one-hour expiration. After Stripe confirms the payment method and starts the base subscription, the server creates `accounts/{clientId}`, deletes the temporary record, signs the browser out, and sends the owner to `/login`.
+Step 1 creates only a Firebase Authentication user and a server-only signup-verification request under `system/global/signupVerificationRequests`; it does not create a Firestore account or temporary account. After both the email and phone are verified, the server atomically deletes that request and creates one verified `pendingOwnerSignups/{clientId}` temporary record with a hard one-hour expiration. After Apple or Stripe confirms the base subscription, the server creates `accounts/{clientId}`, deletes the temporary record, signs the browser out, and sends the owner to `/login`.
 
 Firestore has exactly three top-level collections:
 
@@ -26,7 +26,11 @@ Enable **Firebase Authentication → Sign-in method → Email/Password**. Config
 
 Paste the complete private key. Multiline text and a value containing literal `\n` characters are both supported.
 
-## Stripe
+## Apple In-App Purchase
+
+iOS uses StoreKit 2 for the $50 monthly subscription and user-confirmed 20-credit usage purchases. Complete every App Store Connect product, server-notification, environment-variable, sandbox-test, and submission step in [APPLE_IAP_SETUP.md](APPLE_IAP_SETUP.md). Stripe remains enabled on web and Android and must not be presented by the iOS runtime.
+
+## Stripe (web and Android)
 
 Stripe signup payment requires these two matching keys:
 
@@ -76,7 +80,7 @@ Publish the repository rules:
 firebase deploy --only firestore:rules
 ```
 
-Configure `CRON_SECRET` for the scheduled routes. The daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. The workflow job also deletes expired signup-verification requests, expired verified temporary signups, and expired unverified legacy accounts.
+Configure `CRON_SECRET` for the scheduled routes. For Stripe-billed accounts, the daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. Apple controls Apple subscription retries and notifies the dedicated version 2 endpoint; ARK does not auto-delete an Apple-billed account while Apple may still recover that subscription. The workflow job also deletes expired signup-verification requests, expired verified temporary signups, and expired unverified legacy accounts.
 
 The pre-account verification request expires exactly one hour after main information is submitted. Once verification succeeds, the verified temporary signup gets its own one-hour window for business information and payment. Every protected signup route rejects and deletes an expired record when it is encountered, and the ARK Operations workflow performs a permanent cleanup sweep every 15 minutes. That sweep deletes the Firebase Authentication user, the applicable server-only request or temporary record, and any current-mode Stripe Customer. A valid unexpired login resumes verification, business information, or payment; it never opens the regular app shell.
 
@@ -85,8 +89,8 @@ The pre-account verification request expires exactly one hour after main informa
 1. Main information creates a Firebase Auth user and a server-only verification request. It creates neither `accounts/{clientId}` nor `pendingOwnerSignups/{clientId}`.
 2. Separate four-digit email and phone codes are sent and hashed in the verification request. Both must be verified before the server creates the temporary signup and opens business setup.
 3. Business settings are validated and saved into the verified temporary record.
-4. Stripe confirms an off-session SetupIntent.
-5. The server validates the SetupIntent Customer and metadata, starts one base subscription, promotes the verified temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
+4. The iOS app confirms an Apple subscription through StoreKit; web and Android confirm an off-session Stripe SetupIntent.
+5. The server verifies Apple’s signed transaction or the Stripe SetupIntent, starts one base subscription, promotes the verified temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
 6. The browser signs out and opens the regular sign-in page. After the owner signs in, Arc Admin shows the account under **Needs a Number**, where the private APK assigns the receptionist number.
 
 If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake and receptionist calls stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.

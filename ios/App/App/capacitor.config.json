@@ -37,6 +37,7 @@
 		"ContactsPlugin",
 		"AppPlugin",
 		"PushNotificationsPlugin",
-		"CapacitorCalendarPlugin"
+		"CapacitorCalendarPlugin",
+		"AppleIAPPlugin"
 	]
 }

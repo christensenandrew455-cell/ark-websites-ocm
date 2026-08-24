@@ -78,6 +78,7 @@ function configureBundleIdentifier() {
   requireFile(capacitorConfigPath);
   const capacitorConfig = JSON.parse(fs.readFileSync(capacitorConfigPath, "utf8"));
   capacitorConfig.appId = iosBundleId;
+  capacitorConfig.packageClassList = [...new Set([...(capacitorConfig.packageClassList || []), "AppleIAPPlugin"])];
   fs.writeFileSync(capacitorConfigPath, `${JSON.stringify(capacitorConfig, null, "\t")}\n`);
 
   requireFile(xcodeProjectPath);
@@ -90,6 +91,11 @@ function configureBundleIdentifier() {
     bundleIdentifierPattern,
     `PRODUCT_BUNDLE_IDENTIFIER = ${iosBundleId};`,
   );
+  if (!xcodeProject.includes("com.apple.InAppPurchase")) {
+    const capabilityAnchor = "\t\t\t\t\t\tProvisioningStyle = Automatic;";
+    if (!xcodeProject.includes(capabilityAnchor)) throw new Error("The Xcode project target attributes have an unexpected format.");
+    xcodeProject = xcodeProject.replace(capabilityAnchor, `${capabilityAnchor}\n\t\t\t\t\t\tSystemCapabilities = {\n\t\t\t\t\t\t\tcom.apple.InAppPurchase = { enabled = 1; };\n\t\t\t\t\t\t};`);
+  }
   fs.writeFileSync(xcodeProjectPath, xcodeProject);
 }
 
@@ -110,6 +116,10 @@ function vendorNativePluginSources() {
     {
       source: path.join(projectRoot, "node_modules", "@ebarooni", "capacitor-calendar", "ios", "Plugin"),
       destination: path.join(swiftSourcesRoot, "CapacitorCalendarPlugin"),
+    },
+    {
+      source: path.join(projectRoot, "native-plugins", "ios", "AppleIAPPlugin"),
+      destination: path.join(swiftSourcesRoot, "AppleIAPPlugin"),
     },
   ];
 
@@ -169,12 +179,20 @@ let package = Package(
             path: "Sources/CapacitorCalendarPlugin"
         ),
         .target(
+            name: "AppleIAPPlugin",
+            dependencies: [
+                .product(name: "Capacitor", package: "capacitor-swift-pm")
+            ],
+            path: "Sources/AppleIAPPlugin"
+        ),
+        .target(
             name: "CapApp-SPM",
             dependencies: [
                 "AppPlugin",
                 "PushNotificationsPlugin",
                 "ContactsPlugin",
-                "CapacitorCalendarPlugin"
+                "CapacitorCalendarPlugin",
+                "AppleIAPPlugin"
             ],
             path: "Sources/CapAppSPM"
         )
@@ -241,5 +259,5 @@ if (fs.existsSync("/usr/bin/plutil")) {
 }
 
 console.log(
-  `Configured the self-contained iOS project as ${iosBundleId} with contacts, calendar, and push-notification support.`,
+  `Configured the self-contained iOS project as ${iosBundleId} with contacts, calendar, push notifications, and StoreKit purchases.`,
 );

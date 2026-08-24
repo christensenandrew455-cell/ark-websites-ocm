@@ -383,9 +383,15 @@ export default function ReviewClientsNative() {
         body: JSON.stringify({ leadId: row.id }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Could not accept this estimate request.");
+      if (!response.ok) {
+        if (result.code === "APPLE_USAGE_PURCHASE_REQUIRED") window.dispatchEvent(new Event("ark:billing-refresh"));
+        throw new Error(result.error || "Could not accept this estimate request.");
+      }
       if (result.duplicate) {
         setNotice(`${row.Name || "Lead"} was already accepted. No additional charge was added.`);
+      } else if (result.paymentStatus === "purchase_required") {
+        setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage. Confirm the next usage interval with Apple.`);
+        window.dispatchEvent(new Event("ark:billing-refresh"));
       } else if (result.paymentStatus === "declined") {
         setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage, but the payment method needs attention.`);
       } else if (result.billingPending) {
