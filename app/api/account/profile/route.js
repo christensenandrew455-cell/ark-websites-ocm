@@ -56,6 +56,7 @@ function ownerProfile({ account, decodedToken, clientId }) {
     receptionistPhoneNormalized: text(account.receptionistPhoneNormalized),
     numberAssignmentStatus: text(account.numberAssignmentStatus || (receptionistPhone ? "assigned" : "needed")),
     paymentSetupStatus: text(account.paymentSetupStatus),
+    billingProvider: text(account.billingProvider || (account.appleOriginalTransactionId ? "apple" : "stripe")),
     paymentMethodLabel: text(account.paymentMethodLabel),
     billingPastDue: account.billingPastDue === true,
     identityVerificationRequired: account.identityVerificationRequired === true || decodedToken.identityVerificationRequired === true,

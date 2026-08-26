@@ -1,112 +1,84 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
-import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
-import { ACCOUNT_TYPES } from "./accountTypes";
+import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles.js";
+import { ACCOUNT_TYPES } from "./accountTypes.js";
+import { APPLE_IAP_BASE_PRODUCT_ID } from "./appleIapCatalog.js";
+import { sameAppleAccountToken } from "./appleIapRequest.js";
 import {
   accountBusinessRef,
   accountCollection,
   accountCustomizationRef,
   accountRef as regularAccountRef,
+  systemCollection,
 } from "./firestoreLayout.js";
 import {
-  deletePendingOwnerSignup,
   pendingOwnerSignupAccount,
   pendingOwnerSignupBusiness,
   pendingOwnerSignupExpired,
   pendingOwnerSignupLegal,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
-} from "./pendingOwnerSignup";
-import { pendingReferralFields, qualifyReferralAfterActivation } from "./referrals";
-import { ensureCustomerBillingSubscription } from "./stripeUsageBilling";
+} from "./pendingOwnerSignup.js";
+import { pendingReferralFields, qualifyReferralAfterActivation } from "./referrals.js";
 
 function text(value) { return String(value || "").trim(); }
-function paymentMethodId(value) { return typeof value === "string" ? value : text(value?.id); }
-function customerId(value) { return typeof value === "string" ? value : text(value?.id); }
-function savedPaymentMethodLabel(paymentMethod) {
-  if (!paymentMethod?.card) return "Payment method saved in Stripe";
-  const brand = text(paymentMethod.card.brand || "Card");
-  return `${brand.charAt(0).toUpperCase()}${brand.slice(1)} ending in ${text(paymentMethod.card.last4)}`;
-}
-
-function completedResult(account, setupIntentId) {
+function completedResult(account, transactionId) {
   return {
     status: "succeeded",
     clientId: text(account.clientId),
-    setupIntentId,
-    paymentMethodId: text(account.stripePaymentMethodId),
-    paymentMethodLabel: text(account.paymentMethodLabel),
+    transactionId,
+    paymentMethodLabel: text(account.paymentMethodLabel || "Apple In-App Purchase"),
     nextPath: "/login",
   };
 }
 
-export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIntentId }) {
+export async function completeOwnerApplePaymentSetup({ db, auth, uid, transaction }) {
   const safeUid = text(uid);
-  const safeSetupIntentId = text(setupIntentId);
-  if (!safeUid || !safeSetupIntentId) throw new Error("PAYMENT_SETUP_MISSING");
+  const transactionId = text(transaction?.transactionId);
+  const originalTransactionId = text(transaction?.originalTransactionId);
+  const expiresAt = Number(transaction?.expiresDate || 0);
+  if (!safeUid || !transactionId || !originalTransactionId) throw new Error("APPLE_PAYMENT_SETUP_MISSING");
+  if (text(transaction.productId) !== APPLE_IAP_BASE_PRODUCT_ID
+    || text(transaction.type) !== "Auto-Renewable Subscription"
+    || transaction.revocationDate
+    || expiresAt <= Date.now()) throw new Error("APPLE_SUBSCRIPTION_INACTIVE");
 
   const existingAccounts = await accountCollection(db).where("uid", "==", safeUid).limit(1).get();
   if (!existingAccounts.empty) {
     const existingAccount = existingAccounts.docs[0].data();
-    if (isStandardRole(existingAccount.role) && existingAccount.paymentSetupStatus === "complete" && text(existingAccount.stripeSetupIntentId) === safeSetupIntentId) {
-      return completedResult(existingAccount, safeSetupIntentId);
+    if (isStandardRole(existingAccount.role)
+      && existingAccount.paymentSetupStatus === "complete"
+      && existingAccount.billingProvider === "apple"
+      && (text(existingAccount.appleOriginalTransactionId) === originalTransactionId
+        || text(existingAccount.appleSubscriptionTransactionId) === transactionId)) {
+      return completedResult(existingAccount, transactionId);
     }
-    throw new Error("PAYMENT_SETUP_FORBIDDEN");
+    throw new Error("APPLE_PAYMENT_SETUP_FORBIDDEN");
   }
 
   const pending = await readPendingOwnerSignup({ db, uid: safeUid, allowExpired: true });
-  if (!pending) throw new Error("PAYMENT_SETUP_EXPIRED");
-  if (pendingOwnerSignupExpired(pending.data)) {
-    await deletePendingOwnerSignup({ db, auth, uid: safeUid, pending });
-    throw new Error("PAYMENT_SETUP_EXPIRED");
-  }
+  if (!pending || pendingOwnerSignupExpired(pending.data)) throw new Error("APPLE_PAYMENT_SETUP_EXPIRED");
   const temporary = pending.data;
   const temporaryAccount = pendingOwnerSignupAccount(temporary);
   const business = pendingOwnerSignupBusiness(temporary);
   const legal = pendingOwnerSignupLegal(temporary);
   const payment = temporary.payment || {};
   const clientId = text(temporary.clientId);
+  if (!pendingOwnerSignupVerified(temporary)
+    || text(temporary.stage) !== "pending_payment"
+    || !clientId
+    || !sameAppleAccountToken(payment.appleAppAccountToken, transaction.appAccountToken)) {
+    throw new Error("APPLE_PAYMENT_SETUP_FORBIDDEN");
+  }
+
   const accountRef = regularAccountRef(db, clientId);
   const businessRef = accountBusinessRef(db, clientId);
   const customizationRef = accountCustomizationRef(db, clientId);
-  const storedCustomerId = text(payment.stripeCustomerId);
-  if (!pendingOwnerSignupVerified(temporary) || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
-  if (text(payment.stripeSetupIntentId) !== safeSetupIntentId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
-
-  const setupIntent = await stripe.setupIntents.retrieve(safeSetupIntentId, { expand: ["payment_method"] });
-  if (setupIntent.status !== "succeeded") throw new Error("PAYMENT_SETUP_INCOMPLETE");
-  if (customerId(setupIntent.customer) !== storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
-  if (text(setupIntent.metadata?.uid) !== safeUid || text(setupIntent.metadata?.clientId) !== clientId || text(setupIntent.metadata?.purpose) !== "ark_onboarding_payment_method") throw new Error("PAYMENT_SETUP_FORBIDDEN");
-
-  const savedPaymentMethodId = paymentMethodId(setupIntent.payment_method);
-  if (!savedPaymentMethodId) throw new Error("PAYMENT_METHOD_MISSING");
-  const paymentMethod = typeof setupIntent.payment_method === "string" ? await stripe.paymentMethods.retrieve(savedPaymentMethodId) : setupIntent.payment_method;
-  const paymentMethodLabel = savedPaymentMethodLabel(paymentMethod);
+  const transactionRef = systemCollection(db, "appleTransactions").doc(transactionId);
   const businessName = text(temporaryAccount.businessName || business.businessName || clientId);
   const ownerName = text(temporaryAccount.ownerName || business.ownerName);
   const accountEmail = text(temporaryAccount.accountEmail || business.businessEmail).toLowerCase();
   const accountPhone = text(temporaryAccount.accountPhone || business.businessPhone);
-
-  await stripe.customers.update(storedCustomerId, {
-    email: accountEmail,
-    name: ownerName,
-    phone: accountPhone,
-    invoice_settings: { default_payment_method: savedPaymentMethodId },
-    metadata: { uid: safeUid, clientId, businessName, accountType: "owner", accountStatus: "active" },
-  });
-  const subscription = await ensureCustomerBillingSubscription({
-    stripe,
-    db,
-    clientId,
-    customerId: storedCustomerId,
-    paymentMethodId: savedPaymentMethodId,
-    businessName,
-    uid: safeUid,
-    subscriptionIdempotencyKey: `ark-base-subscription-${safeUid}`,
-    persist: false,
-    createIfMissing: true,
-  });
-
   const now = FieldValue.serverTimestamp();
   const referralFields = pendingReferralFields(temporaryAccount.referral || temporary.referral);
   const businessProfile = {
@@ -134,13 +106,15 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     accountPhone,
     businessSetupComplete: true,
     paymentSetupStatus: "complete",
-    billingProvider: "stripe",
-    stripeCustomerId: storedCustomerId,
-    stripeSetupIntentId: safeSetupIntentId,
-    stripePaymentMethodId: savedPaymentMethodId,
-    stripeSubscriptionId: subscription.id,
-    stripeSubscriptionStatus: subscription.status,
-    paymentMethodLabel,
+    billingProvider: "apple",
+    appleAppAccountToken: text(payment.appleAppAccountToken).toLowerCase(),
+    appleSubscriptionProductId: APPLE_IAP_BASE_PRODUCT_ID,
+    appleOriginalTransactionId: originalTransactionId,
+    appleSubscriptionTransactionId: transactionId,
+    appleSubscriptionStatus: "active",
+    appleSubscriptionEnvironment: text(transaction.environment),
+    appleSubscriptionExpiresAt: Timestamp.fromMillis(expiresAt),
+    paymentMethodLabel: "Apple In-App Purchase",
     identityVerificationVerified: true,
     usageBalancePoints: 0,
     usageSmsPartRemainder: 0,
@@ -188,6 +162,19 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   batch.create(accountRef, accountData);
   batch.create(businessRef, { ...businessProfile, createdAt: now, updatedAt: now });
   batch.create(customizationRef, customization);
+  batch.create(transactionRef, {
+    provider: "apple",
+    kind: "subscription",
+    clientId,
+    uid: safeUid,
+    productId: APPLE_IAP_BASE_PRODUCT_ID,
+    originalTransactionId,
+    appAccountToken: text(payment.appleAppAccountToken).toLowerCase(),
+    environment: text(transaction.environment),
+    purchaseDate: Number(transaction.purchaseDate || 0) ? Timestamp.fromMillis(Number(transaction.purchaseDate)) : now,
+    expiresAt: Timestamp.fromMillis(expiresAt),
+    createdAt: now,
+  });
   batch.delete(pending.ref);
   await batch.commit();
 
@@ -217,19 +204,12 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     privacyVersion: text(legal.privacyVersion),
   });
   await sendAdminEvent({
-    id: `account-activated-${clientId}-${safeSetupIntentId}`,
+    id: `account-activated-${clientId}-${transactionId}`,
     type: "account.activated",
     clientId,
     businessName,
     summary: "Customer finished signup and needs a receptionist number",
-    metadata: { numberAssignmentStatus: "needed" },
+    metadata: { numberAssignmentStatus: "needed", billingProvider: "apple" },
   });
-
-  return {
-    status: "succeeded",
-    clientId,
-    paymentMethodId: savedPaymentMethodId,
-    paymentMethodLabel,
-    nextPath: "/login",
-  };
+  return completedResult(accountData, transactionId);
 }

@@ -41,12 +41,12 @@ const sections = [
   {
     id: "account-setup",
     title: "Creating an account",
-    summary: "Account setup verifies the owner's contact information before business information and payment, then creates the regular account after Stripe succeeds.",
+    summary: "Account setup verifies the owner's contact information before business information and payment, then creates the regular account after Apple or Stripe succeeds.",
     points: [
       "Step 1 collects the main account information and password.",
       "Step 2 verifies both the email address and phone number with separate four-digit codes.",
       "Step 3 collects the business and AI receptionist information.",
-      "Step 4 shows Stripe's secure Payment Element, saves the payment method, and starts the $50 monthly subscription.",
+      "Step 4 uses Apple In-App Purchase on iPhone or Stripe's secure Payment Element elsewhere and starts the $50 monthly subscription.",
       "After payment details succeed, ARK moves the temporary signup into a regular account.",
     ],
     links: ["Payment Terms", "Privacy Policy"],
@@ -58,7 +58,7 @@ const sections = [
     points: [
       "The business account is $50 per monthly billing period.",
       "Contacted You is free to review. Accepting a lead adds $2 to usage; declining it adds nothing. Deleting an accepted client later does not reverse the accepted-lead usage.",
-      "Usage is charged in exact $20 intervals. If a two-point lead takes the balance from 19 to 21, ARK charges $20 and starts the next interval at 1.",
+      "Usage uses 20-point intervals. Apple-billed accounts confirm 20 usage credits in Apple; Stripe-billed accounts authorize the matching threshold charge. A balance of 19 followed by a two-point lead leaves one point after the interval is paid.",
       "Each qualified referral saves 10% on usage charges for 30 days after the referred paid account activates, up to 50% off.",
       "Settings → Payment shows the rolling usage balance out of $20, the current referral percentage, the payment method, and the last successful payment.",
     ],
@@ -112,7 +112,7 @@ const sections = [
       MESSAGES_AVAILABLE
         ? "Customization contains Dark Mode, the Messages control, AI timing, retention settings, and Download Client Data."
         : "Customization contains Dark Mode, AI timing, retention settings, and Download Client Data.",
-      "Payment contains the $50 monthly rate, a usage bar out of $20, the saved payment method, Refresh, and Manage Payment Method.",
+      "Payment contains the $50 monthly rate, a usage bar out of $20, the payment provider, Refresh, and the matching Apple or Stripe billing control.",
       "Help & Account contains Docs, AI Chat, Support, Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.",
     ],
     links: ["Help & Account", "AI Chat", "Support", "Payment Enforcement", "Privacy Policy"],
@@ -124,7 +124,7 @@ const sections = [
       ? "ARK processes the information needed to provide receptionist, lead, account, billing, and messaging features."
       : "ARK processes the information needed to provide receptionist, lead, account, and billing features.",
     points: [
-      "Stripe controls the sensitive fields in the in-app Payment Element; ARK stores only Stripe identifiers and a non-sensitive payment-method label.",
+      "Apple or Stripe controls sensitive payment details; ARK stores only the provider identifiers and billing state needed to verify purchases and operate the account.",
       ...(MESSAGES_AVAILABLE ? ["Messaging can process business and customer phone numbers, message content, conversation identifiers, delivery status, and provider identifiers."] : []),
       "Owners can download current account data from Customization and use Settings or Support for access, correction, or deletion requests.",
     ],

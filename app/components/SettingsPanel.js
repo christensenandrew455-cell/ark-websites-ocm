@@ -12,8 +12,9 @@ import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistReque
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
+import { appleIapAvailable, manageAppleSubscriptions } from "../lib/appleIapClient";
 
-const DEFAULT_SETTINGS = { paymentMethodLabel: "", stripeCustomerId: "" };
+const DEFAULT_SETTINGS = { billingProvider: "stripe", paymentMethodLabel: "", stripeCustomerId: "" };
 const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
 const ACCOUNT_RESOURCE_CLASS = "min-h-28 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
 const SETTINGS_BLOCKS = [
@@ -58,6 +59,7 @@ export default function SettingsPanel() {
   const { user, profile, isOwner, updateProfile, logout } = useAuth();
   const clientId = profile?.clientId || "";
   const [activeSection, setActiveSection] = useState("");
+  const [nativeIos, setNativeIos] = useState(false);
   const [accountSettings, setAccountSettings] = useState(DEFAULT_SETTINGS);
   const [receptionist, setReceptionist] = useState(null);
   const [savedReceptionist, setSavedReceptionist] = useState(null);
@@ -86,6 +88,7 @@ export default function SettingsPanel() {
   useEffect(() => {
     const requestedSection = new URLSearchParams(window.location.search).get("section");
     if (SETTINGS_BLOCKS.some((block) => block.key === requestedSection)) setActiveSection(requestedSection);
+    setNativeIos(appleIapAvailable());
   }, []);
 
   useEffect(() => {
@@ -107,11 +110,12 @@ export default function SettingsPanel() {
     if (!clientId) { setError(ownerFacingError()); setIsLoading(false); return undefined; }
     setAccountSettings({
       ...DEFAULT_SETTINGS,
+      billingProvider: profile?.billingProvider || "stripe",
       billingPastDue: profile?.billingPastDue === true,
       paymentMethodLabel: profile?.paymentMethodLabel || "",
     });
     return undefined;
-  }, [clientId, profile?.billingPastDue, profile?.paymentMethodLabel]);
+  }, [clientId, profile?.billingPastDue, profile?.billingProvider, profile?.paymentMethodLabel]);
 
   useEffect(() => {
     if (!user || !clientId) { setIsLoading(false); return undefined; }
@@ -328,6 +332,13 @@ export default function SettingsPanel() {
     if (!user || isOpeningBilling) return;
     setIsOpeningBilling(true); setError("");
     try {
+      if ((profile?.billingProvider || accountSettings.billingProvider) === "apple") {
+        if (appleIapAvailable()) await manageAppleSubscriptions();
+        else window.location.assign("https://apps.apple.com/account/subscriptions");
+        setIsOpeningBilling(false);
+        return;
+      }
+      if (appleIapAvailable()) throw new Error("Billing changes for this existing account are not available inside the iPhone app.");
       const token = await user.getIdToken(true);
       const response = await fetch("/api/billing/create-portal-session", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await response.json().catch(() => ({}));
@@ -371,7 +382,11 @@ export default function SettingsPanel() {
     } catch (deleteError) { setError(ownerFacingError(deleteError)); setIsDeleting(false); }
   }
 
-  const paymentLabel = accountSettings.paymentMethodLabel || "No payment method label is available yet.";
+  const appleBilling = (profile?.billingProvider || accountSettings.billingProvider) === "apple";
+  const stripeManagedOutsideIos = nativeIos && !appleBilling;
+  const paymentLabel = stripeManagedOutsideIos
+    ? "Existing account billing"
+    : accountSettings.paymentMethodLabel || "No payment method label is available yet.";
   const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
 
   function businessSection() {
@@ -396,18 +411,18 @@ export default function SettingsPanel() {
     const activeReferrals = Math.max(0, Number(usageSummary?.activeReferralCount || 0));
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
       <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
-        <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Usage toward next charge</p><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
+        <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">{appleBilling ? "Usage toward next Apple purchase" : "Usage toward next charge"}</p><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
         <p className="mt-3 text-3xl font-black">{usageSummary ? `${money(balanceCents)} out of ${money(thresholdCents)}` : "—"}</p>
         <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Usage toward next twenty dollar charge" aria-valuemin={0} aria-valuemax={20} aria-valuenow={Math.min(20, balanceCents / 100)}><div className="h-full rounded-full bg-blue-500 transition-[width]" style={{ width: `${progress}%` }} /></div>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">Accepted lead</p><p className="mt-1 text-2xl font-black text-blue-950">$2</p><p className="mt-1 text-xs font-bold text-blue-700">Declined leads are free</p></div><div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-black text-amber-950">Referral discount</p><p className="mt-1 text-2xl font-black text-amber-950">{referralDiscount}% off</p><p className="mt-1 text-xs font-bold text-amber-800">{activeReferrals ? `${activeReferrals} active referral${activeReferrals === 1 ? "" : "s"} · usage charges` : "No active referral discount"}</p></div></div>
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recurring charge</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div>
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? "Opening Stripe…" : "Manage Payment Method"}</button>
+      {stripeManagedOutsideIos ? <p className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">Billing changes for this existing account are not available inside the iPhone app.</p> : <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? appleBilling ? "Opening Apple…" : "Opening Stripe…" : appleBilling ? "Manage Apple Subscription" : "Manage Payment Method"}</button>}
     </SectionPanel></>;
   }
   function accountSection() {
-    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><AccountResourceLink href="/docs" title="Docs" description="App guide" /><HelpCenter className={ACCOUNT_RESOURCE_CLASS} /><AccountResourceLink href="/messages" title="Support" description="Account or technical help" /><AccountResourceLink href="/terms" title="Terms of Use" description="Service agreement" /><AccountResourceLink href="/privacy" title="Privacy Policy" description="How your data is handled" /></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">This cancels the subscription and permanently deletes the owner account, leads, clients, and conversations. Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
+    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><AccountResourceLink href="/docs" title="Docs" description="App guide" /><HelpCenter className={ACCOUNT_RESOURCE_CLASS} /><AccountResourceLink href="/messages" title="Support" description="Account or technical help" /><AccountResourceLink href="/terms" title="Terms of Use" description="Service agreement" /><AccountResourceLink href="/privacy" title="Privacy Policy" description="How your data is handled" /></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">{appleBilling ? "Cancel the subscription in Apple first. Deleting ARK cannot cancel billing controlled by Apple. This permanently deletes the owner account, leads, clients, and conversations." : "This cancels the Stripe subscription and permanently deletes the owner account, leads, clients, and conversations."} Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
   }
 
   return (

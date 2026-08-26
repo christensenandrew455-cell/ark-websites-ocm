@@ -26,7 +26,7 @@ async function refreshUsagePaymentMethods(db, stripe) {
     const account = document.data();
     const clientId = text(account.clientId);
     const customerId = text(account.stripeCustomerId);
-    if (!clientId || !customerId) continue;
+    if (text(account.billingProvider) === "apple" || !clientId || !customerId) continue;
     try {
       const refreshed = await refreshStoredPaymentMethod({
         stripe,

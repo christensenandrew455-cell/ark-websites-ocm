@@ -10,6 +10,7 @@ import {
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { activeReferralSavings } from "../../../lib/referrals";
 import { reconcileNonAcceptedLeadUsage } from "../../../lib/usageThresholdBilling";
+import { appleUsageProduct } from "../../../lib/appleIapCatalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,9 @@ export async function GET(request) {
     const account = snapshot.data();
     const usageBalancePoints = Math.max(0, Math.floor(Number(account.usageBalancePoints || 0)));
     const referralSavings = await activeReferralSavings({ db, clientId: authorization.clientId });
+    const applePurchase = appleUsageProduct(referralSavings.percent);
     return NextResponse.json({
+      billingProvider: String(account.billingProvider || (account.appleOriginalTransactionId ? "apple" : "stripe")),
       monthlyBaseCents: MONTHLY_BASE_CENTS,
       usageBalancePoints,
       usageBalanceCents: usageBalancePoints * USAGE_POINT_CENTS,
@@ -49,6 +52,10 @@ export async function GET(request) {
       referralDiscountPercent: referralSavings.percent,
       referralDiscountEndsAt: referralSavings.nextExpirationAt ? new Date(referralSavings.nextExpirationAt).toISOString() : "",
       usageChargeStatus: String(account.usageChargeStatus || "idle"),
+      usagePurchaseRequired: String(account.usageChargeStatus || "") === "purchase_required",
+      appleUsageProductId: String(account.usageChargeAppleProductId || applePurchase.productId),
+      appleUsageAmountCents: Number(account.usageChargeAmountCents || applePurchase.amountCents),
+      appleUsageCreditPoints: Math.max(0, Math.floor(Number(account.appleUsageCreditPoints || 0))),
       lastUsagePaymentAt: iso(account.lastUsagePaymentAt),
       lastPaymentAt: iso(account.lastPaymentAt),
     });

@@ -21,8 +21,9 @@ export function computeBillingState(data = {}, now = Date.now()) {
   }
   const failureAt = asMillis(data.billingFailureAt) || now;
   const retryAt = asMillis(data.billingNextRetryAt) || failureAt + PAYMENT_RETRY_INTERVAL_MS;
-  const recoveryEndsAt = asMillis(data.billingDeleteAt) || failureAt + PAYMENT_RECOVERY_WINDOW_MS;
-  const deletionDue = now >= recoveryEndsAt;
+  const appleManagedRecovery = text(data.billingFailureProvider || data.billingProvider) === "apple";
+  const recoveryEndsAt = appleManagedRecovery ? 0 : asMillis(data.billingDeleteAt) || failureAt + PAYMENT_RECOVERY_WINDOW_MS;
+  const deletionDue = !appleManagedRecovery && now >= recoveryEndsAt;
   return {
     phase: deletionDue ? "deletion_due" : "payment_failed",
     restricted: true,
@@ -32,6 +33,7 @@ export function computeBillingState(data = {}, now = Date.now()) {
     retryAt,
     recoveryEndsAt,
     reviewAt: recoveryEndsAt,
+    appleManagedRecovery,
   };
 }
 
@@ -40,12 +42,18 @@ export function publicBillingStatus(data = {}, now = Date.now()) {
   const iso = (value) => value ? new Date(value).toISOString() : "";
   return {
     ...state,
+    billingProvider: text(data.billingProvider || "stripe"),
+    usagePurchaseRequired: text(data.usageChargeStatus) === "purchase_required",
     warning: state.showNotice ? "You need to update your payment method." : "",
     failureAt: iso(state.failureAt),
     retryAt: iso(state.retryAt),
     recoveryEndsAt: iso(state.recoveryEndsAt),
     reviewAt: iso(state.reviewAt),
   };
+}
+
+function paymentEventCollection(db, provider) {
+  return systemCollection(db, provider === "apple" ? "appleBillingEvents" : "stripeWebhookEvents");
 }
 
 export async function findBusinessForStripeCustomer(db, customerId, metadata = {}) {
@@ -83,28 +91,33 @@ async function sendBillingPush({ db, clientId, kind, eventId }) {
   });
 }
 
-export async function registerPaymentFailure({ db, clientId, eventId, invoiceId = "", failedAt = Date.now() }) {
+export async function registerPaymentFailure({ db, clientId, eventId, invoiceId = "", failedAt = Date.now(), provider = "stripe" }) {
   const safeEventId = text(eventId);
-  if (!safeEventId) throw new Error("Stripe event ID is required.");
-  const eventRef = systemCollection(db, "stripeWebhookEvents").doc(safeEventId);
+  const safeProvider = provider === "apple" ? "apple" : "stripe";
+  if (!safeEventId) throw new Error("Payment event ID is required.");
+  const eventRef = paymentEventCollection(db, safeProvider).doc(safeEventId);
   if ((await eventRef.get()).exists) return { duplicate: true };
 
   const businessRef = db.collection("accounts").doc(clientId);
   const businessSnapshot = await businessRef.get();
-  if (!businessSnapshot.exists) throw new Error("Stripe payment event does not match an ARK account.");
+  if (!businessSnapshot.exists) throw new Error("Payment event does not match an ARK account.");
   const business = businessSnapshot.data();
   const continuing = business.billingPastDue === true;
+  const appleManagedRecovery = safeProvider === "apple";
   const incidentFailureAt = continuing ? asMillis(business.billingFailureAt) || failedAt : failedAt;
-  const deleteAt = continuing ? asMillis(business.billingDeleteAt) || incidentFailureAt + PAYMENT_RECOVERY_WINDOW_MS : incidentFailureAt + PAYMENT_RECOVERY_WINDOW_MS;
-  const retryAt = Math.min(deleteAt, Math.max(Date.now(), failedAt) + PAYMENT_RETRY_INTERVAL_MS);
+  const deleteAt = appleManagedRecovery ? 0 : continuing ? asMillis(business.billingDeleteAt) || incidentFailureAt + PAYMENT_RECOVERY_WINDOW_MS : incidentFailureAt + PAYMENT_RECOVERY_WINDOW_MS;
+  const retryAt = appleManagedRecovery
+    ? Math.max(Date.now(), failedAt) + PAYMENT_RETRY_INTERVAL_MS
+    : Math.min(deleteAt, Math.max(Date.now(), failedAt) + PAYMENT_RETRY_INTERVAL_MS);
   const uid = text(business.uid);
   const patch = {
     status: "disabled",
     billingPastDue: true,
     billingFailureAt: Timestamp.fromMillis(incidentFailureAt),
     billingNextRetryAt: Timestamp.fromMillis(retryAt),
-    billingDeleteAt: Timestamp.fromMillis(deleteAt),
+    billingDeleteAt: appleManagedRecovery ? FieldValue.delete() : Timestamp.fromMillis(deleteAt),
     billingInvoiceId: text(invoiceId),
+    billingFailureProvider: safeProvider,
     billingFailureKind: text(invoiceId).startsWith("pi_") || safeEventId.startsWith("usage-payment-failed-") ? "usage" : "subscription",
     billingLastEventId: safeEventId,
     enabled: false,
@@ -116,7 +129,7 @@ export async function registerPaymentFailure({ db, clientId, eventId, invoiceId 
     updatedAt: FieldValue.serverTimestamp(),
   };
   const batch = db.batch();
-  batch.create(eventRef, { type: "payment-failed", clientId, invoiceId: text(invoiceId), createdAt: FieldValue.serverTimestamp() });
+  batch.create(eventRef, { type: "payment-failed", provider: safeProvider, clientId, invoiceId: text(invoiceId), createdAt: FieldValue.serverTimestamp() });
   batch.set(businessRef, patch, { merge: true });
   await batch.commit();
   await setAccountClaimStatus(uid, "disabled").catch((error) => console.error("Unable to refresh disabled account claims", error));
@@ -127,15 +140,16 @@ export async function registerPaymentFailure({ db, clientId, eventId, invoiceId 
     clientId,
     businessName: text(business.businessName || clientId),
     summary: "Payment failed; customer service was paused",
-    metadata: { invoiceId: text(invoiceId), retryAt: new Date(retryAt).toISOString(), deleteAt: new Date(deleteAt).toISOString() },
+    metadata: { provider: safeProvider, invoiceId: text(invoiceId), retryAt: new Date(retryAt).toISOString(), deleteAt: deleteAt ? new Date(deleteAt).toISOString() : "apple-managed" },
   });
   return { duplicate: false, ...computeBillingState(patch) };
 }
 
-export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) {
+export async function resolvePayment({ db, clientId, eventId, invoiceId = "", provider = "stripe" }) {
   const safeEventId = text(eventId);
-  if (!safeEventId) throw new Error("Stripe event ID is required.");
-  const eventRef = systemCollection(db, "stripeWebhookEvents").doc(safeEventId);
+  const safeProvider = provider === "apple" ? "apple" : "stripe";
+  if (!safeEventId) throw new Error("Payment event ID is required.");
+  const eventRef = paymentEventCollection(db, safeProvider).doc(safeEventId);
   if ((await eventRef.get()).exists) return { duplicate: true };
   const businessRef = db.collection("accounts").doc(clientId);
   const businessSnapshot = await businessRef.get();
@@ -149,6 +163,7 @@ export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) 
     billingPastDue: false,
     billingInvoiceId: text(invoiceId || business.billingInvoiceId),
     billingFailureKind: FieldValue.delete(),
+    billingFailureProvider: FieldValue.delete(),
     billingResolvedAt: FieldValue.serverTimestamp(),
     billingFailureAt: FieldValue.delete(),
     billingNextRetryAt: FieldValue.delete(),
@@ -161,7 +176,7 @@ export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) 
     updatedAt: FieldValue.serverTimestamp(),
   };
   const batch = db.batch();
-  batch.create(eventRef, { type: "payment-resolved", clientId, invoiceId: text(invoiceId), createdAt: FieldValue.serverTimestamp() });
+  batch.create(eventRef, { type: "payment-resolved", provider: safeProvider, clientId, invoiceId: text(invoiceId), createdAt: FieldValue.serverTimestamp() });
   batch.set(businessRef, patch, { merge: true });
   await batch.commit();
   await setAccountClaimStatus(uid, "active").catch((error) => console.error("Unable to refresh restored account claims", error));
@@ -172,7 +187,7 @@ export async function resolvePayment({ db, clientId, eventId, invoiceId = "" }) 
     clientId,
     businessName: text(business.businessName || clientId),
     summary: "Payment succeeded; customer service was restored",
-    metadata: { invoiceId: text(invoiceId || business.billingInvoiceId) },
+    metadata: { provider: safeProvider, invoiceId: text(invoiceId || business.billingInvoiceId) },
   });
   return { duplicate: false, phase: "current" };
 }

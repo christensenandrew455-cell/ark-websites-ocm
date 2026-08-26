@@ -82,6 +82,7 @@ if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
     "the Xcode project uses the correct bundle ID",
   );
   check(project.includes("IPHONEOS_DEPLOYMENT_TARGET = 15.0;"), "the Xcode project targets iOS 15 or newer");
+  check(project.includes("com.apple.InAppPurchase = { enabled = 1; };"), "the Xcode project enables in-app purchases");
   check(/CURRENT_PROJECT_VERSION = \d+;/.test(project), "the Xcode project has a numeric build number");
   check(/MARKETING_VERSION = \d+(?:\.\d+){1,2};/.test(project), "the Xcode project has a valid release version");
 
@@ -99,6 +100,14 @@ if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
   }
   check(plist.includes(`<string>${expectedIosBundleId}</string>`), "the iOS URL type uses the iOS bundle ID");
   check(plist.includes("<string>arkclientcenter</string>"), "the iOS signup return URL scheme is registered");
+
+  check(iosConfig.packageClassList?.includes("AppleIAPPlugin"), "the generated iOS configuration registers the Apple purchase bridge");
+  const appleIapPlugin = read("ios/App/CapApp-SPM/Sources/AppleIAPPlugin/AppleIAPPlugin.swift");
+  check(appleIapPlugin.includes("import StoreKit"), "the iOS purchase bridge uses StoreKit");
+  check(appleIapPlugin.includes("product.purchase(options: [.appAccountToken(accountToken)])"), "Apple purchases are tied to the signed-in ARK account");
+  check(appleIapPlugin.includes("result.jwsRepresentation"), "Apple transactions are sent to the server as signed JWS data");
+  const swiftPackage = read("ios/App/CapApp-SPM/Package.swift");
+  check(swiftPackage.includes('name: "AppleIAPPlugin"'), "the self-contained Swift package includes the Apple purchase bridge");
 
   const iosIcon = pngMetadata("ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png");
   check(iosIcon.width === 1024 && iosIcon.height === 1024, "the App Store icon is exactly 1024 by 1024 pixels");

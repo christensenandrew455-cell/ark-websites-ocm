@@ -142,6 +142,8 @@ export async function deleteCustomerPermanently(clientId) {
     pendingOwnerSignupRef(db, clientId).delete().catch(() => null),
     signupVerificationRequestRef(db, clientId).delete().catch(() => null),
     deleteQueryDocuments(systemCollection(db, "stripeWebhookEvents").where("clientId", "==", clientId)),
+    deleteQueryDocuments(systemCollection(db, "appleBillingEvents").where("clientId", "==", clientId)),
+    deleteQueryDocuments(systemCollection(db, "appleTransactions").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "messagingComplianceEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "deletedAccountAudit").where("clientId", "==", clientId)),
   ]);

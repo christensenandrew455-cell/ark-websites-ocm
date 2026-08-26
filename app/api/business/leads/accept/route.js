@@ -71,6 +71,12 @@ export async function POST(request) {
     if (!accountData || accountData.status !== "active" || accountData.billingPastDue === true || text(accountData.uid) !== text(decoded.uid)) {
       return NextResponse.json({ error: "An active owner account is required." }, { status: 403 });
     }
+    if (text(accountData.billingProvider) === "apple" && text(accountData.usageChargeStatus) === "purchase_required") {
+      return NextResponse.json({
+        error: "Complete the Apple usage purchase shown at the top of the app before accepting another lead.",
+        code: "APPLE_USAGE_PURCHASE_REQUIRED",
+      }, { status: 402 });
+    }
 
     const root = db.collection("accounts").doc(clientId);
     const sourceRef = root.collection("contactedMe").doc(leadId);
