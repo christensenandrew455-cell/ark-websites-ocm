@@ -97,7 +97,7 @@ export default function LeadMessagesPage() {
     if (!user || !leadId || deleting) return;
     const confirmed = await requestAppConfirmation({
       title: `Delete the conversation with ${leadName || "this lead"}?`,
-      message: "This cannot be undone. ARK will block future messaging with this phone number, and billing usage already recorded for the chat and its parts will remain.",
+      message: "This cannot be undone. ARK will block future messaging with this phone number.",
       confirmLabel: "Delete",
     });
     if (!confirmed) return;

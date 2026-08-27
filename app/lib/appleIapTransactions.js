@@ -1,24 +1,30 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
-import { APPLE_IAP_BASE_PRODUCT_ID, appleUsageProduct } from "./appleIapCatalog.js";
+import { applePlanForProduct } from "./appleIapCatalog.js";
 import { sameAppleAccountToken } from "./appleIapRequest.js";
 import { resolvePayment } from "./billingDelinquency.js";
 import { systemCollection } from "./firestoreLayout.js";
-import { activeReferralSavings } from "./referrals.js";
-import { USAGE_CHARGE_THRESHOLD_POINTS, USAGE_POINT_CENTS } from "./billingPricing.js";
 
-function text(value) { return String(value || "").trim(); }
-function whole(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0;
+function text(value) {
+  return String(value || "").trim();
+}
+
+function millis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 export async function syncAppleSubscriptionTransaction({ db, clientId, transaction, eventId = "" }) {
   const transactionId = text(transaction?.transactionId);
   const originalTransactionId = text(transaction?.originalTransactionId);
   const expiresAt = Number(transaction?.expiresDate || 0);
+  const purchasedAt = Number(transaction?.purchaseDate || 0) || Date.now();
+  const plan = applePlanForProduct(transaction?.productId);
   if (!clientId || !transactionId || !originalTransactionId
-    || text(transaction.productId) !== APPLE_IAP_BASE_PRODUCT_ID
+    || !plan
     || text(transaction.type) !== "Auto-Renewable Subscription") throw new Error("APPLE_SUBSCRIPTION_INVALID");
 
   const accountRef = db.collection("accounts").doc(clientId);
@@ -32,15 +38,33 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
   }
 
   const active = !transaction.revocationDate && expiresAt > Date.now();
+  const samePeriodEnd = expiresAt > 0 && millis(account.callPeriodEndAt) === expiresAt;
+  const periodStartAt = samePeriodEnd && millis(account.callPeriodStartAt)
+    ? millis(account.callPeriodStartAt)
+    : purchasedAt;
+  const periodKey = `${periodStartAt}-${expiresAt}`;
+  const callsUsed = text(account.callPeriodKey) === periodKey
+    ? Math.max(0, Number(account.callsUsedThisPeriod || 0))
+    : 0;
   const transactionRef = systemCollection(db, "appleTransactions").doc(transactionId);
   const transactionSnapshot = await transactionRef.get();
   const patch = {
-    appleSubscriptionProductId: APPLE_IAP_BASE_PRODUCT_ID,
+    appleSubscriptionProductId: plan.productId,
     appleOriginalTransactionId: originalTransactionId,
     appleSubscriptionTransactionId: transactionId,
     appleSubscriptionStatus: active ? "active" : transaction.revocationDate ? "revoked" : "expired",
     appleSubscriptionEnvironment: text(transaction.environment),
     appleSubscriptionExpiresAt: expiresAt ? Timestamp.fromMillis(expiresAt) : FieldValue.delete(),
+    billingPlanKey: plan.key,
+    billingPlanName: plan.name,
+    monthlyPlanAmountCents: plan.amountCents,
+    monthlyCallLimit: plan.monthlyCalls,
+    callPeriodStartAt: Timestamp.fromMillis(periodStartAt),
+    callPeriodEndAt: expiresAt ? Timestamp.fromMillis(expiresAt) : FieldValue.delete(),
+    callPeriodKey: periodKey,
+    callsUsedThisPeriod: callsUsed,
+    callsRemainingThisPeriod: Math.max(0, plan.monthlyCalls - callsUsed),
+    callLimitReached: callsUsed >= plan.monthlyCalls,
     ...(active ? { lastPaymentAt: FieldValue.serverTimestamp() } : {}),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -52,11 +76,13 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
       kind: "subscription",
       clientId,
       uid: text(account.uid),
-      productId: APPLE_IAP_BASE_PRODUCT_ID,
+      productId: plan.productId,
+      billingPlanKey: plan.key,
+      monthlyCalls: plan.monthlyCalls,
       originalTransactionId,
       appAccountToken: text(transaction.appAccountToken).toLowerCase(),
       environment: text(transaction.environment),
-      purchaseDate: Number(transaction.purchaseDate || 0) ? Timestamp.fromMillis(Number(transaction.purchaseDate)) : FieldValue.serverTimestamp(),
+      purchaseDate: Timestamp.fromMillis(purchasedAt),
       expiresAt: expiresAt ? Timestamp.fromMillis(expiresAt) : null,
       notificationEventId: text(eventId),
       createdAt: FieldValue.serverTimestamp(),
@@ -79,117 +105,24 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
       type: "billing.payment_succeeded",
       clientId,
       businessName: text(account.businessName || clientId),
-      summary: "Apple monthly payment succeeded",
+      summary: `${plan.name} monthly payment succeeded`,
       metadata: {
         paymentId: transactionId,
         paymentKind: "subscription",
         provider: "apple",
-        amountCents: Number(transaction.price || 0) > 0 ? Math.round(Number(transaction.price) / 10) : 0,
-        currency: text(transaction.currency).toLowerCase(),
-      },
-    });
-  }
-  return { active, expiresAt, transactionId, duplicate: transactionSnapshot.exists };
-}
-
-export async function settleAppleUsagePurchase({ db, clientId, uid, transaction }) {
-  const transactionId = text(transaction?.transactionId);
-  if (!transactionId || text(transaction.type) !== "Consumable" || transaction.revocationDate) throw new Error("APPLE_USAGE_PURCHASE_INVALID");
-  const accountRef = db.collection("accounts").doc(clientId);
-  const quotedAccountSnapshot = await accountRef.get();
-  if (!quotedAccountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
-  const referral = await activeReferralSavings({ db, clientId });
-  const calculated = appleUsageProduct(referral.percent);
-  const quotedAccount = quotedAccountSnapshot.data();
-  const expected = {
-    productId: text(quotedAccount.usageChargeAppleProductId || calculated.productId),
-    discountPercent: whole(quotedAccount.usageChargeReferralDiscountPercent || calculated.discountPercent),
-    amountCents: whole(quotedAccount.usageChargeAmountCents || calculated.amountCents),
-  };
-  if (text(transaction.productId) !== expected.productId) throw new Error("APPLE_USAGE_PRODUCT_CHANGED");
-
-  const transactionRef = systemCollection(db, "appleTransactions").doc(transactionId);
-  const result = await db.runTransaction(async (firestoreTransaction) => {
-    const [accountSnapshot, transactionSnapshot] = await Promise.all([
-      firestoreTransaction.get(accountRef),
-      firestoreTransaction.get(transactionRef),
-    ]);
-    if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
-    const account = accountSnapshot.data();
-    if (account.billingProvider !== "apple"
-      || text(account.uid) !== text(uid)
-      || !sameAppleAccountToken(account.appleAppAccountToken, transaction.appAccountToken)) {
-      throw new Error("APPLE_USAGE_PURCHASE_FORBIDDEN");
-    }
-    if (text(account.usageChargeAppleProductId || calculated.productId) !== expected.productId) {
-      throw new Error("APPLE_USAGE_PRODUCT_CHANGED");
-    }
-    if (transactionSnapshot.exists) {
-      if (text(transactionSnapshot.data().clientId) !== clientId) throw new Error("APPLE_TRANSACTION_ALREADY_USED");
-      return {
-        duplicate: true,
-        balancePoints: whole(account.usageBalancePoints),
-        creditPoints: whole(account.appleUsageCreditPoints),
-      };
-    }
-
-    const currentBalance = whole(account.usageBalancePoints);
-    const currentCredit = whole(account.appleUsageCreditPoints);
-    const nextBalance = Math.max(0, currentBalance - USAGE_CHARGE_THRESHOLD_POINTS);
-    const nextCredit = currentCredit + Math.max(0, USAGE_CHARGE_THRESHOLD_POINTS - currentBalance);
-    firestoreTransaction.create(transactionRef, {
-      provider: "apple",
-      kind: "usage",
-      clientId,
-      uid: text(uid),
-      productId: expected.productId,
-      appAccountToken: text(transaction.appAccountToken).toLowerCase(),
-      originalTransactionId: text(transaction.originalTransactionId),
-      environment: text(transaction.environment),
-      points: USAGE_CHARGE_THRESHOLD_POINTS,
-      amountCents: expected.amountCents,
-      referralDiscountPercent: expected.discountPercent,
-      purchaseDate: Number(transaction.purchaseDate || 0) ? Timestamp.fromMillis(Number(transaction.purchaseDate)) : FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-    });
-    firestoreTransaction.set(accountRef, {
-      usageBalancePoints: nextBalance,
-      appleUsageCreditPoints: nextCredit,
-      usageChargeStatus: nextBalance >= USAGE_CHARGE_THRESHOLD_POINTS ? "purchase_required" : "idle",
-      usageChargeAppleProductId: nextBalance >= USAGE_CHARGE_THRESHOLD_POINTS ? calculated.productId : FieldValue.delete(),
-      usageChargeAmountCents: nextBalance >= USAGE_CHARGE_THRESHOLD_POINTS ? calculated.amountCents : FieldValue.delete(),
-      usageChargeReferralDiscountPercent: nextBalance >= USAGE_CHARGE_THRESHOLD_POINTS ? calculated.discountPercent : FieldValue.delete(),
-      lastUsageChargeAmountCents: expected.amountCents,
-      lastUsageReferralDiscountPercent: expected.discountPercent,
-      lastUsageAppleTransactionId: transactionId,
-      lastUsagePaymentAt: FieldValue.serverTimestamp(),
-      lastPaymentAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
-    return { duplicate: false, balancePoints: nextBalance, creditPoints: nextCredit };
-  });
-
-  if (!result.duplicate) {
-    const accountSnapshot = await accountRef.get();
-    await sendAdminEvent({
-      id: `billing-paid-apple-${transactionId}`,
-      type: "billing.payment_succeeded",
-      clientId,
-      businessName: text(accountSnapshot.data()?.businessName || clientId),
-      summary: "Apple usage purchase succeeded",
-      metadata: {
-        paymentId: transactionId,
-        paymentKind: "usage",
-        provider: "apple",
-        amountCents: expected.amountCents,
+        billingPlan: plan.key,
+        monthlyCalls: plan.monthlyCalls,
+        amountCents: Number(transaction.price || 0) > 0 ? Math.round(Number(transaction.price) / 10) : plan.amountCents,
         currency: text(transaction.currency || "usd").toLowerCase(),
-        referralDiscountPercent: expected.discountPercent,
       },
     });
   }
-  return { ...result, amountCents: expected.amountCents, referralDiscountPercent: expected.discountPercent };
-}
-
-export function appleUsageNominalCents() {
-  return USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS;
+  return {
+    active,
+    expiresAt,
+    transactionId,
+    duplicate: transactionSnapshot.exists,
+    planKey: plan.key,
+    monthlyCalls: plan.monthlyCalls,
+  };
 }

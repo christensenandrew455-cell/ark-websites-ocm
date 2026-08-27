@@ -7,10 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import FirstVisitGuides from "./GuidedOnboarding";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
-import AppleUsagePurchaseNotice from "./AppleUsagePurchaseNotice";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
-import ReferralCenter from "./ReferralCenter";
 import { billingPaymentDeadline } from "../lib/billingNotice";
 import { appleIapAvailable } from "../lib/appleIapClient";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
@@ -130,7 +128,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><AppleUsagePurchaseNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && pathname === "/" && <ReferralCenter clientId={profile?.clientId} />}{!status.restricted && <FirstVisitGuides />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && <FirstVisitGuides />}</>;
 }
 
 export default function AppShell({ children }) {

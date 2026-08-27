@@ -264,7 +264,7 @@ function ConfirmDialog({ row, busy, onCancel, onConfirm }) {
     <div className="ark-modal-surface max-w-sm">
       <div className="px-6 py-10 text-center">
         <h2 className="text-xl font-black text-slate-950">{declining ? "Decline" : "Delete"} {row.Name || "this record"}?</h2>
-        <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{declining ? "This lead will be removed and you will not be charged." : "This cannot be undone."}</p>
+        <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{declining ? "This lead will be permanently removed." : "This cannot be undone."}</p>
       </div>
       <div className="grid grid-cols-2 gap-3 border-t border-slate-200 p-4">
         <button type="button" disabled={busy} onClick={onCancel} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50">Cancel</button>
@@ -384,22 +384,14 @@ export default function ReviewClientsNative() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        if (result.code === "APPLE_USAGE_PURCHASE_REQUIRED") window.dispatchEvent(new Event("ark:billing-refresh"));
         throw new Error(result.error || "Could not accept this estimate request.");
       }
       if (result.duplicate) {
-        setNotice(`${row.Name || "Lead"} was already accepted. No additional charge was added.`);
-      } else if (result.paymentStatus === "purchase_required") {
-        setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage. Confirm the next usage interval with Apple.`);
-        window.dispatchEvent(new Event("ark:billing-refresh"));
-      } else if (result.paymentStatus === "declined") {
-        setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage, but the payment method needs attention.`);
-      } else if (result.billingPending) {
-        setNotice(`${row.Name || "Lead"} was accepted. The $2 usage entry is being finalized.`);
+        setNotice(`${row.Name || "Lead"} was already accepted.`);
       } else if (result.noticeError) {
-        setNotice(`${row.Name || "Lead"} was accepted and $2 was added to usage, but the acceptance text could not be sent.`);
+        setNotice(`${row.Name || "Lead"} was accepted, but the acceptance text could not be sent.`);
       } else {
-        setNotice(`${row.Name || "Lead"} was accepted. $2 was added to usage.`);
+        setNotice(`${row.Name || "Lead"} was accepted.`);
       }
       await load(true);
     } catch (acceptError) {

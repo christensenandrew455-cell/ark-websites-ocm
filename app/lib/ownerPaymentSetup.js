@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
 import { ACCOUNT_TYPES } from "./accountTypes";
+import { billingPlan, normalizeBillingPlanKey } from "./billingPricing.js";
 import {
   accountBusinessRef,
   accountCollection,
@@ -17,8 +18,7 @@ import {
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
-import { pendingReferralFields, qualifyReferralAfterActivation } from "./referrals";
-import { ensureCustomerBillingSubscription } from "./stripeUsageBilling";
+import { ensureCustomerBillingSubscription } from "./stripePlanBilling";
 
 function text(value) { return String(value || "").trim(); }
 function paymentMethodId(value) { return typeof value === "string" ? value : text(value?.id); }
@@ -65,6 +65,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const business = pendingOwnerSignupBusiness(temporary);
   const legal = pendingOwnerSignupLegal(temporary);
   const payment = temporary.payment || {};
+  const planKey = normalizeBillingPlanKey(payment.billingPlanKey);
+  const plan = billingPlan(planKey);
   const clientId = text(temporary.clientId);
   const accountRef = regularAccountRef(db, clientId);
   const businessRef = accountBusinessRef(db, clientId);
@@ -76,7 +78,10 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const setupIntent = await stripe.setupIntents.retrieve(safeSetupIntentId, { expand: ["payment_method"] });
   if (setupIntent.status !== "succeeded") throw new Error("PAYMENT_SETUP_INCOMPLETE");
   if (customerId(setupIntent.customer) !== storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
-  if (text(setupIntent.metadata?.uid) !== safeUid || text(setupIntent.metadata?.clientId) !== clientId || text(setupIntent.metadata?.purpose) !== "ark_onboarding_payment_method") throw new Error("PAYMENT_SETUP_FORBIDDEN");
+  if (text(setupIntent.metadata?.uid) !== safeUid
+    || text(setupIntent.metadata?.clientId) !== clientId
+    || text(setupIntent.metadata?.purpose) !== "ark_onboarding_payment_method"
+    || normalizeBillingPlanKey(setupIntent.metadata?.billingPlan) !== planKey) throw new Error("PAYMENT_SETUP_FORBIDDEN");
 
   const savedPaymentMethodId = paymentMethodId(setupIntent.payment_method);
   if (!savedPaymentMethodId) throw new Error("PAYMENT_METHOD_MISSING");
@@ -92,9 +97,9 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     name: ownerName,
     phone: accountPhone,
     invoice_settings: { default_payment_method: savedPaymentMethodId },
-    metadata: { uid: safeUid, clientId, businessName, accountType: "owner", accountStatus: "active" },
+    metadata: { uid: safeUid, clientId, businessName, accountType: "owner", accountStatus: "active", billingPlan: planKey },
   });
-  const subscription = await ensureCustomerBillingSubscription({
+  const subscriptionResult = await ensureCustomerBillingSubscription({
     stripe,
     db,
     clientId,
@@ -102,13 +107,15 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     paymentMethodId: savedPaymentMethodId,
     businessName,
     uid: safeUid,
-    subscriptionIdempotencyKey: `ark-base-subscription-${safeUid}`,
+    planKey,
+    timeZone: text(business.timeZone || "America/New_York"),
+    subscriptionIdempotencyKey: `ark-plan-subscription-${safeUid}-${planKey}`,
     persist: false,
     createIfMissing: true,
   });
+  const subscription = subscriptionResult.subscription;
 
   const now = FieldValue.serverTimestamp();
-  const referralFields = pendingReferralFields(temporaryAccount.referral || temporary.referral);
   const businessProfile = {
     businessName,
     businessEmail: accountEmail,
@@ -140,16 +147,21 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     stripePaymentMethodId: savedPaymentMethodId,
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
+    ...subscriptionResult.accountFields,
     paymentMethodLabel,
     identityVerificationVerified: true,
-    usageBalancePoints: 0,
-    usageSmsPartRemainder: 0,
-    usageChargeStatus: "idle",
+    billingPlanKey: planKey,
+    billingPlanName: plan.name,
+    monthlyPlanAmountCents: plan.amountCents,
+    monthlyCallLimit: plan.monthlyCalls,
+    callPeriodKey: "",
+    callsUsedThisPeriod: 0,
+    callsRemainingThisPeriod: plan.monthlyCalls,
+    callLimitReached: false,
     billingPastDue: false,
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
     receptionistPhone: "",
-    ...referralFields,
     activatedAt: now,
     paymentMethodSavedAt: now,
     updatedAt: now,
@@ -191,14 +203,6 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   batch.delete(pending.ref);
   await batch.commit();
 
-  if (referralFields.referrerClientId) {
-    try {
-      await qualifyReferralAfterActivation({ db, referredClientId: clientId, referredUid: safeUid });
-    } catch (error) {
-      console.error("Referral activation will be retried by billing sync", error);
-    }
-  }
-
   const userRecord = await auth.getUser(safeUid);
   await auth.setCustomUserClaims(safeUid, {
     ...(userRecord.customClaims || {}),
@@ -222,7 +226,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientId,
     businessName,
     summary: "Customer finished signup and needs a receptionist number",
-    metadata: { numberAssignmentStatus: "needed" },
+    metadata: { numberAssignmentStatus: "needed", billingPlan: planKey, monthlyCalls: plan.monthlyCalls },
   });
 
   return {

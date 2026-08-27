@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { NotificationTypeV2, Status } from "@apple/app-store-server-library";
-import { APPLE_IAP_BASE_PRODUCT_ID } from "../../../../lib/appleIapCatalog";
+import { isApplePlanProduct } from "../../../../lib/appleIapCatalog";
 import { syncAppleSubscriptionTransaction } from "../../../../lib/appleIapTransactions";
 import { verifySignedAppleNotification } from "../../../../lib/appleIapVerification";
 import { registerPaymentFailure } from "../../../../lib/billingDelinquency";
@@ -46,7 +46,7 @@ export async function POST(request) {
         : null,
     ]);
     const productId = text(transaction?.productId || renewal?.productId);
-    if (productId && productId !== APPLE_IAP_BASE_PRODUCT_ID) {
+    if (productId && !isApplePlanProduct(productId)) {
       return NextResponse.json({ received: true, ignored: true, reason: "non-subscription-product" });
     }
     const db = getAdminDb();

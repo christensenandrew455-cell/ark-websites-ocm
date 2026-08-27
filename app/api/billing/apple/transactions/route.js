@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { APPLE_IAP_BASE_PRODUCT_ID, isAppleUsageProduct } from "../../../../lib/appleIapCatalog";
+import { isApplePlanProduct } from "../../../../lib/appleIapCatalog";
 import { authorizeAppleBillingRequest, ensureAppleAppAccountToken, sameAppleAccountToken } from "../../../../lib/appleIapRequest";
-import { settleAppleUsagePurchase, syncAppleSubscriptionTransaction } from "../../../../lib/appleIapTransactions";
+import { syncAppleSubscriptionTransaction } from "../../../../lib/appleIapTransactions";
 import { verifySignedAppleTransaction } from "../../../../lib/appleIapVerification";
 import { completeOwnerApplePaymentSetup } from "../../../../lib/ownerApplePaymentSetup";
 
@@ -27,8 +27,8 @@ export async function POST(request) {
     }
 
     if (access.kind === "pending") {
-      if (text(transaction.productId) !== APPLE_IAP_BASE_PRODUCT_ID) {
-        return NextResponse.json({ error: "Complete the Apple monthly subscription first." }, { status: 409 });
+      if (!isApplePlanProduct(transaction.productId)) {
+        return NextResponse.json({ error: "Choose an ARK monthly call plan first." }, { status: 409 });
       }
       const result = await completeOwnerApplePaymentSetup({
         db: access.db,
@@ -42,30 +42,18 @@ export async function POST(request) {
     if (access.account.billingProvider !== "apple") {
       return NextResponse.json({ error: "This account uses Stripe billing." }, { status: 409 });
     }
-    if (text(transaction.productId) === APPLE_IAP_BASE_PRODUCT_ID) {
+    if (isApplePlanProduct(transaction.productId)) {
       const result = await syncAppleSubscriptionTransaction({ db: access.db, clientId: access.clientId, transaction });
       if (!result.active) return NextResponse.json({ error: "This Apple subscription is not active." }, { status: 402 });
       return NextResponse.json({ status: "succeeded", kind: "subscription", ...result });
-    }
-    if (isAppleUsageProduct(transaction.productId)) {
-      const result = await settleAppleUsagePurchase({
-        db: access.db,
-        clientId: access.clientId,
-        uid: access.decoded.uid,
-        transaction,
-      });
-      return NextResponse.json({ status: "succeeded", kind: "usage", transactionId: text(transaction.transactionId), ...result });
     }
     return NextResponse.json({ error: "This Apple product is not part of ARK billing." }, { status: 400 });
   } catch (error) {
     console.error("Unable to verify Apple transaction", error);
     const code = text(error?.message);
-    const changed = code === "APPLE_USAGE_PRODUCT_CHANGED";
     return NextResponse.json({
-      error: changed
-        ? "Your referral price changed. Refresh and try the updated Apple purchase."
-        : "Apple could not verify this purchase. Try Restore Purchases or contact support.",
+      error: "Apple could not verify this purchase. Try Restore Purchases or contact support.",
       code,
-    }, { status: changed ? 409 : 400 });
+    }, { status: 400 });
   }
 }

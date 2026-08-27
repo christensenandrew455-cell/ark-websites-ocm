@@ -4,7 +4,6 @@ import { ACCOUNT_TYPES } from "../../../lib/accountTypes";
 import { missingAccountVerificationConfiguration, sendSignupVerificationCodes } from "../../../lib/accountVerification";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateOwnerAccountInformation } from "../../../lib/ownerSignup";
-import { validateReferrerAccount } from "../../../lib/referrals";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { createSignupVerificationRequest, deleteSignupVerificationRequest } from "../../../lib/signupVerificationRequest";
 import { checkSignupAvailability, normalizeSignupPhone, signupAvailabilityMessage } from "../../../lib/signupAvailability";
@@ -24,8 +23,6 @@ function safeSignupError(error) {
   if (code === "auth/email-already-exists" || message === "EMAIL_TAKEN") return { status: 409, message: "That email address is already registered." };
   if (message === "PHONE_TAKEN") return { status: 409, message: "That phone number is already registered." };
   if (message === "BUSINESS_TAKEN") return { status: 409, message: "That business name is already registered. Use a different business name." };
-  if (message === "SELF_REFERRAL") return { status: 400, message: "A business cannot refer its own account." };
-  if (message === "REFERRER_NOT_FOUND") return { status: 400, message: "That referral account ID is not an active ARK account." };
   return { status: 500, message: "Unable to start account setup right now." };
 }
 
@@ -58,11 +55,6 @@ export async function POST(request) {
     const availabilityError = signupAvailabilityMessage(availability);
     if (availabilityError) return NextResponse.json({ error: availabilityError }, { status: 409 });
 
-    const referrer = await validateReferrerAccount({
-      db,
-      referrerAccountId: signup.referrerAccountId,
-      referredClientId: clientId,
-    });
     const createdUser = await auth.createUser({
       email: signup.accountEmail,
       password: signup.password,
@@ -78,7 +70,6 @@ export async function POST(request) {
       uid: createdUid,
       clientId,
       signup: { ...signup, accountPhone },
-      referrer,
     });
     verificationRequestSaved = true;
 

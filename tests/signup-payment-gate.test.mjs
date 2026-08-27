@@ -246,8 +246,9 @@ test("payment setup is tied to the authenticated temporary owner", async () => {
   assert.ok(route.includes('payment_method_types: ["card"]'));
   assert.ok(route.includes('usage: "off_session"'));
   assert.ok(route.includes('purpose: "ark_onboarding_payment_method"'));
-  assert.ok(route.includes("ensureStripeBillingCatalog({ stripe })"));
-  assert.ok(route.includes("ensureStripeUsagePrice({ stripe })"));
+  assert.ok(route.includes("ensureStripeBillingCatalog({ stripe, planKey })"));
+  assert.ok(route.includes("billingPlanKey: planKey"));
+  assert.equal(route.includes("ensureStripeUsagePrice"), false);
   assert.ok(route.includes("stripe.accounts.retrieveCurrent()"));
   assert.ok(route.includes("secretMode !== publishableMode"));
   assert.ok(route.includes("reusableStripeCustomer"));
@@ -256,8 +257,8 @@ test("payment setup is tied to the authenticated temporary owner", async () => {
   assert.equal(route.includes('collection("accounts")'), false);
 });
 
-test("successful payment promotes the already-verified temp data and starts only the base subscription", async () => {
-  const [completion, subscription] = await Promise.all([source("app/lib/ownerPaymentSetup.js"), source("app/lib/stripeUsageBilling.js")]);
+test("successful payment promotes verified data and starts the selected call plan", async () => {
+  const [completion, subscription] = await Promise.all([source("app/lib/ownerPaymentSetup.js"), source("app/lib/stripePlanBilling.js")]);
   assert.ok(completion.includes("stripe.setupIntents.retrieve(safeSetupIntentId"));
   assert.ok(completion.includes('setupIntent.status !== "succeeded"'));
   assert.ok(completion.includes("customerId(setupIntent.customer) !== storedCustomerId"));
@@ -272,13 +273,16 @@ test("successful payment promotes the already-verified temp data and starts only
   assert.ok(completion.includes("pendingOwnerSignupVerified(temporary)"));
   assert.equal(completion.includes("sendAccountVerificationCodes({"), false);
   assert.ok(completion.includes("identityVerificationVerified: true"));
-  assert.ok(completion.includes("usageBalancePoints: 0"));
-  assert.ok(completion.includes("usageSmsPartRemainder: 0"));
+  assert.ok(completion.includes("billingPlanKey: planKey"));
+  assert.ok(completion.includes("monthlyCallLimit: plan.monthlyCalls"));
+  assert.ok(completion.includes("callsUsedThisPeriod: 0"));
+  assert.ok(completion.includes("callsRemainingThisPeriod: plan.monthlyCalls"));
   assert.ok(completion.includes("termsVersion: text(legal.termsVersion)"));
   assert.ok(completion.includes("privacyVersion: text(legal.privacyVersion)"));
   assert.ok(completion.includes("legalAcceptedAt: legal.acceptedAt || now"));
   assert.ok(completion.includes('role: ACCOUNT_ROLES.STANDARD'));
-  assert.ok(subscription.includes("return [catalog.basePriceId]"));
+  assert.ok(subscription.includes("return [catalog.priceId]"));
+  assert.ok(subscription.includes("billingPlan: plan.key"));
   assert.equal(subscription.includes("await configRef.set"), false);
 });
 
@@ -429,13 +433,14 @@ test("regular accounts enter the existing number-assignment queue", async () => 
   assert.equal(completion.includes("NumberAssignmentStatus"), false);
 });
 
-test("legal and help copy describe threshold billing and immediate enforcement", async () => {
+test("legal and help copy describe all four call plans and recurring-payment enforcement", async () => {
   const [terms, privacy, help, env] = await Promise.all([source("app/terms/page.js"), source("app/privacy/page.js"), source("app/lib/helpContent.js"), source(".env.example")]);
-  assert.ok(terms.includes("$20 usage threshold"));
+  for (const copy of ["$49.99 USD", "$79.99 USD", "$149.99 USD", "$299.99 USD"]) assert.ok(terms.includes(copy));
+  assert.ok(terms.includes("Each unique completed call"));
   assert.ok(terms.includes("Immediate pause"));
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));
-  assert.ok(help.includes("starts the $50 monthly subscription"));
-  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_ACCOUNT_BASE_PRICE_ID", "STRIPE_USAGE_PRICE_ID", "REFERRAL_IDENTITY_SECRET"]) assert.ok(env.includes(`${name}=`));
-  for (const name of ["STRIPE_WEBHOOK_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID"]) assert.equal(env.includes(`${name}=`), false);
+  for (const plan of ["Starter", "Standard", "Growth", "Pro"]) assert.ok(help.includes(`${plan} is`));
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_STARTER_PRICE_ID", "STRIPE_STANDARD_PRICE_ID", "STRIPE_GROWTH_PRICE_ID", "STRIPE_PRO_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
+  for (const name of ["STRIPE_USAGE_PRICE_ID", "REFERRAL_IDENTITY_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID"]) assert.equal(env.includes(`${name}=`), false);
 });

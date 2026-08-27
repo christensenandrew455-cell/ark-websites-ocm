@@ -145,24 +145,24 @@ test("legacy leads are not described as low risk when no check was supplied", ()
   assert.equal(summary.riskScore, 0);
 });
 
-test("only accepting a lead creates the two-dollar usage event", async () => {
-  const [intake, acceptance, callUsage, component] = await Promise.all([
+test("lead review is unmetered and only completed receptionist calls affect the plan", async () => {
+  const [intake, acceptance, completedCalls, component] = await Promise.all([
     source("app/api/intake/route.js"),
     source("app/api/business/leads/accept/route.js"),
-    source("app/api/receptionist/call-usage/route.js"),
+    source("app/api/receptionist/calls/route.js"),
     source("app/components/ReviewClientsNative.js"),
   ]);
   assert.ok(intake.includes('const sectionKey = "contactedMe"'));
   assert.equal(intake.includes("recordLeadUsage"), false);
   assert.equal(intake.includes("addBillingLeadEventToBatch"), false);
-  assert.ok(acceptance.includes("addBillingLeadEventToBatch"));
-  assert.ok(acceptance.includes("recordLeadUsage"));
-  assert.ok(acceptance.includes("sourceType: ACCEPTED_LEAD_BILLING_SOURCE"));
-  assert.equal(callUsage.includes("recordLeadUsage"), false);
+  assert.equal(acceptance.includes("addBillingLeadEventToBatch"), false);
+  assert.equal(acceptance.includes("recordLeadUsage"), false);
+  assert.equal(acceptance.includes("ACCEPTED_LEAD_BILLING_SOURCE"), false);
+  assert.ok(completedCalls.includes("recordCompletedCall"));
+  assert.ok(completedCalls.includes("callsRemaining"));
   assert.ok(component.includes('"Accept"'));
   assert.ok(component.includes('>Decline</button>'));
-  assert.equal(component.includes("Accept · $2"), false);
-  assert.equal(component.includes("Decline · $0"), false);
+  assert.equal(component.includes("charged"), false);
 });
 
 test("pending lead details cannot be recovered through another owner-facing path", async () => {

@@ -1,6 +1,7 @@
 import { createPublicKey, verify } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
+import { callPlanStatus } from "../../../lib/callPlanBilling";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
@@ -192,6 +193,16 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "The business has not completed AI receptionist setup." }, { status: 409 });
     }
 
+    const callPlan = callPlanStatus(account);
+    if (callPlan.limitReached) {
+      return NextResponse.json({
+        ok: false,
+        code: "MONTHLY_CALL_LIMIT_REACHED",
+        error: `This business has used all ${callPlan.monthlyCallLimit} calls in its ${callPlan.planName} plan.`,
+        plan: callPlan,
+      }, { status: 402 });
+    }
+
     const profile = buildProfile(clientId, account);
     const profileError = validateProfile(profile);
     if (profileError) {
@@ -209,16 +220,20 @@ export async function POST(request) {
     intakeUrl.searchParams.set("key", connectionKey);
     intakeUrl.searchParams.set("source", `${clientId}-receptionist`);
 
-    const usageUrl = new URL("/api/receptionist/call-usage", origin);
-    usageUrl.searchParams.set("clientId", clientId);
+    const callCompletionUrl = new URL("/api/receptionist/calls", origin);
+    callCompletionUrl.searchParams.set("clientId", clientId);
 
     return NextResponse.json({
       ok: true,
       clientId,
       calledPhone,
       profile,
+      callPlan,
       intakeUrl: intakeUrl.toString(),
-      usageUrl: usageUrl.toString(),
+      callCompletionUrl: callCompletionUrl.toString(),
+      callCompletionKey: connectionKey,
+      // Keep these aliases until every deployed receptionist has moved to the clearer call-completion names.
+      usageUrl: callCompletionUrl.toString(),
       usageKey: connectionKey,
     });
   } catch (error) {

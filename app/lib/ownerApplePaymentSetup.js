@@ -2,7 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles.js";
 import { ACCOUNT_TYPES } from "./accountTypes.js";
-import { APPLE_IAP_BASE_PRODUCT_ID } from "./appleIapCatalog.js";
+import { applePlanForProduct } from "./appleIapCatalog.js";
 import { sameAppleAccountToken } from "./appleIapRequest.js";
 import {
   accountBusinessRef,
@@ -19,7 +19,6 @@ import {
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup.js";
-import { pendingReferralFields, qualifyReferralAfterActivation } from "./referrals.js";
 
 function text(value) { return String(value || "").trim(); }
 function completedResult(account, transactionId) {
@@ -37,8 +36,9 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   const transactionId = text(transaction?.transactionId);
   const originalTransactionId = text(transaction?.originalTransactionId);
   const expiresAt = Number(transaction?.expiresDate || 0);
+  const purchasedPlan = applePlanForProduct(transaction?.productId);
   if (!safeUid || !transactionId || !originalTransactionId) throw new Error("APPLE_PAYMENT_SETUP_MISSING");
-  if (text(transaction.productId) !== APPLE_IAP_BASE_PRODUCT_ID
+  if (!purchasedPlan
     || text(transaction.type) !== "Auto-Renewable Subscription"
     || transaction.revocationDate
     || expiresAt <= Date.now()) throw new Error("APPLE_SUBSCRIPTION_INACTIVE");
@@ -80,7 +80,6 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   const accountEmail = text(temporaryAccount.accountEmail || business.businessEmail).toLowerCase();
   const accountPhone = text(temporaryAccount.accountPhone || business.businessPhone);
   const now = FieldValue.serverTimestamp();
-  const referralFields = pendingReferralFields(temporaryAccount.referral || temporary.referral);
   const businessProfile = {
     businessName,
     businessEmail: accountEmail,
@@ -108,7 +107,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     paymentSetupStatus: "complete",
     billingProvider: "apple",
     appleAppAccountToken: text(payment.appleAppAccountToken).toLowerCase(),
-    appleSubscriptionProductId: APPLE_IAP_BASE_PRODUCT_ID,
+    appleSubscriptionProductId: purchasedPlan.productId,
     appleOriginalTransactionId: originalTransactionId,
     appleSubscriptionTransactionId: transactionId,
     appleSubscriptionStatus: "active",
@@ -116,14 +115,20 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     appleSubscriptionExpiresAt: Timestamp.fromMillis(expiresAt),
     paymentMethodLabel: "Apple In-App Purchase",
     identityVerificationVerified: true,
-    usageBalancePoints: 0,
-    usageSmsPartRemainder: 0,
-    usageChargeStatus: "idle",
+    billingPlanKey: purchasedPlan.key,
+    billingPlanName: purchasedPlan.name,
+    monthlyPlanAmountCents: purchasedPlan.amountCents,
+    monthlyCallLimit: purchasedPlan.monthlyCalls,
+    callPeriodStartAt: Timestamp.fromMillis(Number(transaction.purchaseDate || 0) || Date.now()),
+    callPeriodEndAt: Timestamp.fromMillis(expiresAt),
+    callPeriodKey: "",
+    callsUsedThisPeriod: 0,
+    callsRemainingThisPeriod: purchasedPlan.monthlyCalls,
+    callLimitReached: false,
     billingPastDue: false,
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
     receptionistPhone: "",
-    ...referralFields,
     activatedAt: now,
     paymentMethodSavedAt: now,
     updatedAt: now,
@@ -167,7 +172,9 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     kind: "subscription",
     clientId,
     uid: safeUid,
-    productId: APPLE_IAP_BASE_PRODUCT_ID,
+    productId: purchasedPlan.productId,
+    billingPlanKey: purchasedPlan.key,
+    monthlyCalls: purchasedPlan.monthlyCalls,
     originalTransactionId,
     appAccountToken: text(payment.appleAppAccountToken).toLowerCase(),
     environment: text(transaction.environment),
@@ -177,14 +184,6 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   });
   batch.delete(pending.ref);
   await batch.commit();
-
-  if (referralFields.referrerClientId) {
-    try {
-      await qualifyReferralAfterActivation({ db, referredClientId: clientId, referredUid: safeUid });
-    } catch (error) {
-      console.error("Referral activation will be retried by billing sync", error);
-    }
-  }
 
   const userRecord = await auth.getUser(safeUid);
   await auth.setCustomUserClaims(safeUid, {
@@ -209,7 +208,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     clientId,
     businessName,
     summary: "Customer finished signup and needs a receptionist number",
-    metadata: { numberAssignmentStatus: "needed", billingProvider: "apple" },
+    metadata: { numberAssignmentStatus: "needed", billingProvider: "apple", billingPlan: purchasedPlan.key, monthlyCalls: purchasedPlan.monthlyCalls },
   });
   return completedResult(accountData, transactionId);
 }

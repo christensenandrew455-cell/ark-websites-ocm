@@ -71,11 +71,6 @@ body {
   height: var(--ark-workspace-header-height);
 }
 
-.ark-referral-button {
-  right: max(1rem, var(--ark-safe-area-right));
-  bottom: max(1rem, var(--ark-safe-area-bottom));
-}
-
 @media (min-width: 640px) {
   :root {
     --ark-workspace-header-height: 73px;

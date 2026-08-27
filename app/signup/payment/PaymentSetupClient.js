@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiJson } from "../../lib/apiResponse";
+import { billingPlan, publicBillingPlans } from "../../lib/billingPricing";
 import { useAuth } from "../../components/AuthProvider";
 import { auth } from "../../lib/firebase";
 import {
@@ -19,6 +20,32 @@ import {
 } from "../../lib/appleIapClient";
 
 const FAILURE_MESSAGE = "your payment has failed update your payment method or try again later";
+const MONTHLY_PLANS = publicBillingPlans();
+
+function money(cents) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(cents || 0) / 100);
+}
+
+function PlanSelector({ selectedPlanKey, onSelect, disabled = false }) {
+  return <section aria-labelledby="choose-plan-title">
+    <h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose your monthly call plan</h1>
+    <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Each completed receptionist call counts as one call. Your allowance resets every billing month.</p>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      {MONTHLY_PLANS.map((plan) => {
+        const selected = plan.key === selectedPlanKey;
+        return <button key={plan.key} type="button" onClick={() => onSelect(plan.key)} disabled={disabled} aria-pressed={selected} className={`rounded-2xl border p-4 text-left transition disabled:opacity-60 ${selected ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-200 bg-white hover:border-slate-400"}`}>
+          <span className="flex items-start justify-between gap-3"><span><span className="block text-lg font-black text-slate-950">{plan.name}</span><span className="mt-1 block text-sm font-bold text-slate-600">{plan.monthlyCalls} calls/month</span></span><span className="text-lg font-black text-slate-950">{money(plan.amountCents)}</span></span>
+          {selected && <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">Selected</span>}
+        </button>;
+      })}
+    </div>
+  </section>;
+}
 
 function visibleSetupError(error) {
   const message = String(error?.message || "").trim();
@@ -30,7 +57,7 @@ function cardWasDeclined(error) {
   return values.some((value) => value === "card_declined" || Boolean(value && value.includes("declin")));
 }
 
-function PaymentForm({ clientSecret, returnUrl, onSucceeded, onDeclined }) {
+function PaymentForm({ clientSecret, returnUrl, selectedPlan, onSucceeded, onDeclined }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -71,14 +98,14 @@ function PaymentForm({ clientSecret, returnUrl, onSucceeded, onDeclined }) {
 
   return <form onSubmit={submit} className="space-y-5">
     <PaymentElement options={{ layout: "accordion" }} />
-    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to a $50 monthly recurring fee, plus additional usage of $2 per accepted lead. Calls, declined leads, and unaccepted leads are not charged.</p>
+    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyCalls} receptionist calls each billing month.</p>
     <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay & Continue</button>
     {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </form>;
 }
 
 function ApplePaymentForm({ configuration, user, onSucceeded }) {
-  const [baseProduct, setBaseProduct] = useState(null);
+  const [storeProduct, setStoreProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -104,9 +131,9 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
     (async () => {
       try {
         const result = await appleProducts(configuration.productIds);
-        const product = (result.products || []).find((item) => item.id === configuration.baseProduct.productId);
-        if (!product) throw new Error("The ARK monthly subscription is not available from Apple yet.");
-        if (active) setBaseProduct(product);
+        const product = (result.products || []).find((item) => item.id === configuration.selectedPlan.productId);
+        if (!product) throw new Error(`The ARK ${configuration.selectedPlan.name} plan is not available from Apple yet.`);
+        if (active) setStoreProduct(product);
       } catch (loadError) {
         console.error("Unable to load Apple subscription", loadError);
         if (active) setError(String(loadError?.message || "The Apple subscription could not be loaded."));
@@ -115,13 +142,13 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
       }
     })();
     return () => { active = false; };
-  }, [configuration.baseProduct.productId, configuration.productIds]);
+  }, [configuration.productIds, configuration.selectedPlan.name, configuration.selectedPlan.productId]);
 
   useEffect(() => {
     const resume = async () => {
       try {
-        const result = await unfinishedAppleTransactions([configuration.baseProduct.productId]);
-        const purchase = (result.transactions || []).find((item) => item.productId === configuration.baseProduct.productId);
+        const result = await unfinishedAppleTransactions([configuration.selectedPlan.productId]);
+        const purchase = (result.transactions || []).find((item) => item.productId === configuration.selectedPlan.productId);
         if (!purchase || resumedTransactionIds.current.has(purchase.transactionId)) return;
         resumedTransactionIds.current.add(purchase.transactionId);
         try {
@@ -137,14 +164,14 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
     resume();
     const interval = window.setInterval(resume, 15 * 1000);
     return () => window.clearInterval(interval);
-  }, [configuration.baseProduct.productId, verifyAndFinish]);
+  }, [configuration.selectedPlan.productId, verifyAndFinish]);
 
   async function subscribe() {
     if (submitting) return;
     setSubmitting(true); setNotice(""); setError("");
     try {
       const purchase = await purchaseWithApple({
-        productId: configuration.baseProduct.productId,
+        productId: configuration.selectedPlan.productId,
         appAccountToken: configuration.appAccountToken,
       });
       if (purchase.status === "cancelled") { setNotice("The Apple purchase was canceled. No charge was made."); return; }
@@ -162,9 +189,9 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
     if (restoring) return;
     setRestoring(true); setNotice(""); setError("");
     try {
-      const result = await restoreApplePurchases([configuration.baseProduct.productId]);
-      const purchase = (result.transactions || []).find((item) => item.productId === configuration.baseProduct.productId);
-      if (!purchase) { setNotice("No active ARK subscription was found for this Apple Account."); return; }
+      const result = await restoreApplePurchases(configuration.productIds);
+      const purchase = (result.transactions || []).find((item) => configuration.productIds.includes(item.productId));
+      if (!purchase) { setNotice("No active ARK call plan was found for this Apple Account."); return; }
       await verifyAndFinish(purchase);
     } catch (restoreError) {
       console.error("Unable to restore Apple subscription", restoreError);
@@ -177,13 +204,13 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
   if (loading) return <p className="text-center text-sm font-bold text-slate-600">Loading Apple subscription…</p>;
   return <div className="space-y-5">
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">ARK monthly subscription</p>
-      <p className="mt-2 text-3xl font-black text-slate-950">{baseProduct?.displayPrice || "$50"} <span className="text-sm text-slate-500">per month</span></p>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Includes access to ARK Client Center. Usage is $2 per accepted lead and is purchased through Apple in $20 intervals when due. Calls, declined leads, and unaccepted leads are free.</p>
+      <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">ARK {configuration.selectedPlan.name} plan</p>
+      <p className="mt-2 text-3xl font-black text-slate-950">{storeProduct?.displayPrice || money(configuration.selectedPlan.amountCents)} <span className="text-sm text-slate-500">per month</span></p>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Includes ARK Client Center and {configuration.selectedPlan.monthlyCalls} receptionist calls each billing month.</p>
     </div>
     <p className="text-xs font-semibold leading-5 text-slate-600">Payment is charged to your Apple Account at confirmation. The subscription automatically renews monthly unless canceled at least 24 hours before the current period ends. Your Apple Account is charged for renewal within 24 hours before the period ends. Manage or cancel in your App Store subscription settings.</p>
     <p className="text-xs font-semibold text-slate-600"><Link href="/terms" className="font-black underline">Terms of Use</Link><span aria-hidden="true"> · </span><Link href="/privacy" className="font-black underline">Privacy Policy</Link></p>
-    <button id="apple-subscribe-button" type="button" onClick={subscribe} disabled={!baseProduct || submitting || restoring} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-50">{submitting ? "Confirming with Apple…" : "Subscribe with Apple"}</button>
+    <button id="apple-subscribe-button" type="button" onClick={subscribe} disabled={!storeProduct || submitting || restoring} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-50">{submitting ? "Confirming with Apple…" : `Choose ${configuration.selectedPlan.name} with Apple`}</button>
     <button type="button" onClick={restore} disabled={submitting || restoring} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800 disabled:opacity-50">{restoring ? "Restoring…" : "Restore Purchases"}</button>
     {notice && <p className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-800" role="status">{notice}</p>}
     {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
@@ -194,12 +221,20 @@ export default function PaymentSetupClient() {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
   const [billingPlatform, setBillingPlatform] = useState("checking");
+  const [selectedPlanKey, setSelectedPlanKey] = useState("starter");
   const [configuration, setConfiguration] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [checking, setChecking] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const completionStarted = useRef(false);
+  const selectedPlan = billingPlan(selectedPlanKey);
+
+  function selectPlan(planKey) {
+    setConfiguration(null);
+    setError("");
+    setSelectedPlanKey(planKey);
+  }
 
   useEffect(() => { setBillingPlatform(appleIapAvailable() ? "apple" : "stripe"); }, []);
 
@@ -262,15 +297,20 @@ export default function PaymentSetupClient() {
       return;
     }
     let active = true;
+    setConfiguration(null);
     (async () => {
       try {
         const token = await user.getIdToken(true);
         const endpoint = billingPlatform === "apple" ? "/api/billing/apple/configuration" : "/api/billing/setup-intent";
-        const response = await fetch(endpoint, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ planKey: selectedPlanKey }),
+        });
         const data = await readApiJson(response, FAILURE_MESSAGE);
         if (!active) return;
         if (billingPlatform === "apple") {
-          if (!data.appAccountToken || !data.baseProduct?.productId) throw new Error(FAILURE_MESSAGE);
+          if (!data.appAccountToken || !data.selectedPlan?.productId) throw new Error(FAILURE_MESSAGE);
         } else if (!data.clientSecret || !data.publishableKey || !data.returnUrl) throw new Error(FAILURE_MESSAGE);
         setConfiguration(data);
       } catch (setupError) {
@@ -279,7 +319,7 @@ export default function PaymentSetupClient() {
       }
     })();
     return () => { active = false; };
-  }, [billingPlatform, completeSetup, loading, profile?.identityVerificationRequired, profile?.identityVerificationVerified, profile?.status, router, success, user]);
+  }, [billingPlatform, completeSetup, loading, profile?.identityVerificationRequired, profile?.identityVerificationVerified, profile?.status, router, selectedPlanKey, success, user]);
 
   const stripePromise = useMemo(() => billingPlatform === "stripe" && configuration?.publishableKey ? loadStripe(configuration.publishableKey) : null, [billingPlatform, configuration?.publishableKey]);
   const elementOptions = useMemo(() => configuration?.clientSecret ? {
@@ -292,10 +332,11 @@ export default function PaymentSetupClient() {
       <section className="ark-auth-card w-full max-w-xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment</p>
+        {!success && !checking && <div className="mt-6"><PlanSelector selectedPlanKey={selectedPlanKey} onSelect={selectPlan} disabled={leaving} /></div>}
         {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">Payment setup complete</p>
           : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment…</p>
             : billingPlatform === "apple" && configuration ? <div className="mt-7"><ApplePaymentForm configuration={configuration} user={user} onSucceeded={completeAppleSetup} /></div>
-              : billingPlatform === "stripe" && configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div>
+              : billingPlatform === "stripe" && configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} selectedPlan={selectedPlan} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div>
                 : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">{billingPlatform === "apple" ? "Opening Apple purchase…" : billingPlatform === "stripe" ? "Opening secure payment fields…" : "Checking this device…"}</p> : null}
         {error && <p id="error-message" className="mt-7 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
       </section>

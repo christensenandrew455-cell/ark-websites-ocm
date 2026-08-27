@@ -5,53 +5,69 @@ The owner signup flow is:
 1. Main information
 2. Email and phone verification
 3. Business information
-4. Apple In-App Purchase on iOS or Stripe elsewhere, with a $50 monthly subscription
+4. Plan selection and Apple In-App Purchase on iOS or Stripe elsewhere
 5. Sign-in page
 
-Step 1 creates only a Firebase Authentication user and a server-only signup-verification request under `system/global/signupVerificationRequests`; it does not create a Firestore account or temporary account. After both the email and phone are verified, the server atomically deletes that request and creates one verified `pendingOwnerSignups/{clientId}` temporary record with a hard one-hour expiration. After Apple or Stripe confirms the base subscription, the server creates `accounts/{clientId}`, deletes the temporary record, signs the browser out, and sends the owner to `/login`.
+The available monthly plans are defined in `app/lib/billingPricing.js`:
 
-Firestore has exactly three top-level collections:
+| Plan | Completed calls per billing month | Price |
+| --- | ---: | ---: |
+| Starter | 50 | $49.99/month |
+| Standard | 100 | $79.99/month |
+| Growth | 250 | $149.99/month |
+| Pro | 500 | $299.99/month |
 
-- `accounts` — regular account state and account-owned subcollections
+Each unique completed receptionist call counts once. Lead intake, lead review, messages, and SMS parts do not generate charges. There are no overage charges, metered Stripe items, threshold payments, or Apple consumables. When an account reaches its allowance, ARK rejects new receptionist calls until the provider's next billing period or until the owner changes plans.
+
+## Account creation
+
+Step 1 creates only a Firebase Authentication user and a server-only signup-verification request under `system/global/signupVerificationRequests`; it does not create a Firestore account. After email and phone verification, the server creates one verified `pendingOwnerSignups/{clientId}` record with a one-hour expiration. After Apple or Stripe confirms the chosen subscription, the server creates `accounts/{clientId}`, removes the temporary record, signs the browser out, and sends the owner to `/login`.
+
+Firestore has three top-level collections:
+
+- `accounts` — regular account state and account-owned subcollections, including idempotent completed-call events
 - `pendingOwnerSignups` — verified, one-hour temporary signup records awaiting business information or payment
-- `system` — server-only operational records under `system/global`, including pre-account verification requests and referral identity claims
+- `system` — server-only operational records under `system/global`
 
 ## Firebase Authentication and Admin
 
-Enable **Firebase Authentication → Sign-in method → Email/Password**. Configure the public `NEXT_PUBLIC_FIREBASE_*` values and these server-only values in Vercel:
+Enable **Firebase Authentication → Sign-in method → Email/Password** and configure:
 
+- `NEXT_PUBLIC_FIREBASE_*`
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
 
-Paste the complete private key. Multiline text and a value containing literal `\n` characters are both supported.
+Paste the complete private key. Multiline text and a value containing literal `\n` characters are supported.
 
 ## Apple In-App Purchase
 
-iOS uses StoreKit 2 for the $50 monthly subscription and user-confirmed 20-credit usage purchases. Complete every App Store Connect product, server-notification, environment-variable, sandbox-test, and submission step in [APPLE_IAP_SETUP.md](APPLE_IAP_SETUP.md). Stripe remains enabled on web and Android and must not be presented by the iOS runtime.
+iOS uses four StoreKit 2 auto-renewable subscriptions in a single subscription group. Complete the App Store Connect products, server-notification endpoint, environment variables, sandbox testing, and submission steps in [APPLE_IAP_SETUP.md](APPLE_IAP_SETUP.md). Stripe must not be presented by the iOS runtime.
 
-## Stripe (web and Android)
+## Stripe on web and Android
 
-Stripe signup payment requires these two matching keys:
+Configure matching-mode keys:
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PUBLISHABLE_KEY`
+- `STRIPE_WEBHOOK_SECRET` for recurring-payment and billing-period updates
 
-The `$50 USD per month` amount and interval live in `app/lib/billingPricing.js`. Normally, the server uses the secret key to find an existing active `$50 USD` monthly recurring Price in the current Stripe mode. If none exists, it creates the Product and Price automatically with a stable code lookup key. No Product ID is used.
+The server validates configured Price IDs or creates stable code-managed monthly Prices with these lookup keys:
 
-`STRIPE_ACCOUNT_BASE_PRICE_ID` is an optional signup override. Set it to an active USD flat-rate monthly recurring `price_...` in the same Stripe mode when an owner needs to run a temporary live-price test, such as `$0.01`. Replace it with the normal `$50` Price ID and redeploy before public signup. Changing this variable affects new signups only; it does not change subscriptions that already exist.
+| Optional environment variable | Required Price | Managed lookup key |
+| --- | --- | --- |
+| `STRIPE_STARTER_PRICE_ID` | $49.99 USD/month | `ark_client_center_starter_monthly_v3` |
+| `STRIPE_STANDARD_PRICE_ID` | $79.99 USD/month | `ark_client_center_standard_monthly_v3` |
+| `STRIPE_GROWTH_PRICE_ID` | $149.99 USD/month | `ark_client_center_growth_monthly_v3` |
+| `STRIPE_PRO_PRICE_ID` | $299.99 USD/month | `ark_client_center_pro_monthly_v3` |
 
-`STRIPE_USAGE_PRICE_ID` is required and must identify the active one-time `$20 USD` flat-rate Price for the Usage Product in the same Stripe mode. At each completed threshold, the server validates that Price, charges its exact amount to the saved card, and records the Price and Product IDs on the PaymentIntent metadata. No Stripe Product ID variable is needed.
+Leave an optional Price ID blank to let the server find or create that plan's Price in the current Stripe test/live mode. The legacy `STRIPE_ACCOUNT_BASE_PRICE_ID` remains accepted only as a Starter override while deployments migrate; do not configure any usage Price.
 
-When switching to live mode, replace only the secret and publishable keys together. The onboarding API rejects mixed test/live keys. If a temporary signup contains a Customer or SetupIntent from the other mode, the server safely creates matching live-mode objects.
+Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, and `invoice.payment_failed`. These events keep the plan, call-reset period, and payment state current.
 
-The payment return URL uses the domain of the incoming request and successful signup returns to `/login`, so `YOUR_DOMAIN` and `APP_HOME_PATH` are not used.
+Enable the Stripe customer portal to update payment methods and switch among the four products. Plan switching must use the subscription's recurring line-item Price. The webhook reads the actual line item so a portal change updates the plan and allowance even if old subscription metadata remains.
 
-There are no Stripe metered Prices or billing meters. Accepting a lead adds two usage points, while reviewing or declining it adds none. The accepted-lead event ID makes retries count once. Whenever the balance reaches or exceeds 20, Stripe uses `STRIPE_USAGE_PRICE_ID` to charge an exact $20 off-session PaymentIntent to the saved card and carries any excess forward. For example, 19 points plus one accepted lead charges $20 and leaves one point.
-
-Signup does not require a webhook. After Stripe confirms the Payment Element, the browser calls the protected setup-status route, which verifies the SetupIntent, starts the `$50` subscription, and creates the regular account. The existing webhook route can be enabled later for asynchronous recurring-payment notifications; only then does it need its own Stripe signing secret.
-
-The browser never submits a Stripe Customer ID. Protected server routes derive the Customer from the verified Firebase token and server-side temporary or regular account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code inputs.
+The browser never submits a Stripe Customer ID. Protected routes derive the Customer from the verified Firebase token and server-side signup or account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code fields.
 
 ## Verification delivery
 
@@ -62,15 +78,12 @@ Configure:
 - `TELNYX_API_KEY`
 - `TELNYX_SIGNUP_FROM_NUMBER=+17742316164`
 - `ACCOUNT_VERIFICATION_SECRET` with a long random server-only value
-- `REFERRAL_IDENTITY_SECRET` with a stable long random server-only value
 
 Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `TELNYX_SIGNUP_FROM_NUMBER` sends signup codes and later number-ready messages.
 
-`REFERRAL_IDENTITY_SECRET` creates private, deterministic claims for the referred helper account's verified email and phone. Keep it stable across deployments. Those claims survive account deletion so the same helper identity cannot qualify another referral. If it is not set, the server falls back to `ACCOUNT_VERIFICATION_SECRET`.
+## ARK Admin event bridge
 
-## Arc Admin event bridge
-
-ARC Client Center forwards signed events to `https://ark-admin-app.vercel.app/api/webhooks/events`. Set the same random `ARC_WEBHOOK_SECRET` with at least 32 bytes in both deployments. ARC Client Center has no administrator login, role, route, or screen.
+ARK Client Center forwards signed events to `https://ark-admin-app.vercel.app/api/webhooks/events`. Set the same random `ARK_WEBHOOK_SECRET` of at least 32 bytes in both deployments. `ARK_ADMIN_WEBHOOK_URL` can override the destination. The route sends and accepts `X-ARK-Timestamp` and `X-ARK-Signature`; temporary legacy header and environment aliases remain accepted during the separate ARK Admin migration.
 
 ## Firestore rules and scheduled workflows
 
@@ -80,37 +93,24 @@ Publish the repository rules:
 firebase deploy --only firestore:rules
 ```
 
-Configure `CRON_SECRET` for the scheduled routes. For Stripe-billed accounts, the daily billing jobs refresh the payment method, retry eligible failed usage or invoice payments no more than once per day, and permanently delete an unpaid account after the full seven-day recovery window. Apple controls Apple subscription retries and notifies the dedicated version 2 endpoint; ARK does not auto-delete an Apple-billed account while Apple may still recover that subscription. The workflow job also deletes expired signup-verification requests, expired verified temporary signups, and expired unverified legacy accounts.
-
-The pre-account verification request expires exactly one hour after main information is submitted. Once verification succeeds, the verified temporary signup gets its own one-hour window for business information and payment. Every protected signup route rejects and deletes an expired record when it is encountered, and the ARK Operations workflow performs a permanent cleanup sweep every 15 minutes. That sweep deletes the Firebase Authentication user, the applicable server-only request or temporary record, and any current-mode Stripe Customer. A valid unexpired login resumes verification, business information, or payment; it never opens the regular app shell.
-
-## Signup behavior
-
-1. Main information creates a Firebase Auth user and a server-only verification request. It creates neither `accounts/{clientId}` nor `pendingOwnerSignups/{clientId}`.
-2. Separate four-digit email and phone codes are sent and hashed in the verification request. Both must be verified before the server creates the temporary signup and opens business setup.
-3. Business settings are validated and saved into the verified temporary record.
-4. The iOS app confirms an Apple subscription through StoreKit; web and Android confirm an off-session Stripe SetupIntent.
-5. The server verifies Apple’s signed transaction or the Stripe SetupIntent, starts one base subscription, promotes the verified temporary data into the regular account, initializes a zero-point usage balance, and deletes the temporary record.
-6. The browser signs out and opens the regular sign-in page. After the owner signs in, Arc Admin shows the account under **Needs a Number**, where the private APK assigns the receptionist number.
-
-If a monthly or $20 usage charge is declined, the account immediately becomes `disabled`; connection intake and receptionist calls stop. The owner can still sign in and use the payment-update action. A successful retry restores the prior connection and receptionist state.
+Configure `CRON_SECRET`. For Stripe-billed accounts, the daily billing job refreshes the saved payment method and enforces unpaid recurring invoices. Apple controls Apple subscription retries and sends version 2 server notifications; ARK does not auto-delete an Apple-billed account while Apple may still recover the subscription. The workflow also deletes expired verification requests, temporary signups, and unverified legacy accounts.
 
 ## Test-mode acceptance checklist
 
-- Before verification, a new signup has one Auth user and one server-only verification request but no account or temporary-account document.
-- After email and phone verification, the verification request is replaced by one temporary Firestore record that expires after exactly one hour.
-- Business information must be complete before the Payment Element opens.
-- Stripe test card `4242 4242 4242 4242` completes the SetupIntent with a future expiry and any valid security code.
-- Successful setup starts exactly one $50 monthly base subscription with no metered items.
-- A SetupIntent belonging to another user, Customer, or account metadata cannot promote the signup.
-- Payment success removes the temporary record and creates one `standard` regular account.
-- Payment success signs the browser out and opens `/login`, never the dashboard or signup page.
-- Email and phone verification happens before business information and payment, and refreshes the token before navigation.
-- At 19 usage points, a new two-point call or lead produces one $20 charge and leaves one point.
-- A decline immediately disables receptionist calls and new lead intake.
-- Billing retries occur at most daily; the account is deleted after seven full days unpaid.
-- Stripe keys never appear in frontend code or API responses.
-- If the optional webhook is enabled later, it rejects missing or invalid signatures.
+- Before verification, a signup has one Auth user and one server-only verification request, with no account document.
+- After email and phone verification, the request becomes one temporary Firestore record that expires in one hour.
+- Business information must be complete before plan selection and payment.
+- Stripe test card `4242 4242 4242 4242` completes setup with a future expiry and any valid security code.
+- Each plan starts exactly one monthly recurring subscription at the configured amount.
+- Apple signup recognizes all four products under `com.arkwebsites.app`.
+- A SetupIntent or Apple transaction belonging to another owner cannot promote the signup.
+- Payment success creates one `standard` account role, initializes the chosen call allowance at zero calls used, signs out, and opens `/login`.
+- Reposting the same completed `callId` counts once.
+- New runtime calls are rejected after the allowance is exhausted; no overage payment is created.
+- A new provider billing period resets the allowance, and a plan switch preserves calls already used in the same period.
+- A failed recurring subscription payment disables receptionist calls and intake until payment recovery.
+- Stripe secrets never appear in frontend code or API responses.
+- Billing webhooks reject missing or invalid signatures.
 
 ## Password reset
 

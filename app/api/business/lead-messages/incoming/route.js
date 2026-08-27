@@ -5,7 +5,6 @@ import { readAccountSections } from "../../../../lib/accountSections";
 import { getAdminDb } from "../../../../lib/firebase-admin";
 import { systemCollection } from "../../../../lib/firestoreLayout";
 import { MESSAGES_AVAILABLE } from "../../../../lib/launchFeatures";
-import { addBillingMessageEventToTransaction, billingMessageEventRef } from "../../../../lib/billingMessageUsage";
 import { isMessageContactBlocked } from "../../../../lib/messageContactBlocks";
 import {
   ARK_SUPPORT_URL,
@@ -16,7 +15,6 @@ import {
 } from "../../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../../lib/smsParts";
 import { sendInboundMessageNotification } from "../../../../lib/messageNotificationService";
-import { recordSmsPartUsage } from "../../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -181,7 +179,6 @@ export async function POST(request) {
     const inboundIndexRef = eventKey ? root.collection("telnyxInboundMessageIndex").doc(eventKey) : null;
     const messageRef = eventKey ? resolved.ref.collection("messages").doc(`inbound-${eventKey}`) : resolved.ref.collection("messages").doc();
     const parts = smsPartCount(event.messageBody);
-    const usageLedgerRef = billingMessageEventRef(db, { clientId, direction: "inbound", sourceId: event.providerMessageId || messageRef.id });
     const messageData = {
       direction: "inbound",
       body: event.messageBody,
@@ -256,13 +253,6 @@ export async function POST(request) {
       if (existingEvent?.exists) return true;
       const latestData = latestConversation.exists ? latestConversation.data() : {};
       transaction.set(messageRef, messageData);
-      addBillingMessageEventToTransaction(transaction, db, {
-        clientId,
-        direction: "inbound",
-        sourceId: event.providerMessageId || messageRef.id,
-        sourceType: keyword ? "compliance-keyword" : "conversation",
-        smsParts: parts,
-      });
       transaction.set(resolved.ref, {
         ...conversationUpdate,
         ...(!keyword ? { ownerUnreadCount: Number(latestData.ownerUnreadCount || 0) + 1 } : {}),
@@ -283,19 +273,10 @@ export async function POST(request) {
       return false;
     });
     if (duplicate) {
-      await recordSmsPartUsage({ db, clientId, sourceId: usageLedgerRef.id, smsParts: parts, ledgerRef: usageLedgerRef }).catch((usageError) => {
-        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Unable to finish duplicate inbound usage accounting", usageError);
-      });
       return NextResponse.json({ ok: true, duplicate: true, clientId, conversationId: resolved.conversationId, messageId: messageRef.id, keyword: keyword || null });
     }
-    let usagePayment = null;
-    try {
-      usagePayment = (await recordSmsPartUsage({ db, clientId, sourceId: usageLedgerRef.id, smsParts: parts, ledgerRef: usageLedgerRef })).payment || null;
-    } catch (usageError) {
-      if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Inbound message saved but usage accounting needs a retry", usageError);
-    }
     let notification = { attempted: 0, sent: 0, failed: 0 };
-    if (!keyword && usagePayment?.status !== "declined") {
+    if (!keyword) {
       try {
         notification = await sendInboundMessageNotification({ db, clientId, conversationId: resolved.conversationId, conversation, messageBody: event.messageBody });
       } catch (notificationError) {

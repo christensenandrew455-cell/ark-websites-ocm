@@ -34,12 +34,12 @@ export async function POST(request) {
         type: "account.deleted",
         clientId,
         businessName: expected || clientId,
-        summary: `${expected || clientId} permanently deleted their ARC account.`,
+        summary: `${expected || clientId} permanently deleted their ARK account.`,
         metadata: { deletedBy: "owner" },
       });
-      if (!delivery.delivered) console.warn("Account deleted but Arc Admin notification was not delivered", clientId);
+      if (!delivery.delivered) console.warn("Account deleted but ARK Admin notification was not delivered", clientId);
     } catch (eventError) {
-      console.warn("Account deleted but Arc Admin notification was not delivered", clientId, eventError);
+      console.warn("Account deleted but ARK Admin notification was not delivered", clientId, eventError);
     }
     return NextResponse.json({ ok: true });
   } catch (error) {

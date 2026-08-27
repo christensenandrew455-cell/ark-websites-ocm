@@ -1,6 +1,6 @@
 # ARK Client Center
 
-ARK Client Center is the customer application for Firebase-backed account access, Apple in-app purchases on iOS, Stripe billing on other platforms, lead management, and Capacitor mobile projects. Private operations live in the separate Arc Admin repository.
+ARK Client Center is the customer application for Firebase-backed account access, Apple in-app purchases on iOS, Stripe billing on other platforms, lead management, and Capacitor mobile projects. Private operations live in the separate ARK Admin repository.
 
 ## Project structure
 
@@ -39,8 +39,8 @@ scripts/                 Cross-platform mobile setup and asset generators
 - Put reusable UI in `app/components`.
 - Put shared formatting, identifiers, authentication helpers, and service logic in `app/lib` rather than copying functions into routes.
 - Keep signed-in customer actions under `api/account` and public submissions under their feature-specific routes. Do not add private operations routes or screens to this repository.
-- Send account, lead, support, receptionist, and successful-payment events to Arc Admin through the signed event webhook.
-- Receive signed number assignments back from Arc Admin at `/api/webhooks/admin`, apply them to the account, and send the owner's Firebase app notification.
+- Send account, lead, support, receptionist, and successful-payment events to ARK Admin through the signed event webhook.
+- Receive signed number assignments back from ARK Admin at `/api/webhooks/admin`, apply them to the account, and send the owner's Firebase app notification.
 - Keep Firebase Admin code server-only. Do not import `firebase-admin` modules into client components.
 - Use `normalizeClientId` from `app/lib/valueUtils.js` whenever a business or client identifier becomes a Firestore document ID.
 - Use `toIsoString` or `serializeFirestoreValue` from `app/lib/valueUtils.js` when returning Firestore timestamps through an API.

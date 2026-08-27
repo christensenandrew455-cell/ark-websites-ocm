@@ -1,8 +1,11 @@
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
+import { stripeBillingPlanFromSubscription } from "../../../lib/stripePlanBilling";
+import { calendarMonthWindow, subscriptionPeriodWindow } from "../../../lib/timeWindows";
 import {
   findBusinessForStripeCustomer,
   registerPaymentFailure,
@@ -14,6 +17,46 @@ export const dynamic = "force-dynamic";
 
 function text(value) {
   return String(value || "").trim();
+}
+
+function subscriptionIdFromInvoice(invoice) {
+  return text(invoice?.subscription?.id || invoice?.subscription || invoice?.parent?.subscription_details?.subscription);
+}
+
+async function syncStripeSubscription({ db, stripe, subscription, customerId = "", metadata = {} }) {
+  const expanded = typeof subscription === "string"
+    ? await stripe.subscriptions.retrieve(subscription, { expand: ["items.data.price", "items.data.price.product"] })
+    : subscription;
+  if (!expanded) return null;
+  const match = await findBusinessForStripeCustomer(
+    db,
+    customerId || text(expanded.customer?.id || expanded.customer),
+    { ...(expanded.metadata || {}), ...(metadata || {}) },
+  );
+  if (!match) return null;
+  const plan = stripeBillingPlanFromSubscription(expanded);
+  const fallback = calendarMonthWindow(text(match.business.timeZone));
+  const period = subscriptionPeriodWindow(expanded, fallback);
+  const periodKey = `${period.startMs}-${period.endMs}`;
+  const callsUsed = text(match.business.callPeriodKey) === periodKey
+    ? Math.max(0, Number(match.business.callsUsedThisPeriod || 0))
+    : 0;
+  await db.collection("accounts").doc(match.clientId).set({
+    stripeSubscriptionId: expanded.id,
+    stripeSubscriptionStatus: expanded.status,
+    billingPlanKey: plan.key,
+    billingPlanName: plan.name,
+    monthlyPlanAmountCents: plan.amountCents,
+    monthlyCallLimit: plan.monthlyCalls,
+    callPeriodStartAt: Timestamp.fromMillis(period.startMs),
+    callPeriodEndAt: Timestamp.fromMillis(period.endMs),
+    callPeriodKey: periodKey,
+    callsUsedThisPeriod: callsUsed,
+    callsRemainingThisPeriod: Math.max(0, plan.monthlyCalls - callsUsed),
+    callLimitReached: callsUsed >= plan.monthlyCalls,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { match, plan, subscription: expanded };
 }
 
 export async function POST(request) {
@@ -69,21 +112,31 @@ export async function POST(request) {
       });
     }
 
+    if (["customer.subscription.created", "customer.subscription.updated"].includes(event.type)) {
+      await syncStripeSubscription({ db, stripe, subscription: event.data.object });
+    }
+
     if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || "";
       const match = await findBusinessForStripeCustomer(db, customerId, invoice.metadata || {});
       if (!match) return NextResponse.json({ received: true, ignored: true });
+      const subscriptionId = subscriptionIdFromInvoice(invoice) || text(match.business.stripeSubscriptionId);
+      const synced = subscriptionId
+        ? await syncStripeSubscription({ db, stripe, subscription: subscriptionId, customerId, metadata: invoice.metadata || {} })
+        : null;
 
       await sendAdminEvent({
         id: `billing-paid-${invoice.id}`,
         type: "billing.payment_succeeded",
         clientId: match.clientId,
         businessName: text(match.business.businessName || match.clientId),
-        summary: "Monthly payment succeeded",
+        summary: `${synced?.plan?.name || "Monthly"} plan payment succeeded`,
         metadata: {
           paymentId: invoice.id,
           paymentKind: "subscription",
+          billingPlan: synced?.plan?.key || text(match.business.billingPlanKey || "starter"),
+          monthlyCalls: synced?.plan?.monthlyCalls || Number(match.business.monthlyCallLimit || 50),
           amountCents: Math.max(0, Number(invoice.amount_paid || 0)),
           currency: text(invoice.currency || "usd").toLowerCase(),
         },
@@ -94,7 +147,7 @@ export async function POST(request) {
         ? await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
         : { data: [] };
       const anotherInvoiceIsUnpaid = remaining.data.some((item) => item.id !== invoice.id && Number(item.amount_remaining || 0) > 0);
-      if (!anotherInvoiceIsUnpaid && match.business.billingFailureKind !== "usage") {
+      if (!anotherInvoiceIsUnpaid && match.business.billingPastDue === true) {
         await resolvePayment({
           db,
           clientId: match.clientId,

@@ -43,7 +43,6 @@ export function publicBillingStatus(data = {}, now = Date.now()) {
   return {
     ...state,
     billingProvider: text(data.billingProvider || "stripe"),
-    usagePurchaseRequired: text(data.usageChargeStatus) === "purchase_required",
     warning: state.showNotice ? "You need to update your payment method." : "",
     failureAt: iso(state.failureAt),
     retryAt: iso(state.retryAt),
@@ -118,7 +117,7 @@ export async function registerPaymentFailure({ db, clientId, eventId, invoiceId 
     billingDeleteAt: appleManagedRecovery ? FieldValue.delete() : Timestamp.fromMillis(deleteAt),
     billingInvoiceId: text(invoiceId),
     billingFailureProvider: safeProvider,
-    billingFailureKind: text(invoiceId).startsWith("pi_") || safeEventId.startsWith("usage-payment-failed-") ? "usage" : "subscription",
+    billingFailureKind: "subscription",
     billingLastEventId: safeEventId,
     enabled: false,
     receptionistEnabled: false,

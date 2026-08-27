@@ -4,7 +4,7 @@ import { getAdminAuth, getAdminBucket, getAdminDb } from "./firebase-admin";
 import { systemCollection } from "./firestoreLayout.js";
 import { pendingOwnerSignupRef } from "./pendingOwnerSignup";
 import { signupVerificationRequestRef } from "./signupVerificationRequest";
-import { missingStripeResource } from "./stripeUsageBilling";
+import { missingStripeResource } from "./stripePlanBilling";
 
 function text(value) { return String(value || "").trim(); }
 

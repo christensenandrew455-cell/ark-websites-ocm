@@ -1,40 +1,38 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { appleIapCatalog, appleUsageProduct, isAppleUsageProduct } from "../../../../lib/appleIapCatalog";
+import { appleIapCatalog, applePlanProduct } from "../../../../lib/appleIapCatalog";
 import { authorizeAppleBillingRequest, ensureAppleAppAccountToken } from "../../../../lib/appleIapRequest";
-import { activeReferralSavings } from "../../../../lib/referrals";
+import { normalizeBillingPlanKey } from "../../../../lib/billingPricing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function configuration(request) {
+async function configuration(request, requestedPlanKey = "") {
   const access = await authorizeAppleBillingRequest(request);
   if (access.response) return access.response;
   try {
     const appAccountToken = await ensureAppleAppAccountToken(access);
     const catalog = appleIapCatalog();
-    const referral = access.kind === "active"
-      ? await activeReferralSavings({ db: access.db, clientId: access.clientId })
-      : { count: 0, percent: 0 };
-    const calculatedUsage = appleUsageProduct(referral.percent);
-    const storedProductId = String(access.account?.usageChargeAppleProductId || "").trim();
-    const usage = access.kind === "active"
-      && String(access.account.usageChargeStatus || "") === "purchase_required"
-      && isAppleUsageProduct(storedProductId)
-      ? {
-        productId: storedProductId,
-        discountPercent: Number(access.account.usageChargeReferralDiscountPercent || 0),
-        amountCents: Number(access.account.usageChargeAmountCents || calculatedUsage.amountCents),
-      }
-      : calculatedUsage;
+    const storedPlanKey = access.kind === "pending"
+      ? access.pending.data.payment?.billingPlanKey
+      : access.account?.billingPlanKey;
+    const planKey = normalizeBillingPlanKey(requestedPlanKey || storedPlanKey);
+    const selectedPlan = applePlanProduct(planKey);
+    if (access.kind === "pending") {
+      const payment = access.pending.data.payment || {};
+      await access.pending.ref.set({
+        payment: { ...payment, billingPlanKey: planKey, appleStatus: "ready" },
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      access.pending.data.payment = { ...payment, billingPlanKey: planKey, appleStatus: "ready" };
+    }
     return NextResponse.json({
       mode: access.kind === "pending" ? "signup" : "account",
       billingProvider: access.kind === "active" ? String(access.account.billingProvider || "") : "apple",
       appAccountToken,
-      baseProduct: catalog.base,
-      usageProduct: usage,
-      productIds: [catalog.base.productId, ...catalog.usage.map((item) => item.productId)],
-      referralDiscountPercent: usage.discountPercent,
-      activeReferralCount: Number(referral.count || 0),
+      selectedPlan,
+      plans: catalog.plans,
+      productIds: catalog.plans.map((plan) => plan.productId),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Unable to prepare Apple billing configuration", error);
@@ -43,4 +41,7 @@ async function configuration(request) {
 }
 
 export async function GET(request) { return configuration(request); }
-export async function POST(request) { return configuration(request); }
+export async function POST(request) {
+  const body = await request.json().catch(() => ({}));
+  return configuration(request, body.planKey);
+}

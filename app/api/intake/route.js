@@ -3,7 +3,6 @@ import { FieldValue } from "firebase-admin/firestore";
 import { readAccountSections } from "../../lib/accountSections";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { sendAdminEvent } from "../../lib/adminEvents";
-import { billingLeadEventRef } from "../../lib/billingLeadUsage";
 import { stripLeadContactFields } from "../../lib/leadContactFields";
 import { calculateLeadRisk } from "../../lib/leadRiskAssessment";
 import { sendNewLeadNotification } from "../../lib/notificationService";
@@ -235,20 +234,7 @@ export async function POST(request) {
     const stableIntakeId = suppliedIntakeSourceId ? intakeRecordId(clientId, suppliedIntakeSourceId) : "";
     const targetRef = stableIntakeId ? targetCollection.doc(stableIntakeId) : targetCollection.doc();
     if (stableIntakeId) {
-      const [legacyBillingEvent, existingLead] = await Promise.all([
-        billingLeadEventRef(db, { clientId, sourceId: suppliedIntakeSourceId }).get(),
-        targetRef.get(),
-      ]);
-      if (legacyBillingEvent.exists) {
-        return Response.json({
-          ok: true,
-          id: text(legacyBillingEvent.data().leadId),
-          clientId,
-          sectionKey,
-          propertyKey: row.PropertyKey,
-          duplicate: true,
-        }, { status: 200, headers: corsHeaders() });
-      }
+      const existingLead = await targetRef.get();
       if (existingLead.exists) {
         return Response.json({
           ok: true,

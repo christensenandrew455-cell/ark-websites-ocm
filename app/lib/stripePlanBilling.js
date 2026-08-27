@@ -1,17 +1,20 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
-  BILLING_PLAN_KEY,
+  BILLING_PLAN_KEYS,
   BILLING_VERSION,
-  MONTHLY_BASE_CENTS,
-  USAGE_CHARGE_THRESHOLD_POINTS,
-  USAGE_POINT_CENTS,
+  billingPlan,
+  billingPlanForAmount,
+  normalizeBillingPlanKey,
 } from "./billingPricing.js";
 import { calendarMonthWindow, subscriptionPeriodWindow } from "./timeWindows.js";
 
-function text(value) { return String(value || "").trim(); }
+function text(value) {
+  return String(value || "").trim();
+}
 
-const BASE_PRICE_LOOKUP_KEY = "ark_client_center_base_monthly_v1";
-const BASE_PRODUCT_NAME = "ARK Client Center Base Subscription";
+function priceId(value) {
+  return text(value?.id || value);
+}
 
 export function missingStripeResource(error) {
   return Number(error?.statusCode || error?.status) === 404
@@ -45,7 +48,7 @@ async function findUsableCustomerSubscription(stripe, customerId, clientId) {
   });
   const active = (list?.data || []).filter(activeSubscription);
   return active.find((subscription) => text(subscription.metadata?.clientId) === text(clientId))
-    || active.find((subscription) => text(subscription.metadata?.billingPlan) === BILLING_PLAN_KEY)
+    || active.find((subscription) => BILLING_PLAN_KEYS.includes(text(subscription.metadata?.billingPlan)))
     || active[0]
     || null;
 }
@@ -53,11 +56,11 @@ async function findUsableCustomerSubscription(stripe, customerId, clientId) {
 export async function resolveBillingWindow({ stripe, subscriptionId, timeZone, strictSubscription = false, from = new Date() }) {
   const fallback = calendarMonthWindow(timeZone, from);
   if (!subscriptionId) {
-    if (strictSubscription) throw new Error("A Stripe subscription is required to determine the referral period.");
+    if (strictSubscription) throw new Error("A Stripe subscription is required to determine the billing period.");
     return fallback;
   }
   if (!stripe) {
-    if (strictSubscription) throw new Error("Stripe is required to determine the subscription period.");
+    if (strictSubscription) throw new Error("Stripe is required to determine the billing period.");
     return fallback;
   }
   try {
@@ -85,155 +88,178 @@ function isUsableMonthlyPrice(price) {
   );
 }
 
-function isMonthlyBasePrice(price) {
-  return isUsableMonthlyPrice(price) && Number(price.unit_amount) === MONTHLY_BASE_CENTS;
+function isPriceForPlan(price, planKey) {
+  return isUsableMonthlyPrice(price) && Number(price.unit_amount) === billingPlan(planKey).amountCents;
 }
 
-function stripeProductId(price) {
-  return typeof price?.product === "string" ? text(price.product) : text(price?.product?.id);
+function planEnvironmentVariable(planKey) {
+  return `STRIPE_${normalizeBillingPlanKey(planKey).toUpperCase()}_PRICE_ID`;
 }
 
-function isUsageThresholdPrice(price) {
-  return Boolean(
-    price
-    && price.active !== false
-    && text(price.currency).toLowerCase() === "usd"
-    && Number(price.unit_amount) === USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS
-    && text(price.billing_scheme || "per_unit") === "per_unit"
-    && text(price.type || "one_time") === "one_time"
-    && !price.recurring
-    && stripeProductId(price)
-  );
+function managedLookupKey(planKey) {
+  return `ark_client_center_${normalizeBillingPlanKey(planKey)}_monthly_v3`;
 }
 
-export async function ensureStripeUsagePrice({ stripe }) {
-  const usagePriceId = text(process.env.STRIPE_USAGE_PRICE_ID);
-  if (!usagePriceId) throw new Error("STRIPE_USAGE_PRICE_ID is required before usage billing can start.");
-  let usagePrice;
-  try {
-    usagePrice = await stripe.prices.retrieve(usagePriceId);
-  } catch (error) {
-    if (!missingStripeResource(error)) throw error;
-    throw new Error("STRIPE_USAGE_PRICE_ID was not found with the current Stripe secret key.");
-  }
-  if (!isUsageThresholdPrice(usagePrice)) {
-    throw new Error("STRIPE_USAGE_PRICE_ID must be an active one-time $20 USD flat-rate Price.");
-  }
-  return {
-    usagePriceId: usagePrice.id,
-    usageProductId: stripeProductId(usagePrice),
-    unitAmount: Number(usagePrice.unit_amount),
-    currency: "usd",
-  };
+function legacyStarterPriceId(planKey) {
+  return normalizeBillingPlanKey(planKey) === "starter" ? text(process.env.STRIPE_ACCOUNT_BASE_PRICE_ID) : "";
 }
 
-export async function ensureStripeBillingCatalog({ stripe }) {
-  const configuredPriceId = text(process.env.STRIPE_ACCOUNT_BASE_PRICE_ID);
+export async function ensureStripePlanPrice({ stripe, planKey }) {
+  const plan = billingPlan(planKey);
+  const environmentVariable = planEnvironmentVariable(plan.key);
+  const configuredPriceId = text(process.env[environmentVariable]) || legacyStarterPriceId(plan.key);
   if (configuredPriceId) {
     let configuredPrice;
     try {
       configuredPrice = await stripe.prices.retrieve(configuredPriceId);
     } catch (error) {
       if (!missingStripeResource(error)) throw error;
-      throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID was not found with the current Stripe secret key.");
+      throw new Error(`${environmentVariable} was not found with the current Stripe secret key.`);
     }
-    if (!isUsableMonthlyPrice(configuredPrice)) {
-      throw new Error("STRIPE_ACCOUNT_BASE_PRICE_ID must be an active USD flat-rate monthly recurring Price.");
+    if (!isPriceForPlan(configuredPrice, plan.key)) {
+      throw new Error(`${environmentVariable} must be an active $${plan.amountCents / 100} USD monthly recurring Price.`);
     }
-    return { basePriceId: configuredPrice.id };
+    return { plan, priceId: configuredPrice.id };
   }
 
-  const managedPrices = await stripe.prices.list({
-    active: true,
-    lookup_keys: [BASE_PRICE_LOOKUP_KEY],
-    limit: 10,
-  });
+  const lookupKey = managedLookupKey(plan.key);
+  const managedPrices = await stripe.prices.list({ active: true, lookup_keys: [lookupKey], limit: 10 });
   const managedPrice = managedPrices.data?.[0] || null;
-  if (managedPrice && !isMonthlyBasePrice(managedPrice)) {
-    throw new Error("The code-managed Stripe base Price must remain $50 USD per month.");
+  if (managedPrice && !isPriceForPlan(managedPrice, plan.key)) {
+    throw new Error(`The code-managed Stripe ${plan.name} Price must remain $${plan.amountCents / 100} USD per month.`);
   }
-  if (managedPrice) return { basePriceId: managedPrice.id };
-
-  const existingPrices = await stripe.prices.list({
-    active: true,
-    currency: "usd",
-    type: "recurring",
-    recurring: { interval: "month" },
-    limit: 100,
-  });
-  const existingPrice = (existingPrices.data || []).find(isMonthlyBasePrice);
-  if (existingPrice) return { basePriceId: existingPrice.id };
+  if (managedPrice) return { plan, priceId: managedPrice.id };
 
   const createdPrice = await stripe.prices.create({
     currency: "usd",
-    unit_amount: MONTHLY_BASE_CENTS,
+    unit_amount: plan.amountCents,
     recurring: { interval: "month", usage_type: "licensed" },
-    lookup_key: BASE_PRICE_LOOKUP_KEY,
-    nickname: "$50 monthly base subscription",
-    metadata: { billingPlan: BILLING_PLAN_KEY, billingVersion: BILLING_VERSION },
-    product_data: {
-      name: BASE_PRODUCT_NAME,
-      metadata: { billingPlan: BILLING_PLAN_KEY, billingVersion: BILLING_VERSION },
+    lookup_key: lookupKey,
+    nickname: `${plan.name}: ${plan.monthlyCalls} monthly calls`,
+    metadata: {
+      billingPlan: plan.key,
+      billingVersion: BILLING_VERSION,
+      monthlyCalls: String(plan.monthlyCalls),
     },
-  }, { idempotencyKey: BASE_PRICE_LOOKUP_KEY });
-  if (!isMonthlyBasePrice(createdPrice)) throw new Error("Stripe did not create the required $50 monthly base Price.");
-  return { basePriceId: createdPrice.id };
+    product_data: {
+      name: `ARK Client Center ${plan.name}`,
+      metadata: {
+        billingPlan: plan.key,
+        billingVersion: BILLING_VERSION,
+        monthlyCalls: String(plan.monthlyCalls),
+      },
+    },
+  }, { idempotencyKey: lookupKey });
+  if (!isPriceForPlan(createdPrice, plan.key)) throw new Error(`Stripe did not create the required ${plan.name} monthly Price.`);
+  return { plan, priceId: createdPrice.id };
+}
+
+export async function ensureStripeBillingCatalog({ stripe, planKey = "starter" }) {
+  return ensureStripePlanPrice({ stripe, planKey });
+}
+
+export function stripeBillingPlanFromSubscription(subscription) {
+  const items = Array.isArray(subscription?.items?.data) ? subscription.items.data : [];
+  for (const item of items) {
+    const price = item?.price;
+    const priceMetadataPlan = text(price?.metadata?.billingPlan || price?.product?.metadata?.billingPlan);
+    if (BILLING_PLAN_KEYS.includes(priceMetadataPlan)) return billingPlan(priceMetadataPlan);
+    const amountPlan = billingPlanForAmount(price?.unit_amount);
+    if (amountPlan) return amountPlan;
+  }
+  // Subscription metadata is a fallback. Stripe's customer portal can replace
+  // the line-item Price without rewriting subscription metadata.
+  const metadataPlan = text(subscription?.metadata?.billingPlan);
+  if (BILLING_PLAN_KEYS.includes(metadataPlan)) return billingPlan(metadataPlan);
+  return billingPlan();
 }
 
 function expectedPriceIds(catalog) {
-  return [catalog.basePriceId];
+  return [catalog.priceId];
 }
 
 function subscriptionHasPrices(subscription, priceIds) {
-  const existing = new Set((subscription?.items?.data || []).map((item) => text(item?.price?.id || item?.price)));
-  return existing.size === priceIds.length && priceIds.every((priceId) => existing.has(priceId));
+  const existing = new Set((subscription?.items?.data || []).map((item) => priceId(item?.price)));
+  return existing.size === priceIds.length && priceIds.every((id) => existing.has(id));
 }
 
 async function alignExistingSubscription({ stripe, subscription, priceIds, metadata, paymentMethodId }) {
   const pricesMatch = subscriptionHasPrices(subscription, priceIds);
   const versionMatches = text(subscription.metadata?.billingVersion) === BILLING_VERSION;
-  const currentPaymentMethod = text(subscription.default_payment_method?.id || subscription.default_payment_method);
+  const planMatches = text(subscription.metadata?.billingPlan) === text(metadata.billingPlan);
+  const currentPaymentMethod = priceId(subscription.default_payment_method);
   const paymentMatches = !paymentMethodId || currentPaymentMethod === paymentMethodId;
-  if (pricesMatch && versionMatches && paymentMatches) return subscription;
+  if (pricesMatch && versionMatches && planMatches && paymentMatches) return subscription;
+
   const existingItems = subscription.items?.data || [];
   const expected = new Set(priceIds);
   const items = [];
   for (const item of existingItems) {
-    const priceId = text(item?.price?.id || item?.price);
-    if (expected.has(priceId)) {
+    const existingPriceId = priceId(item?.price);
+    if (expected.has(existingPriceId)) {
       items.push({ id: item.id });
-      expected.delete(priceId);
+      expected.delete(existingPriceId);
     } else {
       items.push({ id: item.id, deleted: true });
     }
   }
-  for (const priceId of expected) items.push({ price: priceId });
+  for (const expectedPriceId of expected) items.push({ price: expectedPriceId });
   return stripe.subscriptions.update(subscription.id, {
     items,
     proration_behavior: "none",
     metadata,
     ...(paymentMethodId ? { default_payment_method: paymentMethodId } : {}),
+    expand: ["items.data.price"],
   });
 }
 
-export async function ensureCustomerBillingSubscription({ stripe, db, clientId, customerId, paymentMethodId, businessName, uid, existingSubscriptionId, subscriptionIdempotencyKey = "", persist = true, createIfMissing = false }) {
-  const catalog = await ensureStripeBillingCatalog({ stripe, db });
+function subscriptionBillingFields(subscription, timeZone, plan) {
+  const fallback = calendarMonthWindow(timeZone);
+  const period = subscriptionPeriodWindow(subscription, fallback);
+  return {
+    billingPlanKey: plan.key,
+    billingPlanName: plan.name,
+    monthlyCallLimit: plan.monthlyCalls,
+    monthlyPlanAmountCents: plan.amountCents,
+    callPeriodStartAt: Timestamp.fromMillis(period.startMs),
+    callPeriodEndAt: Timestamp.fromMillis(period.endMs),
+  };
+}
+
+export async function ensureCustomerBillingSubscription({
+  stripe,
+  db,
+  clientId,
+  customerId,
+  paymentMethodId,
+  businessName,
+  uid,
+  planKey = "starter",
+  timeZone = "America/New_York",
+  existingSubscriptionId,
+  subscriptionIdempotencyKey = "",
+  persist = true,
+  createIfMissing = false,
+}) {
+  const catalog = await ensureStripeBillingCatalog({ stripe, planKey });
   const priceIds = expectedPriceIds(catalog);
+  const plan = catalog.plan;
   const metadata = {
     clientId,
     uid: text(uid),
     businessName: text(businessName),
-    billingPlan: BILLING_PLAN_KEY,
+    billingPlan: plan.key,
     billingVersion: BILLING_VERSION,
+    monthlyCalls: String(plan.monthlyCalls),
   };
   if (paymentMethodId) {
     await stripe.customers.update(customerId, {
       invoice_settings: { default_payment_method: paymentMethodId },
     });
   }
+
   const storedSubscription = await retrieveUsableSubscription(stripe, text(existingSubscriptionId));
-  const existing = storedSubscription
-    || await findUsableCustomerSubscription(stripe, customerId, clientId);
+  const existing = storedSubscription || await findUsableCustomerSubscription(stripe, customerId, clientId);
   if (!existing && !createIfMissing) return null;
   const subscription = existing
     ? await alignExistingSubscription({ stripe, subscription: existing, priceIds, metadata, paymentMethodId })
@@ -244,17 +270,17 @@ export async function ensureCustomerBillingSubscription({ stripe, db, clientId, 
       items: priceIds.map((price) => ({ price })),
       payment_behavior: "error_if_incomplete",
       metadata,
+      expand: ["items.data.price"],
     }, subscriptionIdempotencyKey ? { idempotencyKey: subscriptionIdempotencyKey } : undefined);
 
   const update = {
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
+    ...subscriptionBillingFields(subscription, timeZone, plan),
     updatedAt: FieldValue.serverTimestamp(),
   };
-  if (persist) {
-    await db.collection("accounts").doc(clientId).set(update, { merge: true });
-  }
-  return subscription;
+  if (persist) await db.collection("accounts").doc(clientId).set(update, { merge: true });
+  return { subscription, plan, accountFields: update };
 }
 
 function paymentMethodLabel(paymentMethod) {
@@ -264,11 +290,11 @@ function paymentMethodLabel(paymentMethod) {
   return `${brand.charAt(0).toUpperCase()}${brand.slice(1)} ending in ${text(card.last4)}`;
 }
 
-export async function refreshStoredPaymentMethod({ stripe, db, clientId, uid, customerId, subscriptionId, fallbackPaymentMethodId = "" }) {
+export async function refreshStoredPaymentMethod({ stripe, db, clientId, customerId, subscriptionId, fallbackPaymentMethodId = "" }) {
   if (!customerId) return { paymentMethodId: text(fallbackPaymentMethodId), paymentMethodLabel: "" };
   const customer = await stripe.customers.retrieve(customerId);
   if (customer?.deleted) throw new Error("The Stripe customer was deleted.");
-  const customerDefault = text(customer?.invoice_settings?.default_payment_method?.id || customer?.invoice_settings?.default_payment_method);
+  const customerDefault = priceId(customer?.invoice_settings?.default_payment_method);
   let subscription = null;
   if (subscriptionId) {
     try {
@@ -277,7 +303,7 @@ export async function refreshStoredPaymentMethod({ stripe, db, clientId, uid, cu
       if (!missingStripeResource(error)) throw error;
     }
   }
-  const subscriptionDefault = text(subscription?.default_payment_method?.id || subscription?.default_payment_method);
+  const subscriptionDefault = priceId(subscription?.default_payment_method);
   const fallback = text(fallbackPaymentMethodId);
   let paymentMethodId = customerDefault || subscriptionDefault || fallback;
   if (customerDefault && customerDefault !== fallback && subscriptionDefault === fallback) paymentMethodId = customerDefault;
@@ -297,13 +323,12 @@ export async function refreshStoredPaymentMethod({ stripe, db, clientId, uid, cu
     if (!missingStripeResource(error)) throw error;
   }
   const label = paymentMethodLabel(paymentMethod);
-  const update = {
+  await db.collection("accounts").doc(clientId).set({
     stripeCustomerId: customerId,
     stripePaymentMethodId: paymentMethodId,
     paymentMethodLabel: label,
     paymentMethodSyncedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-  };
-  await db.collection("accounts").doc(clientId).set(update, { merge: true });
+  }, { merge: true });
   return { paymentMethodId, paymentMethodLabel: label };
 }

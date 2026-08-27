@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { isStandardRole } from "../../../lib/accountRoles";
+import { billingPlan, normalizeBillingPlanKey, publicBillingPlans } from "../../../lib/billingPricing";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import {
   deletePendingOwnerSignup,
@@ -11,7 +12,7 @@ import {
   readPendingOwnerSignup,
 } from "../../../lib/pendingOwnerSignup";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
-import { ensureStripeBillingCatalog, ensureStripeUsagePrice, missingStripeResource } from "../../../lib/stripeUsageBilling";
+import { ensureStripeBillingCatalog, missingStripeResource } from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,13 +35,14 @@ async function reusableStripeCustomer(stripe, customerId, livemode) {
     throw error;
   }
 }
-async function reusableSetupIntent(stripe, setupIntentId, customerId, uid, livemode) {
+async function reusableSetupIntent(stripe, setupIntentId, customerId, uid, planKey, livemode) {
   if (!setupIntentId) return null;
   try {
     const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
     return setupIntent.livemode === livemode
       && text(setupIntent.customer) === customerId
       && text(setupIntent.metadata?.uid) === uid
+      && normalizeBillingPlanKey(setupIntent.metadata?.billingPlan) === planKey
       && !["canceled", "succeeded"].includes(setupIntent.status)
       ? setupIntent
       : null;
@@ -81,6 +83,9 @@ async function authorize(request) {
 export async function POST(request) {
   const access = await authorize(request);
   if (access.response) return access.response;
+  const body = await request.json().catch(() => ({}));
+  const planKey = normalizeBillingPlanKey(body.planKey);
+  const selectedPlan = billingPlan(planKey);
   const stripeSecretKey = text(process.env.STRIPE_SECRET_KEY);
   const stripePublishableKey = text(process.env.STRIPE_PUBLISHABLE_KEY);
   const secretMode = stripeKeyMode(stripeSecretKey, "sk");
@@ -114,10 +119,7 @@ export async function POST(request) {
         }, { status: 503 });
       }
     }
-    await Promise.all([
-      ensureStripeBillingCatalog({ stripe }),
-      ensureStripeUsagePrice({ stripe }),
-    ]);
+    await ensureStripeBillingCatalog({ stripe, planKey });
     let stripeCustomerId = text(payment.stripeCustomerId);
     const existingCustomer = await reusableStripeCustomer(stripe, stripeCustomerId, livemode);
     if (!existingCustomer) {
@@ -125,7 +127,7 @@ export async function POST(request) {
         email: text(account.accountEmail),
         name: text(account.ownerName),
         phone: text(account.accountPhone),
-        metadata: { uid, clientId, businessName: text(account.businessName || clientId), accountType: "owner", accountStatus: "temporary" },
+        metadata: { uid, clientId, businessName: text(account.businessName || clientId), accountType: "owner", accountStatus: "temporary", billingPlan: planKey },
       }, { idempotencyKey: `ark-onboarding-customer-${uid}` });
       stripeCustomerId = customer.id;
     } else {
@@ -133,28 +135,35 @@ export async function POST(request) {
         email: text(account.accountEmail),
         name: text(account.ownerName),
         phone: text(account.accountPhone),
+        metadata: { uid, clientId, businessName: text(account.businessName || clientId), accountType: "owner", accountStatus: "temporary", billingPlan: planKey },
       });
     }
 
     const existingSetupIntentId = text(payment.stripeSetupIntentId);
-    let setupIntent = await reusableSetupIntent(stripe, existingSetupIntentId, stripeCustomerId, uid, livemode);
+    let setupIntent = await reusableSetupIntent(stripe, existingSetupIntentId, stripeCustomerId, uid, planKey, livemode);
     const setupAttempts = Math.max(1, Math.floor(Number(payment.setupAttempts || payment.paymentSetupAttempt || 0)) + (setupIntent ? 0 : 1));
     if (!setupIntent) {
       setupIntent = await stripe.setupIntents.create({
         customer: stripeCustomerId,
         payment_method_types: ["card"],
         usage: "off_session",
-        metadata: { uid, clientId, purpose: "ark_onboarding_payment_method" },
-      }, { idempotencyKey: `ark-onboarding-setup-${uid}-${setupAttempts}` });
+        metadata: { uid, clientId, purpose: "ark_onboarding_payment_method", billingPlan: planKey },
+      }, { idempotencyKey: `ark-onboarding-setup-${uid}-${planKey}-${setupAttempts}` });
     }
     if (setupIntent.livemode !== livemode) throw new Error("STRIPE_MODE_MISMATCH");
 
     await access.pending.ref.set({
-      payment: { status: "in_progress", stripeCustomerId, stripeSetupIntentId: setupIntent.id, stripeLivemode: livemode, setupAttempts },
+      payment: { status: "in_progress", billingPlanKey: planKey, stripeCustomerId, stripeSetupIntentId: setupIntent.id, stripeLivemode: livemode, setupAttempts },
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    return NextResponse.json({ clientSecret: setupIntent.client_secret, publishableKey: stripePublishableKey, returnUrl: applicationReturnUrl(request) });
+    return NextResponse.json({
+      clientSecret: setupIntent.client_secret,
+      publishableKey: stripePublishableKey,
+      returnUrl: applicationReturnUrl(request),
+      selectedPlan,
+      plans: publicBillingPlans(),
+    });
   } catch (error) {
     console.error("Unable to create Stripe SetupIntent", error);
     return NextResponse.json({ error: paymentFailure() }, { status: 500 });

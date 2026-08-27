@@ -5,14 +5,11 @@ import { isStandardRole } from "../../../lib/accountRoles";
 import { readAccountSections } from "../../../lib/accountSections";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE } from "../../../lib/launchFeatures";
-import { addBillingConversationEventToBatch, isBillableConversationData } from "../../../lib/billingConversationUsage";
-import { addBillingMessageEventToBatch } from "../../../lib/billingMessageUsage";
 import { stripLeadContactFields } from "../../../lib/leadContactFields";
 import { isMessageContactBlocked, messageContactBlockId } from "../../../lib/messageContactBlocks";
 import { optInConfirmationMessage } from "../../../lib/messagingCompliance";
 import { smsPartCount } from "../../../lib/smsParts";
 import { requireUser } from "../../../lib/userRequest";
-import { recordChatUsage, recordSmsPartUsage } from "../../../lib/usageThresholdBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -288,7 +285,7 @@ export async function POST(request) {
     const conversationRef = root.collection("leadConversations").doc(key);
     const existingConversation = await conversationRef.get();
     const existingData = existingConversation.exists ? existingConversation.data() : {};
-    const isNewConversation = !isBillableConversationData(existingData);
+    const isNewConversation = !existingConversation.exists;
     if (existingData.messagingOptedOut === true) return NextResponse.json({ error: "This customer opted out of text messages. Do not send another message unless they opt back in." }, { status: 409 });
 
     let optInBody = "";
@@ -304,11 +301,6 @@ export async function POST(request) {
     const batch = access.db.batch();
     const now = Date.now();
     let addedParts = smsPartCount(messageBody);
-    const messageUsageLedgers = [];
-    let conversationUsageLedger = null;
-    const billingConversationSourceId = isNewConversation
-      ? `chat:${provider.providerMessageId || messageRef.id}`
-      : text(existingData.billingConversationSourceId);
 
     if (isNewConversation) {
       const optInRef = conversationRef.collection("messages").doc();
@@ -327,17 +319,6 @@ export async function POST(request) {
         to: loaded.lead.phoneNormalized,
         createdAt: Timestamp.fromMillis(now),
       });
-      if (optInProvider.providerMessageId) {
-        const ledgerRef = addBillingMessageEventToBatch(batch, access.db, {
-          clientId: access.clientId,
-          direction: "outbound",
-          sourceId: optInProvider.providerMessageId,
-          sourceType: "opt-in-confirmation",
-          smsParts: smsPartCount(optInBody),
-          occurredAt: now,
-        });
-        messageUsageLedgers.push({ ref: ledgerRef, smsParts: smsPartCount(optInBody), occurredAt: now });
-      }
       addedParts += smsPartCount(optInBody);
     }
 
@@ -356,27 +337,6 @@ export async function POST(request) {
       to: loaded.lead.phoneNormalized,
       createdAt: Timestamp.fromMillis(now + (isNewConversation ? 1 : 0)),
     });
-    if (provider.providerMessageId) {
-      const ledgerRef = addBillingMessageEventToBatch(batch, access.db, {
-        clientId: access.clientId,
-        direction: "outbound",
-        sourceId: provider.providerMessageId,
-        sourceType: "conversation",
-        smsParts: smsPartCount(messageBody),
-        occurredAt: now + (isNewConversation ? 1 : 0),
-      });
-      messageUsageLedgers.push({ ref: ledgerRef, smsParts: smsPartCount(messageBody), occurredAt: now + (isNewConversation ? 1 : 0) });
-    }
-
-    if (isNewConversation) {
-      conversationUsageLedger = addBillingConversationEventToBatch(batch, access.db, {
-        clientId: access.clientId,
-        conversationId: key,
-        sourceId: billingConversationSourceId,
-        occurredAt: now,
-      });
-    }
-
     batch.set(conversationRef, {
       conversationId: key,
       leadId,
@@ -391,19 +351,9 @@ export async function POST(request) {
       lastMessageDirection: "outbound",
       lastMessageAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-      ...(isNewConversation ? { billingConversationSourceId, optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: "owner", ownerUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
+      ...(isNewConversation ? { optInConfirmationSentAt: FieldValue.serverTimestamp(), startedByUid: access.decoded.uid, startedByRole: "owner", ownerUnreadCount: 0, createdAt: FieldValue.serverTimestamp() } : {}),
     }, { merge: true });
     await batch.commit();
-    if (conversationUsageLedger) {
-      await recordChatUsage({ db: access.db, clientId: access.clientId, sourceId: conversationUsageLedger.id, occurredAt: now, ledgerRef: conversationUsageLedger }).catch((usageError) => {
-        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Chat saved but usage accounting needs a retry", usageError);
-      });
-    }
-    for (const usage of messageUsageLedgers) {
-      await recordSmsPartUsage({ db: access.db, clientId: access.clientId, sourceId: usage.ref.id, smsParts: usage.smsParts, occurredAt: usage.occurredAt, ledgerRef: usage.ref }).catch((usageError) => {
-        if (text(usageError?.message) !== "ACCOUNT_USAGE_SUSPENDED") console.error("Message saved but usage accounting needs a retry", usageError);
-      });
-    }
 
     const notice = provider.status === "provider-not-configured"
       ? "The message was saved, but this business number is not configured for Telnyx messaging."

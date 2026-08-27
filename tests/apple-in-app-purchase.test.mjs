@@ -1,28 +1,31 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { appleIapCatalog, appleUsageProduct } from "../app/lib/appleIapCatalog.js";
+import test from "node:test";
+import { appleIapCatalog, applePlanForProduct } from "../app/lib/appleIapCatalog.js";
 import { computeBillingState } from "../app/lib/billingDelinquency.js";
 
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
-test("Apple catalog keeps the monthly plan and every referral-adjusted usage product fixed", () => {
+test("Apple exposes the same four monthly call plans under the shared app identifier", () => {
   const catalog = appleIapCatalog();
-  assert.equal(catalog.bundleId, "com.arkwebsites.clientcenter");
-  assert.equal(catalog.base.productId, "com.arkwebsites.clientcenter.base.monthly");
-  assert.equal(catalog.base.amountCents, 5000);
-  assert.deepEqual(catalog.usage.map((item) => item.discountPercent), [0, 10, 20, 30, 40, 50]);
-  assert.deepEqual(catalog.usage.map((item) => item.amountCents), [2000, 1800, 1600, 1400, 1200, 1000]);
-  assert.equal(appleUsageProduct(37).productId, "com.arkwebsites.clientcenter.usage20.referral30");
-  assert.equal(appleUsageProduct(99).discountPercent, 50);
+  assert.equal(catalog.bundleId, "com.arkwebsites.app");
+  assert.deepEqual(catalog.plans.map(({ key, monthlyCalls, amountCents, productId }) => ({ key, monthlyCalls, amountCents, productId })), [
+    { key: "starter", monthlyCalls: 50, amountCents: 4999, productId: "com.arkwebsites.app.starter.monthly" },
+    { key: "standard", monthlyCalls: 100, amountCents: 7999, productId: "com.arkwebsites.app.standard.monthly" },
+    { key: "growth", monthlyCalls: 250, amountCents: 14999, productId: "com.arkwebsites.app.growth.monthly" },
+    { key: "pro", monthlyCalls: 500, amountCents: 29999, productId: "com.arkwebsites.app.pro.monthly" },
+  ]);
+  assert.equal(applePlanForProduct("com.arkwebsites.app.pro.monthly").key, "pro");
+  assert.equal(applePlanForProduct("com.arkwebsites.app.unknown"), null);
 });
 
-test("the iOS bridge uses StoreKit 2 and leaves transaction completion to the verified server flow", async () => {
-  const [plugin, manifest, config, project] = await Promise.all([
+test("the iOS bridge uses StoreKit 2 and leaves completion to the verified server flow", async () => {
+  const [plugin, manifest, config, project, plist] = await Promise.all([
     source("native-plugins/ios/AppleIAPPlugin/AppleIAPPlugin.swift"),
     source("ios/App/CapApp-SPM/Package.swift"),
     source("ios/App/App/capacitor.config.json"),
     source("ios/App/App.xcodeproj/project.pbxproj"),
+    source("ios/App/App/Info.plist"),
   ]);
   assert.ok(plugin.includes("import StoreKit"));
   assert.ok(plugin.includes("product.purchase(options: [.appAccountToken(accountToken)])"));
@@ -33,36 +36,35 @@ test("the iOS bridge uses StoreKit 2 and leaves transaction completion to the ve
   assert.equal(purchaseMethod.includes("transaction.finish()"), false);
   assert.ok(manifest.includes('name: "AppleIAPPlugin"'));
   assert.ok(JSON.parse(config).packageClassList.includes("AppleIAPPlugin"));
+  assert.equal(JSON.parse(config).appId, "com.arkwebsites.app");
   assert.ok(project.includes("com.apple.InAppPurchase = { enabled = 1; };"));
+  assert.ok(project.includes("PRODUCT_BUNDLE_IDENTIFIER = com.arkwebsites.app;"));
+  assert.ok(plist.includes("<string>com.arkwebsites.app</string>"));
 });
 
-test("iPhone signup uses Apple while the existing Stripe checkout remains for other platforms", async () => {
-  const [client, settings, shell, billingProvider] = await Promise.all([
+test("iPhone signup selects an Apple plan while other platforms keep Stripe", async () => {
+  const [client, configuration, settings] = await Promise.all([
     source("app/signup/payment/PaymentSetupClient.js"),
+    source("app/api/billing/apple/configuration/route.js"),
     source("app/components/SettingsPanel.js"),
-    source("app/components/AppShell.js"),
-    source("app/components/BillingStatusProvider.js"),
   ]);
   assert.ok(client.includes('appleIapAvailable() ? "apple" : "stripe"'));
-  assert.ok(client.includes('"/api/billing/apple/configuration"'));
+  assert.ok(client.includes("Choose your monthly call plan"));
+  assert.ok(client.includes('body: JSON.stringify({ planKey: selectedPlanKey })'));
   assert.ok(client.includes('"/api/billing/apple/transactions"'));
-  assert.ok(client.includes("Subscribe with Apple"));
   assert.ok(client.includes("Restore Purchases"));
   assert.ok(client.includes("automatically renews monthly"));
   assert.ok(client.includes("@stripe/react-stripe-js"));
   assert.ok(client.includes("<PaymentElement"));
-  assert.ok(client.includes("stripe.confirmSetup({"));
-  assert.ok(settings.includes("stripeManagedOutsideIos"));
-  assert.ok(settings.includes("Billing changes for this existing account are not available inside the iPhone app."));
-  assert.ok(shell.includes("!stripeManagedOutsideIos && <button"));
-  assert.ok(billingProvider.includes('if (appleIapAvailable()) throw new Error("Billing changes for this existing account'));
+  assert.ok(configuration.includes("applePlanProduct(planKey)"));
+  assert.ok(configuration.includes("plans: catalog.plans"));
+  assert.ok(settings.includes("Manage Apple Plan"));
 });
 
-test("Apple transactions are verified on the server and usage is never sent to Stripe", async () => {
-  const [verifier, route, usage, appleUsage, notification] = await Promise.all([
+test("Apple transactions are verified and synchronize only subscription plans", async () => {
+  const [verifier, route, transactions, notification] = await Promise.all([
     source("app/lib/appleIapVerification.js"),
     source("app/api/billing/apple/transactions/route.js"),
-    source("app/lib/usageThresholdBilling.js"),
     source("app/lib/appleIapTransactions.js"),
     source("app/api/billing/apple/notifications/route.js"),
   ]);
@@ -70,11 +72,12 @@ test("Apple transactions are verified on the server and usage is never sent to S
   assert.ok(verifier.includes("verifyAndDecodeTransaction"));
   assert.ok(verifier.includes("APPLE_IAP_BUNDLE_ID"));
   assert.ok(route.includes("sameAppleAccountToken"));
-  assert.ok(route.includes("settleAppleUsagePurchase"));
-  assert.ok(usage.indexOf('billingProvider) === "apple"') < usage.indexOf("const client = stripeClient(stripe)"));
-  assert.ok(usage.includes('usageChargeStatus: "purchase_required"'));
-  assert.ok(appleUsage.includes("firestoreTransaction.create(transactionRef"));
-  assert.ok(appleUsage.includes("appleUsageCreditPoints"));
+  assert.ok(route.includes("isApplePlanProduct"));
+  assert.equal(route.includes("settleAppleUsagePurchase"), false);
+  assert.ok(transactions.includes("applePlanForProduct"));
+  assert.ok(transactions.includes("callsUsedThisPeriod: callsUsed"));
+  assert.ok(transactions.includes("callsRemainingThisPeriod"));
+  assert.equal(transactions.includes("CreditPoints"), false);
   assert.ok(notification.includes("verifySignedAppleNotification"));
   assert.ok(notification.includes('provider: "apple"'));
 });

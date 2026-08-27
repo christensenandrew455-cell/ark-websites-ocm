@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const expectedAndroidAppId = "com.arkwebsites.app";
-const expectedIosBundleId = "com.arkwebsites.clientcenter";
+const expectedIosBundleId = "com.arkwebsites.app";
 const expectedAppName = "ARK Client Center";
 const expectedUrl = "https://www.arkclientcenter.com";
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

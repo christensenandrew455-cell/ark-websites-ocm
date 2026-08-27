@@ -22,7 +22,7 @@ const PAGE_GUIDES = Object.freeze({
     points: [
       "Use “Business Information” to update what your AI receptionist knows about your services, hours, and service area.",
       "Customize the app and your client preferences.",
-      "Review the $2 accepted-lead price, current usage, and payment method.",
+      "Review your monthly call plan, calls remaining, and payment method.",
       "Use “Docs,” “AI Chat,” or “Support,” download your client data, or delete your account.",
     ],
   },
@@ -31,10 +31,10 @@ const PAGE_GUIDES = Object.freeze({
     title: "This is your Leads page",
     body: "Everything your AI receptionist collects is organized here.",
     points: [
-      "“Contacted You” holds new leads. Choose “Accept” to move one to “Clients” for $2, or choose “Decline” for free.",
+      "“Contacted You” holds new leads. Choose “Accept” to move one to “Clients,” or choose “Decline” to remove it.",
       "“Clients” holds accepted customers. Open one to edit details and notes, save the contact, or add the appointment to your calendar.",
       "Delete a client you no longer need from its client details.",
-      "Your payment method, referral percentage, and current usage are under “Settings,” then “Payment.”",
+      "Your plan, remaining monthly calls, and payment method are under “Settings,” then “Payment.”",
     ],
   },
 });

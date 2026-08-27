@@ -20,14 +20,14 @@ function formatPhoneInput(value) {
 
 export default function SignupPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ businessName: "", ownerName: "", accountEmail: "", accountPhone: "", password: "", confirmPassword: "", referrerAccountId: "" });
+  const [form, setForm] = useState({ businessName: "", ownerName: "", accountEmail: "", accountPhone: "", password: "", confirmPassword: "" });
   const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   function updateField(event) {
     const { name } = event.target;
-    const value = name === "businessName" || name === "referrerAccountId"
+    const value = name === "businessName"
       ? dashBusinessName(event.target.value)
       : name === "accountPhone"
         ? formatPhoneInput(event.target.value)
@@ -54,7 +54,6 @@ export default function SignupPage() {
           accountEmail: form.accountEmail,
           accountPhone: form.accountPhone,
           password: form.password,
-          referrerAccountId: form.referrerAccountId,
           acceptedTerms: true,
           acceptedPrivacy: true,
           termsVersion: TERMS_VERSION,
@@ -83,8 +82,6 @@ export default function SignupPage() {
           <label className="block"><span className="text-sm font-semibold text-slate-700">Account phone</span><input required type="tel" inputMode="numeric" maxLength={14} name="accountPhone" autoComplete="tel" value={form.accountPhone} onChange={updateField} placeholder="(555) 555-5555" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block"><span className="text-sm font-semibold text-slate-700">Password</span><PasswordInput required minLength={8} name="password" autoComplete="new-password" value={form.password} onChange={updateField} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
           <label className="block"><span className="text-sm font-semibold text-slate-700">Confirm password</span><PasswordInput required minLength={8} name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={updateField} className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
-          <label className="block md:col-span-2"><span className="text-sm font-semibold text-slate-700">Account that referred you <span className="font-normal text-slate-500">(optional)</span></span><input name="referrerAccountId" autoComplete="off" value={form.referrerAccountId} onChange={updateField} placeholder="Business-Account-ID" className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950" /></label>
-
           <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2"><input required type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-slate-950" /><span className="text-sm leading-6 text-slate-700">I have read and agree to the <Link href="/terms" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Terms of Use</Link> and <Link href="/privacy" target="_blank" rel="noreferrer" className="font-black text-slate-950 underline">Privacy Policy</Link>.</span></label>
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 md:col-span-2">{error}</p>}
           <div className="grid gap-3 sm:grid-cols-2 md:col-span-2">

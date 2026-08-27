@@ -1,39 +1,43 @@
-import { MONTHLY_BASE_CENTS, USAGE_CHARGE_THRESHOLD_POINTS, USAGE_POINT_CENTS, usageChargeAfterReferralDiscount } from "./billingPricing.js";
+import {
+  BILLING_PLAN_KEYS,
+  billingPlan,
+  normalizeBillingPlanKey,
+} from "./billingPricing.js";
 
-export const APPLE_IAP_BUNDLE_ID = String(process.env.APPLE_IAP_BUNDLE_ID || "com.arkwebsites.clientcenter").trim();
-export const APPLE_IAP_BASE_PRODUCT_ID = String(process.env.APPLE_IAP_BASE_PRODUCT_ID || `${APPLE_IAP_BUNDLE_ID}.base.monthly`).trim();
-export const APPLE_IAP_DISCOUNT_LEVELS = Object.freeze([0, 10, 20, 30, 40, 50]);
+export const APPLE_IAP_BUNDLE_ID = "com.arkwebsites.app";
 
-function envUsageProduct(discountPercent) {
-  return String(process.env[`APPLE_IAP_USAGE_PRODUCT_ID_${discountPercent}`] || `${APPLE_IAP_BUNDLE_ID}.usage20.referral${discountPercent}`).trim();
+function environmentProductId(planKey) {
+  const key = normalizeBillingPlanKey(planKey);
+  const environmentKey = `APPLE_IAP_PLAN_PRODUCT_ID_${key.toUpperCase()}`;
+  return String(process.env[environmentKey] || `${APPLE_IAP_BUNDLE_ID}.${key}.monthly`).trim();
 }
 
-export const APPLE_IAP_USAGE_PRODUCTS = Object.freeze(Object.fromEntries(
-  APPLE_IAP_DISCOUNT_LEVELS.map((discountPercent) => [discountPercent, envUsageProduct(discountPercent)]),
+export const APPLE_IAP_PLAN_PRODUCTS = Object.freeze(Object.fromEntries(
+  BILLING_PLAN_KEYS.map((planKey) => [planKey, environmentProductId(planKey)]),
 ));
 
-export function appleUsageDiscountLevel(value) {
-  const percent = Math.max(0, Math.min(50, Math.floor(Number(value || 0) / 10) * 10));
-  return APPLE_IAP_DISCOUNT_LEVELS.includes(percent) ? percent : 0;
+export function applePlanProduct(planKey = "starter") {
+  const plan = billingPlan(planKey);
+  return {
+    ...plan,
+    productId: APPLE_IAP_PLAN_PRODUCTS[plan.key],
+    period: "month",
+  };
 }
 
-export function appleUsageProduct(discountPercent = 0) {
-  const level = appleUsageDiscountLevel(discountPercent);
-  return {
-    productId: APPLE_IAP_USAGE_PRODUCTS[level],
-    discountPercent: level,
-    amountCents: usageChargeAfterReferralDiscount(USAGE_CHARGE_THRESHOLD_POINTS * USAGE_POINT_CENTS, level),
-  };
+export function applePlanForProduct(productId) {
+  const expected = String(productId || "").trim();
+  const planKey = BILLING_PLAN_KEYS.find((key) => APPLE_IAP_PLAN_PRODUCTS[key] === expected);
+  return planKey ? applePlanProduct(planKey) : null;
 }
 
 export function appleIapCatalog() {
   return {
     bundleId: APPLE_IAP_BUNDLE_ID,
-    base: { productId: APPLE_IAP_BASE_PRODUCT_ID, amountCents: MONTHLY_BASE_CENTS, period: "month" },
-    usage: APPLE_IAP_DISCOUNT_LEVELS.map(appleUsageProduct),
+    plans: BILLING_PLAN_KEYS.map(applePlanProduct),
   };
 }
 
-export function isAppleUsageProduct(productId) {
-  return Object.values(APPLE_IAP_USAGE_PRODUCTS).includes(String(productId || "").trim());
+export function isApplePlanProduct(productId) {
+  return Boolean(applePlanForProduct(productId));
 }

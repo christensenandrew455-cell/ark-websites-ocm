@@ -24,8 +24,8 @@ const sections = [
     id: "overview",
     title: "What ARK Client Center does",
     summary: MESSAGES_AVAILABLE
-      ? "ARK Client Center receives AI receptionist leads, organizes clients, tracks usage billing, and provides optional customer messaging."
-      : "ARK Client Center receives AI receptionist leads, organizes clients, and tracks usage billing.",
+      ? "ARK Client Center receives AI receptionist leads, organizes clients, tracks monthly calls, and provides optional customer messaging."
+      : "ARK Client Center receives AI receptionist leads, organizes clients, and tracks monthly calls.",
     points: [
       MESSAGES_AVAILABLE
         ? "The Dashboard is the main page after sign-in and provides shortcuts to leads, messaging, and Settings."
@@ -46,21 +46,22 @@ const sections = [
       "Step 1 collects the main account information and password.",
       "Step 2 verifies both the email address and phone number with separate four-digit codes.",
       "Step 3 collects the business and AI receptionist information.",
-      "Step 4 uses Apple In-App Purchase on iPhone or Stripe's secure Payment Element elsewhere and starts the $50 monthly subscription.",
+      "Step 4 lets the owner choose Starter, Standard, Growth, or Pro, then uses Apple In-App Purchase on iPhone or Stripe's secure Payment Element elsewhere.",
       "After payment details succeed, ARK moves the temporary signup into a regular account.",
     ],
     links: ["Payment Terms", "Privacy Policy"],
   },
   {
     id: "pricing",
-    title: "The $50 account and usage pricing",
-    summary: "Every account uses the same monthly and usage pricing.",
+    title: "Monthly call plans",
+    summary: "Choose a monthly plan based on how many receptionist calls the business needs.",
     points: [
-      "The business account is $50 per monthly billing period.",
-      "Contacted You is free to review. Accepting a lead adds $2 to usage; declining it adds nothing. Deleting an accepted client later does not reverse the accepted-lead usage.",
-      "Usage uses 20-point intervals. Apple-billed accounts confirm 20 usage credits in Apple; Stripe-billed accounts authorize the matching threshold charge. A balance of 19 followed by a two-point lead leaves one point after the interval is paid.",
-      "Each qualified referral saves 10% on usage charges for 30 days after the referred paid account activates, up to 50% off.",
-      "Settings → Payment shows the rolling usage balance out of $20, the current referral percentage, the payment method, and the last successful payment.",
+      "Starter is $49.99 per month for 50 receptionist calls.",
+      "Standard is $79.99 per month for 100 receptionist calls.",
+      "Growth is $149.99 per month for 250 receptionist calls.",
+      "Pro is $299.99 per month for 500 receptionist calls.",
+      "Accepting, declining, editing, or deleting a lead does not create a separate charge.",
+      "Settings → Payment shows the current plan, calls used, calls remaining, reset date, and payment method.",
     ],
     links: ["Settings", "Payment Terms", "Terms of Use"],
   },
@@ -93,13 +94,13 @@ const sections = [
     summary: "The dedicated Leads page contains both new receptionist leads and accepted clients.",
     points: [
       "Contacted You shows only the caller's name, requested service, and risk level until the lead is accepted.",
-      "Accept moves a person into Clients and adds $2 to usage. Decline removes the lead without adding a charge.",
+      "Accept moves a person into Clients. Decline removes the lead.",
       "Risk levels are Low (0–2), Moderate (3–5), High (6–8), and Very high (9+).",
       MESSAGES_AVAILABLE
         ? "Lead cards provide Accept or Decline, while accepted Clients provide full details, Message, Edit, and Delete."
         : "Lead cards provide Accept or Decline, while accepted Clients provide full details, Edit, and Delete.",
       "Confirm Date remains available from the client detail view and creates a calendar event after a date is entered.",
-      "Editing or deleting an accepted client does not reverse usage already recorded.",
+      "Editing or deleting an accepted client does not change the monthly call count.",
     ],
     links: ["Leads", ...(MESSAGES_AVAILABLE ? ["Messages"] : [])],
   },
@@ -112,7 +113,7 @@ const sections = [
       MESSAGES_AVAILABLE
         ? "Customization contains Dark Mode, the Messages control, AI timing, retention settings, and Download Client Data."
         : "Customization contains Dark Mode, AI timing, retention settings, and Download Client Data.",
-      "Payment contains the $50 monthly rate, a usage bar out of $20, the payment provider, Refresh, and the matching Apple or Stripe billing control.",
+      "Payment contains the current monthly plan, a remaining-calls bar, all plan options, the payment provider, Refresh, and the matching Apple or Stripe billing control.",
       "Help & Account contains Docs, AI Chat, Support, Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.",
     ],
     links: ["Help & Account", "AI Chat", "Support", "Payment Enforcement", "Privacy Policy"],

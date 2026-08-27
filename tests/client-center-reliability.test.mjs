@@ -88,7 +88,7 @@ test("first-visit guides are contextual and their progress is persisted in Fires
   assert.ok(tutorial.includes("“Contacted You” holds new leads"));
   assert.ok(tutorial.includes("“Settings,” then “Payment.”"));
   assert.equal(tutorial.includes("Messages is not available"), false);
-  assert.ok(tutorial.includes("Review the $2 accepted-lead price"));
+  assert.ok(tutorial.includes("Review your monthly call plan, calls remaining, and payment method."));
   assert.ok(tutorial.includes("Tap anywhere to continue"));
   assert.ok(tutorial.includes('id: "number-assigned"'));
   assert.ok(tutorial.includes("reap the benefits of the app"));
@@ -122,23 +122,19 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });
 
-test("payment shows accepted-lead pricing, referral savings, and the recurring charge", async () => {
+test("payment shows the current call allowance and all monthly plans", async () => {
   const settings = await source("app/components/SettingsPanel.js");
-  assert.ok(settings.includes("Usage toward next charge"));
-  assert.ok(settings.includes("out of"));
-  assert.ok(settings.includes(">Accepted lead<"));
-  assert.ok(settings.includes("Declined leads are free"));
-  assert.equal(settings.includes(">50 SMS parts<"), false);
-  assert.ok(settings.includes(">Referral discount<"));
-  assert.ok(settings.includes("referralDiscountPercent"));
-  assert.ok(settings.includes("Recurring charge"));
-  assert.ok(settings.includes("$50 per month"));
-  assert.equal(settings.includes(">New chat<"), false);
-  assert.equal(settings.includes("Last successful payment"), false);
-  const summaryRoute = await source("app/api/billing/usage-summary/route.js");
-  assert.equal(summaryRoute.includes("chatPoints"), false);
-  assert.ok(summaryRoute.includes("activeReferralSavings({ db, clientId: authorization.clientId })"));
-  assert.ok(summaryRoute.includes("referralDiscountPercent: referralSavings.percent"));
+  assert.ok(settings.includes("Calls left this month"));
+  assert.ok(settings.includes("Monthly calls remaining"));
+  assert.ok(settings.includes("callsRemaining"));
+  assert.ok(settings.includes("Current plan"));
+  assert.ok(settings.includes("Available monthly plans"));
+  assert.ok(settings.includes("Manage Plan & Payment"));
+  assert.equal(settings.includes("Accepted lead"), false);
+  assert.equal(settings.includes("Referral discount"), false);
+  const summaryRoute = await source("app/api/billing/plan-summary/route.js");
+  assert.ok(summaryRoute.includes("publicCallPlanSummary(account)"));
+  assert.ok(summaryRoute.includes('billingProvider: String(account.billingProvider'));
 });
 
 test("business information auto-saves edits and flushes the latest change before going back", async () => {

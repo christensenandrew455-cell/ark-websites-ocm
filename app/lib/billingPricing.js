@@ -1,51 +1,57 @@
-export const BILLING_VERSION = "usage-threshold-v1";
-export const BILLING_PLAN_KEY = "standard";
-export const MONTHLY_BASE_CENTS = 5000;
-export const PER_LEAD_CENTS = 200;
-export const PER_CHAT_CENTS = 0;
-export const PER_MESSAGE_BUNDLE_CENTS = 100;
-export const MESSAGE_PARTS_PER_BUNDLE = 50;
-export const USAGE_CHARGE_THRESHOLD_POINTS = 20;
-export const USAGE_POINT_CENTS = 100;
-export const REFERRAL_DISCOUNT_PERCENT = 10;
-export const MAX_ACTIVE_REFERRALS = 5;
-export const MAX_REFERRAL_DISCOUNT_PERCENT = 50;
-export const REFERRAL_DISCOUNT_DURATION_DAYS = 30;
+export const BILLING_VERSION = "monthly-call-plans-v3";
+export const DEFAULT_BILLING_PLAN_KEY = "starter";
+
+export const BILLING_PLANS = Object.freeze({
+  starter: Object.freeze({
+    key: "starter",
+    name: "Starter",
+    monthlyCalls: 50,
+    amountCents: 4_999,
+  }),
+  standard: Object.freeze({
+    key: "standard",
+    name: "Standard",
+    monthlyCalls: 100,
+    amountCents: 7_999,
+  }),
+  growth: Object.freeze({
+    key: "growth",
+    name: "Growth",
+    monthlyCalls: 250,
+    amountCents: 14_999,
+  }),
+  pro: Object.freeze({
+    key: "pro",
+    name: "Pro",
+    monthlyCalls: 500,
+    amountCents: 29_999,
+  }),
+});
+
+export const BILLING_PLAN_KEYS = Object.freeze(Object.keys(BILLING_PLANS));
 
 function wholeNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
 }
 
-export function smsUsageResult(remainderParts, addedParts) {
-  const totalParts = wholeNumber(remainderParts) % MESSAGE_PARTS_PER_BUNDLE + wholeNumber(addedParts);
-  return {
-    addedPoints: Math.floor(totalParts / MESSAGE_PARTS_PER_BUNDLE),
-    remainderParts: totalParts % MESSAGE_PARTS_PER_BUNDLE,
-  };
+export function normalizeBillingPlanKey(value, fallback = DEFAULT_BILLING_PLAN_KEY) {
+  const candidate = String(value || "").trim().toLowerCase();
+  if (Object.hasOwn(BILLING_PLANS, candidate)) return candidate;
+  const safeFallback = String(fallback || "").trim().toLowerCase();
+  return Object.hasOwn(BILLING_PLANS, safeFallback) ? safeFallback : DEFAULT_BILLING_PLAN_KEY;
 }
 
-export function usageThresholdResult(balancePoints, addedPoints) {
-  const total = wholeNumber(balancePoints) + wholeNumber(addedPoints);
-  const charges = Math.floor(total / USAGE_CHARGE_THRESHOLD_POINTS);
-  return {
-    totalPoints: total,
-    chargeCount: charges,
-    chargeDue: charges > 0,
-    chargePoints: charges * USAGE_CHARGE_THRESHOLD_POINTS,
-    remainderPoints: total % USAGE_CHARGE_THRESHOLD_POINTS,
-  };
+export function billingPlan(value = DEFAULT_BILLING_PLAN_KEY) {
+  return BILLING_PLANS[normalizeBillingPlanKey(value)];
 }
 
-export function referralDiscountPercent(referralCount) {
-  return Math.min(
-    MAX_REFERRAL_DISCOUNT_PERCENT,
-    wholeNumber(referralCount) * REFERRAL_DISCOUNT_PERCENT
-  );
-}
-
-export function usageChargeAfterReferralDiscount(amountCents, discountPercent) {
+export function billingPlanForAmount(amountCents) {
   const amount = wholeNumber(amountCents);
-  const discount = Math.min(MAX_REFERRAL_DISCOUNT_PERCENT, wholeNumber(discountPercent));
-  return Math.max(0, Math.round(amount * (100 - discount) / 100));
+  return BILLING_PLAN_KEYS.map((key) => BILLING_PLANS[key])
+    .find((plan) => plan.amountCents === amount) || null;
+}
+
+export function publicBillingPlans() {
+  return BILLING_PLAN_KEYS.map((key) => ({ ...BILLING_PLANS[key] }));
 }

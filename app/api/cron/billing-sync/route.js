@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { retireLegacyReferralSubscriptionDiscounts, retryPendingReferralActivations } from "../../../lib/referrals";
-import { refreshStoredPaymentMethod } from "../../../lib/stripeUsageBilling";
-import {
-  reconcileNonAcceptedLeadUsageBalances,
-  reconcilePendingUsageEvents,
-  retryUsageThresholdCharges,
-} from "../../../lib/usageThresholdBilling";
+import { refreshStoredPaymentMethod } from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,8 +13,8 @@ function authorized(request) {
   return Boolean(secret) && text(request.headers.get("authorization")) === `Bearer ${secret}`;
 }
 
-async function refreshUsagePaymentMethods(db, stripe) {
-  const snapshot = await db.collection("accounts").where("usageBalancePoints", ">=", 20).limit(100).get();
+async function refreshStripePaymentMethods(db, stripe) {
+  const snapshot = await db.collection("accounts").where("billingProvider", "==", "stripe").limit(100).get();
   const results = [];
   for (const document of snapshot.docs) {
     const account = document.data();
@@ -51,20 +45,8 @@ async function handle(request) {
   const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
   if (!stripe) return NextResponse.json({ ok: false, error: "Stripe billing is not configured." }, { status: 503 });
 
-  // Correct legacy call and unaccepted-intake points before any threshold can be charged.
-  const acceptedLeadCorrections = await reconcileNonAcceptedLeadUsageBalances({ db, maximumBusinesses: 100, force: true });
-  const paymentMethods = await refreshUsagePaymentMethods(db, stripe);
-  const usageRetries = await retryUsageThresholdCharges({ db, stripe, maximum: 100 });
-  const usageReconciliation = await reconcilePendingUsageEvents({ db, stripe, maximumBusinesses: 100, maximumEvents: 500 });
-  let referralRetries = [];
-  let retiredSubscriptionDiscounts = [];
-  try {
-    referralRetries = await retryPendingReferralActivations({ db });
-    retiredSubscriptionDiscounts = await retireLegacyReferralSubscriptionDiscounts({ db, stripe });
-  } catch (error) {
-    console.error("Referral retry failed", error);
-  }
-  return NextResponse.json({ ok: true, acceptedLeadCorrections, paymentMethods, usageRetries, usageReconciliation, referralRetries, retiredSubscriptionDiscounts });
+  const paymentMethods = await refreshStripePaymentMethods(db, stripe);
+  return NextResponse.json({ ok: true, paymentMethods });
 }
 
 export async function GET(request) { return handle(request); }

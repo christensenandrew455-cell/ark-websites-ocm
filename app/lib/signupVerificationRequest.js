@@ -35,7 +35,6 @@ export function signupVerificationRequestAccount(data = {}) {
     ownerName: text(account.ownerName),
     accountEmail: text(account.accountEmail).toLowerCase(),
     accountPhone: text(account.accountPhone),
-    referrerAccountId: text(account.referrerAccountId),
   };
 }
 
@@ -65,7 +64,7 @@ export async function readSignupVerificationRequest({ db, uid, clientId = "", al
   return { ref: snapshot.ref, data };
 }
 
-export async function createSignupVerificationRequest({ db, uid, clientId, signup, referrer = null }) {
+export async function createSignupVerificationRequest({ db, uid, clientId, signup }) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SIGNUP_VERIFICATION_REQUEST_TTL_MS);
   const accountEmail = text(signup.accountEmail).toLowerCase();
@@ -80,7 +79,6 @@ export async function createSignupVerificationRequest({ db, uid, clientId, signu
       ownerName: text(signup.ownerName),
       accountEmail,
       accountPhone,
-      referrerAccountId: text(signup.referrerAccountId),
     },
     legal: {
       termsAccepted: true,
@@ -89,7 +87,6 @@ export async function createSignupVerificationRequest({ db, uid, clientId, signu
       privacyVersion: text(signup.privacyVersion),
       acceptedAt: now,
     },
-    ...(referrer?.referrerClientId ? { referral: referrer } : {}),
     verification: { verified: false },
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),

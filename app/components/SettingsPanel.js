@@ -20,7 +20,7 @@ const ACCOUNT_RESOURCE_CLASS = "min-h-28 rounded-2xl border border-slate-300 bg-
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "What your receptionist knows" },
   { key: "customization", title: "Customization", description: "Appearance and preferences" },
-  { key: "payment", title: "Payment", description: "Usage and payment method" },
+  { key: "payment", title: "Payment", description: "Monthly calls, plan, and payment method" },
   { key: "account", title: "Help & Account", description: "Help and account controls" },
 ];
 
@@ -65,7 +65,7 @@ export default function SettingsPanel() {
   const [savedReceptionist, setSavedReceptionist] = useState(null);
   const [features, setFeatures] = useState(featureValues(profile));
   const [featureState, setFeatureState] = useState({ conversationCount: 0, canDisableMessages: true });
-  const [usageSummary, setUsageSummary] = useState(null);
+  const [planSummary, setPlanSummary] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpeningBilling, setIsOpeningBilling] = useState(false);
@@ -154,15 +154,15 @@ export default function SettingsPanel() {
     return () => { active = false; };
   }, [clientId, profile?.status, user]);
 
-  const refreshUsageSummary = useCallback(async () => {
+  const refreshPlanSummary = useCallback(async () => {
     if (!user) return;
     setIsLoadingBilling(true);
     try {
       const token = await user.getIdToken(true);
-      const response = await fetch("/api/billing/usage-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+      const response = await fetch("/api/billing/plan-summary", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Could not refresh the current usage balance.");
-      setUsageSummary(data);
+      if (!response.ok) throw new Error(data.error || "Could not refresh the current call plan.");
+      setPlanSummary(data);
       setError("");
     } catch (billingError) {
       setError(ownerFacingError(billingError));
@@ -173,10 +173,10 @@ export default function SettingsPanel() {
 
   useEffect(() => {
     if (activeSection !== "payment") return undefined;
-    refreshUsageSummary();
-    const interval = window.setInterval(refreshUsageSummary, 60 * 1000);
+    refreshPlanSummary();
+    const interval = window.setInterval(refreshPlanSummary, 60 * 1000);
     return () => window.clearInterval(interval);
-  }, [activeSection, refreshUsageSummary]);
+  }, [activeSection, refreshPlanSummary]);
 
   const businessDirty = useMemo(() => Boolean(receptionist && savedReceptionist && profileKey(receptionist) !== profileKey(savedReceptionist)), [receptionist, savedReceptionist]);
 
@@ -404,21 +404,22 @@ export default function SettingsPanel() {
     </div></SectionPanel></>;
   }
   function paymentSection() {
-    const balanceCents = Number(usageSummary?.usageBalanceCents || 0);
-    const thresholdCents = Number(usageSummary?.usageThresholdCents || 2000);
-    const progress = Math.max(0, Math.min(100, Number(usageSummary?.usageProgressPercent || 0)));
-    const referralDiscount = Math.max(0, Math.min(50, Number(usageSummary?.referralDiscountPercent || 0)));
-    const activeReferrals = Math.max(0, Number(usageSummary?.activeReferralCount || 0));
+    const callsUsed = Math.max(0, Number(planSummary?.callsUsed || 0));
+    const callsRemaining = Math.max(0, Number(planSummary?.callsRemaining || 0));
+    const monthlyCallLimit = Math.max(1, Number(planSummary?.monthlyCallLimit || 50));
+    const remainingProgress = Math.max(0, Math.min(100, callsRemaining / monthlyCallLimit * 100));
+    const plans = Array.isArray(planSummary?.plans) ? planSummary.plans : [];
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
       <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
-        <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">{appleBilling ? "Usage toward next Apple purchase" : "Usage toward next charge"}</p><button type="button" onClick={refreshUsageSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
-        <p className="mt-3 text-3xl font-black">{usageSummary ? `${money(balanceCents)} out of ${money(thresholdCents)}` : "—"}</p>
-        <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Usage toward next twenty dollar charge" aria-valuemin={0} aria-valuemax={20} aria-valuenow={Math.min(20, balanceCents / 100)}><div className="h-full rounded-full bg-blue-500 transition-[width]" style={{ width: `${progress}%` }} /></div>
+        <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Calls left this month</p><button type="button" onClick={refreshPlanSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
+        <p className="mt-3 text-4xl font-black">{planSummary ? callsRemaining : "—"} <span className="text-base text-blue-100">of {monthlyCallLimit} remaining</span></p>
+        <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Monthly calls remaining" aria-valuemin={0} aria-valuemax={monthlyCallLimit} aria-valuenow={Math.min(monthlyCallLimit, callsRemaining)}><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${remainingProgress}%` }} /></div>
+        <p className="mt-2 text-xs font-bold text-blue-100">{callsUsed} call{callsUsed === 1 ? "" : "s"} used · Resets {planSummary?.periodEndAt ? new Date(planSummary.periodEndAt).toLocaleDateString() : "each billing month"}</p>
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-blue-100 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">Accepted lead</p><p className="mt-1 text-2xl font-black text-blue-950">$2</p><p className="mt-1 text-xs font-bold text-blue-700">Declined leads are free</p></div><div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-black text-amber-950">Referral discount</p><p className="mt-1 text-2xl font-black text-amber-950">{referralDiscount}% off</p><p className="mt-1 text-xs font-bold text-amber-800">{activeReferrals ? `${activeReferrals} active referral${activeReferrals === 1 ? "" : "s"} · usage charges` : "No active referral discount"}</p></div></div>
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recurring charge</p><p className="mt-1 text-2xl font-black text-slate-950">$50 per month</p></div>
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} · {money(planSummary?.monthlyPriceCents || 4999)} per month</p><p className="mt-1 text-xs font-bold text-slate-600">Includes {monthlyCallLimit} receptionist calls each billing month.</p></div>
+      {plans.length > 0 && <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Available monthly plans</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{plans.map((plan) => <div key={plan.key} className={`rounded-2xl border p-4 ${plan.key === planSummary?.planKey ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}><div className="flex items-start justify-between gap-3"><div><p className="text-lg font-black text-slate-950">{plan.name}</p><p className="mt-1 text-sm font-bold text-slate-600">{plan.monthlyCalls} calls/month</p></div><p className="text-lg font-black text-slate-950">{money(plan.amountCents)}</p></div>{plan.key === planSummary?.planKey && <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Current</p>}</div>)}</div></div>}
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      {stripeManagedOutsideIos ? <p className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">Billing changes for this existing account are not available inside the iPhone app.</p> : <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? appleBilling ? "Opening Apple…" : "Opening Stripe…" : appleBilling ? "Manage Apple Subscription" : "Manage Payment Method"}</button>}
+      {stripeManagedOutsideIos ? <p className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">Billing changes for this existing account are not available inside the iPhone app.</p> : <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? appleBilling ? "Opening Apple…" : "Opening Stripe…" : appleBilling ? "Manage Apple Plan" : "Manage Plan & Payment"}</button>}
     </SectionPanel></>;
   }
   function accountSection() {

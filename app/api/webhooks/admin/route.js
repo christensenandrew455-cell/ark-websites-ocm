@@ -46,7 +46,7 @@ async function assignNumber(body) {
     receptionistPhone,
     receptionistPhoneNormalized: receptionistPhone,
     numberAssignedAt: alreadyAssigned ? account.numberAssignedAt || FieldValue.serverTimestamp() : FieldValue.serverTimestamp(),
-    numberAssignedBy: "arc-admin-webhook",
+    numberAssignedBy: "ark-admin-webhook",
     enabled: true,
     receptionistEnabled: true,
     connectionKey: text(account.connectionKey) || randomBytes(24).toString("hex"),
@@ -84,9 +84,9 @@ export async function POST(request) {
   const rawBody = await request.text();
   if (Buffer.byteLength(rawBody, "utf8") > 32 * 1024) return Response.json({ error: "The webhook request is too large." }, { status: 413 });
   const verification = verifyAdminEvent({
-    secret: process.env.ARC_WEBHOOK_SECRET,
-    timestamp: request.headers.get("x-arc-timestamp"),
-    signature: request.headers.get("x-arc-signature"),
+    secret: process.env.ARK_WEBHOOK_SECRET || process.env.ARC_WEBHOOK_SECRET,
+    timestamp: request.headers.get("x-ark-timestamp") || request.headers.get("x-arc-timestamp"),
+    signature: request.headers.get("x-ark-signature") || request.headers.get("x-arc-signature"),
     body: rawBody,
   });
   if (!verification.ok) return Response.json({ error: verification.error }, { status: verification.status });
@@ -94,5 +94,5 @@ export async function POST(request) {
   let body;
   try { body = JSON.parse(rawBody); } catch { return Response.json({ error: "The webhook body must be valid JSON." }, { status: 400 }); }
   if (text(body.type) === "account.number.assign") return assignNumber(body);
-  return Response.json({ error: "That Arc Admin webhook event is not supported." }, { status: 400 });
+  return Response.json({ error: "That ARK Admin webhook event is not supported." }, { status: 400 });
 }
