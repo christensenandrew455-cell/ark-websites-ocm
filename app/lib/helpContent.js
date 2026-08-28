@@ -1,4 +1,11 @@
 import { MESSAGES_AVAILABLE } from "./launchFeatures.js";
+import { activeWebLaunchOffer, discountedAmountCents, TEMPORARY_FEATURES } from "./temporaryFeatures.js";
+
+const websiteOffer = activeWebLaunchOffer();
+
+function money(cents) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(cents || 0) / 100);
+}
 
 const ALL_HELP_LINKS = [
   { label: "Dashboard", href: "/" },
@@ -8,6 +15,7 @@ const ALL_HELP_LINKS = [
   { label: "Help & Account", href: "/settings?section=account" },
   { label: "AI Chat", href: "/settings?section=account&chat=open" },
   { label: "Support", href: "/messages" },
+  ...(TEMPORARY_FEATURES.feedback.enabled ? [{ label: "Give Feedback", href: "/feedback" }] : []),
   { label: "Account Data", href: "/settings" },
   { label: "Docs", href: "/docs" },
   { label: "Public Support", href: "https://arkwebsites.com/support" },
@@ -60,6 +68,7 @@ const sections = [
       "Standard is $79.99 per month for 100 receptionist calls.",
       "Growth is $149.99 per month for 250 receptionist calls.",
       "Pro is $299.99 per month for 500 receptionist calls.",
+      ...(websiteOffer ? [`For a limited launch period, new website signups receive ${websiteOffer.percentOff}% off every plan while their subscription remains active: ${money(discountedAmountCents(4999, websiteOffer))} Starter, ${money(discountedAmountCents(7999, websiteOffer))} Standard, ${money(discountedAmountCents(14999, websiteOffer))} Growth, or ${money(discountedAmountCents(29999, websiteOffer))} Pro per month. Native app purchases keep their regular store price.`] : []),
       "Accepting, declining, editing, or deleting a lead does not create a separate charge.",
       "Settings → Payment shows the current plan, calls used, calls remaining, reset date, and payment method.",
     ],
@@ -114,9 +123,9 @@ const sections = [
         ? "Customization contains Dark Mode, the Messages control, AI timing, retention settings, and Download Client Data."
         : "Customization contains Dark Mode, AI timing, retention settings, and Download Client Data.",
       "Payment contains the current monthly plan, a remaining-calls bar, all plan options, the payment provider, Refresh, and the matching Apple or Stripe billing control.",
-      "Help & Account contains Docs, AI Chat, Support, Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.",
+      `Help & Account contains Docs, AI Chat, Support,${TEMPORARY_FEATURES.feedback.enabled ? " Give Feedback," : ""} Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.`,
     ],
-    links: ["Help & Account", "AI Chat", "Support", "Payment Enforcement", "Privacy Policy"],
+    links: ["Help & Account", "AI Chat", "Support", ...(TEMPORARY_FEATURES.feedback.enabled ? ["Give Feedback"] : []), "Payment Enforcement", "Privacy Policy"],
   },
   {
     id: "privacy",

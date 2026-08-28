@@ -1,6 +1,13 @@
 import LegalPageHeader, { LegalBackButton } from "../components/LegalPageHeader";
 import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "../lib/legal";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
+import { activeWebLaunchOffer, discountedAmountCents } from "../lib/temporaryFeatures";
+
+const websiteOffer = activeWebLaunchOffer();
+
+function money(cents) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(cents || 0) / 100);
+}
 
 const sections = [
   {
@@ -17,6 +24,7 @@ const sections = [
       <p><strong>Standard:</strong> $79.99 USD per monthly billing period for up to 100 completed receptionist calls.</p>
       <p><strong>Growth:</strong> $149.99 USD per monthly billing period for up to 250 completed receptionist calls.</p>
       <p><strong>Pro:</strong> $299.99 USD per monthly billing period for up to 500 completed receptionist calls.</p>
+      {websiteOffer && <p><strong>Temporary website launch offer:</strong> A new owner who completes subscription signup through the ARK website while the offer is available receives {websiteOffer.percentOff}% off the selected plan: {money(discountedAmountCents(4999, websiteOffer))} Starter, {money(discountedAmountCents(7999, websiteOffer))} Standard, {money(discountedAmountCents(14999, websiteOffer))} Growth, or {money(discountedAmountCents(29999, websiteOffer))} Pro per monthly billing period. The discounted rate applies to renewals while that subscription remains active. The offer does not apply to purchases made inside a native app. ARK may end the offer for future signups, and a canceled subscription may not qualify again.</p>}
       <p><strong>What counts as a call:</strong> Each unique completed call handled through the account’s ARK receptionist number counts once. A repeated provider event with the same call identifier does not count again. Reviewing, accepting, declining, editing, retaining, or deleting a lead does not create a separate charge.</p>
       <p><strong>Monthly limit:</strong> The selected call allowance resets at the start of the next billing period. Unused calls do not roll over, and ARK does not add a per-call overage charge. When the allowance is exhausted, new receptionist calls may be paused until the allowance resets or the owner changes to a plan with available calls.</p>
       <p><strong>Payment display:</strong> Settings shows the current plan, calls used, calls remaining, billing-period end date, and payment provider. Apple’s or Stripe’s payment records control completed subscription purchases and charges.</p>
@@ -46,7 +54,7 @@ const sections = [
   {
     id: "support",
     title: "Help and account communication",
-    body: <><p>Signed-in owners can open Settings and select Help. Help provides Docs, an in-app AI guide, and Send a Message for technical issues, billing questions, service problems, cancellation, deletion, or other account requests.</p><p>The AI guide can explain how to use the app and provide page links, but it cannot change account data, billing, leads, conversations, or settings.</p></>,
+    body: <><p>Signed-in owners can open Settings and select Help. Help provides Docs, an in-app AI guide, Give Feedback when available, and Send a Message for technical issues, billing questions, service problems, cancellation, deletion, or other account requests.</p><p>The AI guide can explain how to use the app and provide page links, but it cannot change account data, billing, leads, conversations, or settings.</p></>,
   },
   {
     id: "responsibilities",

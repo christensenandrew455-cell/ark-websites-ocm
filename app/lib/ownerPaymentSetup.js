@@ -19,6 +19,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
 import { ensureCustomerBillingSubscription } from "./stripePlanBilling";
+import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
 
 function text(value) { return String(value || "").trim(); }
 function paymentMethodId(value) { return typeof value === "string" ? value : text(value?.id); }
@@ -67,6 +68,9 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const payment = temporary.payment || {};
   const planKey = normalizeBillingPlanKey(payment.billingPlanKey);
   const plan = billingPlan(planKey);
+  const promotion = billingPromotion(payment.billingPromotionKey);
+  if (text(payment.billingPromotionKey) && !promotion) throw new Error("PAYMENT_SETUP_FORBIDDEN");
+  const discountFields = promotionBillingFields(plan, promotion);
   const clientId = text(temporary.clientId);
   const accountRef = regularAccountRef(db, clientId);
   const businessRef = accountBusinessRef(db, clientId);
@@ -81,7 +85,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   if (text(setupIntent.metadata?.uid) !== safeUid
     || text(setupIntent.metadata?.clientId) !== clientId
     || text(setupIntent.metadata?.purpose) !== "ark_onboarding_payment_method"
-    || normalizeBillingPlanKey(setupIntent.metadata?.billingPlan) !== planKey) throw new Error("PAYMENT_SETUP_FORBIDDEN");
+    || normalizeBillingPlanKey(setupIntent.metadata?.billingPlan) !== planKey
+    || text(setupIntent.metadata?.billingPromotion) !== (promotion?.key || "")) throw new Error("PAYMENT_SETUP_FORBIDDEN");
 
   const savedPaymentMethodId = paymentMethodId(setupIntent.payment_method);
   if (!savedPaymentMethodId) throw new Error("PAYMENT_METHOD_MISSING");
@@ -97,7 +102,17 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     name: ownerName,
     phone: accountPhone,
     invoice_settings: { default_payment_method: savedPaymentMethodId },
-    metadata: { uid: safeUid, clientId, businessName, accountType: "owner", accountStatus: "active", billingPlan: planKey },
+    metadata: {
+      uid: safeUid,
+      clientId,
+      businessName,
+      accountType: "owner",
+      accountStatus: "active",
+      billingPlan: planKey,
+      billingPromotion: promotion?.key || "",
+      billingDiscountPercent: promotion ? String(promotion.percentOff) : "",
+      billingSalesChannel: promotion ? "web" : "",
+    },
   });
   const subscriptionResult = await ensureCustomerBillingSubscription({
     stripe,
@@ -108,8 +123,9 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     businessName,
     uid: safeUid,
     planKey,
+    promotionKey: promotion?.key || "",
     timeZone: text(business.timeZone || "America/New_York"),
-    subscriptionIdempotencyKey: `ark-plan-subscription-${safeUid}-${planKey}`,
+    subscriptionIdempotencyKey: `ark-plan-subscription-${safeUid}-${planKey}-${promotion?.key || "regular"}`,
     persist: false,
     createIfMissing: true,
   });
@@ -152,7 +168,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     identityVerificationVerified: true,
     billingPlanKey: planKey,
     billingPlanName: plan.name,
-    monthlyPlanAmountCents: plan.amountCents,
+    ...discountFields,
     monthlyCallLimit: plan.monthlyCalls,
     callPeriodKey: "",
     callsUsedThisPeriod: 0,
@@ -226,7 +242,13 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientId,
     businessName,
     summary: "Customer finished signup and needs a receptionist number",
-    metadata: { numberAssignmentStatus: "needed", billingPlan: planKey, monthlyCalls: plan.monthlyCalls },
+    metadata: {
+      numberAssignmentStatus: "needed",
+      billingPlan: planKey,
+      monthlyCalls: plan.monthlyCalls,
+      billingPromotion: promotion?.key || "",
+      billingDiscountPercent: promotion?.percentOff || 0,
+    },
   });
 
   return {

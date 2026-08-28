@@ -5,6 +5,7 @@ import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
 import { stripeBillingPlanFromSubscription } from "../../../lib/stripePlanBilling";
+import { billingPromotion, promotionBillingFields } from "../../../lib/temporaryFeatures";
 import { calendarMonthWindow, subscriptionPeriodWindow } from "../../../lib/timeWindows";
 import {
   findBusinessForStripeCustomer,
@@ -35,6 +36,7 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
   );
   if (!match) return null;
   const plan = stripeBillingPlanFromSubscription(expanded);
+  const promotion = billingPromotion(expanded.metadata?.billingPromotion || match.business.billingPromotionKey);
   const fallback = calendarMonthWindow(text(match.business.timeZone));
   const period = subscriptionPeriodWindow(expanded, fallback);
   const periodKey = `${period.startMs}-${period.endMs}`;
@@ -46,7 +48,7 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
     stripeSubscriptionStatus: expanded.status,
     billingPlanKey: plan.key,
     billingPlanName: plan.name,
-    monthlyPlanAmountCents: plan.amountCents,
+    ...promotionBillingFields(plan, promotion),
     monthlyCallLimit: plan.monthlyCalls,
     callPeriodStartAt: Timestamp.fromMillis(period.startMs),
     callPeriodEndAt: Timestamp.fromMillis(period.endMs),
@@ -56,7 +58,7 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
     callLimitReached: callsUsed >= plan.monthlyCalls,
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
-  return { match, plan, subscription: expanded };
+  return { match, plan, promotion, subscription: expanded };
 }
 
 export async function POST(request) {

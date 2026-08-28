@@ -17,9 +17,17 @@ import { messageContactBlockId, normalizeMessagePhone } from "../app/lib/message
 import {
   ensureCustomerBillingSubscription,
   ensureStripePlanPrice,
+  ensureStripePromotionCoupon,
   missingStripeResource,
   stripeBillingPlanFromSubscription,
 } from "../app/lib/stripePlanBilling.js";
+import {
+  activeWebLaunchOffer,
+  discountedAmountCents,
+  isNativeClientCenterRequest,
+  publicPromotion,
+  webSignupPromotionForRequest,
+} from "../app/lib/temporaryFeatures.js";
 
 const root = new URL("../", import.meta.url);
 const source = (path) => readFile(new URL(path, root), "utf8");
@@ -98,6 +106,36 @@ test("the four code-owned plans have the requested calls and monthly prices", ()
   assert.equal(normalizeBillingPlanKey("unknown"), "starter");
   assert.equal(billingPlanForAmount(7999), BILLING_PLANS.standard);
   assert.equal(billingPlan("growth").monthlyCalls, 250);
+});
+
+test("the temporary website offer is centralized, half price, and excluded from native signup", () => {
+  const offer = activeWebLaunchOffer();
+  assert.equal(offer.key, "web-launch-half-off-v1");
+  assert.equal(offer.percentOff, 50);
+  assert.deepEqual(
+    publicBillingPlans().map((plan) => discountedAmountCents(plan.amountCents, offer)),
+    [2500, 4000, 7500, 15000],
+  );
+  const websiteRequest = { headers: new Headers({ "user-agent": "Mozilla/5.0" }) };
+  const nativeRequest = { headers: new Headers({ "user-agent": "Mozilla/5.0 ARKClientCenter/1.4" }) };
+  assert.equal(isNativeClientCenterRequest(websiteRequest), false);
+  assert.equal(isNativeClientCenterRequest(nativeRequest), true);
+  assert.equal(webSignupPromotionForRequest(websiteRequest)?.key, offer.key);
+  assert.equal(webSignupPromotionForRequest(nativeRequest), null);
+  assert.equal(webSignupPromotionForRequest(nativeRequest, offer.key)?.key, offer.key);
+  assert.equal(publicPromotion(offer).renewsAtDiscount, true);
+});
+
+test("call-plan status reports a locked-in promotional account price", () => {
+  const status = callPlanStatus({
+    billingPlanKey: "starter",
+    billingPromotionKey: "web-launch-half-off-v1",
+    monthlyPlanListAmountCents: 4999,
+    monthlyPlanAmountCents: 2500,
+  });
+  assert.equal(status.monthlyPriceCents, 2500);
+  assert.equal(status.monthlyListPriceCents, 4999);
+  assert.equal(status.billingDiscountPercent, 50);
 });
 
 test("call IDs are deterministic and do not expose provider values", () => {
@@ -191,6 +229,65 @@ test("Stripe creates a stable code-managed Price when no override exists", async
   assert.equal(created.params.lookup_key, "ark_client_center_growth_monthly_v3");
   assert.equal(created.params.product_data.name, "ARK Client Center Growth");
   assert.equal(created.options.idempotencyKey, created.params.lookup_key);
+});
+
+test("Stripe creates and applies the forever website coupon to a new subscription", async () => {
+  let couponCreate;
+  let subscriptionCreate;
+  const missing = new Error("missing");
+  missing.code = "resource_missing";
+  const stripe = {
+    coupons: {
+      async retrieve() { throw missing; },
+      async create(params, options) {
+        couponCreate = { params, options };
+        return { id: params.id, valid: true, percent_off: params.percent_off, duration: params.duration };
+      },
+    },
+    customers: { async update() {} },
+    prices: { async retrieve(id) {
+      return {
+        id,
+        active: true,
+        billing_scheme: "per_unit",
+        currency: "usd",
+        unit_amount: 4999,
+        type: "recurring",
+        recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
+      };
+    } },
+    subscriptions: {
+      async list() { return { data: [] }; },
+      async create(params) {
+        subscriptionCreate = params;
+        return { id: "sub_promotional", status: "active", metadata: params.metadata, items: { data: [] } };
+      },
+    },
+  };
+  const result = await withEnvironment("STRIPE_STARTER_PRICE_ID", "price_starter", () => ensureCustomerBillingSubscription({
+    stripe,
+    db: {},
+    clientId: "client",
+    customerId: "cus_1",
+    paymentMethodId: "pm_1",
+    businessName: "Client",
+    uid: "owner",
+    planKey: "starter",
+    promotionKey: "web-launch-half-off-v1",
+    persist: false,
+    createIfMissing: true,
+  }));
+  assert.equal(couponCreate.params.id, "ark_web_launch_half_off_v1");
+  assert.equal(couponCreate.params.percent_off, 50);
+  assert.equal(couponCreate.params.duration, "forever");
+  assert.equal(subscriptionCreate.discounts[0].coupon, "ark_web_launch_half_off_v1");
+  assert.equal(subscriptionCreate.metadata.billingPromotion, "web-launch-half-off-v1");
+  assert.equal(result.accountFields.monthlyPlanAmountCents, 2500);
+  assert.equal(result.accountFields.monthlyPlanListAmountCents, 4999);
+  assert.equal(result.accountFields.billingDiscountPercent, 50);
+  assert.equal((await ensureStripePromotionCoupon({ stripe: {
+    coupons: { async retrieve() { return { id: "ark_web_launch_half_off_v1", valid: true, percent_off: 50, duration: "forever" }; } },
+  }, promotionKey: "web-launch-half-off-v1" })).id, "ark_web_launch_half_off_v1");
 });
 
 test("the Stripe line item wins over stale subscription metadata after a portal switch", () => {

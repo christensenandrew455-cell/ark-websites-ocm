@@ -1,5 +1,6 @@
 "use client";
 
+import { Capacitor } from "@capacitor/core";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { signOut } from "firebase/auth";
@@ -8,6 +9,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiJson } from "../../lib/apiResponse";
 import { billingPlan, publicBillingPlans } from "../../lib/billingPricing";
+import {
+  activeWebLaunchOffer,
+  discountedAmountCents,
+  publicPromotion,
+} from "../../lib/temporaryFeatures";
 import { useAuth } from "../../components/AuthProvider";
 import { auth } from "../../lib/firebase";
 import {
@@ -31,15 +37,17 @@ function money(cents) {
   }).format(Number(cents || 0) / 100);
 }
 
-function PlanSelector({ selectedPlanKey, onSelect, disabled = false }) {
+function PlanSelector({ selectedPlanKey, onSelect, promotion, disabled = false }) {
   return <section aria-labelledby="choose-plan-title">
     <h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose your monthly call plan</h1>
     <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Each completed receptionist call counts as one call. Your allowance resets every billing month.</p>
+    {promotion && <div className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950"><p className="text-sm font-black">{promotion.percentOff}% off every plan through the website</p><p className="mt-1 text-xs font-semibold leading-5">Subscribe while this launch offer is available and the discounted price stays on every monthly renewal while your subscription remains active.</p></div>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
       {MONTHLY_PLANS.map((plan) => {
         const selected = plan.key === selectedPlanKey;
+        const promotionalAmount = promotion ? discountedAmountCents(plan.amountCents, promotion) : plan.amountCents;
         return <button key={plan.key} type="button" onClick={() => onSelect(plan.key)} disabled={disabled} aria-pressed={selected} className={`rounded-2xl border p-4 text-left transition disabled:opacity-60 ${selected ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-200 bg-white hover:border-slate-400"}`}>
-          <span className="flex items-start justify-between gap-3"><span><span className="block text-lg font-black text-slate-950">{plan.name}</span><span className="mt-1 block text-sm font-bold text-slate-600">{plan.monthlyCalls} calls/month</span></span><span className="text-lg font-black text-slate-950">{money(plan.amountCents)}</span></span>
+          <span className="flex items-start justify-between gap-3"><span><span className="block text-lg font-black text-slate-950">{plan.name}</span><span className="mt-1 block text-sm font-bold text-slate-600">{plan.monthlyCalls} calls/month</span></span><span className="text-right">{promotion && <span className="block text-xs font-black text-slate-400 line-through decoration-2">{money(plan.amountCents)}</span>}<span className="block text-lg font-black text-slate-950">{money(promotionalAmount)}</span>{promotion && <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-700">{promotion.percentOff}% off</span>}</span></span>
           {selected && <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">Selected</span>}
         </button>;
       })}
@@ -57,7 +65,7 @@ function cardWasDeclined(error) {
   return values.some((value) => value === "card_declined" || Boolean(value && value.includes("declin")));
 }
 
-function PaymentForm({ clientSecret, returnUrl, selectedPlan, onSucceeded, onDeclined }) {
+function PaymentForm({ clientSecret, returnUrl, selectedPlan, promotion, onSucceeded, onDeclined }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -98,7 +106,7 @@ function PaymentForm({ clientSecret, returnUrl, selectedPlan, onSucceeded, onDec
 
   return <form onSubmit={submit} className="space-y-5">
     <PaymentElement options={{ layout: "accordion" }} />
-    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyCalls} receptionist calls each billing month.</p>
+    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyCalls} receptionist calls each billing month.{promotion ? ` This is the ${promotion.percentOff}% website launch price (normally ${money(selectedPlan.listAmountCents)}) and renews at the discounted price while the subscription remains active.` : ""}</p>
     <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay & Continue</button>
     {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </form>;
@@ -221,6 +229,7 @@ export default function PaymentSetupClient() {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
   const [billingPlatform, setBillingPlatform] = useState("checking");
+  const [promotion, setPromotion] = useState(null);
   const [selectedPlanKey, setSelectedPlanKey] = useState("starter");
   const [configuration, setConfiguration] = useState(null);
   const [error, setError] = useState("");
@@ -229,6 +238,11 @@ export default function PaymentSetupClient() {
   const [leaving, setLeaving] = useState(false);
   const completionStarted = useRef(false);
   const selectedPlan = billingPlan(selectedPlanKey);
+  const selectedPaymentPlan = useMemo(() => ({
+    ...selectedPlan,
+    listAmountCents: selectedPlan.amountCents,
+    amountCents: promotion ? discountedAmountCents(selectedPlan.amountCents, promotion) : selectedPlan.amountCents,
+  }), [promotion, selectedPlan]);
 
   function selectPlan(planKey) {
     setConfiguration(null);
@@ -236,7 +250,11 @@ export default function PaymentSetupClient() {
     setSelectedPlanKey(planKey);
   }
 
-  useEffect(() => { setBillingPlatform(appleIapAvailable() ? "apple" : "stripe"); }, []);
+  useEffect(() => {
+    const native = Capacitor.isNativePlatform();
+    setPromotion(native ? null : publicPromotion(activeWebLaunchOffer()));
+    setBillingPlatform(appleIapAvailable() ? "apple" : "stripe");
+  }, []);
 
   const leaveCanceledSignup = useCallback(async () => {
     await signOut(auth).catch((signOutError) => console.warn("Unable to clear the canceled temporary sign-in", signOutError));
@@ -312,6 +330,7 @@ export default function PaymentSetupClient() {
         if (billingPlatform === "apple") {
           if (!data.appAccountToken || !data.selectedPlan?.productId) throw new Error(FAILURE_MESSAGE);
         } else if (!data.clientSecret || !data.publishableKey || !data.returnUrl) throw new Error(FAILURE_MESSAGE);
+        setPromotion(data.promotion || null);
         setConfiguration(data);
       } catch (setupError) {
         console.error(`Unable to open ${billingPlatform === "apple" ? "Apple" : "Stripe"} payment setup`, setupError);
@@ -332,11 +351,11 @@ export default function PaymentSetupClient() {
       <section className="ark-auth-card w-full max-w-xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
         <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment</p>
-        {!success && !checking && <div className="mt-6"><PlanSelector selectedPlanKey={selectedPlanKey} onSelect={selectPlan} disabled={leaving} /></div>}
+        {!success && !checking && billingPlatform !== "checking" && <div className="mt-6"><PlanSelector selectedPlanKey={selectedPlanKey} onSelect={selectPlan} promotion={promotion} disabled={leaving} /></div>}
         {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">Payment setup complete</p>
           : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment…</p>
             : billingPlatform === "apple" && configuration ? <div className="mt-7"><ApplePaymentForm configuration={configuration} user={user} onSucceeded={completeAppleSetup} /></div>
-              : billingPlatform === "stripe" && configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} selectedPlan={selectedPlan} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div>
+              : billingPlatform === "stripe" && configuration && stripePromise && elementOptions ? <div className="mt-7"><Elements stripe={stripePromise} options={elementOptions}><PaymentForm clientSecret={configuration.clientSecret} returnUrl={configuration.returnUrl} selectedPlan={selectedPaymentPlan} promotion={promotion} onSucceeded={completeSetup} onDeclined={cancelDeclinedSignup} /></Elements></div>
                 : !error ? <p className="mt-8 text-center text-sm font-bold text-slate-600">{billingPlatform === "apple" ? "Opening Apple purchase…" : billingPlatform === "stripe" ? "Opening secure payment fields…" : "Checking this device…"}</p> : null}
         {error && <p id="error-message" className="mt-7 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
       </section>

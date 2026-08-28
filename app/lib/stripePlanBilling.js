@@ -6,6 +6,7 @@ import {
   billingPlanForAmount,
   normalizeBillingPlanKey,
 } from "./billingPricing.js";
+import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
 import { calendarMonthWindow, subscriptionPeriodWindow } from "./timeWindows.js";
 
 function text(value) {
@@ -158,6 +159,43 @@ export async function ensureStripeBillingCatalog({ stripe, planKey = "starter" }
   return ensureStripePlanPrice({ stripe, planKey });
 }
 
+function validPromotionCoupon(coupon, promotion) {
+  return Boolean(
+    coupon
+    && coupon.deleted !== true
+    && coupon.valid !== false
+    && Number(coupon.percent_off) === promotion.percentOff
+    && text(coupon.duration) === "forever"
+  );
+}
+
+export async function ensureStripePromotionCoupon({ stripe, promotionKey }) {
+  const promotion = billingPromotion(promotionKey);
+  if (!promotion) throw new Error("The requested billing promotion is not recognized.");
+  try {
+    const existing = await stripe.coupons.retrieve(promotion.stripeCouponId);
+    if (!validPromotionCoupon(existing, promotion)) {
+      throw new Error(`Stripe coupon ${promotion.stripeCouponId} must remain ${promotion.percentOff}% off forever.`);
+    }
+    return existing;
+  } catch (error) {
+    if (!missingStripeResource(error)) throw error;
+  }
+
+  const coupon = await stripe.coupons.create({
+    id: promotion.stripeCouponId,
+    name: `ARK ${promotion.label}`,
+    percent_off: promotion.percentOff,
+    duration: "forever",
+    metadata: {
+      billingPromotion: promotion.key,
+      managedBy: "ark-client-center",
+    },
+  }, { idempotencyKey: `ark-promotion-coupon-${promotion.key}` });
+  if (!validPromotionCoupon(coupon, promotion)) throw new Error("Stripe did not create the required website promotion coupon.");
+  return coupon;
+}
+
 export function stripeBillingPlanFromSubscription(subscription) {
   const items = Array.isArray(subscription?.items?.data) ? subscription.items.data : [];
   for (const item of items) {
@@ -183,13 +221,15 @@ function subscriptionHasPrices(subscription, priceIds) {
   return existing.size === priceIds.length && priceIds.every((id) => existing.has(id));
 }
 
-async function alignExistingSubscription({ stripe, subscription, priceIds, metadata, paymentMethodId }) {
+async function alignExistingSubscription({ stripe, subscription, priceIds, metadata, paymentMethodId, promotionCoupon }) {
   const pricesMatch = subscriptionHasPrices(subscription, priceIds);
   const versionMatches = text(subscription.metadata?.billingVersion) === BILLING_VERSION;
   const planMatches = text(subscription.metadata?.billingPlan) === text(metadata.billingPlan);
   const currentPaymentMethod = priceId(subscription.default_payment_method);
   const paymentMatches = !paymentMethodId || currentPaymentMethod === paymentMethodId;
-  if (pricesMatch && versionMatches && planMatches && paymentMatches) return subscription;
+  const promotionMatches = !promotionCoupon
+    || text(subscription.metadata?.billingPromotion) === text(metadata.billingPromotion);
+  if (pricesMatch && versionMatches && planMatches && paymentMatches && promotionMatches) return subscription;
 
   const existingItems = subscription.items?.data || [];
   const expected = new Set(priceIds);
@@ -209,18 +249,19 @@ async function alignExistingSubscription({ stripe, subscription, priceIds, metad
     proration_behavior: "none",
     metadata,
     ...(paymentMethodId ? { default_payment_method: paymentMethodId } : {}),
+    ...(promotionCoupon ? { discounts: [{ coupon: promotionCoupon.id }] } : {}),
     expand: ["items.data.price"],
   });
 }
 
-function subscriptionBillingFields(subscription, timeZone, plan) {
+function subscriptionBillingFields(subscription, timeZone, plan, promotion) {
   const fallback = calendarMonthWindow(timeZone);
   const period = subscriptionPeriodWindow(subscription, fallback);
   return {
     billingPlanKey: plan.key,
     billingPlanName: plan.name,
     monthlyCallLimit: plan.monthlyCalls,
-    monthlyPlanAmountCents: plan.amountCents,
+    ...promotionBillingFields(plan, promotion),
     callPeriodStartAt: Timestamp.fromMillis(period.startMs),
     callPeriodEndAt: Timestamp.fromMillis(period.endMs),
   };
@@ -240,10 +281,16 @@ export async function ensureCustomerBillingSubscription({
   subscriptionIdempotencyKey = "",
   persist = true,
   createIfMissing = false,
+  promotionKey = "",
 }) {
+  const promotion = billingPromotion(promotionKey);
+  if (text(promotionKey) && !promotion) throw new Error("The requested billing promotion is not recognized.");
   const catalog = await ensureStripeBillingCatalog({ stripe, planKey });
   const priceIds = expectedPriceIds(catalog);
   const plan = catalog.plan;
+  const promotionCoupon = promotion
+    ? await ensureStripePromotionCoupon({ stripe, promotionKey: promotion.key })
+    : null;
   const metadata = {
     clientId,
     uid: text(uid),
@@ -251,6 +298,11 @@ export async function ensureCustomerBillingSubscription({
     billingPlan: plan.key,
     billingVersion: BILLING_VERSION,
     monthlyCalls: String(plan.monthlyCalls),
+    ...(promotion ? {
+      billingPromotion: promotion.key,
+      billingDiscountPercent: String(promotion.percentOff),
+      billingSalesChannel: "web",
+    } : {}),
   };
   if (paymentMethodId) {
     await stripe.customers.update(customerId, {
@@ -262,7 +314,7 @@ export async function ensureCustomerBillingSubscription({
   const existing = storedSubscription || await findUsableCustomerSubscription(stripe, customerId, clientId);
   if (!existing && !createIfMissing) return null;
   const subscription = existing
-    ? await alignExistingSubscription({ stripe, subscription: existing, priceIds, metadata, paymentMethodId })
+    ? await alignExistingSubscription({ stripe, subscription: existing, priceIds, metadata, paymentMethodId, promotionCoupon })
     : await stripe.subscriptions.create({
       customer: customerId,
       default_payment_method: paymentMethodId || undefined,
@@ -270,13 +322,14 @@ export async function ensureCustomerBillingSubscription({
       items: priceIds.map((price) => ({ price })),
       payment_behavior: "error_if_incomplete",
       metadata,
+      ...(promotionCoupon ? { discounts: [{ coupon: promotionCoupon.id }] } : {}),
       expand: ["items.data.price"],
     }, subscriptionIdempotencyKey ? { idempotencyKey: subscriptionIdempotencyKey } : undefined);
 
   const update = {
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
-    ...subscriptionBillingFields(subscription, timeZone, plan),
+    ...subscriptionBillingFields(subscription, timeZone, plan, promotion),
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (persist) await db.collection("accounts").doc(clientId).set(update, { merge: true });

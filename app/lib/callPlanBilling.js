@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { billingPlan, normalizeBillingPlanKey, publicBillingPlans } from "./billingPricing.js";
+import { billingPromotion, discountedAmountCents } from "./temporaryFeatures.js";
 import { calendarMonthWindow } from "./timeWindows.js";
 
 function text(value) {
@@ -55,6 +56,9 @@ export function accountCallPeriod(account = {}, from = new Date()) {
 export function callPlanStatus(account = {}, from = new Date()) {
   const planKey = normalizeBillingPlanKey(account.billingPlanKey || account.billingPlan);
   const plan = billingPlan(planKey);
+  const promotion = billingPromotion(account.billingPromotionKey);
+  const storedMonthlyPrice = whole(account.monthlyPlanAmountCents);
+  const monthlyListPriceCents = whole(account.monthlyPlanListAmountCents) || plan.amountCents;
   const period = accountCallPeriod(account, from);
   const storedPeriodKey = text(account.callPeriodKey);
   const callsUsed = storedPeriodKey === period.key ? whole(account.callsUsedThisPeriod) : 0;
@@ -62,7 +66,10 @@ export function callPlanStatus(account = {}, from = new Date()) {
   return {
     planKey,
     planName: plan.name,
-    monthlyPriceCents: plan.amountCents,
+    monthlyPriceCents: storedMonthlyPrice || discountedAmountCents(plan.amountCents, promotion),
+    monthlyListPriceCents,
+    billingPromotionKey: promotion?.key || "",
+    billingDiscountPercent: promotion?.percentOff || 0,
     monthlyCallLimit: plan.monthlyCalls,
     callsUsed,
     callsRemaining,
@@ -75,9 +82,17 @@ export function callPlanStatus(account = {}, from = new Date()) {
 }
 
 export function publicCallPlanSummary(account = {}, from = new Date()) {
+  const status = callPlanStatus(account, from);
+  const promotion = billingPromotion(status.billingPromotionKey);
   return {
-    ...callPlanStatus(account, from),
-    plans: publicBillingPlans(),
+    ...status,
+    plans: publicBillingPlans().map((plan) => ({
+      ...plan,
+      ...(promotion ? {
+        listAmountCents: plan.amountCents,
+        promotionalAmountCents: discountedAmountCents(plan.amountCents, promotion),
+      } : {}),
+    })),
   };
 }
 

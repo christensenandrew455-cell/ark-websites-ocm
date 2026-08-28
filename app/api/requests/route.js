@@ -21,7 +21,7 @@ function requestPayload(document) {
     businessName: trimmedText(data.businessName),
     ownerName: trimmedText(data.ownerName),
     accountEmail: trimmedText(data.accountEmail),
-    type: data.type === "change" ? "change" : "help",
+    type: ["change", "feedback", "website"].includes(data.type) ? data.type : "help",
     subject: trimmedText(data.subject),
     message: trimmedText(data.message),
     status: ALLOWED_STATUSES.has(data.status) ? data.status : "new",
@@ -42,7 +42,7 @@ export async function GET(request) {
   const snapshot = await systemCollection(getAdminDb(), "supportRequests").where("clientId", "==", clientId).get();
   const requests = snapshot.docs
     .map(requestPayload)
-    .filter((item) => item.type !== "website")
+    .filter((item) => !["website", "feedback"].includes(item.type))
     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   return NextResponse.json({ requests });
 }
