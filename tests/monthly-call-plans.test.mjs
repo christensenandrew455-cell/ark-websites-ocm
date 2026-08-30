@@ -9,8 +9,12 @@ import {
   publicBillingPlans,
 } from "../app/lib/billingPricing.js";
 import {
+  acceptedLeadEventDocumentId,
+  acceptedLeadPlanStatus,
+  nextAcceptedLeadPlanStatus,
+} from "../app/lib/acceptedLeadPlanBilling.js";
+import {
   callEventDocumentId,
-  callPlanStatus,
   recordCompletedCall,
 } from "../app/lib/callPlanBilling.js";
 import { messageContactBlockId, normalizeMessagePhone } from "../app/lib/messageContactBlocks.js";
@@ -92,20 +96,20 @@ class MemoryFirestore {
   }
 }
 
-test("the four code-owned plans have the requested calls and monthly prices", () => {
+test("the four code-owned plans have the requested accepted leads and monthly prices", () => {
   assert.deepEqual(
-    publicBillingPlans().map(({ key, name, monthlyCalls, amountCents }) => ({ key, name, monthlyCalls, amountCents })),
+    publicBillingPlans().map(({ key, name, monthlyAcceptedLeads, amountCents }) => ({ key, name, monthlyAcceptedLeads, amountCents })),
     [
-      { key: "starter", name: "Starter", monthlyCalls: 50, amountCents: 4999 },
-      { key: "standard", name: "Standard", monthlyCalls: 100, amountCents: 7999 },
-      { key: "growth", name: "Growth", monthlyCalls: 250, amountCents: 14999 },
-      { key: "pro", name: "Pro", monthlyCalls: 500, amountCents: 29999 },
+      { key: "starter", name: "Starter", monthlyAcceptedLeads: 50, amountCents: 4999 },
+      { key: "standard", name: "Standard", monthlyAcceptedLeads: 100, amountCents: 7999 },
+      { key: "growth", name: "Growth", monthlyAcceptedLeads: 250, amountCents: 14999 },
+      { key: "pro", name: "Pro", monthlyAcceptedLeads: 500, amountCents: 29999 },
     ],
   );
   assert.equal(normalizeBillingPlanKey(" PRO "), "pro");
   assert.equal(normalizeBillingPlanKey("unknown"), "starter");
   assert.equal(billingPlanForAmount(7999), BILLING_PLANS.standard);
-  assert.equal(billingPlan("growth").monthlyCalls, 250);
+  assert.equal(billingPlan("growth").monthlyAcceptedLeads, 250);
 });
 
 test("the temporary website offer is centralized, half price, and excluded from native signup", () => {
@@ -126,8 +130,8 @@ test("the temporary website offer is centralized, half price, and excluded from 
   assert.equal(publicPromotion(offer).renewsAtDiscount, true);
 });
 
-test("call-plan status reports a locked-in promotional account price", () => {
-  const status = callPlanStatus({
+test("accepted-lead plan status reports a locked-in promotional account price", () => {
+  const status = acceptedLeadPlanStatus({
     billingPlanKey: "starter",
     billingPromotionKey: "web-launch-half-off-v1",
     monthlyPlanListAmountCents: 4999,
@@ -145,7 +149,15 @@ test("call IDs are deterministic and do not expose provider values", () => {
   assert.equal(id.includes("provider-secret-call-id"), false);
 });
 
-test("completed-call recording is atomic and retries consume no additional calls", async () => {
+test("accepted-lead IDs are period-specific and do not expose lead values", () => {
+  const id = acceptedLeadEventDocumentId("sample-business", "period-one", "private-lead-id");
+  assert.equal(id, acceptedLeadEventDocumentId("sample-business", "period-one", "private-lead-id"));
+  assert.notEqual(id, acceptedLeadEventDocumentId("sample-business", "period-two", "private-lead-id"));
+  assert.equal(id.length, 48);
+  assert.equal(id.includes("private-lead-id"), false);
+});
+
+test("completed-call recording is idempotent and does not consume accepted leads", async () => {
   const now = Date.now();
   const start = now - 24 * 60 * 60 * 1000;
   const end = now + 29 * 24 * 60 * 60 * 1000;
@@ -156,34 +168,37 @@ test("completed-call recording is atomic and retries consume no additional calls
     status: "active",
     billingPastDue: false,
     billingPlanKey: "standard",
-    callPeriodStartAt: new Date(start),
-    callPeriodEndAt: new Date(end),
-    callPeriodKey: periodKey,
-    callsUsedThisPeriod: 4,
+    acceptedLeadPeriodStartAt: new Date(start),
+    acceptedLeadPeriodEndAt: new Date(end),
+    acceptedLeadPeriodKey: periodKey,
+    acceptedLeadsUsedThisPeriod: 4,
   });
 
   const first = await recordCompletedCall({ db, clientId: "account-one", callId: "call-one", durationSeconds: 83 });
   const duplicate = await recordCompletedCall({ db, clientId: "account-one", callId: "call-one", durationSeconds: 83 });
   assert.equal(first.duplicate, false);
-  assert.equal(first.callsUsed, 5);
-  assert.equal(first.callsRemaining, 95);
+  assert.equal(first.acceptedLeadsUsed, 4);
+  assert.equal(first.acceptedLeadsRemaining, 96);
   assert.equal(duplicate.duplicate, true);
-  assert.equal(duplicate.callsUsed, 5);
-  assert.equal((await account.get()).data().callsUsedThisPeriod, 5);
+  assert.equal(duplicate.acceptedLeadsUsed, 4);
+  assert.equal((await account.get()).data().acceptedLeadsUsedThisPeriod, 4);
 });
 
-test("a new provider billing period starts with the full allowance", () => {
+test("accepting one lead advances the plan once and a new period starts full", () => {
   const now = Date.now();
-  const status = callPlanStatus({
+  const status = acceptedLeadPlanStatus({
     billingPlanKey: "growth",
-    callPeriodStartAt: new Date(now - 1_000),
-    callPeriodEndAt: new Date(now + 1_000_000),
-    callPeriodKey: "old-period",
-    callsUsedThisPeriod: 249,
+    acceptedLeadPeriodStartAt: new Date(now - 1_000),
+    acceptedLeadPeriodEndAt: new Date(now + 1_000_000),
+    acceptedLeadPeriodKey: "old-period",
+    acceptedLeadsUsedThisPeriod: 249,
   }, new Date(now));
-  assert.equal(status.callsUsed, 0);
-  assert.equal(status.callsRemaining, 250);
+  assert.equal(status.acceptedLeadsUsed, 0);
+  assert.equal(status.acceptedLeadsRemaining, 250);
   assert.equal(status.limitReached, false);
+  const afterAcceptance = nextAcceptedLeadPlanStatus({ billingPlanKey: "growth" }, { existingAcceptedCount: 4, from: new Date(now) });
+  assert.equal(afterAcceptance.acceptedLeadsUsed, 5);
+  assert.equal(afterAcceptance.acceptedLeadsRemaining, 245);
 });
 
 test("Stripe validates a configured Price against the selected plan", async () => {

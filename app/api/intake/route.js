@@ -131,8 +131,8 @@ function buildRow(input, source) {
     Job: text(
       data.Job || data.job || data.ServiceType || data.serviceType || data.service || data.projectType || data.requestedService
     ),
-    PreferredDay: text(data.PreferredDay || data.preferredDay || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate),
-    PreferredTime: text(data.PreferredTime || data.preferredTime || data.EstimateTime || data.estimateTime),
+    PreferredDay: text(data.PreferredDay || data.preferredDay || data.requestedDate || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate),
+    PreferredTime: text(data.PreferredTime || data.preferredTime || data.requestedTime || data.EstimateTime || data.estimateTime),
     ClientNotes,
     Notes: ClientNotes,
     riskAssessment,

@@ -257,7 +257,7 @@ test("payment setup is tied to the authenticated temporary owner", async () => {
   assert.equal(route.includes('collection("accounts")'), false);
 });
 
-test("successful payment promotes verified data and starts the selected call plan", async () => {
+test("successful payment promotes verified data and starts the selected accepted-lead plan", async () => {
   const [completion, subscription] = await Promise.all([source("app/lib/ownerPaymentSetup.js"), source("app/lib/stripePlanBilling.js")]);
   assert.ok(completion.includes("stripe.setupIntents.retrieve(safeSetupIntentId"));
   assert.ok(completion.includes('setupIntent.status !== "succeeded"'));
@@ -274,6 +274,9 @@ test("successful payment promotes verified data and starts the selected call pla
   assert.equal(completion.includes("sendAccountVerificationCodes({"), false);
   assert.ok(completion.includes("identityVerificationVerified: true"));
   assert.ok(completion.includes("billingPlanKey: planKey"));
+  assert.ok(completion.includes("monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads"));
+  assert.ok(completion.includes("acceptedLeadsUsedThisPeriod: 0"));
+  assert.ok(completion.includes("acceptedLeadsRemainingThisPeriod: plan.monthlyAcceptedLeads"));
   assert.ok(completion.includes("monthlyCallLimit: plan.monthlyCalls"));
   assert.ok(completion.includes("callsUsedThisPeriod: 0"));
   assert.ok(completion.includes("callsRemainingThisPeriod: plan.monthlyCalls"));
@@ -433,10 +436,10 @@ test("regular accounts enter the existing number-assignment queue", async () => 
   assert.equal(completion.includes("NumberAssignmentStatus"), false);
 });
 
-test("legal and help copy describe all four call plans and recurring-payment enforcement", async () => {
+test("legal and help copy describe all four accepted-lead plans and recurring-payment enforcement", async () => {
   const [terms, privacy, help, env] = await Promise.all([source("app/terms/page.js"), source("app/privacy/page.js"), source("app/lib/helpContent.js"), source(".env.example")]);
   for (const copy of ["$49.99 USD", "$79.99 USD", "$149.99 USD", "$299.99 USD"]) assert.ok(terms.includes(copy));
-  assert.ok(terms.includes("Each unique completed call"));
+  assert.ok(terms.includes("Each unique service request counts once when the business owner taps Accept"));
   assert.ok(terms.includes("Immediate pause"));
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));

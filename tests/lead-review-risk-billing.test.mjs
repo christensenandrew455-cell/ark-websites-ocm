@@ -107,17 +107,21 @@ test("nested receptionist signal payloads are scored without trusting a supplied
   assert.equal(result.level, "low");
 });
 
-test("Contacted You summaries exclude private contact and job-detail fields", () => {
+test("Contacted You summaries exclude private contact fields but show the requested schedule", () => {
   const summary = pendingLeadSummary("lead-1", {
     Name: "Jordan Lee",
     Job: "Replace water heater",
     Phone: "+19785550123",
     Address: "1 Main Street",
     ClientNotes: "Private details",
+    requestedDate: "2026-09-02",
+    requestedTime: "3:30 PM",
     rawSubmission: { transcript: "private" },
     riskAssessment: calculateLeadRisk({ addressVerified: false, resistanceCount: 2 }),
   });
   assert.deepEqual(Object.keys(summary).sort(), [
+    "EstimateDate",
+    "EstimateTime",
     "Job",
     "Name",
     "collectionKey",
@@ -131,6 +135,8 @@ test("Contacted You summaries exclude private contact and job-detail fields", ()
   ]);
   assert.equal(Object.hasOwn(summary, "Phone"), false);
   assert.equal(Object.hasOwn(summary, "Address"), false);
+  assert.equal(summary.EstimateDate, "2026-09-02");
+  assert.equal(summary.EstimateTime, "3:30 PM");
   assert.equal(summary.riskScore, 5);
   assert.equal(summary.riskLevel, "moderate");
 });
@@ -145,7 +151,7 @@ test("legacy leads are not described as low risk when no check was supplied", ()
   assert.equal(summary.riskScore, 0);
 });
 
-test("lead review is unmetered and only completed receptionist calls affect the plan", async () => {
+test("only accepted leads consume the plan and repeated acceptance is idempotent", async () => {
   const [intake, acceptance, completedCalls, component] = await Promise.all([
     source("app/api/intake/route.js"),
     source("app/api/business/leads/accept/route.js"),
@@ -155,13 +161,17 @@ test("lead review is unmetered and only completed receptionist calls affect the 
   assert.ok(intake.includes('const sectionKey = "contactedMe"'));
   assert.equal(intake.includes("recordLeadUsage"), false);
   assert.equal(intake.includes("addBillingLeadEventToBatch"), false);
-  assert.equal(acceptance.includes("addBillingLeadEventToBatch"), false);
-  assert.equal(acceptance.includes("recordLeadUsage"), false);
-  assert.equal(acceptance.includes("ACCEPTED_LEAD_BILLING_SOURCE"), false);
+  assert.ok(acceptance.includes("acceptedLeadEventRef"));
+  assert.ok(acceptance.includes("acceptedLeadAccountPatch"));
+  assert.ok(acceptance.includes("transaction.create(eventRef"));
+  assert.ok(acceptance.includes('code: "MONTHLY_ACCEPTED_LEAD_LIMIT_REACHED"'));
   assert.ok(completedCalls.includes("recordCompletedCall"));
-  assert.ok(completedCalls.includes("callsRemaining"));
+  assert.equal(completedCalls.includes("callsRemaining"), false);
+  assert.ok(completedCalls.includes("acceptedLeadsRemaining"));
   assert.ok(component.includes('"Accept"'));
   assert.ok(component.includes('>Decline</button>'));
+  assert.ok(component.includes("Requested service time"));
+  assert.ok(component.includes("Requested: {schedule}"));
   assert.equal(component.includes("charged"), false);
 });
 

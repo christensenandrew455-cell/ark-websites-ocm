@@ -6,14 +6,14 @@ import { computeBillingState } from "../app/lib/billingDelinquency.js";
 
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
-test("Apple exposes the same four monthly call plans under the shared app identifier", () => {
+test("Apple exposes the same four monthly accepted-lead plans under the shared app identifier", () => {
   const catalog = appleIapCatalog();
   assert.equal(catalog.bundleId, "com.arkwebsites.app");
-  assert.deepEqual(catalog.plans.map(({ key, monthlyCalls, amountCents, productId }) => ({ key, monthlyCalls, amountCents, productId })), [
-    { key: "starter", monthlyCalls: 50, amountCents: 4999, productId: "com.arkwebsites.app.starter.monthly" },
-    { key: "standard", monthlyCalls: 100, amountCents: 7999, productId: "com.arkwebsites.app.standard.monthly" },
-    { key: "growth", monthlyCalls: 250, amountCents: 14999, productId: "com.arkwebsites.app.growth.monthly" },
-    { key: "pro", monthlyCalls: 500, amountCents: 29999, productId: "com.arkwebsites.app.pro.monthly" },
+  assert.deepEqual(catalog.plans.map(({ key, monthlyAcceptedLeads, amountCents, productId }) => ({ key, monthlyAcceptedLeads, amountCents, productId })), [
+    { key: "starter", monthlyAcceptedLeads: 50, amountCents: 4999, productId: "com.arkwebsites.app.starter.monthly" },
+    { key: "standard", monthlyAcceptedLeads: 100, amountCents: 7999, productId: "com.arkwebsites.app.standard.monthly" },
+    { key: "growth", monthlyAcceptedLeads: 250, amountCents: 14999, productId: "com.arkwebsites.app.growth.monthly" },
+    { key: "pro", monthlyAcceptedLeads: 500, amountCents: 29999, productId: "com.arkwebsites.app.pro.monthly" },
   ]);
   assert.equal(applePlanForProduct("com.arkwebsites.app.pro.monthly").key, "pro");
   assert.equal(applePlanForProduct("com.arkwebsites.app.unknown"), null);
@@ -49,7 +49,7 @@ test("iPhone signup selects an Apple plan while other platforms keep Stripe", as
     source("app/components/SettingsPanel.js"),
   ]);
   assert.ok(client.includes('appleIapAvailable() ? "apple" : "stripe"'));
-  assert.ok(client.includes("Choose your monthly call plan"));
+  assert.ok(client.includes("Choose your monthly accepted-lead plan"));
   assert.ok(client.includes('body: JSON.stringify({ planKey: selectedPlanKey })'));
   assert.ok(client.includes('"/api/billing/apple/transactions"'));
   assert.ok(client.includes("Restore Purchases"));
@@ -75,8 +75,8 @@ test("Apple transactions are verified and synchronize only subscription plans", 
   assert.ok(route.includes("isApplePlanProduct"));
   assert.equal(route.includes("settleAppleUsagePurchase"), false);
   assert.ok(transactions.includes("applePlanForProduct"));
-  assert.ok(transactions.includes("callsUsedThisPeriod: callsUsed"));
-  assert.ok(transactions.includes("callsRemainingThisPeriod"));
+  assert.ok(transactions.includes("acceptedLeadsUsedThisPeriod: acceptedLeadsUsed"));
+  assert.ok(transactions.includes("acceptedLeadsRemainingThisPeriod"));
   assert.equal(transactions.includes("CreditPoints"), false);
   assert.ok(notification.includes("verifySignedAppleNotification"));
   assert.ok(notification.includes('provider: "apple"'));

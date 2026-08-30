@@ -1,5 +1,5 @@
-export const TERMS_VERSION = "2026-08-28.1";
-export const PRIVACY_VERSION = "2026-08-28.1";
-export const TERMS_EFFECTIVE_DATE = "August 28, 2026";
-export const PRIVACY_EFFECTIVE_DATE = "August 28, 2026";
+export const TERMS_VERSION = "2026-08-30.1";
+export const PRIVACY_VERSION = "2026-08-30.1";
+export const TERMS_EFFECTIVE_DATE = "August 30, 2026";
+export const PRIVACY_EFFECTIVE_DATE = "August 30, 2026";
 export const LEGAL_EFFECTIVE_DATE = TERMS_EFFECTIVE_DATE;

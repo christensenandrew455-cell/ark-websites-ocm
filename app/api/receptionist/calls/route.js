@@ -78,9 +78,9 @@ export async function POST(request) {
           outcome: text(data.outcome || data.endReason).slice(0, 80),
           leadSaved: data.leadSaved === true,
           billingPlan: call.planKey,
-          monthlyCalls: call.monthlyCallLimit,
-          callsUsed: call.callsUsed,
-          callsRemaining: call.callsRemaining,
+          monthlyAcceptedLeads: call.monthlyAcceptedLeadLimit,
+          acceptedLeadsUsed: call.acceptedLeadsUsed,
+          acceptedLeadsRemaining: call.acceptedLeadsRemaining,
         },
         occurredAt: new Date(occurredAt).toISOString(),
       });
@@ -90,10 +90,9 @@ export async function POST(request) {
       ok: true,
       duplicate: call.duplicate,
       planKey: call.planKey,
-      monthlyCallLimit: call.monthlyCallLimit,
-      callsUsed: call.callsUsed,
-      callsRemaining: call.callsRemaining,
-      limitReached: call.limitReached,
+      monthlyAcceptedLeadLimit: call.monthlyAcceptedLeadLimit,
+      acceptedLeadsUsed: call.acceptedLeadsUsed,
+      acceptedLeadsRemaining: call.acceptedLeadsRemaining,
       periodEndAt: call.periodEndAt,
     });
   } catch (error) {

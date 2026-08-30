@@ -35,6 +35,7 @@ export default function ClientStats() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const [newLeads, setNewLeads] = useState(0);
+  const [acceptedLeads, setAcceptedLeads] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const profilePhone = String(profile?.receptionistPhone || profile?.receptionistPhoneNormalized || "").trim();
   const [receptionistPhone, setReceptionistPhone] = useState(profilePhone);
@@ -55,7 +56,10 @@ export default function ClientStats() {
           .catch(() => setReceptionistPhone(profilePhone)),
         fetch("/api/business/leads?summary=1", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
           .then(async (response) => { if (!response.ok) throw new Error("Could not refresh the lead count."); return response.json(); })
-          .then((data) => setNewLeads(Number(data.contactedCount || 0)))
+          .then((data) => {
+            setNewLeads(Number(data.contactedCount || 0));
+            setAcceptedLeads(Number(data.clientCount || 0));
+          })
           .catch(() => null),
       ];
       if (MESSAGES_AVAILABLE && profile?.messagesEnabled === true) {
@@ -106,7 +110,7 @@ export default function ClientStats() {
         </section>
         <section className="mt-3 rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:mt-5 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-            <DashboardCard value={newLeads} label="Leads" description="New leads and clients" onClick={() => router.push("/leads")} />
+            <DashboardCard value={acceptedLeads} label="Accepted Leads" description={`${newLeads} new ${newLeads === 1 ? "lead" : "leads"} waiting`} onClick={() => router.push("/leads?section=clients")} />
             <DashboardCard value={MESSAGES_AVAILABLE ? unreadMessages : ""} label="Messages" description={MESSAGES_AVAILABLE ? "Client texts" : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
           </div>
         </section>

@@ -28,7 +28,7 @@ export async function POST(request) {
 
     if (access.kind === "pending") {
       if (!isApplePlanProduct(transaction.productId)) {
-        return NextResponse.json({ error: "Choose an ARK monthly call plan first." }, { status: 409 });
+        return NextResponse.json({ error: "Choose an ARK monthly accepted-lead plan first." }, { status: 409 });
       }
       const result = await completeOwnerApplePaymentSetup({
         db: access.db,

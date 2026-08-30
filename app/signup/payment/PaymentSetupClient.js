@@ -39,15 +39,15 @@ function money(cents) {
 
 function PlanSelector({ selectedPlanKey, onSelect, promotion, disabled = false }) {
   return <section aria-labelledby="choose-plan-title">
-    <h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose your monthly call plan</h1>
-    <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Each completed receptionist call counts as one call. Your allowance resets every billing month.</p>
+    <h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose your monthly accepted-lead plan</h1>
+    <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Each unique service request counts once when you accept it. Calls do not count, and your allowance resets every billing month.</p>
     {promotion && <div className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950"><p className="text-sm font-black">{promotion.percentOff}% off every plan through the website</p><p className="mt-1 text-xs font-semibold leading-5">Subscribe while this launch offer is available and the discounted price stays on every monthly renewal while your subscription remains active.</p></div>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
       {MONTHLY_PLANS.map((plan) => {
         const selected = plan.key === selectedPlanKey;
         const promotionalAmount = promotion ? discountedAmountCents(plan.amountCents, promotion) : plan.amountCents;
         return <button key={plan.key} type="button" onClick={() => onSelect(plan.key)} disabled={disabled} aria-pressed={selected} className={`rounded-2xl border p-4 text-left transition disabled:opacity-60 ${selected ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-200 bg-white hover:border-slate-400"}`}>
-          <span className="flex items-start justify-between gap-3"><span><span className="block text-lg font-black text-slate-950">{plan.name}</span><span className="mt-1 block text-sm font-bold text-slate-600">{plan.monthlyCalls} calls/month</span></span><span className="text-right">{promotion && <span className="block text-xs font-black text-slate-400 line-through decoration-2">{money(plan.amountCents)}</span>}<span className="block text-lg font-black text-slate-950">{money(promotionalAmount)}</span>{promotion && <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-700">{promotion.percentOff}% off</span>}</span></span>
+          <span className="flex items-start justify-between gap-3"><span><span className="block text-lg font-black text-slate-950">{plan.name}</span><span className="mt-1 block text-sm font-bold text-slate-600">{plan.monthlyAcceptedLeads} accepted leads/month</span></span><span className="text-right">{promotion && <span className="block text-xs font-black text-slate-400 line-through decoration-2">{money(plan.amountCents)}</span>}<span className="block text-lg font-black text-slate-950">{money(promotionalAmount)}</span>{promotion && <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-700">{promotion.percentOff}% off</span>}</span></span>
           {selected && <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">Selected</span>}
         </button>;
       })}
@@ -106,7 +106,7 @@ function PaymentForm({ clientSecret, returnUrl, selectedPlan, promotion, onSucce
 
   return <form onSubmit={submit} className="space-y-5">
     <PaymentElement options={{ layout: "accordion" }} />
-    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyCalls} receptionist calls each billing month.{promotion ? ` This is the ${promotion.percentOff}% website launch price (normally ${money(selectedPlan.listAmountCents)}) and renews at the discounted price while the subscription remains active.` : ""}</p>
+    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.{promotion ? ` This is the ${promotion.percentOff}% website launch price (normally ${money(selectedPlan.listAmountCents)}) and renews at the discounted price while the subscription remains active.` : ""}</p>
     <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay & Continue</button>
     {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </form>;
@@ -199,7 +199,7 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
     try {
       const result = await restoreApplePurchases(configuration.productIds);
       const purchase = (result.transactions || []).find((item) => configuration.productIds.includes(item.productId));
-      if (!purchase) { setNotice("No active ARK call plan was found for this Apple Account."); return; }
+      if (!purchase) { setNotice("No active ARK accepted-lead plan was found for this Apple Account."); return; }
       await verifyAndFinish(purchase);
     } catch (restoreError) {
       console.error("Unable to restore Apple subscription", restoreError);
@@ -214,7 +214,7 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">ARK {configuration.selectedPlan.name} plan</p>
       <p className="mt-2 text-3xl font-black text-slate-950">{storeProduct?.displayPrice || money(configuration.selectedPlan.amountCents)} <span className="text-sm text-slate-500">per month</span></p>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Includes ARK Client Center and {configuration.selectedPlan.monthlyCalls} receptionist calls each billing month.</p>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Includes ARK Client Center and {configuration.selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.</p>
     </div>
     <p className="text-xs font-semibold leading-5 text-slate-600">Payment is charged to your Apple Account at confirmation. The subscription automatically renews monthly unless canceled at least 24 hours before the current period ends. Your Apple Account is charged for renewal within 24 hours before the period ends. Manage or cancel in your App Store subscription settings.</p>
     <p className="text-xs font-semibold text-slate-600"><Link href="/terms" className="font-black underline">Terms of Use</Link><span aria-hidden="true"> · </span><Link href="/privacy" className="font-black underline">Privacy Policy</Link></p>

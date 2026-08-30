@@ -1,6 +1,6 @@
 # Apple In-App Purchase setup
 
-The iOS app uses StoreKit 2 for the same four monthly call plans offered on web and Android. Every plan is an auto-renewable subscription. There are no usage-credit or consumable products.
+The iOS app uses StoreKit 2 for the same four monthly accepted-lead plans offered on web and Android. Every plan is an auto-renewable subscription. There are no usage-credit or consumable products.
 
 ## 1. Confirm the app identifier
 
@@ -10,9 +10,9 @@ Changing an existing App Store app's bundle ID is not supported by Apple. If the
 
 ## 2. Create one subscription group
 
-Under **Monetization → Subscriptions**, create one subscription group such as `ARK Monthly Call Plans`. Add all four products to that group so a customer can move between plan levels from Apple's subscription-management screen.
+Under **Monetization → Subscriptions**, create one subscription group such as `ARK Monthly Accepted Lead Plans`. Add all four products to that group so a customer can move between plan levels from Apple's subscription-management screen.
 
-| Product ID | Plan | Calls per billing month | Price |
+| Product ID | Plan | Accepted leads per billing month | Price |
 | --- | --- | ---: | ---: |
 | `com.arkwebsites.app.starter.monthly` | Starter | 50 | $49.99/month |
 | `com.arkwebsites.app.standard.monthly` | Standard | 100 | $79.99/month |
@@ -29,7 +29,7 @@ In App Store Connect, set the App Store Server Notifications version 2 productio
 
 `https://YOUR-APP-DOMAIN/api/billing/apple/notifications`
 
-The endpoint verifies Apple's signed notification and transaction data, updates the active plan and billing period, resets the call allowance at renewal, and disables access when Apple reports that the subscription is no longer active.
+The endpoint verifies Apple's signed notification and transaction data, updates the active plan and billing period, resets the accepted-lead allowance at renewal, and disables access when Apple reports that the subscription is no longer active.
 
 ## 4. Configure environment variables
 
@@ -58,8 +58,8 @@ Then test with Sandbox accounts or StoreKit testing:
 2. A new owner can select each plan and finish signup.
 3. Restoring purchases activates the product currently entitled to that Apple Account.
 4. Upgrading and downgrading updates the plan shown in Payment.
-5. A renewal begins a new call period with the full selected allowance.
-6. The Payment screen shows calls used, calls remaining, and the next reset date.
+5. A renewal begins a new accepted-lead period with the full selected allowance.
+6. The Payment screen shows accepted leads used, accepted leads remaining, and the next reset date.
 7. Cancellation, expiration, billing retry, grace-period, refund, and revocation notifications produce the expected account state.
 
-For the first submission containing these subscriptions, attach all four products to the app version before App Review. In Review Notes, explain that iOS billing uses StoreKit 2, web and Android use Stripe, and every plan includes a fixed number of completed AI receptionist calls per monthly billing period.
+For the first submission containing these subscriptions, attach all four products to the app version before App Review. In Review Notes, explain that iOS billing uses StoreKit 2, web and Android use Stripe, and every plan includes a fixed number of accepted leads per monthly billing period; receptionist calls do not consume the allowance.

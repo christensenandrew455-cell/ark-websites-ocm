@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
-import { publicCallPlanSummary } from "../../../lib/callPlanBilling";
+import {
+  acceptedLeadAccountPatch,
+  acceptedLeadPlanStatus,
+  countAcceptedClientsInPeriod,
+  publicAcceptedLeadPlanSummary,
+} from "../../../lib/acceptedLeadPlanBilling";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
@@ -11,17 +16,33 @@ export async function GET(request) {
   if (authorization.response) return authorization.response;
   try {
     const db = getAdminDb();
-    const snapshot = await db.collection("accounts").doc(authorization.clientId).get();
+    const accountRef = db.collection("accounts").doc(authorization.clientId);
+    const snapshot = await accountRef.get();
     if (!snapshot.exists) {
       return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     }
     const account = snapshot.data();
+    const storedStatus = acceptedLeadPlanStatus(account);
+    const currentAcceptedClients = await countAcceptedClientsInPeriod(accountRef, storedStatus);
+    const planSummary = publicAcceptedLeadPlanSummary(account, new Date(), currentAcceptedClients);
+    if (planSummary.acceptedLeadsUsed > storedStatus.acceptedLeadsUsed) {
+      await db.runTransaction(async (transaction) => {
+        const freshSnapshot = await transaction.get(accountRef);
+        if (!freshSnapshot.exists) return;
+        const freshStatus = acceptedLeadPlanStatus(freshSnapshot.data());
+        if (freshStatus.periodKey !== storedStatus.periodKey) return;
+        const reconciled = acceptedLeadPlanStatus(freshSnapshot.data(), new Date(), currentAcceptedClients);
+        if (reconciled.acceptedLeadsUsed > freshStatus.acceptedLeadsUsed) {
+          transaction.set(accountRef, acceptedLeadAccountPatch(reconciled), { merge: true });
+        }
+      });
+    }
     return NextResponse.json({
       billingProvider: String(account.billingProvider || (account.appleOriginalTransactionId ? "apple" : "stripe")),
-      ...publicCallPlanSummary(account),
+      ...planSummary,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("Unable to load monthly call plan", error);
-    return NextResponse.json({ error: "Could not load the current call plan." }, { status: 500 });
+    console.error("Unable to load monthly accepted-lead plan", error);
+    return NextResponse.json({ error: "Could not load the current accepted-lead plan." }, { status: 500 });
   }
 }

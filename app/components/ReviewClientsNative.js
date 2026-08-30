@@ -45,8 +45,8 @@ function normalizeRow(id, source, collectionKey) {
     ClientNotes,
     BusinessNotes,
     Notes: ClientNotes,
-    EstimateDate: firstValue(data.EstimateDate, data.estimateDate, data.PreferredDate, data.preferredDate, data.PreferredDay, data.preferredDay, data.estimateDay, currentJob.estimateDate),
-    EstimateTime: firstValue(data.EstimateTime, data.estimateTime, data.PreferredTime, data.preferredTime, currentJob.estimateTime),
+    EstimateDate: firstValue(data.EstimateDate, data.estimateDate, data.PreferredDate, data.preferredDate, data.PreferredDay, data.preferredDay, data.requestedDate, data.estimateDay, currentJob.estimateDate),
+    EstimateTime: firstValue(data.EstimateTime, data.estimateTime, data.PreferredTime, data.preferredTime, data.requestedTime, currentJob.estimateTime),
   };
 }
 
@@ -86,6 +86,33 @@ function normalizeTimeForDate(value) {
   if (hour === 12) hour = 0;
   if (meridiem === "PM") hour += 12;
   return `${String(hour).padStart(2, "0")}:${minute}`;
+}
+
+function displayRequestedDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const [year, month, day] = raw.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(year, month - 1, day));
+}
+
+function displayRequestedTime(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return raw;
+  const date = new Date(2000, 0, 1, Number(match[1]), Number(match[2]));
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function requestedSchedule(row) {
+  const date = displayRequestedDate(row.EstimateDate);
+  const time = displayRequestedTime(row.EstimateTime);
+  if (date && time) return `${date} at ${time}`;
+  return date || time;
 }
 
 function calendarStamp(date) {
@@ -309,12 +336,17 @@ function ClientModal({ row, messagesEnabled, onClose, onMessage, onAddContact, o
   }
 
   const fields = [["Name", "Name", "text"], ["Phone", "Phone", "tel"], ["Address", "Address", "text"], ["Job", "Job type", "text"], ["EstimateDate", "Estimate date", "date"], ["EstimateTime", "Estimate time", "time"]];
+  const requested = requestedSchedule({
+    ...row,
+    EstimateDate: form.EstimateDate || row.EstimateDate,
+    EstimateTime: form.EstimateTime || row.EstimateTime,
+  });
   return <Modal title={form.Name || "Client"} onClose={closeWithAutosave}>
     <div className="flex items-center gap-3 border-b border-slate-200 p-4 sm:p-6">
       <button type="button" disabled={saving} onClick={closeWithAutosave} aria-label="Back" title="Back" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black text-slate-900 shadow-sm disabled:opacity-50">←</button>
       <h2 className="min-w-0 truncate text-2xl font-black sm:text-3xl">{form.Name || "Unnamed caller"}</h2>
     </div>
-    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{saveError && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{saveError}</div>}{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span><textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label><label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span><textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
+    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{saveError && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{saveError}</div>}<div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4"><span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Requested service time</span><p className="mt-1 text-base font-black text-blue-950">{requested || "No requested time was provided."}</p></div>{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span><textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label><label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span><textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
     <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
       {MESSAGES_AVAILABLE && <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>}
       <button type="button" onClick={onAddContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>
@@ -384,7 +416,7 @@ export default function ReviewClientsNative() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result.error || "Could not accept this estimate request.");
+        throw new Error(result.error || "Could not accept this service request.");
       }
       if (result.duplicate) {
         setNotice(`${row.Name || "Lead"} was already accepted.`);
@@ -392,6 +424,11 @@ export default function ReviewClientsNative() {
         setNotice(`${row.Name || "Lead"} was accepted, but the acceptance text could not be sent.`);
       } else {
         setNotice(`${row.Name || "Lead"} was accepted.`);
+      }
+      if (result.record) {
+        const acceptedRow = normalizeRow(result.record.id, result.record, "clients");
+        setContacted((current) => current.filter((item) => item.id !== row.id));
+        setClients((current) => [...current.filter((item) => item.id !== acceptedRow.id), acceptedRow].sort((a, b) => rowTime(a) - rowTime(b)));
       }
       await load(true);
     } catch (acceptError) {
@@ -480,5 +517,5 @@ export default function ReviewClientsNative() {
   const inactiveCard = "min-h-36 rounded-3xl border border-slate-200 bg-white p-5 text-left text-slate-950 shadow-sm transition active:scale-[0.99]";
   const activeCard = "min-h-36 rounded-3xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
 
-  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700"><span>{error}</span><button type="button" disabled={loading} onClick={() => load()} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs text-white disabled:opacity-50">Try again</button></div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-70">New leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-70">Accepted</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3 text-slate-950">{rows.map((row) => { const expiring = activeSection === "contacted" && isEstimateRequestFinalDay(row); return <article key={row.id} className={expiring ? "rounded-2xl border border-red-300 bg-red-50/95 p-4 shadow-sm" : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{activeSection === "clients" && row.Address ? ` · ${row.Address}` : ""}</p>{activeSection === "contacted" && <RiskBadge row={row} />}</button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">{busy === `accept:${row.id}` ? "Accepting…" : "Accept"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline</button></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{loading ? "Loading leads…" : "Nothing here yet."}</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onSave={saveClient} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /></div>;
+  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700"><span>{error}</span><button type="button" disabled={loading} onClick={() => load()} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs text-white disabled:opacity-50">Try again</button></div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-70">New leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-70">Accepted</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3 text-slate-950">{rows.map((row) => { const expiring = activeSection === "contacted" && isEstimateRequestFinalDay(row); const schedule = requestedSchedule(row); return <article key={row.id} className={expiring ? "rounded-2xl border border-red-300 bg-red-50/95 p-4 shadow-sm" : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{activeSection === "clients" && row.Address ? ` · ${row.Address}` : ""}</p>{schedule && <p className="mt-2 text-sm font-black text-blue-800">Requested: {schedule}</p>}{activeSection === "contacted" && <RiskBadge row={row} />}</button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">{busy === `accept:${row.id}` ? "Accepting…" : "Accept"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline</button></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{loading ? "Loading leads…" : "Nothing here yet."}</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onSave={saveClient} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /></div>;
 }

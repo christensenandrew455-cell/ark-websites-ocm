@@ -38,11 +38,14 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
   }
 
   const active = !transaction.revocationDate && expiresAt > Date.now();
-  const samePeriodEnd = expiresAt > 0 && millis(account.callPeriodEndAt) === expiresAt;
-  const periodStartAt = samePeriodEnd && millis(account.callPeriodStartAt)
-    ? millis(account.callPeriodStartAt)
+  const samePeriodEnd = expiresAt > 0 && millis(account.acceptedLeadPeriodEndAt || account.callPeriodEndAt) === expiresAt;
+  const periodStartAt = samePeriodEnd && millis(account.acceptedLeadPeriodStartAt || account.callPeriodStartAt)
+    ? millis(account.acceptedLeadPeriodStartAt || account.callPeriodStartAt)
     : purchasedAt;
   const periodKey = `${periodStartAt}-${expiresAt}`;
+  const acceptedLeadsUsed = text(account.acceptedLeadPeriodKey) === periodKey
+    ? Math.max(0, Number(account.acceptedLeadsUsedThisPeriod || 0))
+    : 0;
   const callsUsed = text(account.callPeriodKey) === periodKey
     ? Math.max(0, Number(account.callsUsedThisPeriod || 0))
     : 0;
@@ -58,6 +61,13 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
     billingPlanKey: plan.key,
     billingPlanName: plan.name,
     monthlyPlanAmountCents: plan.amountCents,
+    monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads,
+    acceptedLeadPeriodStartAt: Timestamp.fromMillis(periodStartAt),
+    acceptedLeadPeriodEndAt: expiresAt ? Timestamp.fromMillis(expiresAt) : FieldValue.delete(),
+    acceptedLeadPeriodKey: periodKey,
+    acceptedLeadsUsedThisPeriod: acceptedLeadsUsed,
+    acceptedLeadsRemainingThisPeriod: Math.max(0, plan.monthlyAcceptedLeads - acceptedLeadsUsed),
+    acceptedLeadLimitReached: acceptedLeadsUsed >= plan.monthlyAcceptedLeads,
     monthlyCallLimit: plan.monthlyCalls,
     callPeriodStartAt: Timestamp.fromMillis(periodStartAt),
     callPeriodEndAt: expiresAt ? Timestamp.fromMillis(expiresAt) : FieldValue.delete(),
@@ -78,6 +88,7 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
       uid: text(account.uid),
       productId: plan.productId,
       billingPlanKey: plan.key,
+      monthlyAcceptedLeads: plan.monthlyAcceptedLeads,
       monthlyCalls: plan.monthlyCalls,
       originalTransactionId,
       appAccountToken: text(transaction.appAccountToken).toLowerCase(),
@@ -111,6 +122,7 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
         paymentKind: "subscription",
         provider: "apple",
         billingPlan: plan.key,
+        monthlyAcceptedLeads: plan.monthlyAcceptedLeads,
         monthlyCalls: plan.monthlyCalls,
         amountCents: Number(transaction.price || 0) > 0 ? Math.round(Number(transaction.price) / 10) : plan.amountCents,
         currency: text(transaction.currency || "usd").toLowerCase(),
@@ -123,6 +135,7 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
     transactionId,
     duplicate: transactionSnapshot.exists,
     planKey: plan.key,
+    monthlyAcceptedLeads: plan.monthlyAcceptedLeads,
     monthlyCalls: plan.monthlyCalls,
   };
 }

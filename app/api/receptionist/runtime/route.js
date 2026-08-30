@@ -1,7 +1,7 @@
 import { createPublicKey, verify } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
-import { callPlanStatus } from "../../../lib/callPlanBilling";
+import { acceptedLeadPlanStatus } from "../../../lib/acceptedLeadPlanBilling";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
@@ -193,15 +193,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "The business has not completed AI receptionist setup." }, { status: 409 });
     }
 
-    const callPlan = callPlanStatus(account);
-    if (callPlan.limitReached) {
-      return NextResponse.json({
-        ok: false,
-        code: "MONTHLY_CALL_LIMIT_REACHED",
-        error: `This business has used all ${callPlan.monthlyCallLimit} calls in its ${callPlan.planName} plan.`,
-        plan: callPlan,
-      }, { status: 402 });
-    }
+    const acceptedLeadPlan = acceptedLeadPlanStatus(account);
 
     const profile = buildProfile(clientId, account);
     const profileError = validateProfile(profile);
@@ -228,7 +220,7 @@ export async function POST(request) {
       clientId,
       calledPhone,
       profile,
-      callPlan,
+      acceptedLeadPlan,
       intakeUrl: intakeUrl.toString(),
       callCompletionUrl: callCompletionUrl.toString(),
       callCompletionKey: connectionKey,

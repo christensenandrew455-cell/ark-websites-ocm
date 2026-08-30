@@ -32,8 +32,8 @@ const sections = [
     id: "overview",
     title: "What ARK Client Center does",
     summary: MESSAGES_AVAILABLE
-      ? "ARK Client Center receives AI receptionist leads, organizes clients, tracks monthly calls, and provides optional customer messaging."
-      : "ARK Client Center receives AI receptionist leads, organizes clients, and tracks monthly calls.",
+      ? "ARK Client Center receives AI receptionist leads, organizes clients, tracks monthly accepted leads, and provides optional customer messaging."
+      : "ARK Client Center receives AI receptionist leads, organizes clients, and tracks monthly accepted leads.",
     points: [
       MESSAGES_AVAILABLE
         ? "The Dashboard is the main page after sign-in and provides shortcuts to leads, messaging, and Settings."
@@ -61,16 +61,16 @@ const sections = [
   },
   {
     id: "pricing",
-    title: "Monthly call plans",
-    summary: "Choose a monthly plan based on how many receptionist calls the business needs.",
+    title: "Monthly accepted-lead plans",
+    summary: "Choose a monthly plan based on how many leads the business expects to accept.",
     points: [
-      "Starter is $49.99 per month for 50 receptionist calls.",
-      "Standard is $79.99 per month for 100 receptionist calls.",
-      "Growth is $149.99 per month for 250 receptionist calls.",
-      "Pro is $299.99 per month for 500 receptionist calls.",
+      "Starter is $49.99 per month for 50 accepted leads.",
+      "Standard is $79.99 per month for 100 accepted leads.",
+      "Growth is $149.99 per month for 250 accepted leads.",
+      "Pro is $299.99 per month for 500 accepted leads.",
       ...(websiteOffer ? [`For a limited launch period, new website signups receive ${websiteOffer.percentOff}% off every plan while their subscription remains active: ${money(discountedAmountCents(4999, websiteOffer))} Starter, ${money(discountedAmountCents(7999, websiteOffer))} Standard, ${money(discountedAmountCents(14999, websiteOffer))} Growth, or ${money(discountedAmountCents(29999, websiteOffer))} Pro per month. Native app purchases keep their regular store price.`] : []),
-      "Accepting, declining, editing, or deleting a lead does not create a separate charge.",
-      "Settings → Payment shows the current plan, calls used, calls remaining, reset date, and payment method.",
+      "Only tapping Accept uses the plan. Calls, declines, edits, and deletions do not count.",
+      "Settings → Payment shows the current plan, accepted leads used, accepted leads remaining, reset date, and payment method.",
     ],
     links: ["Settings", "Payment Terms", "Terms of Use"],
   },
@@ -79,7 +79,7 @@ const sections = [
     title: "Dashboard statistics and shortcuts",
     summary: "The Dashboard shows operational statistics instead of billing details.",
     points: [
-      "Leads shows the current combined number of new leads and accepted clients and opens the dedicated Leads page.",
+      "Accepted Leads shows the current number of accepted clients and opens the Clients list; its subtitle shows how many new leads are waiting.",
       ...(MESSAGES_AVAILABLE ? ["Messages shows the current conversation count and opens the phone-style inbox when enabled."] : []),
       ...(MESSAGES_AVAILABLE ? ["If Messages is off for the account, enable it in Settings before using that workspace."] : []),
     ],
@@ -109,7 +109,7 @@ const sections = [
         ? "Lead cards provide Accept or Decline, while accepted Clients provide full details, Message, Edit, and Delete."
         : "Lead cards provide Accept or Decline, while accepted Clients provide full details, Edit, and Delete.",
       "Confirm Date remains available from the client detail view and creates a calendar event after a date is entered.",
-      "Editing or deleting an accepted client does not change the monthly call count.",
+      "Editing or deleting an accepted client does not undo that month's accepted-lead count.",
     ],
     links: ["Leads", ...(MESSAGES_AVAILABLE ? ["Messages"] : [])],
   },

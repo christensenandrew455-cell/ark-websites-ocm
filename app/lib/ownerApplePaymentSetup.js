@@ -118,6 +118,13 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     billingPlanKey: purchasedPlan.key,
     billingPlanName: purchasedPlan.name,
     monthlyPlanAmountCents: purchasedPlan.amountCents,
+    monthlyAcceptedLeadLimit: purchasedPlan.monthlyAcceptedLeads,
+    acceptedLeadPeriodStartAt: Timestamp.fromMillis(Number(transaction.purchaseDate || 0) || Date.now()),
+    acceptedLeadPeriodEndAt: Timestamp.fromMillis(expiresAt),
+    acceptedLeadPeriodKey: "",
+    acceptedLeadsUsedThisPeriod: 0,
+    acceptedLeadsRemainingThisPeriod: purchasedPlan.monthlyAcceptedLeads,
+    acceptedLeadLimitReached: false,
     monthlyCallLimit: purchasedPlan.monthlyCalls,
     callPeriodStartAt: Timestamp.fromMillis(Number(transaction.purchaseDate || 0) || Date.now()),
     callPeriodEndAt: Timestamp.fromMillis(expiresAt),
@@ -174,6 +181,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     uid: safeUid,
     productId: purchasedPlan.productId,
     billingPlanKey: purchasedPlan.key,
+    monthlyAcceptedLeads: purchasedPlan.monthlyAcceptedLeads,
     monthlyCalls: purchasedPlan.monthlyCalls,
     originalTransactionId,
     appAccountToken: text(payment.appleAppAccountToken).toLowerCase(),
@@ -208,7 +216,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     clientId,
     businessName,
     summary: "Customer finished signup and needs a receptionist number",
-    metadata: { numberAssignmentStatus: "needed", billingProvider: "apple", billingPlan: purchasedPlan.key, monthlyCalls: purchasedPlan.monthlyCalls },
+    metadata: { numberAssignmentStatus: "needed", billingProvider: "apple", billingPlan: purchasedPlan.key, monthlyAcceptedLeads: purchasedPlan.monthlyAcceptedLeads, monthlyCalls: purchasedPlan.monthlyCalls },
   });
   return completedResult(accountData, transactionId);
 }

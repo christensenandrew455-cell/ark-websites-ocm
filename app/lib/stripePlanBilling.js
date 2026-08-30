@@ -136,10 +136,11 @@ export async function ensureStripePlanPrice({ stripe, planKey }) {
     unit_amount: plan.amountCents,
     recurring: { interval: "month", usage_type: "licensed" },
     lookup_key: lookupKey,
-    nickname: `${plan.name}: ${plan.monthlyCalls} monthly calls`,
+    nickname: `${plan.name}: ${plan.monthlyAcceptedLeads} monthly accepted leads`,
     metadata: {
       billingPlan: plan.key,
       billingVersion: BILLING_VERSION,
+      monthlyAcceptedLeads: String(plan.monthlyAcceptedLeads),
       monthlyCalls: String(plan.monthlyCalls),
     },
     product_data: {
@@ -147,6 +148,7 @@ export async function ensureStripePlanPrice({ stripe, planKey }) {
       metadata: {
         billingPlan: plan.key,
         billingVersion: BILLING_VERSION,
+        monthlyAcceptedLeads: String(plan.monthlyAcceptedLeads),
         monthlyCalls: String(plan.monthlyCalls),
       },
     },
@@ -260,10 +262,13 @@ function subscriptionBillingFields(subscription, timeZone, plan, promotion) {
   return {
     billingPlanKey: plan.key,
     billingPlanName: plan.name,
+    monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads,
     monthlyCallLimit: plan.monthlyCalls,
     ...promotionBillingFields(plan, promotion),
     callPeriodStartAt: Timestamp.fromMillis(period.startMs),
     callPeriodEndAt: Timestamp.fromMillis(period.endMs),
+    acceptedLeadPeriodStartAt: Timestamp.fromMillis(period.startMs),
+    acceptedLeadPeriodEndAt: Timestamp.fromMillis(period.endMs),
   };
 }
 
@@ -297,6 +302,7 @@ export async function ensureCustomerBillingSubscription({
     businessName: text(businessName),
     billingPlan: plan.key,
     billingVersion: BILLING_VERSION,
+    monthlyAcceptedLeads: String(plan.monthlyAcceptedLeads),
     monthlyCalls: String(plan.monthlyCalls),
     ...(promotion ? {
       billingPromotion: promotion.key,

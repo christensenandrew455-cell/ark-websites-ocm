@@ -12,8 +12,8 @@ export function normalizeStatusPhone(value) {
 export function estimateRequestStatusMessage(status, businessName) {
   const brand = text(businessName) || "the business";
   const statusLine = status === "accepted"
-    ? `Your estimate request has been accepted by ${brand}.`
-    : `We're sorry, but your estimate request has been declined by ${brand}.`;
+    ? `Your service request has been accepted by ${brand}.`
+    : `We're sorry, but your service request has been declined by ${brand}.`;
   return statusLine;
 }
 

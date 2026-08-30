@@ -59,6 +59,7 @@ function ownerProfile({ account, decodedToken, clientId }) {
     billingProvider: text(account.billingProvider || (account.appleOriginalTransactionId ? "apple" : "stripe")),
     billingPlanKey: text(account.billingPlanKey || "starter"),
     billingPlanName: text(account.billingPlanName || "Starter"),
+    monthlyAcceptedLeadLimit: Math.max(0, Number(account.monthlyAcceptedLeadLimit || account.monthlyCallLimit || 50)),
     monthlyCallLimit: Math.max(0, Number(account.monthlyCallLimit || 50)),
     paymentMethodLabel: text(account.paymentMethodLabel),
     billingPastDue: account.billingPastDue === true,

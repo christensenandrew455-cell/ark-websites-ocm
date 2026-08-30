@@ -88,7 +88,7 @@ test("first-visit guides are contextual and their progress is persisted in Fires
   assert.ok(tutorial.includes("“Contacted You” holds new leads"));
   assert.ok(tutorial.includes("“Settings,” then “Payment.”"));
   assert.equal(tutorial.includes("Messages is not available"), false);
-  assert.ok(tutorial.includes("Review your monthly call plan, calls remaining, and payment method."));
+  assert.ok(tutorial.includes("Review your monthly accepted-lead plan, accepted leads remaining, and payment method."));
   assert.ok(tutorial.includes("Tap anywhere to continue"));
   assert.ok(tutorial.includes('id: "number-assigned"'));
   assert.ok(tutorial.includes("reap the benefits of the app"));
@@ -122,18 +122,18 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });
 
-test("payment shows the current call allowance and all monthly plans", async () => {
+test("payment shows the current accepted-lead allowance and all monthly plans", async () => {
   const settings = await source("app/components/SettingsPanel.js");
-  assert.ok(settings.includes("Calls left this month"));
-  assert.ok(settings.includes("Monthly calls remaining"));
-  assert.ok(settings.includes("callsRemaining"));
+  assert.ok(settings.includes("Accepted leads left this month"));
+  assert.ok(settings.includes("Monthly accepted leads remaining"));
+  assert.ok(settings.includes("acceptedLeadsRemaining"));
   assert.ok(settings.includes("Current plan"));
   assert.ok(settings.includes("Available monthly plans"));
   assert.ok(settings.includes("Manage Plan & Payment"));
-  assert.equal(settings.includes("Accepted lead"), false);
+  assert.equal(settings.includes("Accepted lead"), true);
   assert.equal(settings.includes("Referral discount"), false);
   const summaryRoute = await source("app/api/billing/plan-summary/route.js");
-  assert.ok(summaryRoute.includes("publicCallPlanSummary(account)"));
+  assert.ok(summaryRoute.includes("publicAcceptedLeadPlanSummary(account, new Date(), currentAcceptedClients)"));
   assert.ok(summaryRoute.includes('billingProvider: String(account.billingProvider'));
 });
 

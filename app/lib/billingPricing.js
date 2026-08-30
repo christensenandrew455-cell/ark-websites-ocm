@@ -1,28 +1,32 @@
-export const BILLING_VERSION = "monthly-call-plans-v3";
+export const BILLING_VERSION = "monthly-accepted-lead-plans-v4";
 export const DEFAULT_BILLING_PLAN_KEY = "starter";
 
 export const BILLING_PLANS = Object.freeze({
   starter: Object.freeze({
     key: "starter",
     name: "Starter",
+    monthlyAcceptedLeads: 50,
     monthlyCalls: 50,
     amountCents: 4_999,
   }),
   standard: Object.freeze({
     key: "standard",
     name: "Standard",
+    monthlyAcceptedLeads: 100,
     monthlyCalls: 100,
     amountCents: 7_999,
   }),
   growth: Object.freeze({
     key: "growth",
     name: "Growth",
+    monthlyAcceptedLeads: 250,
     monthlyCalls: 250,
     amountCents: 14_999,
   }),
   pro: Object.freeze({
     key: "pro",
     name: "Pro",
+    monthlyAcceptedLeads: 500,
     monthlyCalls: 500,
     amountCents: 29_999,
   }),

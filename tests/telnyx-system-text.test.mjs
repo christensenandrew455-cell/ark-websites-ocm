@@ -105,11 +105,11 @@ test("system texts use the same configured sender as account verification", { co
 test("lead messages cover acceptance and decline", () => {
   assert.equal(
     estimateRequestStatusMessage("accepted", "Tabor Painting"),
-    "Your estimate request has been accepted by Tabor Painting.",
+    "Your service request has been accepted by Tabor Painting.",
   );
   assert.equal(
     estimateRequestStatusMessage("declined", "Tabor Painting"),
-    "We're sorry, but your estimate request has been declined by Tabor Painting.",
+    "We're sorry, but your service request has been declined by Tabor Painting.",
   );
 });
 

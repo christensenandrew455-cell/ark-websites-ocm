@@ -40,6 +40,9 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
   const fallback = calendarMonthWindow(text(match.business.timeZone));
   const period = subscriptionPeriodWindow(expanded, fallback);
   const periodKey = `${period.startMs}-${period.endMs}`;
+  const acceptedLeadsUsed = text(match.business.acceptedLeadPeriodKey) === periodKey
+    ? Math.max(0, Number(match.business.acceptedLeadsUsedThisPeriod || 0))
+    : 0;
   const callsUsed = text(match.business.callPeriodKey) === periodKey
     ? Math.max(0, Number(match.business.callsUsedThisPeriod || 0))
     : 0;
@@ -49,6 +52,13 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
     billingPlanKey: plan.key,
     billingPlanName: plan.name,
     ...promotionBillingFields(plan, promotion),
+    monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads,
+    acceptedLeadPeriodStartAt: Timestamp.fromMillis(period.startMs),
+    acceptedLeadPeriodEndAt: Timestamp.fromMillis(period.endMs),
+    acceptedLeadPeriodKey: periodKey,
+    acceptedLeadsUsedThisPeriod: acceptedLeadsUsed,
+    acceptedLeadsRemainingThisPeriod: Math.max(0, plan.monthlyAcceptedLeads - acceptedLeadsUsed),
+    acceptedLeadLimitReached: acceptedLeadsUsed >= plan.monthlyAcceptedLeads,
     monthlyCallLimit: plan.monthlyCalls,
     callPeriodStartAt: Timestamp.fromMillis(period.startMs),
     callPeriodEndAt: Timestamp.fromMillis(period.endMs),
@@ -138,6 +148,7 @@ export async function POST(request) {
           paymentId: invoice.id,
           paymentKind: "subscription",
           billingPlan: synced?.plan?.key || text(match.business.billingPlanKey || "starter"),
+          monthlyAcceptedLeads: synced?.plan?.monthlyAcceptedLeads || Number(match.business.monthlyAcceptedLeadLimit || 50),
           monthlyCalls: synced?.plan?.monthlyCalls || Number(match.business.monthlyCallLimit || 50),
           amountCents: Math.max(0, Number(invoice.amount_paid || 0)),
           currency: text(invoice.currency || "usd").toLowerCase(),

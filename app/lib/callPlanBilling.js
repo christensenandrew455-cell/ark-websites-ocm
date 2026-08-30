@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { acceptedLeadPlanStatus } from "./acceptedLeadPlanBilling.js";
 import { billingPlan, normalizeBillingPlanKey, publicBillingPlans } from "./billingPricing.js";
 import { billingPromotion, discountedAmountCents } from "./temporaryFeatures.js";
 import { calendarMonthWindow } from "./timeWindows.js";
@@ -120,22 +121,14 @@ export async function recordCompletedCall({
     ]);
     if (!accountSnapshot.exists) throw new Error("ACCOUNT_NOT_FOUND");
     const account = accountSnapshot.data();
-    // A delayed provider callback still belongs to the account's current billing
-    // period. The original call time is retained on the event for audit history.
-    const current = callPlanStatus(account, new Date());
+    const current = acceptedLeadPlanStatus(account, new Date());
     if (eventSnapshot.exists) {
       return { ...current, duplicate: true, callEventId: eventRef.id };
     }
     if (account.status !== "active" || account.billingPastDue === true) throw new Error("ACCOUNT_NOT_ACTIVE");
 
-    const callsUsed = current.callsUsed + 1;
-    const callsRemaining = Math.max(0, current.monthlyCallLimit - callsUsed);
     const result = {
       ...current,
-      callsUsed,
-      callsRemaining,
-      progressPercent: Math.min(100, callsUsed / current.monthlyCallLimit * 100),
-      limitReached: callsRemaining === 0,
       duplicate: false,
       callEventId: eventRef.id,
     };
@@ -144,8 +137,8 @@ export async function recordCompletedCall({
       callId: safeCallId,
       clientId: safeClientId,
       billingPlanKey: current.planKey,
+      acceptedLeadPeriodKey: current.periodKey,
       callPeriodKey: current.periodKey,
-      callNumberInPeriod: callsUsed,
       durationSeconds: whole(durationSeconds),
       outcome: text(outcome).slice(0, 80),
       leadSaved: leadSaved === true,
@@ -153,13 +146,6 @@ export async function recordCompletedCall({
       createdAt: FieldValue.serverTimestamp(),
     });
     transaction.set(accountRef, {
-      billingPlanKey: current.planKey,
-      billingPlanName: current.planName,
-      monthlyCallLimit: current.monthlyCallLimit,
-      callPeriodKey: current.periodKey,
-      callsUsedThisPeriod: callsUsed,
-      callsRemainingThisPeriod: callsRemaining,
-      callLimitReached: result.limitReached,
       lastCallAt: Timestamp.fromMillis(eventTime),
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });

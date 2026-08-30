@@ -27,6 +27,8 @@ export function pendingLeadSummary(id, source = {}) {
     collectionKey: "contactedMe",
     Name: text(data.Name || data.name || data.fullName, 160),
     Job: text(data.Job || data.job || data.service || data.projectType || data.requestedService, 180),
+    EstimateDate: text(data.EstimateDate || data.estimateDate || data.PreferredDate || data.preferredDate || data.PreferredDay || data.preferredDay || data.requestedDate, 40),
+    EstimateTime: text(data.EstimateTime || data.estimateTime || data.PreferredTime || data.preferredTime || data.requestedTime, 40),
     ...riskSummary(data),
     createdAt: data.createdAt,
     contactedAt: data.contactedAt,

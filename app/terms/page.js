@@ -17,17 +17,17 @@ const sections = [
   },
   {
     id: "paid-service",
-    title: "Payment method and monthly call plans",
+    title: "Payment method and monthly accepted-lead plans",
     body: <>
       <p>During signup, the payment provider securely confirms payment inside the Service. The iOS app uses Apple In-App Purchase; web and other supported platforms use Stripe. After the provider confirms payment, ARK starts the selected monthly subscription and its first recurring charge may be collected immediately.</p>
-      <p><strong>Starter:</strong> $49.99 USD per monthly billing period for up to 50 completed receptionist calls.</p>
-      <p><strong>Standard:</strong> $79.99 USD per monthly billing period for up to 100 completed receptionist calls.</p>
-      <p><strong>Growth:</strong> $149.99 USD per monthly billing period for up to 250 completed receptionist calls.</p>
-      <p><strong>Pro:</strong> $299.99 USD per monthly billing period for up to 500 completed receptionist calls.</p>
+      <p><strong>Starter:</strong> $49.99 USD per monthly billing period for up to 50 accepted leads.</p>
+      <p><strong>Standard:</strong> $79.99 USD per monthly billing period for up to 100 accepted leads.</p>
+      <p><strong>Growth:</strong> $149.99 USD per monthly billing period for up to 250 accepted leads.</p>
+      <p><strong>Pro:</strong> $299.99 USD per monthly billing period for up to 500 accepted leads.</p>
       {websiteOffer && <p><strong>Temporary website launch offer:</strong> A new owner who completes subscription signup through the ARK website while the offer is available receives {websiteOffer.percentOff}% off the selected plan: {money(discountedAmountCents(4999, websiteOffer))} Starter, {money(discountedAmountCents(7999, websiteOffer))} Standard, {money(discountedAmountCents(14999, websiteOffer))} Growth, or {money(discountedAmountCents(29999, websiteOffer))} Pro per monthly billing period. The discounted rate applies to renewals while that subscription remains active. The offer does not apply to purchases made inside a native app. ARK may end the offer for future signups, and a canceled subscription may not qualify again.</p>}
-      <p><strong>What counts as a call:</strong> Each unique completed call handled through the account’s ARK receptionist number counts once. A repeated provider event with the same call identifier does not count again. Reviewing, accepting, declining, editing, retaining, or deleting a lead does not create a separate charge.</p>
-      <p><strong>Monthly limit:</strong> The selected call allowance resets at the start of the next billing period. Unused calls do not roll over, and ARK does not add a per-call overage charge. When the allowance is exhausted, new receptionist calls may be paused until the allowance resets or the owner changes to a plan with available calls.</p>
-      <p><strong>Payment display:</strong> Settings shows the current plan, calls used, calls remaining, billing-period end date, and payment provider. Apple’s or Stripe’s payment records control completed subscription purchases and charges.</p>
+      <p><strong>What counts as an accepted lead:</strong> Each unique service request counts once when the business owner taps Accept. Repeated acceptance attempts do not count again. Calls, declined leads, edits, retention, and deletion do not count.</p>
+      <p><strong>Monthly limit:</strong> The selected accepted-lead allowance resets at the start of the next billing period. Unused accepted leads do not roll over, and ARK does not add a per-lead overage charge. When the allowance is exhausted, additional leads cannot be accepted until the allowance resets or the owner changes to a plan with available accepted leads.</p>
+      <p><strong>Payment display:</strong> Settings shows the current plan, accepted leads used, accepted leads remaining, billing-period end date, and payment provider. Apple’s or Stripe’s payment records control completed subscription purchases and charges.</p>
       <p>Custom work, provider pass-through charges, taxes, or other fees apply only when separately disclosed or agreed. An account-specific written agreement controls if it expressly differs from these general pricing terms.</p>
     </>,
   },

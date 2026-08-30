@@ -10,14 +10,14 @@ The owner signup flow is:
 
 The available monthly plans are defined in `app/lib/billingPricing.js`:
 
-| Plan | Completed calls per billing month | Price |
+| Plan | Accepted leads per billing month | Price |
 | --- | ---: | ---: |
 | Starter | 50 | $49.99/month |
 | Standard | 100 | $79.99/month |
 | Growth | 250 | $149.99/month |
 | Pro | 500 | $299.99/month |
 
-Each unique completed receptionist call counts once. Lead intake, lead review, messages, and SMS parts do not generate charges. There are no overage charges, metered Stripe items, threshold payments, or Apple consumables. When an account reaches its allowance, ARK rejects new receptionist calls until the provider's next billing period or until the owner changes plans.
+Each unique service request counts once when the owner taps **Accept**. Incoming and outgoing calls, declined leads, edits, messages, and SMS parts do not count. There are no overage charges, metered Stripe items, threshold payments, or Apple consumables. When an account reaches its allowance, ARK prevents additional leads from being accepted until the provider's next billing period or until the owner changes plans.
 
 ## Account creation
 
@@ -25,7 +25,7 @@ Step 1 creates only a Firebase Authentication user and a server-only signup-veri
 
 Firestore has three top-level collections:
 
-- `accounts` — regular account state and account-owned subcollections, including idempotent completed-call events
+- `accounts` — regular account state and account-owned subcollections, including idempotent accepted-lead events
 - `pendingOwnerSignups` — verified, one-hour temporary signup records awaiting business information or payment
 - `system` — server-only operational records under `system/global`
 
@@ -63,7 +63,7 @@ The server validates configured Price IDs or creates stable code-managed monthly
 
 Leave an optional Price ID blank to let the server find or create that plan's Price in the current Stripe test/live mode. The legacy `STRIPE_ACCOUNT_BASE_PRICE_ID` remains accepted only as a Starter override while deployments migrate; do not configure any usage Price.
 
-Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, and `invoice.payment_failed`. These events keep the plan, call-reset period, and payment state current.
+Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, and `invoice.payment_failed`. These events keep the plan, accepted-lead reset period, and payment state current.
 
 Enable the Stripe customer portal to update payment methods and switch among the four products. Plan switching must use the subscription's recurring line-item Price. The webhook reads the actual line item so a portal change updates the plan and allowance even if old subscription metadata remains.
 
@@ -104,10 +104,10 @@ Configure `CRON_SECRET`. For Stripe-billed accounts, the daily billing job refre
 - Each plan starts exactly one monthly recurring subscription at the configured amount.
 - Apple signup recognizes all four products under `com.arkwebsites.app`.
 - A SetupIntent or Apple transaction belonging to another owner cannot promote the signup.
-- Payment success creates one `standard` account role, initializes the chosen call allowance at zero calls used, signs out, and opens `/login`.
-- Reposting the same completed `callId` counts once.
-- New runtime calls are rejected after the allowance is exhausted; no overage payment is created.
-- A new provider billing period resets the allowance, and a plan switch preserves calls already used in the same period.
+- Payment success creates one `standard` account role, initializes the chosen accepted-lead allowance at zero used, signs out, and opens `/login`.
+- Reposting an acceptance for the same lead does not count it twice.
+- Calls never consume the allowance; additional lead acceptances are rejected after the allowance is exhausted.
+- A new provider billing period resets the allowance, and a plan switch preserves accepted leads already used in the same period.
 - A failed recurring subscription payment disables receptionist calls and intake until payment recovery.
 - Stripe secrets never appear in frontend code or API responses.
 - Billing webhooks reject missing or invalid signatures.
