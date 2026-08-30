@@ -114,6 +114,7 @@ test("Contacted You summaries exclude private contact fields but show the reques
     Phone: "+19785550123",
     Address: "1 Main Street",
     ClientNotes: "Private details",
+    RequestSummary: "- Service: Replace water heater\n- Address: 1 Main Street",
     requestedDate: "2026-09-02",
     requestedTime: "3:30 PM",
     rawSubmission: { transcript: "private" },
@@ -135,6 +136,7 @@ test("Contacted You summaries exclude private contact fields but show the reques
   ]);
   assert.equal(Object.hasOwn(summary, "Phone"), false);
   assert.equal(Object.hasOwn(summary, "Address"), false);
+  assert.equal(Object.hasOwn(summary, "RequestSummary"), false);
   assert.equal(summary.EstimateDate, "2026-09-02");
   assert.equal(summary.EstimateTime, "3:30 PM");
   assert.equal(summary.riskScore, 5);
@@ -172,6 +174,11 @@ test("only accepted leads consume the plan and repeated acceptance is idempotent
   assert.ok(component.includes('>Decline</button>'));
   assert.ok(component.includes("Requested service time"));
   assert.ok(component.includes("Requested: {schedule}"));
+  assert.ok(intake.includes("data.RequestSummary || data.requestSummary || data.serviceRequestSummary"));
+  assert.ok(intake.includes("RequestSummary,"));
+  assert.ok(component.includes("RequestSummary: firstValue(data.RequestSummary, data.requestSummary, data.serviceRequestSummary)"));
+  assert.ok(component.includes("Service request summary"));
+  assert.ok(component.includes("requestSummary.map((item)"));
   assert.equal(component.includes("charged"), false);
 });
 

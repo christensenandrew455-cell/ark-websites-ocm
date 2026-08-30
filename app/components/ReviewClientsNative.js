@@ -16,6 +16,15 @@ import {
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
 }
+
+function serviceRequestSummaryItems(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^[-•]\s*/, ""))
+    .filter((line) => /^(?:Service|Preferred time|Address|Notes):\s*\S/i.test(line))
+    .slice(0, 4);
+}
+
 function toMillis(value) {
   if (!value) return 0;
   if (value?.toMillis) return value.toMillis();
@@ -39,6 +48,7 @@ function normalizeRow(id, source, collectionKey) {
     Email: firstValue(data.Email, data.email),
     Address: firstValue(data.Address, data.address),
     Job: firstValue(data.Job, data.job, data.service, data.projectType, currentJob.type),
+    RequestSummary: firstValue(data.RequestSummary, data.requestSummary, data.serviceRequestSummary),
     riskAssessed: data.riskAssessed === true,
     riskScore: Math.max(0, Math.floor(Number(data.riskScore) || 0)),
     riskLevel: leadRiskLevel(data.riskScore),
@@ -341,12 +351,37 @@ function ClientModal({ row, messagesEnabled, onClose, onMessage, onAddContact, o
     EstimateDate: form.EstimateDate || row.EstimateDate,
     EstimateTime: form.EstimateTime || row.EstimateTime,
   });
+  const requestSummary = serviceRequestSummaryItems(row.RequestSummary);
   return <Modal title={form.Name || "Client"} onClose={closeWithAutosave}>
     <div className="flex items-center gap-3 border-b border-slate-200 p-4 sm:p-6">
       <button type="button" disabled={saving} onClick={closeWithAutosave} aria-label="Back" title="Back" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black text-slate-900 shadow-sm disabled:opacity-50">←</button>
       <h2 className="min-w-0 truncate text-2xl font-black sm:text-3xl">{form.Name || "Unnamed caller"}</h2>
     </div>
-    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">{saveError && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{saveError}</div>}<div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4"><span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Requested service time</span><p className="mt-1 text-base font-black text-blue-950">{requested || "No requested time was provided."}</p></div>{fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span><input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" /></label>)}<label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span><textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" /></label><label className="col-span-2"><span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span><textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" /></label></div>
+    <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">
+      {saveError && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{saveError}</div>}
+      <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Requested service time</span>
+        <p className="mt-1 text-base font-black text-blue-950">{requested || "No requested time was provided."}</p>
+      </div>
+      {requestSummary.length > 0 && <section className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-label="Service request summary">
+        <h3 className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Service request summary</h3>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold leading-6 text-slate-800">
+          {requestSummary.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      </section>}
+      {fields.map(([field, label, type]) => <label key={field} className={field === "Address" ? "col-span-2" : ""}>
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{label}</span>
+        <input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" />
+      </label>)}
+      <label className="col-span-2">
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span>
+        <textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" />
+      </label>
+      <label className="col-span-2">
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span>
+        <textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" />
+      </label>
+    </div>
     <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
       {MESSAGES_AVAILABLE && <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>}
       <button type="button" onClick={onAddContact} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black">Add Contact</button>

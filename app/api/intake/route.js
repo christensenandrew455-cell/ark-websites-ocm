@@ -116,6 +116,9 @@ function buildRow(input, source) {
   const { StreetAddress, TownOrCity, Address } = addressFields(data);
 
   const ClientNotes = text(data.ClientNotes || data.clientNotes || data.Notes || data.notes || data.message || data.summary || data.Body || data.TranscriptionText || data.CallStatus);
+  const RequestSummary = text(
+    data.RequestSummary || data.requestSummary || data.serviceRequestSummary
+  ).slice(0, 4000);
   const riskAssessment = calculateLeadRisk(data);
   return {
     FirstName,
@@ -133,6 +136,7 @@ function buildRow(input, source) {
     ),
     PreferredDay: text(data.PreferredDay || data.preferredDay || data.requestedDate || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate),
     PreferredTime: text(data.PreferredTime || data.preferredTime || data.requestedTime || data.EstimateTime || data.estimateTime),
+    RequestSummary,
     ClientNotes,
     Notes: ClientNotes,
     riskAssessment,
