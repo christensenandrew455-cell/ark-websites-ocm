@@ -1,10 +1,10 @@
-// Temporary launch controls live here so the promotion and feedback entry can
-// be disabled without hunting through the app. Existing promotion keys remain
-// recognized after `acceptingNewAccounts` is turned off so early customers keep
-// the price they accepted.
+// Temporary launch controls live here so retired features stay centralized.
+// The website offer is closed to every new signup. Its historical key remains
+// recognized only so an already-created discounted subscription or pending
+// payment keeps the price the owner previously accepted.
 export const TEMPORARY_FEATURES = Object.freeze({
   webLaunchOffer: Object.freeze({
-    acceptingNewAccounts: true,
+    acceptingNewAccounts: false,
     key: "web-launch-half-off-v1",
     label: "Website launch offer",
     percentOff: 50,

@@ -120,11 +120,12 @@ test("the four code-owned plans have the requested accepted leads and monthly pr
   assert.equal(billingPlan("growth").monthlyAcceptedLeads, 100);
 });
 
-test("the website offer stays active for browser signups and preserves existing accounts", () => {
+test("the retired website offer is closed to new signups and preserves existing accounts", () => {
   const offer = TEMPORARY_FEATURES.webLaunchOffer;
   assert.equal(offer.key, "web-launch-half-off-v1");
   assert.equal(offer.percentOff, 50);
-  assert.equal(activeWebLaunchOffer()?.key, offer.key);
+  assert.equal(offer.acceptingNewAccounts, false);
+  assert.equal(activeWebLaunchOffer(), null);
   assert.deepEqual(
     publicBillingPlans().map((plan) => discountedAmountCents(plan.amountCents, offer)),
     [1250, 2375, 4500, 8500],
@@ -133,8 +134,9 @@ test("the website offer stays active for browser signups and preserves existing 
   const nativeRequest = { headers: new Headers({ "user-agent": "Mozilla/5.0 ARKClientCenter/1.4" }) };
   assert.equal(isNativeClientCenterRequest(websiteRequest), false);
   assert.equal(isNativeClientCenterRequest(nativeRequest), true);
-  assert.equal(webSignupPromotionForRequest(websiteRequest)?.key, offer.key);
+  assert.equal(webSignupPromotionForRequest(websiteRequest), null);
   assert.equal(webSignupPromotionForRequest(nativeRequest), null);
+  assert.equal(webSignupPromotionForRequest(websiteRequest, offer.key)?.key, offer.key);
   assert.equal(webSignupPromotionForRequest(nativeRequest, offer.key)?.key, offer.key);
   assert.equal(publicPromotion(offer).renewsAtDiscount, true);
 });
@@ -409,7 +411,7 @@ test("Stripe creates a usable billing portal with every current plan and payment
   assert.equal(createdConfiguration.options.idempotencyKey, "ark-client-center-billing-portal-v5");
 });
 
-test("Stripe creates and applies the forever website coupon to a new subscription", async () => {
+test("Stripe preserves the explicit legacy website coupon for a grandfathered subscription", async () => {
   let couponCreate;
   let subscriptionCreate;
   const missing = new Error("missing");
