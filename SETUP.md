@@ -65,9 +65,17 @@ The server validates configured Price IDs or creates stable code-managed monthly
 
 Leave an optional Price ID blank to let the server find or create that plan's Price in the current Stripe test/live mode. A stale optional Price from the retired catalog is ignored so ARK can provision the correct current amount; do not configure any usage Price.
 
+Create the extra-lead Price manually in Stripe, then configure this required server-side variable:
+
+| Required environment variable | Required Price |
+| --- | --- |
+| `STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID` | Active, one-time $1.00 USD Price |
+
+The app only retrieves and validates this Price. It never creates or edits the top-up Product or Price in Stripe.
+
 Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, `payment_intent.succeeded`, and `setup_intent.succeeded`. These events keep the plan, accepted-lead reset period, top-ups, card, and payment state current.
 
-ARK's signed-in Payment manager uses Stripe Payment Elements for card updates, Subscription Schedules for next-renewal changes, and a billing-cycle reset with no proration for immediate changes. Immediate changes require successful payment, discard unused prior-plan leads, and begin a fresh allowance period. Stripe PaymentIntents charge top-ups at exactly 100 cents per accepted lead. The legacy customer-portal route remains available only as a fallback and is not used by the Payment screen.
+ARK's signed-in Payment manager uses Stripe Payment Elements for card updates, Subscription Schedules for next-renewal changes, and a billing-cycle reset with no proration for immediate changes. Immediate changes require successful payment, discard unused prior-plan leads, and begin a fresh allowance period. Stripe PaymentIntents derive the top-up amount from the manually configured $1 Price and record that Price ID in payment metadata. The legacy customer-portal route remains available only as a fallback and is not used by the Payment screen.
 
 The browser never submits a Stripe Customer ID. Protected routes derive the Customer from the verified Firebase token and server-side signup or account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code fields.
 

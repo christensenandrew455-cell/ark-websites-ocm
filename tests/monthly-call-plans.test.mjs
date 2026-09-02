@@ -28,6 +28,8 @@ import {
   ensureStripePlanPrice,
   ensureStripePromotionCoupon,
   missingStripeResource,
+  retrieveStripeAcceptedLeadTopUpPrice,
+  stripeAcceptedLeadTopUpPaymentFields,
   stripeBillingPlanFromSubscription,
   stripeSubscriptionAccountFields,
 } from "../app/lib/stripePlanBilling.js";
@@ -361,6 +363,87 @@ test("Stripe creates a stable code-managed Price when no override exists", async
   assert.equal(created.options.idempotencyKey, created.params.lookup_key);
 });
 
+test("Stripe reads the manually configured one-time $1 accepted-lead Price without creating one", async () => {
+  let retrieved = "";
+  let created = false;
+  const stripe = { prices: {
+    async retrieve(id) {
+      retrieved = id;
+      return {
+        id,
+        product: "prod_lead_top_up",
+        active: true,
+        billing_scheme: "per_unit",
+        currency: "usd",
+        unit_amount: 100,
+        type: "one_time",
+        recurring: null,
+      };
+    },
+    async create() { created = true; },
+  } };
+  const result = await withEnvironment("STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID", "price_lead_top_up", () => retrieveStripeAcceptedLeadTopUpPrice({ stripe }));
+  assert.equal(retrieved, "price_lead_top_up");
+  assert.equal(result.priceId, "price_lead_top_up");
+  assert.equal(result.unitAmountCents, 100);
+  assert.equal(result.currency, "usd");
+  assert.equal(created, false);
+});
+
+test("Stripe rejects an invalid accepted-lead top-up Price instead of creating a replacement", async () => {
+  let created = false;
+  const stripe = { prices: {
+    async retrieve(id) {
+      return {
+        id,
+        active: true,
+        billing_scheme: "per_unit",
+        currency: "usd",
+        unit_amount: 99,
+        type: "one_time",
+        recurring: null,
+      };
+    },
+    async create() { created = true; },
+  } };
+  await withEnvironment("STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID", "price_wrong_amount", () => assert.rejects(
+    retrieveStripeAcceptedLeadTopUpPrice({ stripe }),
+    /active, one-time \$1\.00 USD Price/,
+  ));
+  assert.equal(created, false);
+});
+
+test("Stripe top-up settlement is bound to the configured Price and its $1 unit amount", async () => {
+  await withEnvironment("STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID", "price_lead_top_up", () => {
+    const payment = stripeAcceptedLeadTopUpPaymentFields({
+      amount_received: 300,
+      currency: "usd",
+      metadata: {
+        purpose: "accepted_lead_top_up",
+        acceptedLeads: "3",
+        acceptedLeadTopUpPriceId: "price_lead_top_up",
+        acceptedLeadUnitAmountCents: "100",
+      },
+    });
+    assert.deepEqual(payment, {
+      acceptedLeads: 3,
+      unitAmountCents: 100,
+      priceId: "price_lead_top_up",
+      currency: "usd",
+    });
+    assert.throws(() => stripeAcceptedLeadTopUpPaymentFields({
+      amount_received: 300,
+      currency: "usd",
+      metadata: {
+        purpose: "accepted_lead_top_up",
+        acceptedLeads: "3",
+        acceptedLeadTopUpPriceId: "price_other",
+        acceptedLeadUnitAmountCents: "100",
+      },
+    }), /STRIPE_ACCEPTED_LEAD_TOP_UP_PAYMENT_MISMATCH/);
+  });
+});
+
 test("Stripe creates a usable billing portal with every current plan and payment-method updates", async () => {
   const planPrices = {
     ark_client_center_starter_monthly_v5: { id: "price_starter", product: "prod_starter", unit_amount: 2499 },
@@ -534,7 +617,9 @@ test("the custom Stripe manager requires explicit timing and full immediate paym
   assert.ok(planRoute.includes('payment_behavior: "pending_if_incomplete"'));
   assert.ok(planRoute.includes("subscriptionSchedules.create"));
   assert.ok(planRoute.includes("subscriptionSchedules.update"));
-  assert.ok(topUpRoute.includes("amount: acceptedLeads * 100"));
+  assert.ok(topUpRoute.includes("retrieveStripeAcceptedLeadTopUpPrice({ stripe })"));
+  assert.ok(topUpRoute.includes("amount: acceptedLeads * topUpPrice.unitAmountCents"));
+  assert.ok(topUpRoute.includes("acceptedLeadTopUpPriceId: topUpPrice.priceId"));
   assert.ok(topUpRoute.includes('purpose: "accepted_lead_top_up"'));
   assert.ok(cardRoute.includes("stripe.setupIntents.create"));
   assert.ok(cardRoute.includes("default_payment_method: paymentMethodId"));

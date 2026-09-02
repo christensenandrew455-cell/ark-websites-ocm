@@ -102,6 +102,72 @@ function managedLookupKey(planKey) {
   return `ark_client_center_${normalizeBillingPlanKey(planKey)}_monthly_v5`;
 }
 
+export const STRIPE_ACCEPTED_LEAD_TOP_UP_CONFIGURATION_ERROR = "STRIPE_ACCEPTED_LEAD_TOP_UP_CONFIGURATION_ERROR";
+export const STRIPE_ACCEPTED_LEAD_TOP_UP_UNIT_AMOUNT_CENTS = 100;
+
+function acceptedLeadTopUpConfigurationError(message) {
+  const error = new Error(message);
+  error.code = STRIPE_ACCEPTED_LEAD_TOP_UP_CONFIGURATION_ERROR;
+  return error;
+}
+
+function configuredAcceptedLeadTopUpPriceId() {
+  const configuredPriceId = text(process.env.STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID);
+  if (!/^price_[a-zA-Z0-9_]+$/.test(configuredPriceId)) {
+    throw acceptedLeadTopUpConfigurationError("STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID must contain the manually created Stripe Price ID.");
+  }
+  return configuredPriceId;
+}
+
+function isUsableAcceptedLeadTopUpPrice(price) {
+  return Boolean(
+    price
+    && price.active !== false
+    && text(price.currency).toLowerCase() === "usd"
+    && Number(price.unit_amount) === STRIPE_ACCEPTED_LEAD_TOP_UP_UNIT_AMOUNT_CENTS
+    && text(price.billing_scheme || "per_unit") === "per_unit"
+    && text(price.type || "one_time") === "one_time"
+    && !price.recurring
+  );
+}
+
+export async function retrieveStripeAcceptedLeadTopUpPrice({ stripe }) {
+  const configuredPriceId = configuredAcceptedLeadTopUpPriceId();
+  let configuredPrice;
+  try {
+    configuredPrice = await stripe.prices.retrieve(configuredPriceId);
+  } catch (error) {
+    if (!missingStripeResource(error)) throw error;
+    throw acceptedLeadTopUpConfigurationError("STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID does not exist in the current Stripe mode.");
+  }
+  if (!isUsableAcceptedLeadTopUpPrice(configuredPrice)) {
+    throw acceptedLeadTopUpConfigurationError("STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID must be an active, one-time $1.00 USD Price.");
+  }
+  return {
+    priceId: configuredPrice.id,
+    productId: priceId(configuredPrice.product),
+    unitAmountCents: STRIPE_ACCEPTED_LEAD_TOP_UP_UNIT_AMOUNT_CENTS,
+    currency: "usd",
+  };
+}
+
+export function stripeAcceptedLeadTopUpPaymentFields(paymentIntent) {
+  const configuredPriceId = configuredAcceptedLeadTopUpPriceId();
+  const acceptedLeads = Number(paymentIntent?.metadata?.acceptedLeads || 0);
+  const unitAmountCents = Number(paymentIntent?.metadata?.acceptedLeadUnitAmountCents || 0);
+  if (text(paymentIntent?.metadata?.purpose) !== "accepted_lead_top_up"
+    || !Number.isSafeInteger(acceptedLeads)
+    || acceptedLeads <= 0
+    || acceptedLeads > 999_999
+    || text(paymentIntent?.metadata?.acceptedLeadTopUpPriceId) !== configuredPriceId
+    || unitAmountCents !== STRIPE_ACCEPTED_LEAD_TOP_UP_UNIT_AMOUNT_CENTS
+    || text(paymentIntent?.currency).toLowerCase() !== "usd"
+    || Number(paymentIntent?.amount_received || 0) !== acceptedLeads * unitAmountCents) {
+    throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_PAYMENT_MISMATCH");
+  }
+  return { acceptedLeads, unitAmountCents, priceId: configuredPriceId, currency: "usd" };
+}
+
 export async function ensureStripePlanPrice({ stripe, planKey }) {
   const plan = billingPlan(planKey);
   const environmentVariable = planEnvironmentVariable(plan.key);

@@ -4,7 +4,12 @@ import { grantAcceptedLeadTopUp } from "../../../lib/acceptedLeadTopUps";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
-import { refreshStoredPaymentMethod } from "../../../lib/stripePlanBilling";
+import {
+  refreshStoredPaymentMethod,
+  retrieveStripeAcceptedLeadTopUpPrice,
+  STRIPE_ACCEPTED_LEAD_TOP_UP_CONFIGURATION_ERROR,
+  stripeAcceptedLeadTopUpPaymentFields,
+} from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,12 +67,11 @@ async function activeStripeAccount(request) {
 }
 
 async function settlePayment({ access, paymentIntent }) {
-  const acceptedLeads = acceptedLeadQuantity(paymentIntent.metadata?.acceptedLeads);
+  const topUpPayment = stripeAcceptedLeadTopUpPaymentFields(paymentIntent);
   const customerId = text(paymentIntent.customer?.id || paymentIntent.customer);
-  if (text(paymentIntent.metadata?.purpose) !== "accepted_lead_top_up"
-    || text(paymentIntent.metadata?.clientId) !== access.clientId
+  if (text(paymentIntent.metadata?.clientId) !== access.clientId
     || customerId !== text(access.account.stripeCustomerId)
-    || Number(paymentIntent.amount_received || 0) !== acceptedLeads * 100) {
+  ) {
     throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_FORBIDDEN");
   }
   if (paymentIntent.status !== "succeeded") throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_UNPAID");
@@ -76,9 +80,9 @@ async function settlePayment({ access, paymentIntent }) {
     clientId: access.clientId,
     provider: "stripe",
     paymentId: paymentIntent.id,
-    acceptedLeads,
+    acceptedLeads: topUpPayment.acceptedLeads,
     amountCents: paymentIntent.amount_received,
-    currency: paymentIntent.currency,
+    currency: topUpPayment.currency,
     purchasedAt: Number(paymentIntent.created || 0) * 1000,
   });
 }
@@ -103,6 +107,7 @@ export async function POST(request) {
 
   try {
     const stripe = new Stripe(stripeSecretKey);
+    const topUpPrice = await retrieveStripeAcceptedLeadTopUpPrice({ stripe });
     const syncedPayment = await refreshStoredPaymentMethod({
       stripe,
       db: access.db,
@@ -115,8 +120,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Add a card before buying additional leads." }, { status: 409 });
     }
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: acceptedLeads * 100,
-      currency: "usd",
+      amount: acceptedLeads * topUpPrice.unitAmountCents,
+      currency: topUpPrice.currency,
       customer: text(access.account.stripeCustomerId),
       payment_method: syncedPayment.paymentMethodId,
       payment_method_types: ["card"],
@@ -128,6 +133,8 @@ export async function POST(request) {
         clientId: access.clientId,
         uid: text(access.decodedToken.uid),
         acceptedLeads: String(acceptedLeads),
+        acceptedLeadTopUpPriceId: topUpPrice.priceId,
+        acceptedLeadUnitAmountCents: String(topUpPrice.unitAmountCents),
       },
     }, { idempotencyKey: `ark-lead-top-up-${access.clientId}-${requestId}` });
     const publicIntent = publicPaymentIntent(paymentIntent, publishableKey);
@@ -138,6 +145,9 @@ export async function POST(request) {
     return NextResponse.json(publicIntent, { status: paymentIntent.status === "requires_action" ? 200 : 402 });
   } catch (error) {
     console.error("Unable to create accepted-lead top-up payment", error);
+    if (text(error?.code) === STRIPE_ACCEPTED_LEAD_TOP_UP_CONFIGURATION_ERROR) {
+      return NextResponse.json({ error: "Extra-lead purchases are not configured yet." }, { status: 503 });
+    }
     return NextResponse.json({
       error: text(error?.raw?.message || error?.message).startsWith("Stripe")
         ? "The top-up payment did not complete. Update the card or try again."

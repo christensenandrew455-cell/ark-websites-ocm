@@ -444,6 +444,6 @@ test("legal and help copy describe all four accepted-lead plans and recurring-pa
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));
   for (const plan of ["Starter", "Standard", "Growth", "Scale"]) assert.ok(help.includes(`${plan} is`));
-  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_STARTER_PRICE_ID", "STRIPE_STANDARD_PRICE_ID", "STRIPE_GROWTH_PRICE_ID", "STRIPE_SCALE_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_STARTER_PRICE_ID", "STRIPE_STANDARD_PRICE_ID", "STRIPE_GROWTH_PRICE_ID", "STRIPE_SCALE_PRICE_ID", "STRIPE_ACCEPTED_LEAD_TOP_UP_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
   for (const name of ["STRIPE_USAGE_PRICE_ID", "REFERRAL_IDENTITY_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID"]) assert.equal(env.includes(`${name}=`), false);
 });
