@@ -4,6 +4,7 @@ import {
   BILLING_VERSION,
   billingPlan,
   billingPlanForAmount,
+  isBillingPlanKey,
   normalizeBillingPlanKey,
 } from "./billingPricing.js";
 import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
@@ -49,7 +50,7 @@ async function findUsableCustomerSubscription(stripe, customerId, clientId) {
   });
   const active = (list?.data || []).filter(activeSubscription);
   return active.find((subscription) => text(subscription.metadata?.clientId) === text(clientId))
-    || active.find((subscription) => BILLING_PLAN_KEYS.includes(text(subscription.metadata?.billingPlan)))
+    || active.find((subscription) => isBillingPlanKey(subscription.metadata?.billingPlan))
     || active[0]
     || null;
 }
@@ -98,29 +99,25 @@ function planEnvironmentVariable(planKey) {
 }
 
 function managedLookupKey(planKey) {
-  return `ark_client_center_${normalizeBillingPlanKey(planKey)}_monthly_v3`;
-}
-
-function legacyStarterPriceId(planKey) {
-  return normalizeBillingPlanKey(planKey) === "starter" ? text(process.env.STRIPE_ACCOUNT_BASE_PRICE_ID) : "";
+  return `ark_client_center_${normalizeBillingPlanKey(planKey)}_monthly_v5`;
 }
 
 export async function ensureStripePlanPrice({ stripe, planKey }) {
   const plan = billingPlan(planKey);
   const environmentVariable = planEnvironmentVariable(plan.key);
-  const configuredPriceId = text(process.env[environmentVariable]) || legacyStarterPriceId(plan.key);
+  const configuredPriceId = text(process.env[environmentVariable]);
   if (configuredPriceId) {
     let configuredPrice;
     try {
       configuredPrice = await stripe.prices.retrieve(configuredPriceId);
     } catch (error) {
       if (!missingStripeResource(error)) throw error;
-      throw new Error(`${environmentVariable} was not found with the current Stripe secret key.`);
+      console.warn(`${environmentVariable} is stale for the current Stripe mode; using the code-managed ${plan.name} Price instead.`);
     }
-    if (!isPriceForPlan(configuredPrice, plan.key)) {
-      throw new Error(`${environmentVariable} must be an active $${plan.amountCents / 100} USD monthly recurring Price.`);
+    if (configuredPrice && isPriceForPlan(configuredPrice, plan.key)) {
+      return { plan, priceId: configuredPrice.id, productId: priceId(configuredPrice.product) };
     }
-    return { plan, priceId: configuredPrice.id };
+    if (configuredPrice) console.warn(`${environmentVariable} has the retired amount; using the code-managed ${plan.name} Price instead.`);
   }
 
   const lookupKey = managedLookupKey(plan.key);
@@ -129,7 +126,7 @@ export async function ensureStripePlanPrice({ stripe, planKey }) {
   if (managedPrice && !isPriceForPlan(managedPrice, plan.key)) {
     throw new Error(`The code-managed Stripe ${plan.name} Price must remain $${plan.amountCents / 100} USD per month.`);
   }
-  if (managedPrice) return { plan, priceId: managedPrice.id };
+  if (managedPrice) return { plan, priceId: managedPrice.id, productId: priceId(managedPrice.product) };
 
   const createdPrice = await stripe.prices.create({
     currency: "usd",
@@ -154,11 +151,78 @@ export async function ensureStripePlanPrice({ stripe, planKey }) {
     },
   }, { idempotencyKey: lookupKey });
   if (!isPriceForPlan(createdPrice, plan.key)) throw new Error(`Stripe did not create the required ${plan.name} monthly Price.`);
-  return { plan, priceId: createdPrice.id };
+  return { plan, priceId: createdPrice.id, productId: priceId(createdPrice.product) };
 }
 
 export async function ensureStripeBillingCatalog({ stripe, planKey = "starter" }) {
   return ensureStripePlanPrice({ stripe, planKey });
+}
+
+function portalProducts(catalog) {
+  const products = new Map();
+  for (const item of catalog) {
+    if (!item.productId) throw new Error(`Stripe ${item.plan.name} Price is not attached to a Product.`);
+    const prices = products.get(item.productId) || [];
+    if (!prices.includes(item.priceId)) prices.push(item.priceId);
+    products.set(item.productId, prices);
+  }
+  return [...products.entries()].map(([product, prices]) => ({ product, prices }));
+}
+
+function portalConfigurationFields({ appUrl, products }) {
+  return {
+    name: "ARK Client Center plans and payments",
+    default_return_url: `${appUrl}/settings?section=payment`,
+    business_profile: {
+      headline: "Manage your ARK Client Center plan and payment method.",
+      privacy_policy_url: `${appUrl}/privacy`,
+      terms_of_service_url: `${appUrl}/terms`,
+    },
+    features: {
+      customer_update: { enabled: false, allowed_updates: [] },
+      invoice_history: { enabled: true },
+      payment_method_update: { enabled: true },
+      subscription_cancel: { enabled: false },
+      subscription_update: {
+        enabled: true,
+        default_allowed_updates: ["price"],
+        products,
+        proration_behavior: "none",
+        billing_cycle_anchor: "unchanged",
+      },
+    },
+    metadata: {
+      managedBy: "ark-client-center",
+      billingVersion: BILLING_VERSION,
+    },
+  };
+}
+
+async function configuredPortalConfiguration(stripe) {
+  const configuredId = text(process.env.STRIPE_BILLING_PORTAL_CONFIGURATION_ID);
+  if (!configuredId) return null;
+  try {
+    const configuration = await stripe.billingPortal.configurations.retrieve(configuredId);
+    return configuration?.active === false ? null : configuration;
+  } catch (error) {
+    if (!missingStripeResource(error)) throw error;
+    console.warn("STRIPE_BILLING_PORTAL_CONFIGURATION_ID is stale for the current Stripe mode; using ARK's managed portal configuration instead.");
+    return null;
+  }
+}
+
+async function managedPortalConfiguration(stripe) {
+  const configurations = await stripe.billingPortal.configurations.list({ active: true, limit: 100 });
+  return (configurations.data || []).find((configuration) => text(configuration.metadata?.managedBy) === "ark-client-center") || null;
+}
+
+export async function ensureStripeBillingPortalConfiguration({ stripe, appUrl }) {
+  const catalog = [];
+  for (const planKey of BILLING_PLAN_KEYS) catalog.push(await ensureStripePlanPrice({ stripe, planKey }));
+  const fields = portalConfigurationFields({ appUrl, products: portalProducts(catalog) });
+  const existing = await configuredPortalConfiguration(stripe) || await managedPortalConfiguration(stripe);
+  if (existing) return stripe.billingPortal.configurations.update(existing.id, fields);
+  return stripe.billingPortal.configurations.create(fields, { idempotencyKey: "ark-client-center-billing-portal-v5" });
 }
 
 function validPromotionCoupon(coupon, promotion) {
@@ -203,14 +267,14 @@ export function stripeBillingPlanFromSubscription(subscription) {
   for (const item of items) {
     const price = item?.price;
     const priceMetadataPlan = text(price?.metadata?.billingPlan || price?.product?.metadata?.billingPlan);
-    if (BILLING_PLAN_KEYS.includes(priceMetadataPlan)) return billingPlan(priceMetadataPlan);
+    if (isBillingPlanKey(priceMetadataPlan)) return billingPlan(priceMetadataPlan);
     const amountPlan = billingPlanForAmount(price?.unit_amount);
     if (amountPlan) return amountPlan;
   }
   // Subscription metadata is a fallback. Stripe's customer portal can replace
   // the line-item Price without rewriting subscription metadata.
   const metadataPlan = text(subscription?.metadata?.billingPlan);
-  if (BILLING_PLAN_KEYS.includes(metadataPlan)) return billingPlan(metadataPlan);
+  if (isBillingPlanKey(metadataPlan)) return billingPlan(metadataPlan);
   return billingPlan();
 }
 

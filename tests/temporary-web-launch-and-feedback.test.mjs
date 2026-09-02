@@ -17,7 +17,7 @@ test("website launch pricing is visible in the browser and enforced by the Strip
   assert.ok(configuration.includes('NATIVE_APP_USER_AGENT_MARKER = "ARKClientCenter/"'));
   assert.ok(setup.includes("webSignupPromotionForRequest(request, payment.billingPromotionKey)"));
   assert.ok(setup.includes("promotion: publicPromotion(promotion)"));
-  assert.ok(payment.includes("line-through decoration-2"));
+  assert.ok(payment.includes("SubscriptionPlanCard"));
   assert.ok(payment.includes("% off every plan through the website"));
   assert.ok(subscriptions.includes('duration: "forever"'));
   assert.ok(subscriptions.includes("discounts: [{ coupon: promotionCoupon.id }]") );

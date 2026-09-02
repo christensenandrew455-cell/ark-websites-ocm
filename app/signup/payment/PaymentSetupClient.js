@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readApiJson } from "../../lib/apiResponse";
 import { billingPlan, publicBillingPlans } from "../../lib/billingPricing";
+import SubscriptionPlanCard from "../../components/SubscriptionPlanCard";
 import {
   activeWebLaunchOffer,
   discountedAmountCents,
@@ -47,7 +48,7 @@ function PlanSelector({ selectedPlanKey, onSelect, promotion, disabled = false }
         const selected = plan.key === selectedPlanKey;
         const promotionalAmount = promotion ? discountedAmountCents(plan.amountCents, promotion) : plan.amountCents;
         return <button key={plan.key} type="button" onClick={() => onSelect(plan.key)} disabled={disabled} aria-pressed={selected} className={`rounded-2xl border p-4 text-left transition disabled:opacity-60 ${selected ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-200 bg-white hover:border-slate-400"}`}>
-          <span className="flex items-start justify-between gap-3"><span><span className="block text-lg font-black text-slate-950">{plan.name}</span><span className="mt-1 block text-sm font-bold text-slate-600">{plan.monthlyAcceptedLeads} accepted leads/month</span></span><span className="text-right">{promotion && <span className="block text-xs font-black text-slate-400 line-through decoration-2">{money(plan.amountCents)}</span>}<span className="block text-lg font-black text-slate-950">{money(promotionalAmount)}</span>{promotion && <span className="mt-1 block text-[10px] font-black uppercase tracking-wide text-emerald-700">{promotion.percentOff}% off</span>}</span></span>
+          <SubscriptionPlanCard plan={plan} promotionalAmountCents={promotion ? promotionalAmount : 0} />
           {selected && <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">Selected</span>}
         </button>;
       })}

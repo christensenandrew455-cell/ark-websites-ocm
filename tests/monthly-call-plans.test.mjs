@@ -20,6 +20,7 @@ import {
 import { messageContactBlockId, normalizeMessagePhone } from "../app/lib/messageContactBlocks.js";
 import {
   ensureCustomerBillingSubscription,
+  ensureStripeBillingPortalConfiguration,
   ensureStripePlanPrice,
   ensureStripePromotionCoupon,
   missingStripeResource,
@@ -30,6 +31,7 @@ import {
   discountedAmountCents,
   isNativeClientCenterRequest,
   publicPromotion,
+  TEMPORARY_FEATURES,
   webSignupPromotionForRequest,
 } from "../app/lib/temporaryFeatures.js";
 
@@ -98,27 +100,29 @@ class MemoryFirestore {
 
 test("the four code-owned plans have the requested accepted leads and monthly prices", () => {
   assert.deepEqual(
-    publicBillingPlans().map(({ key, name, monthlyAcceptedLeads, amountCents }) => ({ key, name, monthlyAcceptedLeads, amountCents })),
+    publicBillingPlans().map(({ key, name, positioning, monthlyAcceptedLeads, listAmountCents, amountCents, savingsPercent }) => ({ key, name, positioning, monthlyAcceptedLeads, listAmountCents, amountCents, savingsPercent })),
     [
-      { key: "starter", name: "Starter", monthlyAcceptedLeads: 50, amountCents: 4999 },
-      { key: "standard", name: "Standard", monthlyAcceptedLeads: 100, amountCents: 7999 },
-      { key: "growth", name: "Growth", monthlyAcceptedLeads: 250, amountCents: 14999 },
-      { key: "pro", name: "Pro", monthlyAcceptedLeads: 500, amountCents: 29999 },
+      { key: "starter", name: "Starter", positioning: "Just getting going", monthlyAcceptedLeads: 25, listAmountCents: 2500, amountCents: 2499, savingsPercent: 0 },
+      { key: "standard", name: "Standard", positioning: "Established small business", monthlyAcceptedLeads: 50, listAmountCents: 5000, amountCents: 4749, savingsPercent: 5 },
+      { key: "growth", name: "Growth", positioning: "Higher-volume business", monthlyAcceptedLeads: 100, listAmountCents: 10000, amountCents: 8999, savingsPercent: 10 },
+      { key: "scale", name: "Scale", positioning: "Very high lead volume", monthlyAcceptedLeads: 200, listAmountCents: 20000, amountCents: 16999, savingsPercent: 15 },
     ],
   );
-  assert.equal(normalizeBillingPlanKey(" PRO "), "pro");
+  assert.equal(normalizeBillingPlanKey(" PRO "), "scale");
   assert.equal(normalizeBillingPlanKey("unknown"), "starter");
-  assert.equal(billingPlanForAmount(7999), BILLING_PLANS.standard);
-  assert.equal(billingPlan("growth").monthlyAcceptedLeads, 250);
+  assert.equal(billingPlanForAmount(4749), BILLING_PLANS.standard);
+  assert.equal(billingPlanForAmount(29999), BILLING_PLANS.scale);
+  assert.equal(billingPlan("growth").monthlyAcceptedLeads, 100);
 });
 
-test("the temporary website offer is centralized, half price, and excluded from native signup", () => {
-  const offer = activeWebLaunchOffer();
+test("the website offer stays active for browser signups and preserves existing accounts", () => {
+  const offer = TEMPORARY_FEATURES.webLaunchOffer;
   assert.equal(offer.key, "web-launch-half-off-v1");
   assert.equal(offer.percentOff, 50);
+  assert.equal(activeWebLaunchOffer()?.key, offer.key);
   assert.deepEqual(
     publicBillingPlans().map((plan) => discountedAmountCents(plan.amountCents, offer)),
-    [2500, 4000, 7500, 15000],
+    [1250, 2375, 4500, 8500],
   );
   const websiteRequest = { headers: new Headers({ "user-agent": "Mozilla/5.0" }) };
   const nativeRequest = { headers: new Headers({ "user-agent": "Mozilla/5.0 ARKClientCenter/1.4" }) };
@@ -134,11 +138,11 @@ test("accepted-lead plan status reports a locked-in promotional account price", 
   const status = acceptedLeadPlanStatus({
     billingPlanKey: "starter",
     billingPromotionKey: "web-launch-half-off-v1",
-    monthlyPlanListAmountCents: 4999,
-    monthlyPlanAmountCents: 2500,
+    monthlyPlanListAmountCents: 2499,
+    monthlyPlanAmountCents: 1250,
   });
-  assert.equal(status.monthlyPriceCents, 2500);
-  assert.equal(status.monthlyListPriceCents, 4999);
+  assert.equal(status.monthlyPriceCents, 1250);
+  assert.equal(status.monthlyListPriceCents, 2499);
   assert.equal(status.billingDiscountPercent, 50);
 });
 
@@ -178,7 +182,7 @@ test("completed-call recording is idempotent and does not consume accepted leads
   const duplicate = await recordCompletedCall({ db, clientId: "account-one", callId: "call-one", durationSeconds: 83 });
   assert.equal(first.duplicate, false);
   assert.equal(first.acceptedLeadsUsed, 4);
-  assert.equal(first.acceptedLeadsRemaining, 96);
+  assert.equal(first.acceptedLeadsRemaining, 46);
   assert.equal(duplicate.duplicate, true);
   assert.equal(duplicate.acceptedLeadsUsed, 4);
   assert.equal((await account.get()).data().acceptedLeadsUsedThisPeriod, 4);
@@ -191,14 +195,14 @@ test("accepting one lead advances the plan once and a new period starts full", (
     acceptedLeadPeriodStartAt: new Date(now - 1_000),
     acceptedLeadPeriodEndAt: new Date(now + 1_000_000),
     acceptedLeadPeriodKey: "old-period",
-    acceptedLeadsUsedThisPeriod: 249,
+    acceptedLeadsUsedThisPeriod: 99,
   }, new Date(now));
   assert.equal(status.acceptedLeadsUsed, 0);
-  assert.equal(status.acceptedLeadsRemaining, 250);
+  assert.equal(status.acceptedLeadsRemaining, 100);
   assert.equal(status.limitReached, false);
   const afterAcceptance = nextAcceptedLeadPlanStatus({ billingPlanKey: "growth" }, { existingAcceptedCount: 4, from: new Date(now) });
   assert.equal(afterAcceptance.acceptedLeadsUsed, 5);
-  assert.equal(afterAcceptance.acceptedLeadsRemaining, 245);
+  assert.equal(afterAcceptance.acceptedLeadsRemaining, 95);
 });
 
 test("Stripe validates a configured Price against the selected plan", async () => {
@@ -210,7 +214,7 @@ test("Stripe validates a configured Price against the selected plan", async () =
       active: true,
       billing_scheme: "per_unit",
       currency: "usd",
-      unit_amount: 7999,
+      unit_amount: 4749,
       type: "recurring",
       recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
     };
@@ -240,10 +244,60 @@ test("Stripe creates a stable code-managed Price when no override exists", async
   } };
   const result = await withEnvironment("STRIPE_GROWTH_PRICE_ID", undefined, () => ensureStripePlanPrice({ stripe, planKey: "growth" }));
   assert.equal(result.priceId, "price_growth");
-  assert.equal(created.params.unit_amount, 14999);
-  assert.equal(created.params.lookup_key, "ark_client_center_growth_monthly_v3");
+  assert.equal(created.params.unit_amount, 8999);
+  assert.equal(created.params.lookup_key, "ark_client_center_growth_monthly_v5");
   assert.equal(created.params.product_data.name, "ARK Client Center Growth");
   assert.equal(created.options.idempotencyKey, created.params.lookup_key);
+});
+
+test("Stripe creates a usable billing portal with every current plan and payment-method updates", async () => {
+  const planPrices = {
+    ark_client_center_starter_monthly_v5: { id: "price_starter", product: "prod_starter", unit_amount: 2499 },
+    ark_client_center_standard_monthly_v5: { id: "price_standard", product: "prod_standard", unit_amount: 4749 },
+    ark_client_center_growth_monthly_v5: { id: "price_growth", product: "prod_growth", unit_amount: 8999 },
+    ark_client_center_scale_monthly_v5: { id: "price_scale", product: "prod_scale", unit_amount: 16999 },
+  };
+  let createdConfiguration;
+  const stripe = {
+    prices: {
+      async list({ lookup_keys: [lookupKey] }) {
+        const price = planPrices[lookupKey];
+        return { data: [{
+          ...price,
+          active: true,
+          billing_scheme: "per_unit",
+          currency: "usd",
+          type: "recurring",
+          recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
+        }] };
+      },
+    },
+    billingPortal: {
+      configurations: {
+        async list() { return { data: [] }; },
+        async create(params, options) {
+          createdConfiguration = { params, options };
+          return { id: "bpc_ark", ...params };
+        },
+      },
+    },
+  };
+  const result = await ensureStripeBillingPortalConfiguration({ stripe, appUrl: "https://www.arkclientcenter.com" });
+  assert.equal(result.id, "bpc_ark");
+  assert.equal(createdConfiguration.params.features.payment_method_update.enabled, true);
+  assert.equal(createdConfiguration.params.features.subscription_update.enabled, true);
+  assert.equal(createdConfiguration.params.features.subscription_update.proration_behavior, "none");
+  assert.deepEqual(
+    createdConfiguration.params.features.subscription_update.products.map(({ product, prices }) => ({ product, prices })),
+    [
+      { product: "prod_starter", prices: ["price_starter"] },
+      { product: "prod_standard", prices: ["price_standard"] },
+      { product: "prod_growth", prices: ["price_growth"] },
+      { product: "prod_scale", prices: ["price_scale"] },
+    ],
+  );
+  assert.equal(createdConfiguration.params.default_return_url, "https://www.arkclientcenter.com/settings?section=payment");
+  assert.equal(createdConfiguration.options.idempotencyKey, "ark-client-center-billing-portal-v5");
 });
 
 test("Stripe creates and applies the forever website coupon to a new subscription", async () => {
@@ -266,7 +320,7 @@ test("Stripe creates and applies the forever website coupon to a new subscriptio
         active: true,
         billing_scheme: "per_unit",
         currency: "usd",
-        unit_amount: 4999,
+        unit_amount: 2499,
         type: "recurring",
         recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
       };
@@ -297,8 +351,8 @@ test("Stripe creates and applies the forever website coupon to a new subscriptio
   assert.equal(couponCreate.params.duration, "forever");
   assert.equal(subscriptionCreate.discounts[0].coupon, "ark_web_launch_half_off_v1");
   assert.equal(subscriptionCreate.metadata.billingPromotion, "web-launch-half-off-v1");
-  assert.equal(result.accountFields.monthlyPlanAmountCents, 2500);
-  assert.equal(result.accountFields.monthlyPlanListAmountCents, 4999);
+  assert.equal(result.accountFields.monthlyPlanAmountCents, 1250);
+  assert.equal(result.accountFields.monthlyPlanListAmountCents, 2499);
   assert.equal(result.accountFields.billingDiscountPercent, 50);
   assert.equal((await ensureStripePromotionCoupon({ stripe: {
     coupons: { async retrieve() { return { id: "ark_web_launch_half_off_v1", valid: true, percent_off: 50, duration: "forever" }; } },
@@ -310,7 +364,7 @@ test("the Stripe line item wins over stale subscription metadata after a portal 
     metadata: { billingPlan: "starter" },
     items: { data: [{ price: { unit_amount: 29999, metadata: { billingPlan: "pro" } } }] },
   });
-  assert.equal(plan.key, "pro");
+  assert.equal(plan.key, "scale");
 });
 
 test("a transient subscription lookup failure cannot create a duplicate", async () => {
@@ -323,7 +377,7 @@ test("a transient subscription lookup failure cannot create a duplicate", async 
         active: true,
         billing_scheme: "per_unit",
         currency: "usd",
-        unit_amount: 4999,
+        unit_amount: 2499,
         type: "recurring",
         recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
       };

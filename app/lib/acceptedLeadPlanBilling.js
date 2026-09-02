@@ -74,6 +74,10 @@ export function acceptedLeadPlanStatus(account = {}, from = new Date(), minimumA
   return {
     planKey,
     planName: plan.name,
+    planPositioning: plan.positioning,
+    baseMonthlyPriceCents: plan.amountCents,
+    monthlyValueCents: plan.listAmountCents,
+    volumeSavingsPercent: plan.savingsPercent,
     monthlyPriceCents: storedMonthlyPrice || discountedAmountCents(plan.amountCents, promotion),
     monthlyListPriceCents,
     billingPromotionKey: promotion?.key || "",
@@ -153,10 +157,12 @@ export function publicAcceptedLeadPlanSummary(account = {}, from = new Date(), m
     plans: publicBillingPlans().map((plan) => ({
       key: plan.key,
       name: plan.name,
+      positioning: plan.positioning,
       amountCents: plan.amountCents,
+      listAmountCents: plan.listAmountCents,
+      savingsPercent: plan.savingsPercent,
       monthlyAcceptedLeads: planLimit(plan),
       ...(promotion ? {
-        listAmountCents: plan.amountCents,
         promotionalAmountCents: discountedAmountCents(plan.amountCents, promotion),
       } : {}),
     })),

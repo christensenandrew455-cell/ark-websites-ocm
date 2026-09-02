@@ -438,12 +438,12 @@ test("regular accounts enter the existing number-assignment queue", async () => 
 
 test("legal and help copy describe all four accepted-lead plans and recurring-payment enforcement", async () => {
   const [terms, privacy, help, env] = await Promise.all([source("app/terms/page.js"), source("app/privacy/page.js"), source("app/lib/helpContent.js"), source(".env.example")]);
-  for (const copy of ["$49.99 USD", "$79.99 USD", "$149.99 USD", "$299.99 USD"]) assert.ok(terms.includes(copy));
+  for (const copy of ["$24.99 USD", "$47.49 USD", "$89.99 USD", "$169.99 USD"]) assert.ok(terms.includes(copy));
   assert.ok(terms.includes("Each unique service request counts once when the business owner taps Accept"));
   assert.ok(terms.includes("Immediate pause"));
   assert.ok(terms.includes("Seven-day recovery window"));
   assert.ok(privacy.includes("promotes the temporary signup into a regular account"));
-  for (const plan of ["Starter", "Standard", "Growth", "Pro"]) assert.ok(help.includes(`${plan} is`));
-  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_STARTER_PRICE_ID", "STRIPE_STANDARD_PRICE_ID", "STRIPE_GROWTH_PRICE_ID", "STRIPE_PRO_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
+  for (const plan of ["Starter", "Standard", "Growth", "Scale"]) assert.ok(help.includes(`${plan} is`));
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_STARTER_PRICE_ID", "STRIPE_STANDARD_PRICE_ID", "STRIPE_GROWTH_PRICE_ID", "STRIPE_SCALE_PRICE_ID"]) assert.ok(env.includes(`${name}=`));
   for (const name of ["STRIPE_USAGE_PRICE_ID", "REFERRAL_IDENTITY_SECRET", "YOUR_DOMAIN", "APP_HOME_PATH", "STRIPE_ACCOUNT_PRODUCT_ID"]) assert.equal(env.includes(`${name}=`), false);
 });

@@ -12,10 +12,10 @@ The available monthly plans are defined in `app/lib/billingPricing.js`:
 
 | Plan | Accepted leads per billing month | Price |
 | --- | ---: | ---: |
-| Starter | 50 | $49.99/month |
-| Standard | 100 | $79.99/month |
-| Growth | 250 | $149.99/month |
-| Pro | 500 | $299.99/month |
+| Starter | 25 | $24.99/month |
+| Standard | 50 | $47.49/month |
+| Growth | 100 | $89.99/month |
+| Scale | 200 | $169.99/month |
 
 Each unique service request counts once when the owner taps **Accept**. Incoming and outgoing calls, declined leads, edits, messages, and SMS parts do not count. There are no overage charges, metered Stripe items, threshold payments, or Apple consumables. When an account reaches its allowance, ARK prevents additional leads from being accepted until the provider's next billing period or until the owner changes plans.
 
@@ -56,16 +56,16 @@ The server validates configured Price IDs or creates stable code-managed monthly
 
 | Optional environment variable | Required Price | Managed lookup key |
 | --- | --- | --- |
-| `STRIPE_STARTER_PRICE_ID` | $49.99 USD/month | `ark_client_center_starter_monthly_v3` |
-| `STRIPE_STANDARD_PRICE_ID` | $79.99 USD/month | `ark_client_center_standard_monthly_v3` |
-| `STRIPE_GROWTH_PRICE_ID` | $149.99 USD/month | `ark_client_center_growth_monthly_v3` |
-| `STRIPE_PRO_PRICE_ID` | $299.99 USD/month | `ark_client_center_pro_monthly_v3` |
+| `STRIPE_STARTER_PRICE_ID` | $24.99 USD/month | `ark_client_center_starter_monthly_v5` |
+| `STRIPE_STANDARD_PRICE_ID` | $47.49 USD/month | `ark_client_center_standard_monthly_v5` |
+| `STRIPE_GROWTH_PRICE_ID` | $89.99 USD/month | `ark_client_center_growth_monthly_v5` |
+| `STRIPE_SCALE_PRICE_ID` | $169.99 USD/month | `ark_client_center_scale_monthly_v5` |
 
-Leave an optional Price ID blank to let the server find or create that plan's Price in the current Stripe test/live mode. The legacy `STRIPE_ACCOUNT_BASE_PRICE_ID` remains accepted only as a Starter override while deployments migrate; do not configure any usage Price.
+Leave an optional Price ID blank to let the server find or create that plan's Price in the current Stripe test/live mode. A stale optional Price from the retired catalog is ignored so ARK can provision the correct current amount; do not configure any usage Price.
 
 Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, and `invoice.payment_failed`. These events keep the plan, accepted-lead reset period, and payment state current.
 
-Enable the Stripe customer portal to update payment methods and switch among the four products. Plan switching must use the subscription's recurring line-item Price. The webhook reads the actual line item so a portal change updates the plan and allowance even if old subscription metadata remains.
+ARK creates and maintains a Stripe customer-portal configuration that updates payment methods and switches among the four products. `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` may point to an existing configuration; otherwise ARK uses its code-managed configuration. Plan switching uses the subscription's recurring line-item Price. The webhook reads the actual line item so a portal change updates the plan and allowance even if old subscription metadata remains.
 
 The browser never submits a Stripe Customer ID. Protected routes derive the Customer from the verified Firebase token and server-side signup or account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code fields.
 

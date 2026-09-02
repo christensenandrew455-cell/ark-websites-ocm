@@ -10,12 +10,12 @@ test("Apple exposes the same four monthly accepted-lead plans under the shared a
   const catalog = appleIapCatalog();
   assert.equal(catalog.bundleId, "com.arkwebsites.app");
   assert.deepEqual(catalog.plans.map(({ key, monthlyAcceptedLeads, amountCents, productId }) => ({ key, monthlyAcceptedLeads, amountCents, productId })), [
-    { key: "starter", monthlyAcceptedLeads: 50, amountCents: 4999, productId: "com.arkwebsites.app.starter.monthly" },
-    { key: "standard", monthlyAcceptedLeads: 100, amountCents: 7999, productId: "com.arkwebsites.app.standard.monthly" },
-    { key: "growth", monthlyAcceptedLeads: 250, amountCents: 14999, productId: "com.arkwebsites.app.growth.monthly" },
-    { key: "pro", monthlyAcceptedLeads: 500, amountCents: 29999, productId: "com.arkwebsites.app.pro.monthly" },
+    { key: "starter", monthlyAcceptedLeads: 25, amountCents: 2499, productId: "com.arkwebsites.app.starter.monthly" },
+    { key: "standard", monthlyAcceptedLeads: 50, amountCents: 4749, productId: "com.arkwebsites.app.standard.monthly" },
+    { key: "growth", monthlyAcceptedLeads: 100, amountCents: 8999, productId: "com.arkwebsites.app.growth.monthly" },
+    { key: "scale", monthlyAcceptedLeads: 200, amountCents: 16999, productId: "com.arkwebsites.app.pro.monthly" },
   ]);
-  assert.equal(applePlanForProduct("com.arkwebsites.app.pro.monthly").key, "pro");
+  assert.equal(applePlanForProduct("com.arkwebsites.app.pro.monthly").key, "scale");
   assert.equal(applePlanForProduct("com.arkwebsites.app.unknown"), null);
 });
 

@@ -14,14 +14,14 @@ Under **Monetization → Subscriptions**, create one subscription group such as 
 
 | Product ID | Plan | Accepted leads per billing month | Price |
 | --- | --- | ---: | ---: |
-| `com.arkwebsites.app.starter.monthly` | Starter | 50 | $49.99/month |
-| `com.arkwebsites.app.standard.monthly` | Standard | 100 | $79.99/month |
-| `com.arkwebsites.app.growth.monthly` | Growth | 250 | $149.99/month |
-| `com.arkwebsites.app.pro.monthly` | Pro | 500 | $299.99/month |
+| `com.arkwebsites.app.starter.monthly` | Starter | 25 | $24.99/month |
+| `com.arkwebsites.app.standard.monthly` | Standard | 50 | $47.49/month |
+| `com.arkwebsites.app.growth.monthly` | Growth | 100 | $89.99/month |
+| `com.arkwebsites.app.pro.monthly` | Scale | 200 | $169.99/month |
 
-Give each product a one-month duration, complete its localization, choose the matching price, and provide the required review screenshot. Product IDs cannot be renamed after creation.
+Give each product a one-month duration, complete its localization, choose the matching price, and provide the required review screenshot. Product IDs cannot be renamed after creation, so the existing `.pro.monthly` identifier is deliberately retained and its customer-facing display name changes to Scale. This keeps current subscribers connected to the same Apple product.
 
-Set the subscription levels in increasing order of service: Pro, Growth, Standard, Starter. Choose the upgrade/downgrade timing and proration behavior you want Apple to apply, then verify it in Sandbox.
+Set the subscription levels in increasing order of service: Scale, Growth, Standard, Starter. Choose the upgrade/downgrade timing and proration behavior you want Apple to apply, then verify it in Sandbox.
 
 ## 3. Configure server notifications
 
@@ -40,7 +40,7 @@ APPLE_IAP_APPLE_ID=1234567890
 APPLE_IAP_PLAN_PRODUCT_ID_STARTER=com.arkwebsites.app.starter.monthly
 APPLE_IAP_PLAN_PRODUCT_ID_STANDARD=com.arkwebsites.app.standard.monthly
 APPLE_IAP_PLAN_PRODUCT_ID_GROWTH=com.arkwebsites.app.growth.monthly
-APPLE_IAP_PLAN_PRODUCT_ID_PRO=com.arkwebsites.app.pro.monthly
+APPLE_IAP_PLAN_PRODUCT_ID_SCALE=com.arkwebsites.app.pro.monthly
 ```
 
 ## 5. Sync and test

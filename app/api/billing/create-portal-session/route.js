@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { ensureStripeBillingPortalConfiguration, missingStripeResource } from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,9 @@ export async function POST(request) {
     const db = getAdminDb();
     const accountSnapshot = await db.collection("accounts").doc(auth.clientId).get();
     const account = accountSnapshot.exists ? accountSnapshot.data() : {};
+    if (text(account.billingProvider) === "apple") {
+      return NextResponse.json({ error: "Manage this subscription through Apple." }, { status: 409 });
+    }
     const customerId = text(account.stripeCustomerId);
 
     if (!customerId) {
@@ -34,11 +38,21 @@ export async function POST(request) {
 
     const stripe = new Stripe(stripeKey);
     const appUrl = text(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/$/, "");
-    const configuration = text(process.env.STRIPE_BILLING_PORTAL_CONFIGURATION_ID);
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      if (customer?.deleted) throw new Error("STRIPE_CUSTOMER_DELETED");
+    } catch (error) {
+      if (!missingStripeResource(error) && text(error?.message) !== "STRIPE_CUSTOMER_DELETED") throw error;
+      return NextResponse.json(
+        { error: "The saved billing account could not be found. Contact support so ARK can reconnect it." },
+        { status: 409 }
+      );
+    }
+    const configuration = await ensureStripeBillingPortalConfiguration({ stripe, appUrl });
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${appUrl}/settings?section=payment`,
-      ...(configuration ? { configuration } : {}),
+      configuration: configuration.id,
     });
 
     return NextResponse.json({

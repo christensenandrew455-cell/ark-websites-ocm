@@ -24,7 +24,7 @@ const sections = [
   },
   {
     title: "Payment setup",
-    body: <><p>During signup, ARK verifies the email address and phone number before collecting business information. The owner then chooses Starter, Standard, Growth, or Pro. On iOS, StoreKit sends purchase details to Apple; ARK verifies Apple’s signed subscription transaction and promotes the temporary signup into a regular account. On other supported platforms, Stripe’s Payment Element sends sensitive payment information directly to Stripe; ARK verifies the SetupIntent, starts the selected monthly subscription, and promotes the temporary signup into a regular account that is already verified.</p><p>Apple and Stripe may collect information needed to process payment under their own privacy practices.</p></>,
+    body: <><p>During signup, ARK verifies the email address and phone number before collecting business information. The owner then chooses Starter, Standard, Growth, or Scale. On iOS, StoreKit sends purchase details to Apple; ARK verifies Apple’s signed subscription transaction and promotes the temporary signup into a regular account. On other supported platforms, Stripe’s Payment Element sends sensitive payment information directly to Stripe; ARK verifies the SetupIntent, starts the selected monthly subscription, and promotes the temporary signup into a regular account that is already verified.</p><p>Apple and Stripe may collect information needed to process payment under their own privacy practices.</p></>,
   },
   ...(MESSAGES_AVAILABLE ? [{
     title: "Messaging and notifications",

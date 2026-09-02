@@ -9,6 +9,13 @@ export const APPLE_IAP_BUNDLE_ID = "com.arkwebsites.app";
 function environmentProductId(planKey) {
   const key = normalizeBillingPlanKey(planKey);
   const environmentKey = `APPLE_IAP_PLAN_PRODUCT_ID_${key.toUpperCase()}`;
+  if (key === "scale") {
+    return String(
+      process.env[environmentKey]
+      || process.env.APPLE_IAP_PLAN_PRODUCT_ID_PRO
+      || `${APPLE_IAP_BUNDLE_ID}.pro.monthly`
+    ).trim();
+  }
   return String(process.env[environmentKey] || `${APPLE_IAP_BUNDLE_ID}.${key}.monthly`).trim();
 }
 
