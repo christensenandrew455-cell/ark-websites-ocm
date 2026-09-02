@@ -4,7 +4,10 @@ import { grantAcceptedLeadTopUp } from "../../../lib/acceptedLeadTopUps";
 import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
-import { stripeSubscriptionAccountFields } from "../../../lib/stripePlanBilling";
+import {
+  stripeAcceptedLeadTopUpPaymentFields,
+  stripeSubscriptionAccountFields,
+} from "../../../lib/stripePlanBilling";
 import {
   findBusinessForStripeCustomer,
   registerPaymentFailure,
@@ -79,12 +82,9 @@ export async function POST(request) {
     if (event.type === "payment_intent.succeeded") {
       const paymentIntent = event.data.object;
       if (text(paymentIntent.metadata?.purpose) === "accepted_lead_top_up") {
-        const acceptedLeads = Number(paymentIntent.metadata?.acceptedLeads || 0);
+        const topUpPayment = stripeAcceptedLeadTopUpPaymentFields(paymentIntent);
         const customerId = text(paymentIntent.customer?.id || paymentIntent.customer);
         const match = await findBusinessForStripeCustomer(db, customerId, paymentIntent.metadata || {});
-        if (Number(paymentIntent.amount_received || 0) !== acceptedLeads * 100) {
-          throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_AMOUNT_MISMATCH");
-        }
         if (!match || match.clientId !== text(paymentIntent.metadata?.clientId)) {
           throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_ACCOUNT_MISMATCH");
         }
@@ -93,9 +93,9 @@ export async function POST(request) {
           clientId: match.clientId,
           provider: "stripe",
           paymentId: paymentIntent.id,
-          acceptedLeads,
+          acceptedLeads: topUpPayment.acceptedLeads,
           amountCents: paymentIntent.amount_received,
-          currency: paymentIntent.currency,
+          currency: topUpPayment.currency,
           purchasedAt: event.created * 1000,
         });
       }
