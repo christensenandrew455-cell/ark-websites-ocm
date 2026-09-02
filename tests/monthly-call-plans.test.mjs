@@ -14,6 +14,10 @@ import {
   nextAcceptedLeadPlanStatus,
 } from "../app/lib/acceptedLeadPlanBilling.js";
 import {
+  acceptedLeadTopUpDocumentId,
+  grantAcceptedLeadTopUp,
+} from "../app/lib/acceptedLeadTopUps.js";
+import {
   callEventDocumentId,
   recordCompletedCall,
 } from "../app/lib/callPlanBilling.js";
@@ -25,6 +29,7 @@ import {
   ensureStripePromotionCoupon,
   missingStripeResource,
   stripeBillingPlanFromSubscription,
+  stripeSubscriptionAccountFields,
 } from "../app/lib/stripePlanBilling.js";
 import {
   activeWebLaunchOffer,
@@ -203,6 +208,110 @@ test("accepting one lead advances the plan once and a new period starts full", (
   const afterAcceptance = nextAcceptedLeadPlanStatus({ billingPlanKey: "growth" }, { existingAcceptedCount: 4, from: new Date(now) });
   assert.equal(afterAcceptance.acceptedLeadsUsed, 5);
   assert.equal(afterAcceptance.acceptedLeadsRemaining, 95);
+});
+
+test("top-up leads extend only the current period and never roll over", () => {
+  const now = Date.now();
+  const start = now - 1_000;
+  const end = now + 1_000_000;
+  const periodKey = `${start}-${end}`;
+  const current = acceptedLeadPlanStatus({
+    billingPlanKey: "starter",
+    acceptedLeadPeriodStartAt: new Date(start),
+    acceptedLeadPeriodEndAt: new Date(end),
+    acceptedLeadPeriodKey: periodKey,
+    acceptedLeadsUsedThisPeriod: 25,
+    acceptedLeadTopUpPeriodKey: periodKey,
+    acceptedLeadTopUpsThisPeriod: 20,
+  }, new Date(now));
+  assert.equal(current.monthlyAcceptedLeadLimit, 25);
+  assert.equal(current.acceptedLeadTopUps, 20);
+  assert.equal(current.acceptedLeadPeriodLimit, 45);
+  assert.equal(current.acceptedLeadsRemaining, 20);
+
+  const renewed = acceptedLeadPlanStatus({
+    billingPlanKey: "starter",
+    acceptedLeadPeriodStartAt: new Date(start),
+    acceptedLeadPeriodEndAt: new Date(end),
+    acceptedLeadPeriodKey: "prior-period",
+    acceptedLeadsUsedThisPeriod: 25,
+    acceptedLeadTopUpPeriodKey: "prior-period",
+    acceptedLeadTopUpsThisPeriod: 20,
+  }, new Date(now));
+  assert.equal(renewed.acceptedLeadTopUps, 0);
+  assert.equal(renewed.acceptedLeadPeriodLimit, 25);
+  assert.equal(renewed.acceptedLeadsRemaining, 25);
+});
+
+test("a new Stripe billing period clears used and top-up leads instead of rolling them forward", () => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const subscription = {
+    id: "sub_new_period",
+    status: "active",
+    metadata: { billingPlan: "standard" },
+    items: { data: [{
+      current_period_start: nowSeconds - 10,
+      current_period_end: nowSeconds + 2_000,
+      price: { unit_amount: 4749, metadata: { billingPlan: "standard" } },
+    }] },
+  };
+  const result = stripeSubscriptionAccountFields(subscription, {
+    billingPlanKey: "starter",
+    acceptedLeadPeriodKey: "old-period",
+    acceptedLeadsUsedThisPeriod: 25,
+    acceptedLeadTopUpPeriodKey: "old-period",
+    acceptedLeadTopUpsThisPeriod: 20,
+    callPeriodKey: "old-period",
+    callsUsedThisPeriod: 9,
+  });
+  assert.equal(result.patch.billingPlanKey, "standard");
+  assert.equal(result.patch.monthlyAcceptedLeadLimit, 50);
+  assert.equal(result.patch.acceptedLeadPeriodLimit, 50);
+  assert.equal(result.patch.acceptedLeadsUsedThisPeriod, 0);
+  assert.equal(result.patch.acceptedLeadTopUpsThisPeriod, 0);
+  assert.equal(result.patch.acceptedLeadsRemainingThisPeriod, 50);
+});
+
+test("a paid top-up grants its exact quantity only once", async () => {
+  const now = Date.now();
+  const start = now - 1_000;
+  const end = now + 1_000_000;
+  const periodKey = `${start}-${end}`;
+  const db = new MemoryFirestore();
+  const account = db.collection("accounts").doc("top-up-account");
+  await account.set({
+    uid: "owner",
+    businessName: "Top Up Business",
+    status: "active",
+    billingProvider: "stripe",
+    billingPlanKey: "starter",
+    acceptedLeadPeriodStartAt: new Date(start),
+    acceptedLeadPeriodEndAt: new Date(end),
+    acceptedLeadPeriodKey: periodKey,
+    acceptedLeadsUsedThisPeriod: 25,
+  });
+  const first = await grantAcceptedLeadTopUp({
+    db,
+    clientId: "top-up-account",
+    provider: "stripe",
+    paymentId: "pi_paid_once",
+    acceptedLeads: 20,
+    amountCents: 2000,
+  });
+  const duplicate = await grantAcceptedLeadTopUp({
+    db,
+    clientId: "top-up-account",
+    provider: "stripe",
+    paymentId: "pi_paid_once",
+    acceptedLeads: 20,
+    amountCents: 2000,
+  });
+  assert.equal(first.duplicate, false);
+  assert.equal(first.acceptedLeadsAdded, 20);
+  assert.equal(first.acceptedLeadsRemaining, 20);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal((await account.get()).data().acceptedLeadTopUpsThisPeriod, 20);
+  assert.equal(acceptedLeadTopUpDocumentId("stripe", "pi_paid_once").length, 48);
 });
 
 test("Stripe validates a configured Price against the selected plan", async () => {
@@ -408,6 +517,28 @@ test("only confirmed Stripe missing-resource responses are treated as missing", 
   assert.equal(missingStripeResource({ statusCode: 404 }), true);
   assert.equal(missingStripeResource({ code: "resource_missing" }), true);
   assert.equal(missingStripeResource({ statusCode: 503, code: "api_connection_error" }), false);
+});
+
+test("the custom Stripe manager requires explicit timing and full immediate payment", async () => {
+  const [planRoute, topUpRoute, cardRoute, manager] = await Promise.all([
+    source("app/api/billing/change-plan/route.js"),
+    source("app/api/billing/top-up/route.js"),
+    source("app/api/billing/payment-method/route.js"),
+    source("app/components/PaymentManagementPanel.js"),
+  ]);
+  assert.ok(planRoute.includes('timing === "renewal"'));
+  assert.ok(planRoute.includes('billing_cycle_anchor: "now"'));
+  assert.ok(planRoute.includes('proration_behavior: "none"'));
+  assert.ok(planRoute.includes('payment_behavior: "pending_if_incomplete"'));
+  assert.ok(planRoute.includes("subscriptionSchedules.create"));
+  assert.ok(planRoute.includes("subscriptionSchedules.update"));
+  assert.ok(topUpRoute.includes("amount: acceptedLeads * 100"));
+  assert.ok(topUpRoute.includes('purpose: "accepted_lead_top_up"'));
+  assert.ok(cardRoute.includes("stripe.setupIntents.create"));
+  assert.ok(cardRoute.includes("default_payment_method: paymentMethodId"));
+  assert.ok(manager.includes("No charge today"));
+  assert.ok(manager.includes("Unused leads from the current plan are not carried over or refunded"));
+  assert.ok(manager.includes("cost exactly $1 each"));
 });
 
 test("retired variable-charge modules and routes are gone", async () => {

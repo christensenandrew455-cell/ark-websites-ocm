@@ -70,7 +70,9 @@ const sections = [
       "Scale is $169.99 per month for 200 accepted leads, saves 15% compared with $1 per lead, and fits very high lead volume.",
       ...(websiteOffer ? [`For a limited launch period, new website signups receive ${websiteOffer.percentOff}% off every plan while their subscription remains active: ${money(discountedAmountCents(2499, websiteOffer))} Starter, ${money(discountedAmountCents(4749, websiteOffer))} Standard, ${money(discountedAmountCents(8999, websiteOffer))} Growth, or ${money(discountedAmountCents(16999, websiteOffer))} Scale per month. Native app purchases keep their regular store price.`] : []),
       "Only tapping Accept uses the plan. Calls, declines, edits, and deletions do not count.",
-      "Settings → Payment shows the current plan, accepted leads used, accepted leads remaining, reset date, and payment method.",
+      "At renewal, the allowance resets to exactly 25, 50, 100, or 200 for the selected plan. Unused leads do not roll over.",
+      "If the allowance runs out, wait for the reset, upgrade, or buy any whole-number quantity of additional leads for $1 each. Top-up leads expire at the next reset and receive no volume discount.",
+      "Settings → Payment shows only the current plan, accepted leads used and remaining, reset date, and payment method. Manage Plan & Payment contains plan selection, top-ups, and card controls.",
     ],
     links: ["Settings", "Payment Terms", "Terms of Use"],
   },
@@ -122,7 +124,8 @@ const sections = [
       MESSAGES_AVAILABLE
         ? "Customization contains Dark Mode, the Messages control, AI timing, retention settings, and Download Client Data."
         : "Customization contains Dark Mode, AI timing, retention settings, and Download Client Data.",
-      "Payment contains the current monthly plan, an accepted-leads-remaining bar, all plan options, the payment provider, Refresh, and the matching Apple or Stripe billing control.",
+      "Payment contains the current monthly plan, an accepted-leads-remaining bar, the reset date, payment method, and Manage Plan & Payment. The manager has two sections: Select a Plan and Edit Card Information.",
+      "Stripe plan changes can start on the next renewal or start immediately after payment; an immediate switch begins a fresh billing month and discards unused prior-plan leads. Apple shows its own change timing before confirmation.",
       `Help & Account contains Docs, AI Chat, Support,${TEMPORARY_FEATURES.feedback.enabled ? " Give Feedback," : ""} Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.`,
     ],
     links: ["Help & Account", "AI Chat", "Support", ...(TEMPORARY_FEATURES.feedback.enabled ? ["Give Feedback"] : []), "Payment Enforcement", "Privacy Policy"],

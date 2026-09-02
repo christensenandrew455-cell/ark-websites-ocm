@@ -5,6 +5,10 @@ import {
 } from "./billingPricing.js";
 
 export const APPLE_IAP_BUNDLE_ID = "com.arkwebsites.app";
+export const APPLE_IAP_ACCEPTED_LEAD_TOP_UP_PRODUCT_ID = String(
+  process.env.APPLE_IAP_ACCEPTED_LEAD_TOP_UP_PRODUCT_ID
+  || `${APPLE_IAP_BUNDLE_ID}.accepted-lead-top-up`
+).trim();
 
 function environmentProductId(planKey) {
   const key = normalizeBillingPlanKey(planKey);
@@ -42,9 +46,18 @@ export function appleIapCatalog() {
   return {
     bundleId: APPLE_IAP_BUNDLE_ID,
     plans: BILLING_PLAN_KEYS.map(applePlanProduct),
+    acceptedLeadTopUp: {
+      productId: APPLE_IAP_ACCEPTED_LEAD_TOP_UP_PRODUCT_ID,
+      amountCentsPerLead: 100,
+      type: "consumable",
+    },
   };
 }
 
 export function isApplePlanProduct(productId) {
   return Boolean(applePlanForProduct(productId));
+}
+
+export function isAppleAcceptedLeadTopUpProduct(productId) {
+  return String(productId || "").trim() === APPLE_IAP_ACCEPTED_LEAD_TOP_UP_PRODUCT_ID;
 }

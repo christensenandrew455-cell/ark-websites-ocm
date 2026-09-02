@@ -1,12 +1,10 @@
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { grantAcceptedLeadTopUp } from "../../../lib/acceptedLeadTopUps";
 import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
-import { stripeBillingPlanFromSubscription } from "../../../lib/stripePlanBilling";
-import { billingPromotion, promotionBillingFields } from "../../../lib/temporaryFeatures";
-import { calendarMonthWindow, subscriptionPeriodWindow } from "../../../lib/timeWindows";
+import { stripeSubscriptionAccountFields } from "../../../lib/stripePlanBilling";
 import {
   findBusinessForStripeCustomer,
   registerPaymentFailure,
@@ -35,40 +33,9 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
     { ...(expanded.metadata || {}), ...(metadata || {}) },
   );
   if (!match) return null;
-  const plan = stripeBillingPlanFromSubscription(expanded);
-  const promotion = billingPromotion(expanded.metadata?.billingPromotion || match.business.billingPromotionKey);
-  const fallback = calendarMonthWindow(text(match.business.timeZone));
-  const period = subscriptionPeriodWindow(expanded, fallback);
-  const periodKey = `${period.startMs}-${period.endMs}`;
-  const acceptedLeadsUsed = text(match.business.acceptedLeadPeriodKey) === periodKey
-    ? Math.max(0, Number(match.business.acceptedLeadsUsedThisPeriod || 0))
-    : 0;
-  const callsUsed = text(match.business.callPeriodKey) === periodKey
-    ? Math.max(0, Number(match.business.callsUsedThisPeriod || 0))
-    : 0;
-  await db.collection("accounts").doc(match.clientId).set({
-    stripeSubscriptionId: expanded.id,
-    stripeSubscriptionStatus: expanded.status,
-    billingPlanKey: plan.key,
-    billingPlanName: plan.name,
-    ...promotionBillingFields(plan, promotion),
-    monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads,
-    acceptedLeadPeriodStartAt: Timestamp.fromMillis(period.startMs),
-    acceptedLeadPeriodEndAt: Timestamp.fromMillis(period.endMs),
-    acceptedLeadPeriodKey: periodKey,
-    acceptedLeadsUsedThisPeriod: acceptedLeadsUsed,
-    acceptedLeadsRemainingThisPeriod: Math.max(0, plan.monthlyAcceptedLeads - acceptedLeadsUsed),
-    acceptedLeadLimitReached: acceptedLeadsUsed >= plan.monthlyAcceptedLeads,
-    monthlyCallLimit: plan.monthlyCalls,
-    callPeriodStartAt: Timestamp.fromMillis(period.startMs),
-    callPeriodEndAt: Timestamp.fromMillis(period.endMs),
-    callPeriodKey: periodKey,
-    callsUsedThisPeriod: callsUsed,
-    callsRemainingThisPeriod: Math.max(0, plan.monthlyCalls - callsUsed),
-    callLimitReached: callsUsed >= plan.monthlyCalls,
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-  return { match, plan, promotion, subscription: expanded };
+  const synced = stripeSubscriptionAccountFields(expanded, match.business);
+  await db.collection("accounts").doc(match.clientId).set(synced.patch, { merge: true });
+  return { match, plan: synced.plan, promotion: synced.promotion, subscription: expanded };
 }
 
 export async function POST(request) {
@@ -106,6 +73,31 @@ export async function POST(request) {
         if (!nonActionable.has(text(setupError?.message))) throw setupError;
         console.warn("Ignoring stale or unowned Stripe payment-method setup event", setupIntent.id);
         return NextResponse.json({ received: true, ignored: true });
+      }
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+      if (text(paymentIntent.metadata?.purpose) === "accepted_lead_top_up") {
+        const acceptedLeads = Number(paymentIntent.metadata?.acceptedLeads || 0);
+        const customerId = text(paymentIntent.customer?.id || paymentIntent.customer);
+        const match = await findBusinessForStripeCustomer(db, customerId, paymentIntent.metadata || {});
+        if (Number(paymentIntent.amount_received || 0) !== acceptedLeads * 100) {
+          throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_AMOUNT_MISMATCH");
+        }
+        if (!match || match.clientId !== text(paymentIntent.metadata?.clientId)) {
+          throw new Error("STRIPE_ACCEPTED_LEAD_TOP_UP_ACCOUNT_MISMATCH");
+        }
+        await grantAcceptedLeadTopUp({
+          db,
+          clientId: match.clientId,
+          provider: "stripe",
+          paymentId: paymentIntent.id,
+          acceptedLeads,
+          amountCents: paymentIntent.amount_received,
+          currency: paymentIntent.currency,
+          purchasedAt: event.created * 1000,
+        });
       }
     }
 

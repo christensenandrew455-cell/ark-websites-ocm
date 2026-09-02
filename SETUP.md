@@ -17,7 +17,7 @@ The available monthly plans are defined in `app/lib/billingPricing.js`:
 | Growth | 100 | $89.99/month |
 | Scale | 200 | $169.99/month |
 
-Each unique service request counts once when the owner taps **Accept**. Incoming and outgoing calls, declined leads, edits, messages, and SMS parts do not count. There are no overage charges, metered Stripe items, threshold payments, or Apple consumables. When an account reaches its allowance, ARK prevents additional leads from being accepted until the provider's next billing period or until the owner changes plans.
+Each unique service request counts once when the owner taps **Accept**. Incoming and outgoing calls, declined leads, edits, messages, and SMS parts do not count. Each provider billing period resets the allowance to exactly the plan's included 25, 50, 100, or 200 leads; unused leads do not roll over. When an account reaches its allowance, the owner can wait for renewal, change plans, or buy a custom quantity of temporary top-up leads at exactly $1 per lead. Top-ups expire at the next billing-period reset and receive no volume discount.
 
 ## Account creation
 
@@ -42,7 +42,7 @@ Paste the complete private key. Multiline text and a value containing literal `\
 
 ## Apple In-App Purchase
 
-iOS uses four StoreKit 2 auto-renewable subscriptions in a single subscription group. Complete the App Store Connect products, server-notification endpoint, environment variables, sandbox testing, and submission steps in [APPLE_IAP_SETUP.md](APPLE_IAP_SETUP.md). Stripe must not be presented by the iOS runtime.
+iOS uses four StoreKit 2 auto-renewable subscriptions in a single subscription group plus one $1 consumable accepted-lead top-up. Complete the App Store Connect products, server-notification endpoint, environment variables, sandbox testing, and submission steps in [APPLE_IAP_SETUP.md](APPLE_IAP_SETUP.md). Stripe must not be presented by the iOS runtime.
 
 ## Stripe on web and Android
 
@@ -63,9 +63,9 @@ The server validates configured Price IDs or creates stable code-managed monthly
 
 Leave an optional Price ID blank to let the server find or create that plan's Price in the current Stripe test/live mode. A stale optional Price from the retired catalog is ignored so ARK can provision the correct current amount; do not configure any usage Price.
 
-Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, and `invoice.payment_failed`. These events keep the plan, accepted-lead reset period, and payment state current.
+Enable the Stripe webhook for `customer.subscription.created`, `customer.subscription.updated`, `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, `payment_intent.succeeded`, and `setup_intent.succeeded`. These events keep the plan, accepted-lead reset period, top-ups, card, and payment state current.
 
-ARK creates and maintains a Stripe customer-portal configuration that updates payment methods and switches among the four products. `STRIPE_BILLING_PORTAL_CONFIGURATION_ID` may point to an existing configuration; otherwise ARK uses its code-managed configuration. Plan switching uses the subscription's recurring line-item Price. The webhook reads the actual line item so a portal change updates the plan and allowance even if old subscription metadata remains.
+ARK's signed-in Payment manager uses Stripe Payment Elements for card updates, Subscription Schedules for next-renewal changes, and a billing-cycle reset with no proration for immediate changes. Immediate changes require successful payment, discard unused prior-plan leads, and begin a fresh allowance period. Stripe PaymentIntents charge top-ups at exactly 100 cents per accepted lead. The legacy customer-portal route remains available only as a fallback and is not used by the Payment screen.
 
 The browser never submits a Stripe Customer ID. Protected routes derive the Customer from the verified Firebase token and server-side signup or account. The Payment Element remains Stripe-controlled; do not add ARK-owned card-number, expiration, or security-code fields.
 
@@ -106,8 +106,10 @@ Configure `CRON_SECRET`. For Stripe-billed accounts, the daily billing job refre
 - A SetupIntent or Apple transaction belonging to another owner cannot promote the signup.
 - Payment success creates one `standard` account role, initializes the chosen accepted-lead allowance at zero used, signs out, and opens `/login`.
 - Reposting an acceptance for the same lead does not count it twice.
-- Calls never consume the allowance; additional lead acceptances are rejected after the allowance is exhausted.
-- A new provider billing period resets the allowance, and a plan switch preserves accepted leads already used in the same period.
+- Calls never consume the allowance; after exhaustion, accepting another lead opens upgrade, $1-per-lead top-up, and wait-for-renewal options.
+- A new provider billing period resets the allowance to the selected plan's exact base amount and clears all top-ups without rollover.
+- A scheduled plan change starts at renewal. An immediate Stripe plan change charges the new monthly price, starts a fresh period, and discards unused prior-plan leads.
+- Stripe and Apple top-up settlement is idempotent, and the paid lead quantity is added only once.
 - A failed recurring subscription payment disables receptionist calls and intake until payment recovery.
 - Stripe secrets never appear in frontend code or API responses.
 - Billing webhooks reject missing or invalid signatures.

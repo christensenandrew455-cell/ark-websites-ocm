@@ -69,8 +69,13 @@ export function acceptedLeadPlanStatus(account = {}, from = new Date(), minimumA
   const period = accountAcceptedLeadPeriod(account, from);
   const storedPeriodKey = text(account.acceptedLeadPeriodKey);
   const storedUsed = storedPeriodKey === period.key ? whole(account.acceptedLeadsUsedThisPeriod) : 0;
+  const storedTopUpPeriodKey = text(account.acceptedLeadTopUpPeriodKey);
+  const acceptedLeadTopUps = storedTopUpPeriodKey === period.key
+    ? whole(account.acceptedLeadTopUpsThisPeriod)
+    : 0;
+  const acceptedLeadPeriodLimit = monthlyAcceptedLeadLimit + acceptedLeadTopUps;
   const acceptedLeadsUsed = Math.max(storedUsed, whole(minimumAcceptedLeadsUsed));
-  const acceptedLeadsRemaining = Math.max(0, monthlyAcceptedLeadLimit - acceptedLeadsUsed);
+  const acceptedLeadsRemaining = Math.max(0, acceptedLeadPeriodLimit - acceptedLeadsUsed);
   return {
     planKey,
     planName: plan.name,
@@ -83,9 +88,11 @@ export function acceptedLeadPlanStatus(account = {}, from = new Date(), minimumA
     billingPromotionKey: promotion?.key || "",
     billingDiscountPercent: promotion?.percentOff || 0,
     monthlyAcceptedLeadLimit,
+    acceptedLeadTopUps,
+    acceptedLeadPeriodLimit,
     acceptedLeadsUsed,
     acceptedLeadsRemaining,
-    progressPercent: Math.min(100, acceptedLeadsUsed / monthlyAcceptedLeadLimit * 100),
+    progressPercent: Math.min(100, acceptedLeadsUsed / acceptedLeadPeriodLimit * 100),
     limitReached: acceptedLeadsRemaining === 0,
     periodKey: period.key,
     periodStartAt: new Date(period.startMs).toISOString(),
@@ -100,12 +107,12 @@ export function nextAcceptedLeadPlanStatus(account = {}, {
 } = {}) {
   const current = acceptedLeadPlanStatus(account, from, existingAcceptedCount);
   const acceptedLeadsUsed = current.acceptedLeadsUsed + (increment ? 1 : 0);
-  const acceptedLeadsRemaining = Math.max(0, current.monthlyAcceptedLeadLimit - acceptedLeadsUsed);
+  const acceptedLeadsRemaining = Math.max(0, current.acceptedLeadPeriodLimit - acceptedLeadsUsed);
   return {
     ...current,
     acceptedLeadsUsed,
     acceptedLeadsRemaining,
-    progressPercent: Math.min(100, acceptedLeadsUsed / current.monthlyAcceptedLeadLimit * 100),
+    progressPercent: Math.min(100, acceptedLeadsUsed / current.acceptedLeadPeriodLimit * 100),
     limitReached: acceptedLeadsRemaining === 0,
   };
 }
@@ -115,11 +122,14 @@ export function acceptedLeadAccountPatch(status, acceptedAt = null) {
     billingPlanKey: status.planKey,
     billingPlanName: status.planName,
     monthlyAcceptedLeadLimit: status.monthlyAcceptedLeadLimit,
+    acceptedLeadPeriodLimit: status.acceptedLeadPeriodLimit,
     acceptedLeadPeriodKey: status.periodKey,
     acceptedLeadPeriodStartAt: Timestamp.fromDate(new Date(status.periodStartAt)),
     acceptedLeadPeriodEndAt: Timestamp.fromDate(new Date(status.periodEndAt)),
     acceptedLeadsUsedThisPeriod: status.acceptedLeadsUsed,
     acceptedLeadsRemainingThisPeriod: status.acceptedLeadsRemaining,
+    acceptedLeadTopUpPeriodKey: status.periodKey,
+    acceptedLeadTopUpsThisPeriod: status.acceptedLeadTopUps,
     acceptedLeadLimitReached: status.limitReached,
     ...(acceptedAt ? { lastAcceptedLeadAt: acceptedAt } : {}),
     updatedAt: FieldValue.serverTimestamp(),

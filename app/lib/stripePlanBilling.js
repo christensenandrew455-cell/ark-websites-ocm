@@ -336,6 +336,58 @@ function subscriptionBillingFields(subscription, timeZone, plan, promotion) {
   };
 }
 
+export function stripeSubscriptionAccountFields(subscription, account = {}) {
+  const plan = stripeBillingPlanFromSubscription(subscription);
+  const promotion = billingPromotion(subscription?.metadata?.billingPromotion || account.billingPromotionKey);
+  const fallback = calendarMonthWindow(text(account.timeZone));
+  const period = subscriptionPeriodWindow(subscription, fallback);
+  const periodKey = `${period.startMs}-${period.endMs}`;
+  const acceptedLeadsUsed = text(account.acceptedLeadPeriodKey) === periodKey
+    ? Math.max(0, Number(account.acceptedLeadsUsedThisPeriod || 0))
+    : 0;
+  const acceptedLeadTopUps = text(account.acceptedLeadTopUpPeriodKey) === periodKey
+    ? Math.max(0, Number(account.acceptedLeadTopUpsThisPeriod || 0))
+    : 0;
+  const acceptedLeadPeriodLimit = plan.monthlyAcceptedLeads + acceptedLeadTopUps;
+  const callsUsed = text(account.callPeriodKey) === periodKey
+    ? Math.max(0, Number(account.callsUsedThisPeriod || 0))
+    : 0;
+  const pendingPlanActivated = text(account.pendingBillingPlanKey) === plan.key;
+  const patch = {
+    stripeSubscriptionId: subscription.id,
+    stripeSubscriptionStatus: subscription.status,
+    billingPlanKey: plan.key,
+    billingPlanName: plan.name,
+    ...promotionBillingFields(plan, promotion),
+    monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads,
+    acceptedLeadPeriodLimit,
+    acceptedLeadPeriodStartAt: Timestamp.fromMillis(period.startMs),
+    acceptedLeadPeriodEndAt: Timestamp.fromMillis(period.endMs),
+    acceptedLeadPeriodKey: periodKey,
+    acceptedLeadsUsedThisPeriod: acceptedLeadsUsed,
+    acceptedLeadsRemainingThisPeriod: Math.max(0, acceptedLeadPeriodLimit - acceptedLeadsUsed),
+    acceptedLeadLimitReached: acceptedLeadsUsed >= acceptedLeadPeriodLimit,
+    acceptedLeadTopUpPeriodKey: periodKey,
+    acceptedLeadTopUpsThisPeriod: acceptedLeadTopUps,
+    monthlyCallLimit: plan.monthlyCalls,
+    callPeriodStartAt: Timestamp.fromMillis(period.startMs),
+    callPeriodEndAt: Timestamp.fromMillis(period.endMs),
+    callPeriodKey: periodKey,
+    callsUsedThisPeriod: callsUsed,
+    callsRemainingThisPeriod: Math.max(0, plan.monthlyCalls - callsUsed),
+    callLimitReached: callsUsed >= plan.monthlyCalls,
+    ...(pendingPlanActivated ? {
+      pendingBillingPlanKey: FieldValue.delete(),
+      pendingBillingPlanName: FieldValue.delete(),
+      pendingBillingPlanStartsAt: FieldValue.delete(),
+      pendingBillingPlanTiming: FieldValue.delete(),
+      stripeSubscriptionScheduleId: FieldValue.delete(),
+    } : {}),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  return { patch, plan, promotion, period, periodKey };
+}
+
 export async function ensureCustomerBillingSubscription({
   stripe,
   db,

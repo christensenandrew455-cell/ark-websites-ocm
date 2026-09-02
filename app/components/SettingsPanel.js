@@ -7,13 +7,14 @@ import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
 import HelpCenter from "./HelpCenter";
 import MessageRetentionSettings from "./MessageRetentionSettings";
-import SubscriptionPlanCard, { formatUsd } from "./SubscriptionPlanCard";
+import PaymentManagementPanel from "./PaymentManagementPanel";
+import { formatUsd } from "./SubscriptionPlanCard";
 import { useAuth } from "./AuthProvider";
 import ReceptionistBusinessForm, { prepareReceptionistProfile, receptionistRequestPayload } from "./ReceptionistBusinessForm";
 import { androidNativeFileSaveAvailable, chooseClientFileDestination, saveClientFile, saveClientFileFromUrl } from "../lib/clientFileSave";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
-import { appleIapAvailable, manageAppleSubscriptions } from "../lib/appleIapClient";
+import { appleIapAvailable } from "../lib/appleIapClient";
 import { TEMPORARY_FEATURES } from "../lib/temporaryFeatures";
 
 const DEFAULT_SETTINGS = { billingProvider: "stripe", paymentMethodLabel: "", stripeCustomerId: "" };
@@ -52,6 +53,8 @@ export default function SettingsPanel() {
   const { user, profile, isOwner, updateProfile, logout } = useAuth();
   const clientId = profile?.clientId || "";
   const [activeSection, setActiveSection] = useState("");
+  const [paymentManagerOpen, setPaymentManagerOpen] = useState(false);
+  const [paymentManagerPanel, setPaymentManagerPanel] = useState("");
   const [nativeIos, setNativeIos] = useState(false);
   const [accountSettings, setAccountSettings] = useState(DEFAULT_SETTINGS);
   const [receptionist, setReceptionist] = useState(null);
@@ -61,13 +64,11 @@ export default function SettingsPanel() {
   const [planSummary, setPlanSummary] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isOpeningBilling, setIsOpeningBilling] = useState(false);
   const [isLoadingBilling, setIsLoadingBilling] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [downloadNotice, setDownloadNotice] = useState("");
-  const [billingPortalError, setBillingPortalError] = useState("");
   const [error, setError] = useState("");
   const receptionistRef = useRef(null);
   const savedReceptionistRef = useRef(null);
@@ -80,8 +81,14 @@ export default function SettingsPanel() {
   const customizationSaveQueueRef = useRef(Promise.resolve(true));
 
   useEffect(() => {
-    const requestedSection = new URLSearchParams(window.location.search).get("section");
+    const parameters = new URLSearchParams(window.location.search);
+    const requestedSection = parameters.get("section");
     if (SETTINGS_BLOCKS.some((block) => block.key === requestedSection)) setActiveSection(requestedSection);
+    const requestedManager = parameters.get("manage");
+    if (requestedSection === "payment" && ["plan", "topup", "card"].includes(requestedManager)) {
+      setPaymentManagerPanel(requestedManager);
+      setPaymentManagerOpen(true);
+    }
     setNativeIos(appleIapAvailable());
   }, []);
 
@@ -322,27 +329,6 @@ export default function SettingsPanel() {
     const saved = activeSection === "business" ? await saveBusinessInformation() : activeSection === "customization" ? await saveCustomization() : true;
     if (saved !== false) setActiveSection("");
   }
-  async function openBillingPortal() {
-    if (!user || isOpeningBilling) return;
-    setIsOpeningBilling(true); setError(""); setBillingPortalError("");
-    try {
-      if ((profile?.billingProvider || accountSettings.billingProvider) === "apple") {
-        if (appleIapAvailable()) await manageAppleSubscriptions();
-        else window.location.assign("https://apps.apple.com/account/subscriptions");
-        setIsOpeningBilling(false);
-        return;
-      }
-      if (appleIapAvailable()) throw new Error("Billing changes for this existing account are not available inside the iPhone app.");
-      const token = await user.getIdToken(true);
-      const response = await fetch("/api/billing/create-portal-session", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.url) throw new Error(data.error || "Could not open secure billing settings.");
-      window.location.assign(data.url);
-    } catch (billingError) {
-      setBillingPortalError(publicFormError(billingError, "Billing settings couldn’t open. Try again, or contact Support if it keeps happening."));
-      setIsOpeningBilling(false);
-    }
-  }
   async function downloadClientData() {
     if (!user || isDownloading) return;
     setIsDownloading(true); setDownloadNotice(""); setError("");
@@ -379,12 +365,23 @@ export default function SettingsPanel() {
     } catch (deleteError) { setError(ownerFacingError(deleteError)); setIsDeleting(false); }
   }
 
-  const appleBilling = (profile?.billingProvider || accountSettings.billingProvider) === "apple";
-  const stripeManagedOutsideIos = nativeIos && !appleBilling;
-  const paymentLabel = stripeManagedOutsideIos
-    ? "Existing account billing"
-    : accountSettings.paymentMethodLabel || "No payment method label is available yet.";
+  const billingProvider = planSummary?.billingProvider || profile?.billingProvider || accountSettings.billingProvider;
+  const appleBilling = billingProvider === "apple";
+  const paymentLabel = planSummary?.paymentMethodLabel || accountSettings.paymentMethodLabel || (appleBilling ? "Apple Account" : "No payment method label is available yet.");
   const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
+
+  function openPaymentManager(panel = "") {
+    setPaymentManagerPanel(panel);
+    setPaymentManagerOpen(true);
+    const suffix = panel ? `&manage=${encodeURIComponent(panel)}` : "";
+    window.history.replaceState({}, "", `/settings?section=payment${suffix}`);
+  }
+
+  function closePaymentManager() {
+    setPaymentManagerOpen(false);
+    setPaymentManagerPanel("");
+    window.history.replaceState({}, "", "/settings?section=payment");
+  }
 
   function businessSection() {
     return <><SectionHeader title="Business Information" onBack={backToSettings} /><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={changeReceptionist} /></div>}</SectionPanel></>;
@@ -401,26 +398,39 @@ export default function SettingsPanel() {
     </div></SectionPanel></>;
   }
   function paymentSection() {
+    if (paymentManagerOpen) {
+      return <><SectionHeader title="Manage Plan & Payment" onBack={closePaymentManager} /><PaymentManagementPanel
+        user={user}
+        planSummary={planSummary}
+        billingProvider={billingProvider}
+        nativeIos={nativeIos}
+        paymentMethodLabel={paymentLabel}
+        initialPanel={paymentManagerPanel}
+        onChanged={refreshPlanSummary}
+        onPaymentMethodChanged={(label) => {
+          setAccountSettings((current) => ({ ...current, paymentMethodLabel: label }));
+          setPlanSummary((current) => current ? { ...current, paymentMethodLabel: label } : current);
+        }}
+        onClose={closePaymentManager}
+      /></>;
+    }
     const acceptedLeadsUsed = Math.max(0, Number(planSummary?.acceptedLeadsUsed || 0));
     const acceptedLeadsRemaining = Math.max(0, Number(planSummary?.acceptedLeadsRemaining || 0));
     const monthlyAcceptedLeadLimit = Math.max(1, Number(planSummary?.monthlyAcceptedLeadLimit || 25));
-    const remainingProgress = Math.max(0, Math.min(100, acceptedLeadsRemaining / monthlyAcceptedLeadLimit * 100));
-    const plans = Array.isArray(planSummary?.plans) ? planSummary.plans : [];
-    const discountedPlan = Number(planSummary?.billingDiscountPercent || 0) > 0;
-    const volumeSavingsPercent = Math.max(0, Number(planSummary?.volumeSavingsPercent || 0));
-    const showVolumeSavings = volumeSavingsPercent > 0 && !discountedPlan;
+    const acceptedLeadTopUps = Math.max(0, Number(planSummary?.acceptedLeadTopUps || 0));
+    const acceptedLeadPeriodLimit = Math.max(monthlyAcceptedLeadLimit, Number(planSummary?.acceptedLeadPeriodLimit || monthlyAcceptedLeadLimit));
+    const remainingProgress = Math.max(0, Math.min(100, acceptedLeadsRemaining / acceptedLeadPeriodLimit * 100));
     return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
       <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
         <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Accepted leads left this month</p><button type="button" onClick={refreshPlanSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
-        <p className="mt-3 text-4xl font-black">{planSummary ? acceptedLeadsRemaining : "—"} <span className="text-base text-blue-100">of {monthlyAcceptedLeadLimit} remaining</span></p>
-        <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Monthly accepted leads remaining" aria-valuemin={0} aria-valuemax={monthlyAcceptedLeadLimit} aria-valuenow={Math.min(monthlyAcceptedLeadLimit, acceptedLeadsRemaining)}><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${remainingProgress}%` }} /></div>
+        <p className="mt-3 text-4xl font-black">{planSummary ? acceptedLeadsRemaining : "—"} <span className="text-base text-blue-100">of {acceptedLeadPeriodLimit} remaining</span></p>
+        <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Monthly accepted leads remaining" aria-valuemin={0} aria-valuemax={acceptedLeadPeriodLimit} aria-valuenow={Math.min(acceptedLeadPeriodLimit, acceptedLeadsRemaining)}><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${remainingProgress}%` }} /></div>
         <p className="mt-2 text-xs font-bold text-blue-100">{acceptedLeadsUsed} accepted lead{acceptedLeadsUsed === 1 ? "" : "s"} used · Resets {planSummary?.periodEndAt ? new Date(planSummary.periodEndAt).toLocaleDateString() : "each billing month"}</p>
       </div>
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} · {formatUsd(planSummary?.monthlyPriceCents || 2499)} per month</p>{showVolumeSavings && <p className="mt-1 text-xs font-black text-emerald-700"><span className="line-through text-slate-400">{formatUsd(planSummary.monthlyValueCents)}</span> · Save {volumeSavingsPercent}% with this volume</p>}{discountedPlan && <p className="mt-1 text-xs font-black text-emerald-700">{planSummary.billingDiscountPercent}% locked-in website launch price · normal plan price <span className="line-through">{formatUsd(planSummary.monthlyListPriceCents)}</span></p>}<p className="mt-1 text-xs font-bold text-slate-600">Includes {monthlyAcceptedLeadLimit} accepted leads each billing month. Calls do not count.</p></div>
-      {plans.length > 0 && <div className="mt-4"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Available monthly plans</p><div className="mt-3 grid gap-3 sm:grid-cols-2">{plans.map((plan) => <div key={plan.key} className={`rounded-2xl border p-4 ${plan.key === planSummary?.planKey ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`}><SubscriptionPlanCard plan={plan} promotionalAmountCents={plan.promotionalAmountCents} />{plan.key === planSummary?.planKey && <p className="mt-3 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Current</p>}</div>)}</div></div>}
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} Plan</p><p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)} per month · {monthlyAcceptedLeadLimit} accepted leads</p>{acceptedLeadTopUps > 0 && <p className="mt-2 text-xs font-black text-blue-800">+{acceptedLeadTopUps} top-up lead{acceptedLeadTopUps === 1 ? "" : "s"} for this billing month</p>}</div>
+      {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts {planSummary.pendingBillingPlanStartsAt ? new Date(planSummary.pendingBillingPlanStartsAt).toLocaleDateString() : "after payment is confirmed"}.</p>}
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      {stripeManagedOutsideIos ? <p className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">Billing changes for this existing account are not available inside the iPhone app.</p> : <button type="button" onClick={openBillingPortal} disabled={isOpeningBilling} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:bg-blue-300 sm:w-auto">{isOpeningBilling ? appleBilling ? "Opening Apple…" : "Opening Stripe…" : appleBilling ? "Manage Apple Plan" : "Manage Plan & Payment"}</button>}
-      {billingPortalError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{billingPortalError}</p>}
+      <button type="button" onClick={() => openPaymentManager()} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage Plan & Payment</button>
     </SectionPanel></>;
   }
   function accountSection() {

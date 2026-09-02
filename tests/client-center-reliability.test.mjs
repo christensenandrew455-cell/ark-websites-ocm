@@ -122,14 +122,22 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });
 
-test("payment shows the current accepted-lead allowance and all monthly plans", async () => {
-  const settings = await source("app/components/SettingsPanel.js");
+test("payment keeps other plans behind the two-part manager", async () => {
+  const [settings, manager] = await Promise.all([
+    source("app/components/SettingsPanel.js"),
+    source("app/components/PaymentManagementPanel.js"),
+  ]);
   assert.ok(settings.includes("Accepted leads left this month"));
   assert.ok(settings.includes("Monthly accepted leads remaining"));
   assert.ok(settings.includes("acceptedLeadsRemaining"));
   assert.ok(settings.includes("Current plan"));
-  assert.ok(settings.includes("Available monthly plans"));
+  assert.equal(settings.includes("Available monthly plans"), false);
   assert.ok(settings.includes("Manage Plan & Payment"));
+  assert.ok(settings.includes('planSummary?.planName || "Starter"} Plan'));
+  assert.ok(manager.includes('title="Select a Plan"'));
+  assert.ok(manager.includes('title="Edit Card Information"'));
+  assert.ok(manager.includes("Selected — not changed yet"));
+  assert.ok(manager.includes("Review Plan Change"));
   assert.equal(settings.includes("Accepted lead"), true);
   assert.equal(settings.includes("Referral discount"), false);
   const summaryRoute = await source("app/api/billing/plan-summary/route.js");

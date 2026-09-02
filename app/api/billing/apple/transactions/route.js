@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { isApplePlanProduct } from "../../../../lib/appleIapCatalog";
+import { grantAcceptedLeadTopUp } from "../../../../lib/acceptedLeadTopUps";
+import { isAppleAcceptedLeadTopUpProduct, isApplePlanProduct } from "../../../../lib/appleIapCatalog";
 import { authorizeAppleBillingRequest, ensureAppleAppAccountToken, sameAppleAccountToken } from "../../../../lib/appleIapRequest";
 import { syncAppleSubscriptionTransaction } from "../../../../lib/appleIapTransactions";
 import { verifySignedAppleTransaction } from "../../../../lib/appleIapVerification";
@@ -46,6 +47,24 @@ export async function POST(request) {
       const result = await syncAppleSubscriptionTransaction({ db: access.db, clientId: access.clientId, transaction });
       if (!result.active) return NextResponse.json({ error: "This Apple subscription is not active." }, { status: 402 });
       return NextResponse.json({ status: "succeeded", kind: "subscription", ...result });
+    }
+    if (isAppleAcceptedLeadTopUpProduct(transaction.productId)) {
+      const acceptedLeads = Math.max(0, Math.floor(Number(transaction.quantity || 0)));
+      if (!acceptedLeads) return NextResponse.json({ error: "Apple did not include the number of added leads." }, { status: 400 });
+      const unitAmountCents = Number(transaction.price || 0) > 0
+        ? Math.round(Number(transaction.price) / 10)
+        : 100;
+      const result = await grantAcceptedLeadTopUp({
+        db: access.db,
+        clientId: access.clientId,
+        provider: "apple",
+        paymentId: text(transaction.transactionId),
+        acceptedLeads,
+        amountCents: unitAmountCents * acceptedLeads,
+        currency: text(transaction.currency || "usd").toLowerCase(),
+        purchasedAt: Number(transaction.purchaseDate || 0) || Date.now(),
+      });
+      return NextResponse.json({ status: "succeeded", kind: "accepted_lead_top_up", ...result });
     }
     return NextResponse.json({ error: "This Apple product is not part of ARK billing." }, { status: 400 });
   } catch (error) {

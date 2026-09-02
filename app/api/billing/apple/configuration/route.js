@@ -32,7 +32,8 @@ async function configuration(request, requestedPlanKey = "") {
       appAccountToken,
       selectedPlan,
       plans: catalog.plans,
-      productIds: catalog.plans.map((plan) => plan.productId),
+      acceptedLeadTopUp: catalog.acceptedLeadTopUp,
+      productIds: [...catalog.plans.map((plan) => plan.productId), catalog.acceptedLeadTopUp.productId],
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Unable to prepare Apple billing configuration", error);

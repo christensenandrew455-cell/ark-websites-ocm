@@ -144,6 +144,7 @@ export async function deleteCustomerPermanently(clientId) {
     deleteQueryDocuments(systemCollection(db, "stripeWebhookEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "appleBillingEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "appleTransactions").where("clientId", "==", clientId)),
+    deleteQueryDocuments(systemCollection(db, "acceptedLeadTopUpPayments").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "messagingComplianceEvents").where("clientId", "==", clientId)),
     deleteQueryDocuments(systemCollection(db, "deletedAccountAudit").where("clientId", "==", clientId)),
   ]);

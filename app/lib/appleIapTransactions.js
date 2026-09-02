@@ -2,6 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
 import { applePlanForProduct } from "./appleIapCatalog.js";
 import { sameAppleAccountToken } from "./appleIapRequest.js";
+import { normalizeBillingPlanKey } from "./billingPricing.js";
 import { resolvePayment } from "./billingDelinquency.js";
 import { systemCollection } from "./firestoreLayout.js";
 
@@ -39,13 +40,18 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
 
   const active = !transaction.revocationDate && expiresAt > Date.now();
   const samePeriodEnd = expiresAt > 0 && millis(account.acceptedLeadPeriodEndAt || account.callPeriodEndAt) === expiresAt;
-  const periodStartAt = samePeriodEnd && millis(account.acceptedLeadPeriodStartAt || account.callPeriodStartAt)
+  const planChanged = text(account.billingPlanKey) && normalizeBillingPlanKey(account.billingPlanKey) !== plan.key;
+  const periodStartAt = samePeriodEnd && !planChanged && millis(account.acceptedLeadPeriodStartAt || account.callPeriodStartAt)
     ? millis(account.acceptedLeadPeriodStartAt || account.callPeriodStartAt)
     : purchasedAt;
   const periodKey = `${periodStartAt}-${expiresAt}`;
   const acceptedLeadsUsed = text(account.acceptedLeadPeriodKey) === periodKey
     ? Math.max(0, Number(account.acceptedLeadsUsedThisPeriod || 0))
     : 0;
+  const acceptedLeadTopUps = text(account.acceptedLeadTopUpPeriodKey) === periodKey
+    ? Math.max(0, Number(account.acceptedLeadTopUpsThisPeriod || 0))
+    : 0;
+  const acceptedLeadPeriodLimit = plan.monthlyAcceptedLeads + acceptedLeadTopUps;
   const callsUsed = text(account.callPeriodKey) === periodKey
     ? Math.max(0, Number(account.callsUsedThisPeriod || 0))
     : 0;
@@ -62,12 +68,15 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
     billingPlanName: plan.name,
     monthlyPlanAmountCents: plan.amountCents,
     monthlyAcceptedLeadLimit: plan.monthlyAcceptedLeads,
+    acceptedLeadPeriodLimit,
     acceptedLeadPeriodStartAt: Timestamp.fromMillis(periodStartAt),
     acceptedLeadPeriodEndAt: expiresAt ? Timestamp.fromMillis(expiresAt) : FieldValue.delete(),
     acceptedLeadPeriodKey: periodKey,
     acceptedLeadsUsedThisPeriod: acceptedLeadsUsed,
-    acceptedLeadsRemainingThisPeriod: Math.max(0, plan.monthlyAcceptedLeads - acceptedLeadsUsed),
-    acceptedLeadLimitReached: acceptedLeadsUsed >= plan.monthlyAcceptedLeads,
+    acceptedLeadsRemainingThisPeriod: Math.max(0, acceptedLeadPeriodLimit - acceptedLeadsUsed),
+    acceptedLeadLimitReached: acceptedLeadsUsed >= acceptedLeadPeriodLimit,
+    acceptedLeadTopUpPeriodKey: periodKey,
+    acceptedLeadTopUpsThisPeriod: acceptedLeadTopUps,
     monthlyCallLimit: plan.monthlyCalls,
     callPeriodStartAt: Timestamp.fromMillis(periodStartAt),
     callPeriodEndAt: expiresAt ? Timestamp.fromMillis(expiresAt) : FieldValue.delete(),

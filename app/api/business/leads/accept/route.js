@@ -144,7 +144,7 @@ export async function POST(request) {
     }
     if (accepted.limitReached) {
       return NextResponse.json({
-        error: `You have used all ${accepted.plan.monthlyAcceptedLeadLimit} accepted leads in your ${accepted.plan.planName} plan.`,
+        error: `I’m sorry, you’ve used all ${accepted.plan.acceptedLeadPeriodLimit} accepted leads available this billing month.`,
         code: "MONTHLY_ACCEPTED_LEAD_LIMIT_REACHED",
         plan: accepted.plan,
       }, { status: 402 });

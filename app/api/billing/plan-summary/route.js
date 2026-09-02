@@ -39,6 +39,11 @@ export async function GET(request) {
     }
     return NextResponse.json({
       billingProvider: String(account.billingProvider || (account.appleOriginalTransactionId ? "apple" : "stripe")),
+      paymentMethodLabel: String(account.paymentMethodLabel || ""),
+      pendingBillingPlanKey: String(account.pendingBillingPlanKey || ""),
+      pendingBillingPlanName: String(account.pendingBillingPlanName || ""),
+      pendingBillingPlanStartsAt: account.pendingBillingPlanStartsAt?.toDate?.()?.toISOString?.() || "",
+      pendingBillingPlanTiming: String(account.pendingBillingPlanTiming || ""),
       ...planSummary,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

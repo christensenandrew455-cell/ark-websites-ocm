@@ -13,9 +13,9 @@ export async function appleProducts(productIds) {
   return AppleIAP.getProducts({ productIds });
 }
 
-export async function purchaseWithApple({ productId, appAccountToken }) {
+export async function purchaseWithApple({ productId, appAccountToken, quantity = 1 }) {
   if (!appleIapAvailable()) throw new Error("Apple purchases are available in the iPhone app.");
-  return AppleIAP.purchase({ productId, appAccountToken });
+  return AppleIAP.purchase({ productId, appAccountToken, quantity });
 }
 
 export async function currentAppleEntitlements(productIds) {

@@ -65,6 +65,7 @@ public class AppleIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                 "transactionId": String(transaction.id),
                 "originalTransactionId": String(transaction.originalID),
                 "productId": transaction.productID,
+                "purchasedQuantity": transaction.purchasedQuantity,
                 "signedTransaction": result.jwsRepresentation
             ]
             if let token = transaction.appAccountToken { payload["appAccountToken"] = token.uuidString.lowercased() }
@@ -91,10 +92,17 @@ public class AppleIAPPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func purchase(_ call: CAPPluginCall) {
         guard let productId = call.getString("productId"), !productId.isEmpty else { call.reject("An Apple product identifier is required."); return }
         guard let rawToken = call.getString("appAccountToken"), let accountToken = UUID(uuidString: rawToken) else { call.reject("A valid Apple account token is required."); return }
+        let quantity = call.getInt("quantity") ?? 1
+        guard quantity > 0 && quantity <= 10 else { call.reject("Apple allows between one and ten units per purchase confirmation."); return }
         Task {
             do {
                 guard let product = try await Product.products(for: [productId]).first else { call.reject("This Apple product is not available."); return }
-                let result = try await product.purchase(options: [.appAccountToken(accountToken)])
+                let result: Product.PurchaseResult
+                if quantity > 1 {
+                    result = try await product.purchase(options: [.appAccountToken(accountToken), .quantity(quantity)])
+                } else {
+                    result = try await product.purchase(options: [.appAccountToken(accountToken)])
+                }
                 switch result {
                 case .success(let verification): call.resolve(try transactionPayload(verification))
                 case .pending: call.resolve(["status": "pending"])

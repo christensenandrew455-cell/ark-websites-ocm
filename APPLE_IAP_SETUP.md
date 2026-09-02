@@ -1,6 +1,6 @@
 # Apple In-App Purchase setup
 
-The iOS app uses StoreKit 2 for the same four monthly accepted-lead plans offered on web and Android. Every plan is an auto-renewable subscription. There are no usage-credit or consumable products.
+The iOS app uses StoreKit 2 for the same four monthly accepted-lead plans offered on web and Android. Every plan is an auto-renewable subscription. A separate consumable product sells temporary accepted-lead top-ups at $1 per lead.
 
 ## 1. Confirm the app identifier
 
@@ -23,6 +23,14 @@ Give each product a one-month duration, complete its localization, choose the ma
 
 Set the subscription levels in increasing order of service: Scale, Growth, Standard, Starter. Choose the upgrade/downgrade timing and proration behavior you want Apple to apply, then verify it in Sandbox.
 
+Under **Monetization → In-App Purchases**, also create this consumable outside the subscription group:
+
+| Product ID | Type | Price |
+| --- | --- | ---: |
+| `com.arkwebsites.app.accepted-lead-top-up` | Consumable | $1.00 per unit |
+
+The app passes the requested lead count as StoreKit purchase quantity and grants the signed transaction quantity once. Apple limits one purchase confirmation to 10 units, so the app splits larger requested quantities into confirmed batches of up to 10. Top-up leads expire at the account's next subscription renewal and never roll over.
+
 ## 3. Configure server notifications
 
 In App Store Connect, set the App Store Server Notifications version 2 production and sandbox URL to:
@@ -41,6 +49,7 @@ APPLE_IAP_PLAN_PRODUCT_ID_STARTER=com.arkwebsites.app.starter.monthly
 APPLE_IAP_PLAN_PRODUCT_ID_STANDARD=com.arkwebsites.app.standard.monthly
 APPLE_IAP_PLAN_PRODUCT_ID_GROWTH=com.arkwebsites.app.growth.monthly
 APPLE_IAP_PLAN_PRODUCT_ID_SCALE=com.arkwebsites.app.pro.monthly
+APPLE_IAP_ACCEPTED_LEAD_TOP_UP_PRODUCT_ID=com.arkwebsites.app.accepted-lead-top-up
 ```
 
 ## 5. Sync and test
@@ -60,6 +69,7 @@ Then test with Sandbox accounts or StoreKit testing:
 4. Upgrading and downgrading updates the plan shown in Payment.
 5. A renewal begins a new accepted-lead period with the full selected allowance.
 6. The Payment screen shows accepted leads used, accepted leads remaining, and the next reset date.
-7. Cancellation, expiration, billing retry, grace-period, refund, and revocation notifications produce the expected account state.
+7. Buying several consumable units adds that exact number of leads once, and those leads disappear at renewal.
+8. Cancellation, expiration, billing retry, grace-period, refund, and revocation notifications produce the expected account state.
 
-For the first submission containing these subscriptions, attach all four products to the app version before App Review. In Review Notes, explain that iOS billing uses StoreKit 2, web and Android use Stripe, and every plan includes a fixed number of accepted leads per monthly billing period; receptionist calls do not consume the allowance.
+For the first submission containing these purchases, attach all four subscriptions and the consumable to the app version before App Review. In Review Notes, explain that iOS billing uses StoreKit 2, web and Android use Stripe, every plan includes a fixed number of accepted leads per monthly billing period, and owners may buy additional non-renewing accepted leads for the current period; receptionist calls do not consume the allowance.

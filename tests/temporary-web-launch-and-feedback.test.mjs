@@ -21,7 +21,8 @@ test("website launch pricing is visible in the browser and enforced by the Strip
   assert.ok(payment.includes("% off every plan through the website"));
   assert.ok(subscriptions.includes('duration: "forever"'));
   assert.ok(subscriptions.includes("discounts: [{ coupon: promotionCoupon.id }]") );
-  assert.ok(webhook.includes("promotionBillingFields(plan, promotion)"));
+  assert.ok(webhook.includes("stripeSubscriptionAccountFields(expanded, match.business)"));
+  assert.ok(subscriptions.includes("promotionBillingFields(plan, promotion)"));
 });
 
 test("Give Feedback is available to signed-in clients and saved for ARK Admin", async () => {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { appleIapCatalog, applePlanForProduct } from "../app/lib/appleIapCatalog.js";
+import { appleIapCatalog, applePlanForProduct, isAppleAcceptedLeadTopUpProduct } from "../app/lib/appleIapCatalog.js";
 import { computeBillingState } from "../app/lib/billingDelinquency.js";
 
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
@@ -17,6 +17,12 @@ test("Apple exposes the same four monthly accepted-lead plans under the shared a
   ]);
   assert.equal(applePlanForProduct("com.arkwebsites.app.pro.monthly").key, "scale");
   assert.equal(applePlanForProduct("com.arkwebsites.app.unknown"), null);
+  assert.deepEqual(catalog.acceptedLeadTopUp, {
+    productId: "com.arkwebsites.app.accepted-lead-top-up",
+    amountCentsPerLead: 100,
+    type: "consumable",
+  });
+  assert.equal(isAppleAcceptedLeadTopUpProduct(catalog.acceptedLeadTopUp.productId), true);
 });
 
 test("the iOS bridge uses StoreKit 2 and leaves completion to the verified server flow", async () => {
@@ -32,6 +38,8 @@ test("the iOS bridge uses StoreKit 2 and leaves completion to the verified serve
   assert.ok(plugin.includes("result.jwsRepresentation"));
   assert.ok(plugin.includes("Transaction.currentEntitlements"));
   assert.ok(plugin.includes("Transaction.unfinished"));
+  assert.ok(plugin.includes(".quantity(quantity)"));
+  assert.ok(plugin.includes("transaction.purchasedQuantity"));
   const purchaseMethod = plugin.slice(plugin.indexOf('@objc func purchase'), plugin.indexOf('@objc func currentEntitlements'));
   assert.equal(purchaseMethod.includes("transaction.finish()"), false);
   assert.ok(manifest.includes('name: "AppleIAPPlugin"'));
@@ -42,11 +50,12 @@ test("the iOS bridge uses StoreKit 2 and leaves completion to the verified serve
   assert.ok(plist.includes("<string>com.arkwebsites.app</string>"));
 });
 
-test("iPhone signup selects an Apple plan while other platforms keep Stripe", async () => {
-  const [client, configuration, settings] = await Promise.all([
+test("iPhone signup and account management use Apple while other platforms keep Stripe", async () => {
+  const [client, configuration, settings, manager] = await Promise.all([
     source("app/signup/payment/PaymentSetupClient.js"),
     source("app/api/billing/apple/configuration/route.js"),
     source("app/components/SettingsPanel.js"),
+    source("app/components/PaymentManagementPanel.js"),
   ]);
   assert.ok(client.includes('appleIapAvailable() ? "apple" : "stripe"'));
   assert.ok(client.includes("Choose your monthly accepted-lead plan"));
@@ -58,10 +67,14 @@ test("iPhone signup selects an Apple plan while other platforms keep Stripe", as
   assert.ok(client.includes("<PaymentElement"));
   assert.ok(configuration.includes("applePlanProduct(planKey)"));
   assert.ok(configuration.includes("plans: catalog.plans"));
-  assert.ok(settings.includes("Manage Apple Plan"));
+  assert.ok(settings.includes("Manage Plan & Payment"));
+  assert.ok(manager.includes("Continue with Apple"));
+  assert.ok(manager.includes("Open Apple Payment Settings"));
+  assert.ok(manager.includes("quantity: purchaseQuantity"));
+  assert.ok(manager.includes("Math.min(10, remaining)"));
 });
 
-test("Apple transactions are verified and synchronize only subscription plans", async () => {
+test("Apple transactions verify subscriptions and idempotent lead top-ups", async () => {
   const [verifier, route, transactions, notification] = await Promise.all([
     source("app/lib/appleIapVerification.js"),
     source("app/api/billing/apple/transactions/route.js"),
@@ -73,10 +86,13 @@ test("Apple transactions are verified and synchronize only subscription plans", 
   assert.ok(verifier.includes("APPLE_IAP_BUNDLE_ID"));
   assert.ok(route.includes("sameAppleAccountToken"));
   assert.ok(route.includes("isApplePlanProduct"));
+  assert.ok(route.includes("isAppleAcceptedLeadTopUpProduct"));
+  assert.ok(route.includes("grantAcceptedLeadTopUp"));
   assert.equal(route.includes("settleAppleUsagePurchase"), false);
   assert.ok(transactions.includes("applePlanForProduct"));
   assert.ok(transactions.includes("acceptedLeadsUsedThisPeriod: acceptedLeadsUsed"));
   assert.ok(transactions.includes("acceptedLeadsRemainingThisPeriod"));
+  assert.ok(transactions.includes("samePeriodEnd && !planChanged"));
   assert.equal(transactions.includes("CreditPoints"), false);
   assert.ok(notification.includes("verifySignedAppleNotification"));
   assert.ok(notification.includes('provider: "apple"'));
