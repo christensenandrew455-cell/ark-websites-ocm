@@ -5,20 +5,24 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const source = (path) => readFile(new URL(path, root), "utf8");
 
-test("website launch pricing is visible in the browser and enforced by the Stripe server", async () => {
-  const [configuration, setup, payment, subscriptions, webhook] = await Promise.all([
+test("website launch pricing is retired for new signups while legacy billing remains supported", async () => {
+  const [configuration, setup, payment, help, terms, subscriptions, webhook] = await Promise.all([
     source("app/lib/temporaryFeatures.js"),
     source("app/api/billing/setup-intent/route.js"),
     source("app/signup/payment/PaymentSetupClient.js"),
+    source("app/lib/helpContent.js"),
+    source("app/terms/page.js"),
     source("app/lib/stripePlanBilling.js"),
     source("app/api/billing/webhook/route.js"),
   ]);
-  assert.ok(configuration.includes("acceptingNewAccounts: true"));
+  assert.ok(configuration.includes("acceptingNewAccounts: false"));
   assert.ok(configuration.includes('NATIVE_APP_USER_AGENT_MARKER = "ARKClientCenter/"'));
   assert.ok(setup.includes("webSignupPromotionForRequest(request, payment.billingPromotionKey)"));
   assert.ok(setup.includes("promotion: publicPromotion(promotion)"));
   assert.ok(payment.includes("SubscriptionPlanCard"));
-  assert.ok(payment.includes("% off every plan through the website"));
+  assert.equal(payment.includes("% off every plan through the website"), false);
+  assert.equal(help.includes("new website signups receive"), false);
+  assert.equal(terms.includes("Temporary website launch offer"), false);
   assert.ok(subscriptions.includes('duration: "forever"'));
   assert.ok(subscriptions.includes("discounts: [{ coupon: promotionCoupon.id }]") );
   assert.ok(webhook.includes("stripeSubscriptionAccountFields(expanded, match.business)"));
