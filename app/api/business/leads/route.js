@@ -118,8 +118,6 @@ export async function PATCH(request) {
       ClientNotes: text(fields.ClientNotes),
       BusinessNotes: text(fields.BusinessNotes),
       Notes: text(fields.ClientNotes),
-      PreferredDate: text(fields.EstimateDate, 40),
-      PreferredTime: text(fields.EstimateTime, 40),
       ...leadContactFieldDeletionPatch(FieldValue.delete()),
       updatedAt: FieldValue.serverTimestamp(),
     };

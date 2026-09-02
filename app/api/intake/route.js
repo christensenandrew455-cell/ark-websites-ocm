@@ -119,6 +119,12 @@ function buildRow(input, source) {
   const RequestSummary = text(
     data.RequestSummary || data.requestSummary || data.serviceRequestSummary
   ).slice(0, 4000);
+  const PreferredDay = text(
+    data.PreferredDay || data.preferredDay || data.requestedDate || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate
+  );
+  const PreferredTimeWindow = text(
+    data.PreferredTimeWindow || data.preferredTimeWindow || data.requestedTimeWindow || data.PreferredTime || data.preferredTime || data.requestedTime || data.EstimateTime || data.estimateTime
+  );
   const riskAssessment = calculateLeadRisk(data);
   return {
     FirstName,
@@ -134,8 +140,9 @@ function buildRow(input, source) {
     Job: text(
       data.Job || data.job || data.ServiceType || data.serviceType || data.service || data.projectType || data.requestedService
     ),
-    PreferredDay: text(data.PreferredDay || data.preferredDay || data.requestedDate || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate),
-    PreferredTime: text(data.PreferredTime || data.preferredTime || data.requestedTime || data.EstimateTime || data.estimateTime),
+    PreferredDay,
+    PreferredTimeWindow,
+    PreferredTime: PreferredTimeWindow,
     RequestSummary,
     ClientNotes,
     Notes: ClientNotes,

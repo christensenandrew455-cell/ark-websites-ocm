@@ -133,6 +133,9 @@ test("payment keeps other plans behind the two-part manager", async () => {
   assert.ok(settings.includes("Current plan"));
   assert.equal(settings.includes("Available monthly plans"), false);
   assert.ok(settings.includes("Manage Plan & Payment"));
+  assert.ok(settings.includes('function openPaymentManager(panel = "plan")'));
+  assert.ok(settings.includes('openPaymentManager("plan")'));
+  assert.ok(settings.includes('router.replace(`/settings?section=payment&manage=${encodeURIComponent(requestedPanel)}`'));
   assert.ok(settings.includes('planSummary?.planName || "Starter"} Plan'));
   assert.ok(manager.includes('title="Select a Plan"'));
   assert.ok(manager.includes('title="Edit Card Information"'));

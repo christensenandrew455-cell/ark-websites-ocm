@@ -21,7 +21,7 @@ function serviceRequestSummaryItems(value) {
   return String(value || "")
     .split(/\r?\n/)
     .map((line) => line.trim().replace(/^[-•]\s*/, ""))
-    .filter((line) => /^(?:Service|Preferred time|Address|Notes):\s*\S/i.test(line))
+    .filter((line) => /^(?:Service|Preferred (?:time|window)|Address|Notes):\s*\S/i.test(line))
     .slice(0, 4);
 }
 
@@ -55,8 +55,10 @@ function normalizeRow(id, source, collectionKey) {
     ClientNotes,
     BusinessNotes,
     Notes: ClientNotes,
-    EstimateDate: firstValue(data.EstimateDate, data.estimateDate, data.PreferredDate, data.preferredDate, data.PreferredDay, data.preferredDay, data.requestedDate, data.estimateDay, currentJob.estimateDate),
-    EstimateTime: firstValue(data.EstimateTime, data.estimateTime, data.PreferredTime, data.preferredTime, data.requestedTime, currentJob.estimateTime),
+    PreferredDay: firstValue(data.PreferredDay, data.preferredDay, data.PreferredDate, data.preferredDate, data.requestedDate, data.estimateDay),
+    PreferredTimeWindow: firstValue(data.PreferredTimeWindow, data.preferredTimeWindow, data.requestedTimeWindow, data.PreferredTime, data.preferredTime, data.requestedTime),
+    EstimateDate: firstValue(data.EstimateDate, data.estimateDate, currentJob.estimateDate),
+    EstimateTime: firstValue(data.EstimateTime, data.estimateTime, currentJob.estimateTime),
   };
 }
 
@@ -119,10 +121,10 @@ function displayRequestedTime(value) {
 }
 
 function requestedSchedule(row) {
-  const date = displayRequestedDate(row.EstimateDate);
-  const time = displayRequestedTime(row.EstimateTime);
-  if (date && time) return `${date} at ${time}`;
-  return date || time;
+  const day = displayRequestedDate(row.PreferredDay);
+  const window = displayRequestedTime(row.PreferredTimeWindow);
+  if (day && window) return `${day} · ${window}`;
+  return day || window;
 }
 
 function calendarStamp(date) {
@@ -161,7 +163,8 @@ function calendarDate(row) {
     start = new Date(rawDate);
   }
   if (Number.isNaN(start.getTime())) return null;
-  const normalizedTime = normalizeTimeForDate(row.EstimateTime) || "09:00";
+  const normalizedTime = normalizeTimeForDate(row.EstimateTime);
+  if (!normalizedTime) return null;
   const [hour, minute] = normalizedTime.split(":").map(Number);
   start.setHours(hour, minute, 0, 0);
   return start;
@@ -365,11 +368,7 @@ function ClientModal({ row, messagesEnabled, onClose, onMessage, onAddContact, o
   }
 
   const fields = [["Name", "Name", "text"], ["Phone", "Phone", "tel"], ["Address", "Address", "text"], ["Job", "Job type", "text"], ["EstimateDate", "Estimate date", "date"], ["EstimateTime", "Estimate time", "time"]];
-  const requested = requestedSchedule({
-    ...row,
-    EstimateDate: form.EstimateDate || row.EstimateDate,
-    EstimateTime: form.EstimateTime || row.EstimateTime,
-  });
+  const requested = requestedSchedule(row);
   const requestSummary = serviceRequestSummaryItems(row.RequestSummary);
   return <Modal title={form.Name || "Client"} onClose={closeWithAutosave}>
     <div className="flex items-center gap-3 border-b border-slate-200 p-4 sm:p-6">
@@ -379,8 +378,8 @@ function ClientModal({ row, messagesEnabled, onClose, onMessage, onAddContact, o
     <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">
       {saveError && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{saveError}</div>}
       <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Requested service time</span>
-        <p className="mt-1 text-base font-black text-blue-950">{requested || "No requested time was provided."}</p>
+        <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Requested service window</span>
+        <p className="mt-1 text-base font-black text-blue-950">{requested || "No requested window was provided."}</p>
       </div>
       {requestSummary.length > 0 && <section className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-label="Service request summary">
         <h3 className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Service request summary</h3>
@@ -567,7 +566,7 @@ export default function ReviewClientsNative() {
     setError("");
     const result = await addCalendar(row, clientId, businessName);
     if (!result.ok) {
-      setError(result.reason === "calendar-permission" ? "Allow calendar access to add this estimate." : "Add a valid estimate date before adding it to your calendar.");
+      setError(result.reason === "calendar-permission" ? "Allow calendar access to add this estimate." : "Add a valid confirmed estimate date and time before adding it to your calendar.");
       return;
     }
     setNotice(result.native ? "Estimate added to your calendar." : "Calendar file downloaded. Open it to add the estimate.");

@@ -12,7 +12,7 @@ export function normalizeStatusPhone(value) {
 export function estimateRequestStatusMessage(status, businessName) {
   const brand = text(businessName) || "the business";
   const statusLine = status === "accepted"
-    ? `Your service request has been accepted by ${brand}.`
+    ? `Your service request has been accepted by ${brand}. The business owner will follow up to confirm the exact date and time.`
     : `We're sorry, but your service request has been declined by ${brand}.`;
   return statusLine;
 }

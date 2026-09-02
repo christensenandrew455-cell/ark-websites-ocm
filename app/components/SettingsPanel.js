@@ -370,17 +370,19 @@ export default function SettingsPanel() {
   const paymentLabel = planSummary?.paymentMethodLabel || accountSettings.paymentMethodLabel || (appleBilling ? "Apple Account" : "No payment method label is available yet.");
   const billingStatus = accountSettings.billingPastDue ? "Payment method update needed" : "Current";
 
-  function openPaymentManager(panel = "") {
-    setPaymentManagerPanel(panel);
+  function openPaymentManager(panel = "plan") {
+    const requestedPanel = ["plan", "topup", "card"].includes(panel) ? panel : "plan";
+    setPaymentManagerPanel(requestedPanel);
     setPaymentManagerOpen(true);
-    const suffix = panel ? `&manage=${encodeURIComponent(panel)}` : "";
-    window.history.replaceState({}, "", `/settings?section=payment${suffix}`);
+    router.replace(`/settings?section=payment&manage=${encodeURIComponent(requestedPanel)}`, { scroll: false });
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
   function closePaymentManager() {
     setPaymentManagerOpen(false);
     setPaymentManagerPanel("");
-    window.history.replaceState({}, "", "/settings?section=payment");
+    router.replace("/settings?section=payment", { scroll: false });
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
   function businessSection() {
@@ -430,7 +432,7 @@ export default function SettingsPanel() {
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} Plan</p><p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)} per month · {monthlyAcceptedLeadLimit} accepted leads</p>{acceptedLeadTopUps > 0 && <p className="mt-2 text-xs font-black text-blue-800">+{acceptedLeadTopUps} top-up lead{acceptedLeadTopUps === 1 ? "" : "s"} for this billing month</p>}</div>
       {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts {planSummary.pendingBillingPlanStartsAt ? new Date(planSummary.pendingBillingPlanStartsAt).toLocaleDateString() : "after payment is confirmed"}.</p>}
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      <button type="button" onClick={() => openPaymentManager()} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage Plan & Payment</button>
+      <button type="button" onClick={() => openPaymentManager("plan")} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage Plan & Payment</button>
     </SectionPanel></>;
   }
   function accountSection() {

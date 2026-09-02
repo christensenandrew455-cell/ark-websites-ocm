@@ -107,7 +107,7 @@ test("nested receptionist signal payloads are scored without trusting a supplied
   assert.equal(result.level, "low");
 });
 
-test("Contacted You summaries exclude private contact fields but show the requested schedule", () => {
+test("Contacted You summaries exclude private contact fields but show the requested time window", () => {
   const summary = pendingLeadSummary("lead-1", {
     Name: "Jordan Lee",
     Job: "Replace water heater",
@@ -116,15 +116,15 @@ test("Contacted You summaries exclude private contact fields but show the reques
     ClientNotes: "Private details",
     RequestSummary: "- Service: Replace water heater\n- Address: 1 Main Street",
     requestedDate: "2026-09-02",
-    requestedTime: "3:30 PM",
+    requestedTimeWindow: "Afternoon",
     rawSubmission: { transcript: "private" },
     riskAssessment: calculateLeadRisk({ addressVerified: false, resistanceCount: 2 }),
   });
   assert.deepEqual(Object.keys(summary).sort(), [
-    "EstimateDate",
-    "EstimateTime",
     "Job",
     "Name",
+    "PreferredDay",
+    "PreferredTimeWindow",
     "collectionKey",
     "contactedAt",
     "createdAt",
@@ -137,8 +137,8 @@ test("Contacted You summaries exclude private contact fields but show the reques
   assert.equal(Object.hasOwn(summary, "Phone"), false);
   assert.equal(Object.hasOwn(summary, "Address"), false);
   assert.equal(Object.hasOwn(summary, "RequestSummary"), false);
-  assert.equal(summary.EstimateDate, "2026-09-02");
-  assert.equal(summary.EstimateTime, "3:30 PM");
+  assert.equal(summary.PreferredDay, "2026-09-02");
+  assert.equal(summary.PreferredTimeWindow, "Afternoon");
   assert.equal(summary.riskScore, 5);
   assert.equal(summary.riskLevel, "moderate");
 });
@@ -154,11 +154,12 @@ test("legacy leads are not described as low risk when no check was supplied", ()
 });
 
 test("only accepted leads consume the plan and repeated acceptance is idempotent", async () => {
-  const [intake, acceptance, completedCalls, component] = await Promise.all([
+  const [intake, acceptance, completedCalls, component, leadRoute] = await Promise.all([
     source("app/api/intake/route.js"),
     source("app/api/business/leads/accept/route.js"),
     source("app/api/receptionist/calls/route.js"),
     source("app/components/ReviewClientsNative.js"),
+    source("app/api/business/leads/route.js"),
   ]);
   assert.ok(intake.includes('const sectionKey = "contactedMe"'));
   assert.equal(intake.includes("recordLeadUsage"), false);
@@ -172,11 +173,17 @@ test("only accepted leads consume the plan and repeated acceptance is idempotent
   assert.ok(completedCalls.includes("acceptedLeadsRemaining"));
   assert.ok(component.includes('"Accept"'));
   assert.ok(component.includes('>Decline</button>'));
-  assert.ok(component.includes("Requested service time"));
+  assert.ok(component.includes("Requested service window"));
   assert.ok(component.includes("Requested: {schedule}"));
   assert.ok(intake.includes("data.RequestSummary || data.requestSummary || data.serviceRequestSummary"));
   assert.ok(intake.includes("RequestSummary,"));
+  assert.ok(intake.includes("PreferredTimeWindow,"));
   assert.ok(component.includes("RequestSummary: firstValue(data.RequestSummary, data.requestSummary, data.serviceRequestSummary)"));
+  assert.ok(component.includes("PreferredTimeWindow: firstValue"));
+  assert.equal(component.includes("EstimateDate: firstValue(data.EstimateDate, data.estimateDate, data.PreferredDate"), false);
+  assert.ok(component.includes("if (!normalizedTime) return null;"));
+  assert.equal(leadRoute.includes("PreferredDate: text(fields.EstimateDate"), false);
+  assert.equal(leadRoute.includes("PreferredTime: text(fields.EstimateTime"), false);
   assert.ok(component.includes("Service request summary"));
   assert.ok(component.includes("requestSummary.map((item)"));
   assert.equal(component.includes("charged"), false);
