@@ -52,6 +52,8 @@ Configure matching-mode keys:
 - `STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_WEBHOOK_SECRET` for recurring-payment and billing-period updates
 
+Website and Android signups use the regular plan prices below. There is no separate website discount or promotional Price. Use these exact environment variable names for optional Stripe Price overrides:
+
 The server validates configured Price IDs or creates stable code-managed monthly Prices with these lookup keys:
 
 | Optional environment variable | Required Price | Managed lookup key |
