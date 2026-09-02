@@ -1,13 +1,6 @@
 import LegalPageHeader, { LegalBackButton } from "../components/LegalPageHeader";
 import { LEGAL_EFFECTIVE_DATE, TERMS_VERSION } from "../lib/legal";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
-import { activeWebLaunchOffer, discountedAmountCents } from "../lib/temporaryFeatures";
-
-const websiteOffer = activeWebLaunchOffer();
-
-function money(cents) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(cents || 0) / 100);
-}
 
 const sections = [
   {
@@ -24,7 +17,6 @@ const sections = [
       <p><strong>Standard:</strong> $47.49 USD per monthly billing period for up to 50 accepted leads, shown as 5% savings compared with $1 per accepted lead.</p>
       <p><strong>Growth:</strong> $89.99 USD per monthly billing period for up to 100 accepted leads, shown as 10% savings compared with $1 per accepted lead.</p>
       <p><strong>Scale:</strong> $169.99 USD per monthly billing period for up to 200 accepted leads, shown as 15% savings compared with $1 per accepted lead.</p>
-      {websiteOffer && <p><strong>Temporary website launch offer:</strong> A new owner who completes subscription signup through the ARK website while the offer is available receives {websiteOffer.percentOff}% off the selected plan: {money(discountedAmountCents(2499, websiteOffer))} Starter, {money(discountedAmountCents(4749, websiteOffer))} Standard, {money(discountedAmountCents(8999, websiteOffer))} Growth, or {money(discountedAmountCents(16999, websiteOffer))} Scale per monthly billing period. The discounted rate applies to renewals while that subscription remains active. The offer does not apply to purchases made inside a native app. ARK may end the offer for future signups, and a canceled subscription may not qualify again.</p>}
       <p><strong>What counts as an accepted lead:</strong> Each unique service request counts once when the business owner taps Accept. Repeated acceptance attempts do not count again. Calls, declined leads, edits, retention, and deletion do not count.</p>
       <p><strong>Monthly limit:</strong> At the start of each new billing period, the allowance resets to exactly the selected plan’s included amount: 25, 50, 100, or 200. Unused accepted leads do not roll over or increase the next period’s allowance.</p>
       <p><strong>Additional accepted leads:</strong> An owner may purchase a custom whole-number quantity of additional accepted leads for the current billing period at $1 USD per lead, with no volume discount. Top-up leads expire at the next allowance reset and do not roll over.</p>
