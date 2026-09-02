@@ -1,6 +1,5 @@
 "use client";
 
-import { Capacitor } from "@capacitor/core";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { signOut } from "firebase/auth";
@@ -10,11 +9,7 @@ import { useRouter } from "next/navigation";
 import { readApiJson } from "../../lib/apiResponse";
 import { billingPlan, publicBillingPlans } from "../../lib/billingPricing";
 import SubscriptionPlanCard from "../../components/SubscriptionPlanCard";
-import {
-  activeWebLaunchOffer,
-  discountedAmountCents,
-  publicPromotion,
-} from "../../lib/temporaryFeatures";
+import { discountedAmountCents } from "../../lib/temporaryFeatures";
 import { useAuth } from "../../components/AuthProvider";
 import { auth } from "../../lib/firebase";
 import {
@@ -42,7 +37,7 @@ function PlanSelector({ selectedPlanKey, onSelect, promotion, disabled = false }
   return <section aria-labelledby="choose-plan-title">
     <h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose your monthly accepted-lead plan</h1>
     <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Each unique service request counts once when you accept it. Calls do not count, and your allowance resets every billing month.</p>
-    {promotion && <div className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950"><p className="text-sm font-black">{promotion.percentOff}% off every plan through the website</p><p className="mt-1 text-xs font-semibold leading-5">Subscribe while this launch offer is available and the discounted price stays on every monthly renewal while your subscription remains active.</p></div>}
+    {promotion && <div className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950"><p className="text-sm font-black">Saved promotional price</p><p className="mt-1 text-xs font-semibold leading-5">This signup already locked in {promotion.percentOff}% off before the website offer ended.</p></div>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
       {MONTHLY_PLANS.map((plan) => {
         const selected = plan.key === selectedPlanKey;
@@ -107,7 +102,7 @@ function PaymentForm({ clientSecret, returnUrl, selectedPlan, promotion, onSucce
 
   return <form onSubmit={submit} className="space-y-5">
     <PaymentElement options={{ layout: "accordion" }} />
-    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.{promotion ? ` This is the ${promotion.percentOff}% website launch price (normally ${money(selectedPlan.listAmountCents)}) and renews at the discounted price while the subscription remains active.` : ""}</p>
+    <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.{promotion ? ` This signup already has a saved ${promotion.percentOff}% promotional price (normally ${money(selectedPlan.listAmountCents)}).` : ""}</p>
     <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay & Continue</button>
     {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </form>;
@@ -252,8 +247,6 @@ export default function PaymentSetupClient() {
   }
 
   useEffect(() => {
-    const native = Capacitor.isNativePlatform();
-    setPromotion(native ? null : publicPromotion(activeWebLaunchOffer()));
     setBillingPlatform(appleIapAvailable() ? "apple" : "stripe");
   }, []);
 
