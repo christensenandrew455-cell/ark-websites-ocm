@@ -9,6 +9,7 @@ import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 import { stripLeadContactFields } from "../lib/leadContactFields";
 import { leadRiskLabel, leadRiskLevel } from "../lib/leadRiskAssessment";
+import InfoTip from "./InfoTip";
 import {
   compareOldestLead,
   formatLeadReceivedAt,
@@ -267,11 +268,11 @@ const riskIcons = { low: "🟢", moderate: "🟡", high: "🟠", "very-high": "�
 
 function RiskBadge({ row }) {
   if (row.riskAssessed !== true) {
-    return <span className="mt-3 inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">Risk check unavailable</span>;
+    return <span className="mt-3 inline-flex items-center gap-2"><span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-600">Risk check unavailable</span><InfoTip label="About risk checks">ARK looks for warning signs in the request. Use this as one signal, not a final decision.</InfoTip></span>;
   }
   const level = leadRiskLevel(row.riskScore);
   const points = Math.max(0, Math.floor(Number(row.riskScore) || 0));
-  return <span aria-label={`${leadRiskLabel(level)}, ${points} points`} className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${riskBadgeClasses[level]}`}><span aria-hidden="true">{riskIcons[level]}</span>{leadRiskLabel(level)} · {points} {points === 1 ? "point" : "points"}</span>;
+  return <span className="mt-3 inline-flex items-center gap-2"><span aria-label={`${leadRiskLabel(level)}, ${points} points`} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${riskBadgeClasses[level]}`}><span aria-hidden="true">{riskIcons[level]}</span>{leadRiskLabel(level)} · {points} {points === 1 ? "point" : "points"}</span><InfoTip label="About lead risk">Low is 0–2 points, Moderate 3–5, High 6–8, and Very high 9 or more. Review the request before deciding.</InfoTip></span>;
 }
 
 function EmergencyBadge({ row }) {
@@ -398,12 +399,12 @@ function LeadLimitDialog({ plan, onClose, onManage }) {
   return <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="accepted-lead-limit-title">
     <button type="button" onClick={onClose} aria-label="Close accepted lead limit" />
     <section className="ark-modal-surface max-w-md p-6 text-slate-950 sm:p-8">
-      <h2 id="accepted-lead-limit-title" className="text-2xl font-black">I’m sorry, you’ve used all your accepted leads.</h2>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your allowance resets to {plan.monthlyAcceptedLeadLimit || 25} on {resetDate}. Unused leads never roll over.</p>
+      <h2 id="accepted-lead-limit-title" className="text-2xl font-black">No accepted leads left.</h2>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your limit resets to {plan.monthlyAcceptedLeadLimit || 25} on {resetDate}.</p>
       <div className="mt-6 space-y-3">
-        <button type="button" onClick={() => onManage("plan")} className="w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white">Upgrade Plan</button>
-        <button type="button" onClick={() => onManage("topup")} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Add Leads for $1 Each</button>
-        <button type="button" onClick={onClose} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800">Wait Until {resetDate}</button>
+        <button type="button" onClick={() => onManage("plan")} className="w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white">Change plan</button>
+        <button type="button" onClick={() => onManage("topup")} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Buy extra leads</button>
+        <button type="button" onClick={onClose} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800">Wait until {resetDate}</button>
       </div>
     </section>
   </div>;
@@ -468,13 +469,13 @@ function ClientModal({ row, messagesEnabled, onClose, onMessage, onAddContact, o
         <input type={type} value={form[field]} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} className="h-12 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none focus:border-slate-950" />
       </label>)}
       <label className="col-span-2">
-        <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client Notes</span>
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Client notes</span>
         <textarea rows={4} value={form.ClientNotes} onChange={(event) => setForm((current) => ({ ...current, ClientNotes: event.target.value }))} className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-slate-950" />
       </label>
-      <label className="col-span-2">
-        <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business Notes</span>
-        <textarea rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Add private notes for your business about this client or job." className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" />
-      </label>
+      <div className="col-span-2">
+        <div className="mb-1 flex items-center gap-2"><label htmlFor="business-notes" className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Business notes</label><InfoTip label="About business notes">These notes stay private to your business.</InfoTip></div>
+        <textarea id="business-notes" rows={4} value={form.BusinessNotes} onChange={(event) => setForm((current) => ({ ...current, BusinessNotes: event.target.value }))} placeholder="Private note" className="w-full rounded-xl border border-slate-300 bg-amber-50/40 p-3 text-sm outline-none focus:border-slate-950" />
+      </div>
     </div>
     <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-5 sm:grid-cols-4 sm:p-7">
       {MESSAGES_AVAILABLE && <button type="button" disabled={!messagesEnabled} onClick={onMessage} className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-500">Message</button>}
@@ -681,7 +682,7 @@ export default function ReviewClientsNative() {
           </button>
         </div>
         {activeSection === "contacted" && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5">
-          <h2 className="text-2xl font-black">Contacted You</h2>
+          <div className="flex items-center gap-2"><h2 className="text-2xl font-black">Contacted You</h2><InfoTip label="About Contacted You">New requests appear here. Accepting one reveals the customer and counts once toward your monthly plan. Card colors show age; red Emergency cards are urgent requests.</InfoTip></div>
           <div className="mt-4 space-y-7">
             {emergencyLeads.length > 0 && <PendingLeadSection title="Emergencies" rows={emergencyLeads} now={clockNow} busy={busy} onAccept={accept} onDecline={setPendingDelete} emptyMessage="No emergency requests." />}
             <PendingLeadSection title="Regular" rows={regularLeads} now={clockNow} busy={busy} onAccept={accept} onDecline={setPendingDelete} emptyMessage={loading ? "Loading leads…" : "No regular requests."} />
