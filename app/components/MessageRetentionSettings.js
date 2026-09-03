@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
+import InfoTip from "./InfoTip";
 
 const OPTIONS = [
   { value: 0, label: "Never delete" },
@@ -68,7 +69,7 @@ function RetentionSelect({ title, endpoint }) {
 export default function MessageRetentionSettings({ showMessages = false }) {
   return (
     <section className="border-t border-slate-200 pt-6">
-      <span className={FIELD_LABEL_CLASS}>Auto-delete</span>
+      <span className="flex items-center gap-2"><span className={FIELD_LABEL_CLASS}>Auto-delete</span><InfoTip label="About auto-delete">Records are permanently deleted after the selected time. Choose Never delete to keep them until you remove them.</InfoTip></span>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <RetentionSelect title="Leads" endpoint="/api/business/leads/retention" />
         <RetentionSelect title="Clients" endpoint="/api/business/clients/retention" />
