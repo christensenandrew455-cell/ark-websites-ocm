@@ -56,7 +56,6 @@ export async function POST(request) {
   const clientId = normalizeClientId(user.decodedToken.clientId);
 
   if (!clientId) return NextResponse.json({ error: "This account has no business assigned." }, { status: 400 });
-  if (body.selfHelpConfirmed !== true) return NextResponse.json({ error: "Check the Docs or ask AI first, then confirm that you still need ARK support." }, { status: 400 });
   if (subject.length < 4) return NextResponse.json({ error: "Add a short subject so ARK can identify the problem." }, { status: 400 });
   if (message.length < 10) return NextResponse.json({ error: "Describe what you need help with in at least 10 characters." }, { status: 400 });
   if (message.length > 4000) return NextResponse.json({ error: "Keep the help request under 4,000 characters." }, { status: 400 });

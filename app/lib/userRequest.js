@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isStandardRole } from "./accountRoles";
 import { getAdminAuth } from "./firebase-admin";
+import { normalizeClientId } from "./valueUtils";
 
 export async function requireUser(request) {
   const authorization = String(request.headers.get("authorization") || "");
@@ -14,12 +15,13 @@ export async function requireUser(request) {
 
   try {
     const decodedToken = await getAdminAuth().verifyIdToken(token);
+    const clientId = normalizeClientId(decodedToken.clientId);
     if (decodedToken.temporaryAccount === true || ["pending_verification", "pending_business_setup", "pending_personalization", "pending_payment"].includes(String(decodedToken.accountStatus || ""))) {
       return {
         response: NextResponse.json({ error: "Complete signup before using the client center." }, { status: 403 }),
       };
     }
-    if (!isStandardRole(decodedToken.role)) {
+    if (!isStandardRole(decodedToken.role) || !clientId) {
       return {
         response: NextResponse.json({ error: "A customer owner account is required." }, { status: 403 }),
       };
@@ -29,7 +31,7 @@ export async function requireUser(request) {
         response: NextResponse.json({ error: "Verify your email and phone to continue.", code: "ACCOUNT_VERIFICATION_REQUIRED" }, { status: 403 }),
       };
     }
-    return { decodedToken };
+    return { decodedToken, clientId };
   } catch (error) {
     console.error("Unable to verify user token", error);
     return {

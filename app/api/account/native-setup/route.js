@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { customizationRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const ALLOWED_STATUSES = new Set(["shown", "dismissed", "complete"]);
 
 export async function POST(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization.response;
 
   const status = String((await request.json().catch(() => ({})))?.status || "").trim().toLowerCase();

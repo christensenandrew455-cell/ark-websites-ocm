@@ -1,7 +1,7 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { BILLING_PLAN_KEYS, BILLING_VERSION, billingPlan } from "../../../lib/billingPricing";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
@@ -35,7 +35,7 @@ function validRequestId(value) {
 }
 
 async function activeStripeAccount(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization;
   const db = getAdminDb();
   const accountRef = db.collection("accounts").doc(authorization.clientId);

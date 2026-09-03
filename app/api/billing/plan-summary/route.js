@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import {
   acceptedLeadAccountPatch,
   acceptedLeadPlanStatus,
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization.response;
   try {
     const db = getAdminDb();

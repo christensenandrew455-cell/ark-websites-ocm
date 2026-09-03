@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { customizationRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 
 const PAGE_GUIDES = Object.freeze(["dashboard", "settings", "leads"]);
@@ -25,7 +25,7 @@ function normalizePhone(value) {
 }
 
 export async function POST(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization.response;
   const body = await request.json().catch(() => ({}));
   const guide = text(body.guide).toLowerCase();

@@ -41,7 +41,6 @@ const CUSTOMIZATION_FIELDS = Object.freeze([
   "nativeSetupPromptStatus",
   "nativeSetupPromptedAt",
   "nativeSetupFinishedAt",
-  "helpSelfServiceLastUsedAt",
 ]);
 
 function object(value) {

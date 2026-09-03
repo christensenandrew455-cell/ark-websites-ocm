@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readAccountSections } from "../../lib/accountSections";
-import { requireAuthenticatedCustomer } from "../../lib/authenticatedRequest";
+import { requireUser } from "../../lib/userRequest";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { publicRewardSummary, referralPeriodRef } from "../../lib/rewardLeadCredits";
 import { calendarMonthWindow } from "../../lib/timeWindows";
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization.response;
   try {
     const db = getAdminDb();

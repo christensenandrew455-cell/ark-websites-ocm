@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { refreshStoredPaymentMethod } from "../../../lib/stripePlanBilling";
@@ -17,7 +17,7 @@ function objectId(value) {
 }
 
 async function activeStripeAccount(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization;
   const db = getAdminDb();
   const accountRef = db.collection("accounts").doc(authorization.clientId);

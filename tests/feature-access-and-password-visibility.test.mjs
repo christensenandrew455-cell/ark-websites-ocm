@@ -12,12 +12,13 @@ test("unavailable dashboard features are non-interactive status cards", async ()
 });
 
 test("launch switch disables messaging across UI and APIs", async () => {
-  const [switches, dashboard, settings, signup, messagingApi] = await Promise.all([
+  const [switches, dashboard, settings, signup, messagingApi, accountFeatures] = await Promise.all([
     readFile(new URL("../app/lib/launchFeatures.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/ClientStats.js", import.meta.url), "utf8"),
     readFile(new URL("../app/components/SettingsPanel.js", import.meta.url), "utf8"),
     readFile(new URL("../app/signup/page.js", import.meta.url), "utf8"),
     readFile(new URL("../app/api/business/lead-messages/route.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/account/features/route.js", import.meta.url), "utf8"),
   ]);
 
   assert.ok(switches.includes('messages: "off"'));
@@ -27,6 +28,8 @@ test("launch switch disables messaging across UI and APIs", async () => {
   assert.ok(settings.includes("MESSAGES_AVAILABLE && <label"));
   assert.equal(signup.includes("MESSAGES_AVAILABLE"), false);
   assert.ok(messagingApi.includes("if (!MESSAGES_AVAILABLE)"));
+  assert.ok(accountFeatures.includes("if (!MESSAGES_AVAILABLE)"));
+  assert.ok(accountFeatures.indexOf("if (!MESSAGES_AVAILABLE)") < accountFeatures.indexOf('collection("leadConversations").get()'));
 });
 
 test("login and both signup password fields use tappable visibility controls", async () => {

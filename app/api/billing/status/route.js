@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { publicBillingStatus } from "../../../lib/billingDelinquency";
 
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  const auth = await requireAuthenticatedCustomer(request);
+  const auth = await requireUser(request);
   if (auth.response) return auth.response;
 
   try {

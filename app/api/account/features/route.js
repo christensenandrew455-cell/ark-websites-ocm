@@ -1,6 +1,5 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { isStandardRole } from "../../../lib/accountRoles";
 import { customizationRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_MESSAGE, availableAccountFeatures } from "../../../lib/launchFeatures";
@@ -14,13 +13,12 @@ async function authorizeOwner(request) {
   const user = await requireUser(request);
   if (user.response) return { response: user.response };
   const decoded = user.decodedToken;
-  if (!isStandardRole(decoded.role) || !decoded.clientId) return { response: NextResponse.json({ error: "An owner account is required." }, { status: 403 }) };
   const db = getAdminDb();
-  const accountRef = db.collection("accounts").doc(String(decoded.clientId));
+  const accountRef = db.collection("accounts").doc(user.clientId);
   const accountSnapshot = await accountRef.get();
   if (!accountSnapshot.exists || accountSnapshot.data().status !== "active" || String(accountSnapshot.data().uid || "") !== String(decoded.uid)) return { response: NextResponse.json({ error: "An active owner account is required." }, { status: 403 }) };
   const sections = await readAccountSections(accountSnapshot);
-  return { db, decoded, accountRef, account: sections.account, customizationRef: sections.customizationRef, customization: sections.customization, clientId: String(decoded.clientId) };
+  return { db, decoded, accountRef, account: sections.account, customizationRef: sections.customizationRef, customization: sections.customization, clientId: user.clientId };
 }
 
 function realConversationCount(snapshot) {
@@ -31,10 +29,14 @@ function realConversationCount(snapshot) {
 }
 
 async function featureState(db, clientId, source = {}) {
+  const features = availableAccountFeatures(source);
+  if (!MESSAGES_AVAILABLE) {
+    return { ...features, conversationCount: 0, canDisableMessages: true };
+  }
   const conversationsSnapshot = await db.collection("accounts").doc(clientId).collection("leadConversations").get();
   const conversationCount = realConversationCount(conversationsSnapshot);
   return {
-    ...availableAccountFeatures(source),
+    ...features,
     conversationCount,
     canDisableMessages: conversationCount === 0,
   };
@@ -60,11 +62,14 @@ export async function POST(request) {
     const notificationValidationError = notificationPreferencesCompleted ? notificationPreferenceError(notificationInput, access.account) : "";
     if (notificationValidationError) return NextResponse.json({ error: notificationValidationError }, { status: 400 });
     const notifications = normalizeNotificationPreferences(notificationInput, access.account);
-    const conversationsSnapshot = await access.accountRef.collection("leadConversations").get();
     const current = availableAccountFeatures(access.customization);
-    const conversationCount = realConversationCount(conversationsSnapshot);
-    if (current.messagesEnabled && !messagesEnabled && conversationCount > 0) {
-      return NextResponse.json({ error: `Delete all ${conversationCount} conversation${conversationCount === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
+    let conversationCount = 0;
+    if (MESSAGES_AVAILABLE) {
+      const conversationsSnapshot = await access.accountRef.collection("leadConversations").get();
+      conversationCount = realConversationCount(conversationsSnapshot);
+      if (current.messagesEnabled && !messagesEnabled && conversationCount > 0) {
+        return NextResponse.json({ error: `Delete all ${conversationCount} conversation${conversationCount === 1 ? "" : "s"} before turning Messages off.` }, { status: 409 });
+      }
     }
 
     const update = {

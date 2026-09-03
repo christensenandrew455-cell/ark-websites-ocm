@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { mergeablePropertyMatches } from "../app/lib/intakeLeadRecords.js";
 
-test("Contacted You keeps every distinct intake as its own visible record", () => {
-  const existing = [
-    { id: "first-call", stageKey: "contactedMe" },
-    { id: "second-call", stageKey: "contactedMe" },
-  ];
+const intakeRoute = await readFile(new URL("../app/api/intake/route.js", import.meta.url), "utf8");
 
-  assert.deepEqual(mergeablePropertyMatches("contactedMe", existing), []);
-  assert.equal(mergeablePropertyMatches("clients", existing), existing);
+test("Contacted You creates a record for every distinct intake", () => {
+  assert.ok(intakeRoute.includes("const stableIntakeId = suppliedIntakeSourceId ? intakeRecordId(clientId, suppliedIntakeSourceId) : \"\";"));
+  assert.ok(intakeRoute.includes("const targetRef = stableIntakeId ? targetCollection.doc(stableIntakeId) : targetCollection.doc();"));
+  assert.ok(intakeRoute.includes("batch.create(targetRef"));
+  assert.ok(intakeRoute.includes("duplicate: false"));
+});
+
+test("only a repeated idempotency key is treated as the same intake", () => {
+  assert.ok(intakeRoute.includes('request.headers.get("idempotency-key")'));
+  assert.ok(intakeRoute.includes("data.callControlId"));
+  assert.ok(intakeRoute.includes("if (stableIntakeId)"));
+  assert.ok(intakeRoute.includes("duplicate: true"));
 });

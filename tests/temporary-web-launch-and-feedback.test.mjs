@@ -48,3 +48,18 @@ test("Give Feedback is available to signed-in clients and saved for ARK Admin", 
   assert.ok(requests.includes('["website", "feedback"].includes(item.type)'));
   assert.ok(privacy.includes("feedback topic and sentiment"));
 });
+
+test("support is available without a client-side self-help checkbox", async () => {
+  const [page, requests, help, accountSections] = await Promise.all([
+    source("app/messages/page.js"),
+    source("app/api/requests/route.js"),
+    source("app/api/help/route.js"),
+    source("app/lib/accountSections.js"),
+  ]);
+  for (const content of [page, requests, help, accountSections]) {
+    assert.equal(content.includes("selfHelpConfirmed"), false);
+    assert.equal(content.includes("helpSelfServiceLastUsedAt"), false);
+  }
+  assert.ok(page.includes("disabled={sending || hasOpenRequest}"));
+  assert.ok(help.includes('{ href: "/messages", label: "Support" }'));
+});

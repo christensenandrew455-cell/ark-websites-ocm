@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import { redeemRewardLeadCredits } from "../../../lib/rewardLeadCredits";
@@ -22,7 +22,7 @@ function redemptionError(error) {
 }
 
 export async function POST(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization.response;
   try {
     const db = getAdminDb();

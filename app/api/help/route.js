@@ -1,9 +1,8 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { requireAuthenticatedCustomer } from "../../lib/authenticatedRequest";
-import { readAccountSections } from "../../lib/accountSections";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { HELP_KNOWLEDGE, HELP_LINKS } from "../../lib/helpContent";
+import { requireUser } from "../../lib/userRequest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,14 +11,14 @@ const ALLOWED_LINKS = new Map(HELP_LINKS.map((link) => [link.href, link.label]))
 const MAX_MESSAGES = 12;
 const MAX_MESSAGE_LENGTH = 1500;
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
-const FALLBACK_ANSWER = "Sorry, I can’t find any information on that. Open Requests and submit a Request a Change explaining what you are having difficulty with. You can also open Docs and look through the full guide yourself.";
+const FALLBACK_ANSWER = "Sorry, I can’t find that in the app guide. Open Support and describe what you need, or check Docs for the full guide.";
 const FALLBACK_LINKS = [
-  { href: "/messages", label: "Requests" },
+  { href: "/messages", label: "Support" },
   { href: "/docs", label: "Docs" },
 ];
 
 async function helpAccess(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization;
   const db = getAdminDb();
   const accountRef = db.collection("accounts").doc(authorization.clientId);
@@ -27,13 +26,9 @@ async function helpAccess(request) {
   if (!accountSnapshot.exists || String(accountSnapshot.data().uid || "") !== String(authorization.decodedToken.uid || "")) {
     return { response: NextResponse.json({ error: "This account could not be found." }, { status: 404 }) };
   }
-  const sections = await readAccountSections(accountSnapshot);
   return {
     ...authorization,
-    db,
     helpRef: accountRef.collection("help").doc("current"),
-    customizationRef: sections.customizationRef,
-    customization: sections.customization,
   };
 }
 
@@ -90,17 +85,11 @@ async function saveHistory(access, incoming, answer, links) {
     ...savedMessages(incoming),
     { id: crypto.randomUUID(), role: "assistant", text: answer, links, createdAt: new Date(now).toISOString() },
   ].slice(-MAX_MESSAGES * 2);
-  const batch = access.db.batch();
-  batch.set(access.helpRef, {
+  await access.helpRef.set({
     messages,
     expiresAt: Timestamp.fromMillis(now + CHAT_TTL_MS),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  batch.set(access.customizationRef, {
-    helpSelfServiceLastUsedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
-  await batch.commit();
 }
 
 export async function GET(request) {
@@ -113,7 +102,6 @@ export async function GET(request) {
   return NextResponse.json({
     messages: expiresAt > Date.now() ? savedMessages(data.messages) : [],
     expiresAt: expiresAt > Date.now() ? expiresAt : 0,
-    selfHelpLastUsedAt: millis(access.customization.helpSelfServiceLastUsedAt),
   });
 }
 
@@ -142,9 +130,9 @@ export async function POST(request) {
     }
 
     const model = String(process.env.OPENAI_HELP_MODEL || "gpt-4o-mini").trim();
-    const systemPrompt = `You are the built-in help assistant for ARK Client Center. Your only job is to explain how this app works and direct signed-in customers to the correct page. Be friendly, direct, and brief. Use only the documentation below. Never invent features, prices, policy promises, account status, request status, or customer data. Never claim that you performed an action. You cannot edit accounts, billing, clients, requests, or policies. When an action is needed, explain the steps and provide the correct page link. Refer to links by their actual page names, such as Clients, Settings, Requests, Docs, Terms of Use, or Privacy Policy.
+    const systemPrompt = `You are the built-in help assistant for ARK Client Center. Your only job is to explain how this app works and direct signed-in customers to the correct page. Be friendly, direct, and brief. Use only the documentation below. Never invent features, prices, policy promises, account status, request status, or customer data. Never claim that you performed an action. You cannot edit accounts, billing, clients, support requests, or policies. When an action is needed, explain the steps and provide the correct page link. Refer to links by their actual page names, such as Clients, Settings, Support, Docs, Terms of Use, or Privacy Policy.
 
-If the documentation does not clearly answer the question, do not guess. Set "found" to false. The application will then tell the user to submit a Request a Change and review Docs.
+If the documentation does not clearly answer the question, do not guess. Set "found" to false. The application will then direct the user to Support and Docs.
 
 Return valid JSON only in this exact shape:
 {"found":true,"answer":"A plain-language answer under 160 words.","links":[{"label":"Exact allowed label","href":"Exact allowed href"}]}

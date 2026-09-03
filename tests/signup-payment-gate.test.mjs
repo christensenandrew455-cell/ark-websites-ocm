@@ -378,7 +378,7 @@ test("Stripe webhook verifies its signature before setup completion", async () =
   assert.equal(route.includes("JSON.parse(rawBody)"), false);
 });
 
-test("obsolete hosted payment handoff files no longer exist", async () => {
+test("obsolete hosted payment handoff and unused client modules no longer exist", async () => {
   const removed = [
     "app/api/billing/create-checkout-session/route.js",
     "app/api/signup/complete/route.js",
@@ -388,6 +388,10 @@ test("obsolete hosted payment handoff files no longer exist", async () => {
     "app/signup/return/page.js",
     "app/signup/status/page.js",
     "app/components/AppUrlHandler.js",
+    "app/components/ConfirmDialog.js",
+    "app/lib/authenticatedRequest.js",
+    "app/lib/intakeLeadRecords.js",
+    "lib/firebase.js",
   ];
   for (const path of removed) await assert.rejects(access(join(root, path)));
 });
@@ -414,7 +418,7 @@ test("retired multi-user account surface does not remain in source or documentat
 });
 
 test("verification requests, temporary signups, and unverified legacy accounts have cleanup workflows", async () => {
-  const [request, pending, cleanup, workflow, login, authProvider, shell, operations, userRequest, authenticatedRequest] = await Promise.all([
+  const [request, pending, cleanup, workflow, login, authProvider, shell, operations, userRequest] = await Promise.all([
     source("app/lib/signupVerificationRequest.js"),
     source("app/lib/pendingOwnerSignup.js"),
     source("app/lib/accountVerificationCleanup.js"),
@@ -424,7 +428,6 @@ test("verification requests, temporary signups, and unverified legacy accounts h
     source("app/components/SignupFlowShell.js"),
     source(".github/workflows/ark-operations.yml"),
     source("app/lib/userRequest.js"),
-    source("app/lib/authenticatedRequest.js"),
   ]);
   assert.ok(request.includes("purgeExpiredSignupVerificationRequests"));
   assert.ok(request.includes("deleteSignupVerificationRequest"));
@@ -443,7 +446,7 @@ test("verification requests, temporary signups, and unverified legacy accounts h
   assert.ok(authProvider.includes("Unable to clear the expired local sign-in"));
   assert.ok(shell.includes("if (requiredPath && !allowedPendingPath"));
   assert.ok(userRequest.includes("decodedToken.temporaryAccount === true"));
-  assert.ok(authenticatedRequest.includes("decodedToken.temporaryAccount === true"));
+  assert.ok(userRequest.includes("normalizeClientId(decodedToken.clientId)"));
 });
 
 test("regular accounts enter the existing number-assignment queue", async () => {
