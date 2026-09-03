@@ -58,10 +58,10 @@ test("iPhone signup and account management use Apple while other platforms keep 
     source("app/components/PaymentManagementPanel.js"),
   ]);
   assert.ok(client.includes('appleIapAvailable() ? "apple" : "stripe"'));
-  assert.ok(client.includes("Choose your monthly accepted-lead plan"));
+  assert.ok(client.includes("Choose a monthly plan"));
   assert.ok(client.includes('body: JSON.stringify({ planKey: selectedPlanKey })'));
   assert.ok(client.includes('"/api/billing/apple/transactions"'));
-  assert.ok(client.includes("Restore Purchases"));
+  assert.ok(client.includes("Restore purchases"));
   assert.ok(client.includes("automatically renews monthly"));
   assert.ok(client.includes("@stripe/react-stripe-js"));
   assert.ok(client.includes("<PaymentElement"));
@@ -69,7 +69,7 @@ test("iPhone signup and account management use Apple while other platforms keep 
   assert.ok(configuration.includes("plans: catalog.plans"));
   assert.ok(settings.includes("Manage Plan & Payment"));
   assert.ok(manager.includes("Continue with Apple"));
-  assert.ok(manager.includes("Open Apple Payment Settings"));
+  assert.ok(manager.includes("Open Apple payment settings"));
   assert.ok(manager.includes("quantity: purchaseQuantity"));
   assert.ok(manager.includes("Math.min(10, remaining)"));
 });
