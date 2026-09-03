@@ -52,24 +52,10 @@ function StatusBadge({ status }) {
 function CustomerMessages({ user, requests, onRefresh }) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [selfHelpConfirmed, setSelfHelpConfirmed] = useState(false);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const hasOpenRequest = requests.some((item) => item.status === "new" || item.status === "in-progress");
-
-  useEffect(() => {
-    let active = true;
-    user.getIdToken(true).then((token) => fetch("/api/help", {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    })).then(async (response) => {
-      const data = await response.json().catch(() => ({}));
-      const lastUsed = Number(data.selfHelpLastUsedAt || 0);
-      if (active) setSelfHelpConfirmed(response.ok && Date.now() - lastUsed < 24 * 60 * 60 * 1000);
-    }).catch(() => active && setSelfHelpConfirmed(false));
-    return () => { active = false; };
-  }, [user]);
 
   async function submit(event) {
     event.preventDefault();
@@ -79,11 +65,10 @@ function CustomerMessages({ user, requests, onRefresh }) {
     try {
       await apiFetch(user, {
         method: "POST",
-        body: JSON.stringify({ type: "help", subject, message, selfHelpConfirmed }),
+        body: JSON.stringify({ subject, message }),
       });
       setSubject("");
       setMessage("");
-      setSelfHelpConfirmed(false);
       setNotice("Request sent.");
       await onRefresh();
     } catch (submitError) {
@@ -124,11 +109,7 @@ function CustomerMessages({ user, requests, onRefresh }) {
             <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Details</span>
             <textarea required rows={6} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="What happened?" className="mt-1.5 w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-blue-700" />
           </label>
-          <label className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <input type="checkbox" checked={selfHelpConfirmed} onChange={(event) => setSelfHelpConfirmed(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-slate-950" />
-            <span className="text-xs font-bold leading-5 text-slate-700">I tried Docs or AI Chat.</span>
-          </label>
-          <button disabled={sending || !selfHelpConfirmed || hasOpenRequest} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : hasOpenRequest ? "Request open" : "Send request"}</button>
+          <button disabled={sending || hasOpenRequest} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : hasOpenRequest ? "Request open" : "Send request"}</button>
         </form>
 
         <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:mt-6 sm:rounded-3xl sm:p-7">

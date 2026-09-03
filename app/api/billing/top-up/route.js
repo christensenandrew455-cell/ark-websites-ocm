@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { grantAcceptedLeadTopUp } from "../../../lib/acceptedLeadTopUps";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import {
@@ -48,7 +48,7 @@ function publicPaymentIntent(paymentIntent, publishableKey) {
 }
 
 async function activeStripeAccount(request) {
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization;
   const db = getAdminDb();
   const accountRef = db.collection("accounts").doc(authorization.clientId);

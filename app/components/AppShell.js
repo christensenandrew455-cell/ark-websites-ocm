@@ -86,10 +86,10 @@ function PaymentNotice() {
   const stripeManagedOutsideIos = nativeIos && !appleBilling;
   const title = "You need to update your payment method.";
   const body = appleBilling
-    ? "Your receptionist, new leads, and chats are paused. Manage the subscription with Apple to restore service."
+    ? "Your receptionist and new leads are paused. Manage the subscription with Apple to restore service."
     : stripeManagedOutsideIos
-      ? "Your receptionist, new leads, and chats are paused. Billing changes for this existing account are not available inside the iPhone app."
-    : "Your receptionist, new leads, and chats are paused. Update the payment method within seven days to keep the account.";
+      ? "Your receptionist and new leads are paused. Billing changes for this existing account are not available inside the iPhone app."
+    : "Your receptionist and new leads are paused. Update the payment method within seven days to keep the account.";
   const deadlineValue = appleBilling ? "" : billingPaymentDeadline(status);
   const deadline = formatDeadline(deadlineValue);
   const overdue = true;

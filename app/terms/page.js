@@ -54,7 +54,7 @@ const sections = [
   {
     id: "support",
     title: "Help and account communication",
-    body: <><p>Signed-in owners can open Settings and select Help. Help provides Docs, an in-app AI guide, Give Feedback when available, and Send a Message for technical issues, billing questions, service problems, cancellation, deletion, or other account requests.</p><p>The AI guide can explain how to use the app and provide page links, but it cannot change account data, billing, leads, conversations, or settings.</p></>,
+    body: <><p>Signed-in owners can open Settings and select Help &amp; Account. It provides Docs, an in-app AI guide, Give Feedback when available, and Support for technical issues, billing questions, service problems, cancellation, deletion, or other account requests.</p><p>The AI guide can explain how to use the app and provide page links, but it cannot change account data, billing, leads, conversations, or settings.</p></>,
   },
   {
     id: "responsibilities",
@@ -84,7 +84,7 @@ const sections = [
   {
     id: "updates",
     title: "Updates and contact",
-    body: <><p>ARK may update these Terms as the Service, pricing, providers, or legal requirements change. The version and effective date appear at the top of this page. If a material update requires new consent, ARK may ask users to accept the revised Terms before continuing.</p><p>Owners can use <strong>Settings → Help → Send a Message</strong> for account-specific questions.</p></>,
+    body: <><p>ARK may update these Terms as the Service, pricing, providers, or legal requirements change. The version and effective date appear at the top of this page. If a material update requires new consent, ARK may ask users to accept the revised Terms before continuing.</p><p>Owners can use <strong>Settings → Help &amp; Account → Support</strong> for account-specific questions.</p></>,
   },
 ];
 

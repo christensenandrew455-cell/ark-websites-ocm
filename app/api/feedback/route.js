@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { sendAdminEvent } from "../../lib/adminEvents";
-import { requireAuthenticatedCustomer } from "../../lib/authenticatedRequest";
+import { requireUser } from "../../lib/userRequest";
 import { feedbackSentiment, feedbackTopic } from "../../lib/feedbackOptions";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { systemCollection } from "../../lib/firestoreLayout";
@@ -17,7 +17,7 @@ export async function POST(request) {
   if (!TEMPORARY_FEATURES.feedback.enabled) {
     return NextResponse.json({ error: "Feedback is not available right now." }, { status: 404 });
   }
-  const authorization = await requireAuthenticatedCustomer(request);
+  const authorization = await requireUser(request);
   if (authorization.response) return authorization.response;
 
   try {

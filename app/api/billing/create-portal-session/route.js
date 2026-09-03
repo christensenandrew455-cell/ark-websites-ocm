@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { requireAuthenticatedCustomer } from "../../../lib/authenticatedRequest";
+import { requireUser } from "../../../lib/userRequest";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { ensureStripeBillingPortalConfiguration, missingStripeResource } from "../../../lib/stripePlanBilling";
 
@@ -12,7 +12,7 @@ function text(value) {
 }
 
 export async function POST(request) {
-  const auth = await requireAuthenticatedCustomer(request);
+  const auth = await requireUser(request);
   if (auth.response) return auth.response;
 
   try {
