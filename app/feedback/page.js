@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AppSelect from "../components/AppSelect";
 import BackButton from "../components/BackButton";
 import InfoTip from "../components/InfoTip";
 import { useAuth } from "../components/AuthProvider";
@@ -52,10 +53,9 @@ export default function FeedbackPage() {
 
   return <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
     <div className="mx-auto max-w-2xl">
-      <BackButton href="/rewards" label="Back to Rewards" />
+      <BackButton href="/rewards" label="Back to Free Leads" />
       <header className="mt-5">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">ARK Client Center</p>
-        <div className="mt-1 flex items-center gap-2"><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Give feedback</h1><InfoTip label="About feedback rewards">Your first thoughtful feedback may unlock a mystery thank-you. Honest feedback counts whether it is positive or negative.</InfoTip></div>
+        <div className="flex items-center gap-2"><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Feedback</h1><InfoTip label="Feedback thank-you">Your first useful feedback may earn free leads. Positive or negative both count.</InfoTip></div>
       </header>
 
       {notice && <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800" role="status">{notice}</p>}
@@ -63,26 +63,24 @@ export default function FeedbackPage() {
 
       <form onSubmit={submit} className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-7">
         <fieldset>
-          <legend className="text-sm font-black text-slate-950">How does this feel?</legend>
+          <legend className="text-sm font-black text-slate-950">Rating</legend>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            {FEEDBACK_SENTIMENTS.map((option) => <button key={option.key} type="button" onClick={() => setSentiment(option.key)} aria-pressed={sentiment === option.key} className={`rounded-xl border px-3 py-3 text-sm font-black transition ${sentiment === option.key ? "border-blue-700 bg-blue-50 text-blue-950 ring-2 ring-blue-100" : "border-slate-200 bg-white text-slate-700"}`}>{option.label}</button>)}
+            {FEEDBACK_SENTIMENTS.map((option) => <button key={option.key} type="button" onClick={() => setSentiment(option.key)} aria-pressed={sentiment === option.key} className={`rounded-xl border px-3 py-3 text-sm font-black transition ${sentiment === option.key ? "border-blue-700 bg-blue-50 text-blue-950 ring-2 ring-blue-100" : "border-slate-200 bg-white text-slate-700"}`}>{option.shortLabel}</button>)}
           </div>
         </fieldset>
 
-        <label className="mt-5 block">
-          <span className="text-sm font-black text-slate-950">What is it about?</span>
-          <select value={topic} onChange={(event) => setTopic(event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-700">
-            {FEEDBACK_TOPICS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-          </select>
-        </label>
+        <div className="mt-5">
+          <span className="text-sm font-black text-slate-950">About</span>
+          <AppSelect className="mt-2" label="Feedback topic" value={topic} onChange={setTopic} options={FEEDBACK_TOPICS.map((option) => ({ value: option.key, label: option.label }))} />
+        </div>
 
         <label className="mt-5 block">
-          <span className="text-sm font-black text-slate-950">Your feedback</span>
-          <textarea required minLength={10} maxLength={2000} rows={7} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="What happened, what did you like, or what should change?" className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm leading-6 outline-none focus:border-blue-700" />
+          <span className="text-sm font-black text-slate-950">What happened?</span>
+          <textarea required minLength={10} maxLength={2000} rows={6} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Tell us what happened or what should change." className="mt-2 w-full rounded-xl border border-slate-300 p-3 text-sm leading-6 outline-none focus:border-blue-700" />
           <span className="mt-1 block text-right text-[10px] font-bold text-slate-400">{message.length}/2,000</span>
         </label>
 
-        <button type="submit" disabled={sending || message.trim().length < 10} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : "Send feedback"}</button>
+        <button type="submit" disabled={sending || message.trim().length < 10} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : "Send"}</button>
       </form>
     </div>
   </main>;
