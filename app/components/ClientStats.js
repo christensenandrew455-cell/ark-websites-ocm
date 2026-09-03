@@ -112,7 +112,7 @@ export default function ClientStats() {
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
             <DashboardCard value={acceptedLeads} label="Accepted Leads" description={`${newLeads} new ${newLeads === 1 ? "lead" : "leads"} waiting`} onClick={() => router.push("/leads?section=clients")} />
             <DashboardCard value={MESSAGES_AVAILABLE ? unreadMessages : ""} label="Messages" description={MESSAGES_AVAILABLE ? "Client texts" : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
-            <DashboardCard value="★" label="Rewards" description="Feedback, referrals, and free leads" onClick={() => router.push("/rewards")} />
+            <DashboardCard value="" label="Free Leads" description="Earn with feedback and referrals" onClick={() => router.push("/rewards")} />
           </div>
         </section>
       </div>
