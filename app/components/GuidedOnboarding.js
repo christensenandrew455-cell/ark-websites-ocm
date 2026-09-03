@@ -4,57 +4,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
 
-const PAGE_GUIDES = Object.freeze({
-  dashboard: {
-    eyebrow: "Welcome",
-    title: "Welcome to your ARK Client Center",
-    body: "This is your dashboard. It gives you a quick look at new leads and the main parts of your client center.",
-    points: [
-      "Open “Leads” to review people under “Contacted You” and “Clients.”",
-      "Open “Settings” to update your business information, preferences, and payment method.",
-      "Tap around and explore. The first time you open a main section, we’ll quickly explain what is inside.",
-    ],
-  },
-  settings: {
-    eyebrow: "Settings",
-    title: "This is Settings",
-    body: "Settings is where you control your business, your AI receptionist, your app, and your account.",
-    points: [
-      "Use “Business Information” to update regular scheduling, optional Emergency / ASAP service, services, and service area.",
-      "Customize the app and your client preferences.",
-      "Review your monthly accepted-lead plan, accepted leads remaining, and payment method.",
-      "Use “Docs,” “AI Chat,” or “Support,” download your client data, or delete your account.",
-    ],
-  },
-  leads: {
-    eyebrow: "Leads",
-    title: "This is your Leads page",
-    body: "Everything your AI receptionist collects is organized here.",
-    points: [
-      "“Contacted You” holds new leads. Choose “Accept” to move one to “Clients,” or choose “Decline” to remove it.",
-      "“Clients” holds accepted customers. Open one to edit details and notes, save the contact, or add the appointment to your calendar.",
-      "Delete a client you no longer need from its client details.",
-      "Your plan, remaining monthly accepted leads, and payment method are under “Settings,” then “Payment.”",
-    ],
-  },
-});
-
-function pageGuide(pathname) {
-  if (pathname === "/") return "dashboard";
-  if (pathname === "/settings" || pathname.startsWith("/settings/")) return "settings";
-  if (pathname === "/leads" || pathname.startsWith("/leads/")) return "leads";
-  return "";
-}
-
-function guideSeen(value) {
-  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  return {
-    dashboard: source.dashboard === true,
-    settings: source.settings === true,
-    leads: source.leads === true,
-  };
-}
-
 function normalizedPhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
   if (digits.length === 10) return `+1${digits}`;
@@ -71,12 +20,12 @@ function displayPhone(value) {
 function assignedNumberGuide(phone) {
   return {
     id: "number-assigned",
-    eyebrow: "Your number is ready",
-    title: "Great—you’ve been assigned a number",
-    body: `Your ARK AI receptionist number is ${displayPhone(phone)}.`,
+    eyebrow: "Number ready",
+    title: "Your ARK number is ready",
+    body: displayPhone(phone),
     points: [
-      "Replace the phone number anywhere you advertise your business with this one.",
-      "Calls to this number will go through your AI receptionist so you can reap the benefits of the app.",
+      "Use this as your business number.",
+      "ARK answers calls to it.",
     ],
     phone,
   };
@@ -91,14 +40,6 @@ export default function FirstVisitGuides() {
 
   const candidate = useMemo(() => {
     if (!user || !profile || profile.identityVerificationVerified !== true || profile.onboardingTourEligible !== true) return null;
-
-    const currentPage = pageGuide(pathname);
-    const seen = guideSeen(profile.onboardingGuideSeen);
-    const legacyStatus = String(profile.onboardingTourStatus || "").trim().toLowerCase();
-    const pageGuidesAvailable = ["pending", "started"].includes(legacyStatus);
-    if (currentPage && pageGuidesAvailable && !seen[currentPage]) {
-      return { id: currentPage, ...PAGE_GUIDES[currentPage] };
-    }
 
     if (pathname !== "/" || Number(profile.onboardingGuideVersion || 0) < 2) return null;
     const assignedPhone = normalizedPhone(profile.receptionistPhoneNormalized || profile.receptionistPhone);
@@ -130,20 +71,10 @@ export default function FirstVisitGuides() {
     dismissedPath.current = pathname;
     setActiveGuide(null);
 
-    const previousSeen = guideSeen(profile?.onboardingGuideSeen);
-    if (dismissed.id === "number-assigned") {
-      updateProfile({
-        onboardingGuideVersion: 2,
-        onboardingNumberGuidePhone: dismissed.phone,
-      });
-    } else {
-      const nextSeen = { ...previousSeen, [dismissed.id]: true };
-      updateProfile({
-        onboardingGuideVersion: 2,
-        onboardingGuideSeen: nextSeen,
-        onboardingTourStatus: Object.values(nextSeen).every(Boolean) ? "completed" : "started",
-      });
-    }
+    updateProfile({
+      onboardingGuideVersion: 2,
+      onboardingNumberGuidePhone: dismissed.phone,
+    });
 
     try {
       const token = await user.getIdToken(true);
@@ -156,9 +87,7 @@ export default function FirstVisitGuides() {
       if (!response.ok) throw new Error(data.error || "Could not save the guide progress.");
       updateProfile({
         onboardingGuideVersion: Number(data.onboardingGuideVersion || 2),
-        onboardingGuideSeen: guideSeen(data.onboardingGuideSeen),
         onboardingNumberGuidePhone: String(data.onboardingNumberGuidePhone || dismissed.phone || ""),
-        onboardingTourStatus: String(data.onboardingTourStatus || profile?.onboardingTourStatus || ""),
       });
     } catch (error) {
       console.warn("Unable to save first-visit guide progress", error);
@@ -177,7 +106,7 @@ export default function FirstVisitGuides() {
         <ul className="mt-5 space-y-3 text-sm font-semibold leading-6 text-slate-700">
           {activeGuide.points.map((point) => <li key={point} className="flex gap-3"><span aria-hidden="true" className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-700" /><span>{point}</span></li>)}
         </ul>
-        <p className="mt-6 border-t border-slate-200 pt-4 text-center text-xs font-black uppercase tracking-[0.14em] text-indigo-700">Tap anywhere to continue</p>
+        <p className="mt-6 border-t border-slate-200 pt-4 text-center text-xs font-black uppercase tracking-[0.14em] text-indigo-700">Tap to close</p>
       </section>
     </div>
   );
