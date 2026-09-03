@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import BackButton from "../components/BackButton";
+import InfoTip from "../components/InfoTip";
 import { useAuth } from "../components/AuthProvider";
 import { FEEDBACK_SENTIMENTS, FEEDBACK_TOPICS } from "../lib/feedbackOptions";
 import { TEMPORARY_FEATURES } from "../lib/temporaryFeatures";
@@ -35,8 +36,8 @@ export default function FeedbackPage() {
       setSentiment("neutral");
       setTopic("overall");
       setNotice(data.rewardGranted
-        ? `Surprise — thanks for your first feedback! ${data.rewardLeadCredits} free lead credits were added to your Rewards balance.`
-        : "Thank you. Your feedback was sent to ARK.");
+        ? `Thanks. ${data.rewardLeadCredits} free leads were added to Rewards.`
+        : "Feedback sent.");
     } catch (submitError) {
       setError(ownerFacingError(submitError));
     } finally {
@@ -54,9 +55,7 @@ export default function FeedbackPage() {
       <BackButton href="/rewards" label="Back to Rewards" />
       <header className="mt-5">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">ARK Client Center</p>
-        <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Give Feedback</h1>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Tell us honestly what is working, what is not, or what you want ARK to improve.</p>
-        <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-900">Your first thoughtful feedback may unlock a mystery thank-you.</p>
+        <div className="mt-1 flex items-center gap-2"><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Give feedback</h1><InfoTip label="About feedback rewards">Your first thoughtful feedback may unlock a mystery thank-you. Honest feedback counts whether it is positive or negative.</InfoTip></div>
       </header>
 
       {notice && <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800" role="status">{notice}</p>}
@@ -83,7 +82,7 @@ export default function FeedbackPage() {
           <span className="mt-1 block text-right text-[10px] font-bold text-slate-400">{message.length}/2,000</span>
         </label>
 
-        <button type="submit" disabled={sending || message.trim().length < 10} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : "Send Feedback"}</button>
+        <button type="submit" disabled={sending || message.trim().length < 10} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : "Send feedback"}</button>
       </form>
     </div>
   </main>;
