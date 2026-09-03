@@ -112,7 +112,7 @@ const sections = [
     title: "Leads, Contacted You, and Clients",
     summary: "The dedicated Leads page contains both new receptionist leads and accepted clients.",
     points: [
-      "Contacted You shows only the caller's name, requested service, and risk level until the lead is accepted.",
+      "Contacted You shows only the caller's name, requested service, requested window, and risk level until the lead is accepted. Actual ASAP requests also show an Emergency badge.",
       "Accept moves a person into Clients. Decline removes the lead.",
       "Risk levels are Low (0–2), Moderate (3–5), High (6–8), and Very high (9+).",
       MESSAGES_AVAILABLE
@@ -128,7 +128,7 @@ const sections = [
     title: "Settings, payment, and support",
     summary: "Settings groups business information, customization, payment, and account support.",
     points: [
-      "Business Information contains business details, services, service areas, optional estimate availability, and information the AI receptionist can use during calls.",
+      "Business Information separates regular service scheduling from optional Emergency / ASAP service, along with business details, services, service areas, and facts the AI receptionist can use during calls.",
       MESSAGES_AVAILABLE
         ? "Customization contains Dark Mode, email and text notification choices, the Messages control, AI timing, retention settings, and Download Client Data."
         : "Customization contains Dark Mode, email and text notification choices, AI timing, retention settings, and Download Client Data.",

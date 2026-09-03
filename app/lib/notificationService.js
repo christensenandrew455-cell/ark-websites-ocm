@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { isStandardRole } from "./accountRoles";
+import { isEmergencyRequest } from "./emergencyService.js";
 import { getAdminMessaging } from "./firebase-admin";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
 import { sendPreferredAccountNotification } from "./customerNotificationDelivery.js";
@@ -157,12 +158,13 @@ async function recordLeadDelivery(db, clientId, leadId, summary) {
   await batch.commit();
 }
 
-export async function sendNewLeadNotification({ db, clientId, leadId }) {
+export async function sendNewLeadNotification({ db, clientId, leadId, row = {} }) {
   const eventId = `lead-${text(leadId)}`;
+  const notification = isEmergencyRequest(row) ? PUSH_NOTIFICATION_COPY.emergencyLead : PUSH_NOTIFICATION_COPY.lead;
   const preferredPromise = preferredDelivery({
     db,
     clientId,
-    notification: PUSH_NOTIFICATION_COPY.lead,
+    notification,
     type: "new-lead",
     route: "/review-my-clients?section=contacted",
     eventId,
@@ -175,7 +177,7 @@ export async function sendNewLeadNotification({ db, clientId, leadId }) {
   }
 
   const results = await sendToDevices(devices, {
-    notification: PUSH_NOTIFICATION_COPY.lead,
+    notification,
     data: {
       type: "new-lead",
       route: "/review-my-clients?section=contacted",

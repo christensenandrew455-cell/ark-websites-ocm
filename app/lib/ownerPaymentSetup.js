@@ -151,6 +151,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
     earliestEstimateStart: text(business.earliestEstimateStart),
     latestEstimateStart: text(business.latestEstimateStart),
+    emergencyServiceEnabled: business.emergencyServiceEnabled === true,
+    emergencyService24Hours: business.emergencyService24Hours === true,
     businessType: text(business.businessType || business.businessBase),
     serviceAreas: Array.isArray(business.serviceAreas) ? business.serviceAreas : [],
     services: business.services && typeof business.services === "object" && !Array.isArray(business.services) ? business.services : {},

@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
+import { normalizeEmergencyServiceSettings } from "../../../lib/emergencyService";
 import { normalizeOwnerSignup, validateReceptionistBusinessInformation } from "../../../lib/ownerSignup";
 import { normalizeNotificationPreferences, notificationPreferenceError } from "../../../lib/notificationPreferences";
 import {
@@ -69,6 +70,7 @@ function profileFromPending(data = {}) {
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
     earliestEstimateStart: text(business.earliestEstimateStart),
     latestEstimateStart: text(business.latestEstimateStart),
+    ...normalizeEmergencyServiceSettings(business),
     businessType: text(business.businessType || business.businessBase),
     serviceAreas: Array.isArray(business.serviceAreas) ? business.serviceAreas : [],
     services: business.services && typeof business.services === "object" && !Array.isArray(business.services) ? business.services : {},
@@ -119,6 +121,8 @@ export async function POST(request) {
       estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
       earliestEstimateStart: text(business.earliestEstimateStart),
       latestEstimateStart: text(business.latestEstimateStart),
+      emergencyServiceEnabled: business.emergencyServiceEnabled === true,
+      emergencyService24Hours: business.emergencyService24Hours === true,
       serviceAreas: Array.isArray(business.serviceAreas) ? business.serviceAreas : [],
       services: business.services && typeof business.services === "object" && !Array.isArray(business.services) ? business.services : {},
       businessInformation: Array.isArray(business.businessInformation) ? business.businessInformation : [],

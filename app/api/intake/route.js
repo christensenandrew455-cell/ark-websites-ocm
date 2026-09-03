@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { readAccountSections } from "../../lib/accountSections";
+import { activeEmergencyServiceSettings, ASAP_REQUEST_TIME, normalizeRequestUrgency } from "../../lib/emergencyService";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { sendAdminEvent } from "../../lib/adminEvents";
 import { stripLeadContactFields } from "../../lib/leadContactFields";
@@ -109,7 +110,7 @@ function intakeRecordId(clientId, sourceId) {
     .slice(0, 48);
 }
 
-function buildRow(input, source) {
+function buildRow(input, source, emergencyServiceEnabled = false) {
   const data = stripLeadContactFields(input || {});
   const { FirstName, LastName, Name } = nameFields(data);
   const Phone = text(data.Phone || data.phone || data.phoneNumber || data.contact || data.From || data.Caller);
@@ -122,9 +123,11 @@ function buildRow(input, source) {
   const PreferredDay = text(
     data.PreferredDay || data.preferredDay || data.requestedDate || data.estimateDay || data.PreferredDate || data.preferredDate || data.EstimateDate || data.estimateDate
   );
-  const PreferredTimeWindow = text(
+  const submittedTimeWindow = text(
     data.PreferredTimeWindow || data.preferredTimeWindow || data.requestedTimeWindow || data.PreferredTime || data.preferredTime || data.requestedTime || data.EstimateTime || data.estimateTime
   );
+  const RequestUrgency = emergencyServiceEnabled ? normalizeRequestUrgency(data) : "";
+  const PreferredTimeWindow = RequestUrgency ? submittedTimeWindow || ASAP_REQUEST_TIME : submittedTimeWindow;
   const riskAssessment = calculateLeadRisk(data);
   return {
     FirstName,
@@ -143,6 +146,7 @@ function buildRow(input, source) {
     PreferredDay,
     PreferredTimeWindow,
     PreferredTime: PreferredTimeWindow,
+    ...(RequestUrgency ? { RequestUrgency } : {}),
     RequestSummary,
     ClientNotes,
     Notes: ClientNotes,
@@ -219,7 +223,8 @@ export async function POST(request) {
     const source = text(connection.sourceLabel)
       ? `${text(connection.sourceLabel)}${channel ? ` (${channel})` : ""}`
       : channel || "website";
-    const row = buildRow(data, source);
+    const emergencyService = activeEmergencyServiceSettings(account);
+    const row = buildRow(data, source, emergencyService.emergencyServiceEnabled);
     const timeZone = validTimeZone(text(account.timeZone));
 
     if (!row.Name && !row.Phone && !row.Notes) {
@@ -316,7 +321,7 @@ export async function POST(request) {
         clientId,
         businessName: text(account.businessName || clientId),
         summary: `New ${source || "website"} lead received`,
-        metadata: { leadId: targetRef.id, source, repeatClient: Jobs.length > 1 },
+        metadata: { leadId: targetRef.id, source, repeatClient: Jobs.length > 1, emergencyRequest: Boolean(row.RequestUrgency) },
       });
     }
 

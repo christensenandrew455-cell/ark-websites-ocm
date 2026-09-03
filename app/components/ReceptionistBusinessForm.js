@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { BUSINESS_TYPES, canonicalBusinessType, serviceSuggestionsForBusinessType } from "../lib/businessCatalog";
+import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, regularServiceScheduleConfigured } from "../lib/emergencyService";
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
@@ -416,6 +417,7 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
   const editableProfile = editableProfileWithoutRemovedFields(profile);
   const explicitHour = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 12 ? Number(value) : "";
   const explicitPeriod = (value) => PERIODS.includes(value) ? value : "";
+  const emergencyService = normalizeEmergencyServiceSettings(profile);
   return {
     ...editableProfile,
     serviceAreas: normalizeServiceAreas(profile.serviceAreas),
@@ -428,6 +430,7 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
     estimateStartPeriod: explicitPeriod(profile.estimateStartPeriod || estimateStart.period),
     estimateEndHour: explicitHour(profile.estimateEndHour || estimateEnd.hour),
     estimateEndPeriod: explicitPeriod(profile.estimateEndPeriod || estimateEnd.period),
+    ...emergencyService,
   };
 }
 
@@ -435,6 +438,7 @@ export function receptionistRequestPayload(profile = {}) {
   const editableProfile = editableProfileWithoutRemovedFields(profile);
   const estimateWeekdays = Array.isArray(profile.estimateWeekdays) ? profile.estimateWeekdays : [];
   const businessInformation = normalizeBusinessInformation(profile.businessInformation);
+  const emergencyService = normalizeEmergencyServiceSettings(profile);
   return {
     ...editableProfile,
     serviceAreas: normalizeServiceAreas(profile.serviceAreas),
@@ -443,23 +447,23 @@ export function receptionistRequestPayload(profile = {}) {
     estimateWeekdays,
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
     latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
+    ...emergencyService,
   };
 }
 
 export default function ReceptionistBusinessForm({ profile, onChange, onboardingMode = false }) {
   if (!profile) return null;
+  const regularScheduleConfigured = regularServiceScheduleConfigured(profile);
   function update(field, value, options = {}) { onChange({ ...profile, [field]: value }, options); }
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
   }
-  const acceptsAllHours = profile.estimateStartHour === 12
-    && profile.estimateStartPeriod === "AM"
-    && profile.estimateEndHour === 11
-    && profile.estimateEndPeriod === "PM";
-  function updateAllHours(enabled) {
-    onChange(enabled
-      ? { ...profile, estimateStartHour: 12, estimateStartPeriod: "AM", estimateEndHour: 11, estimateEndPeriod: "PM" }
-      : { ...profile, estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
+  function updateEmergencyService(enabled) {
+    onChange({
+      ...profile,
+      emergencyServiceEnabled: enabled,
+      emergencyService24Hours: enabled ? profile.emergencyService24Hours === true : false,
+    }, { saveImmediately: true });
   }
   const identitySection = !onboardingMode && (
     <section>
@@ -482,18 +486,33 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       </div>
     </section>
     <section>
-      <h3 className="text-lg font-black">Estimate availability</h3>
+      <h3 className="text-lg font-black">Regular service scheduling</h3>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Normal projects and non-urgent requests can always be scheduled. Add the usual service window so the receptionist can guide callers without promising a confirmed appointment.</p>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Time zone" explanation="Choose the time zone where the business is located so appointment times are interpreted correctly.">
           <InAppSelect ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
         </Field>
-        <DayCheckboxes label="Estimate days" explanation="Choose the days customers may request estimates, or leave them unchecked if there is no set schedule." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
-        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:col-span-2">
-          <input type="checkbox" checked={acceptsAllHours} onChange={(event) => updateAllHours(event.target.checked)} />
-          <span><strong className="block text-sm text-slate-900">24 hours</strong><span className="block text-xs font-semibold text-slate-600">Accept estimate requests all day on the selected days.</span></span>
+        <DayCheckboxes label="Regular service days" explanation="Choose the days callers may request normal projects and scheduled service. Leave these blank only when the business has no fixed schedule." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
+        <HourPeriodPicker label="Earliest regular time" explanation="Choose the earliest time for a normal scheduled request, or leave it blank when there is no fixed schedule." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />
+        <HourPeriodPicker label="Latest regular time" explanation="Choose the latest time for a normal scheduled request. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(hour) => update("estimateEndHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateEndPeriod", period, { saveImmediately: true })} />
+      </div>
+    </section>
+    <section>
+      <h3 className="text-lg font-black">Emergency / ASAP service</h3>
+      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Turn this on only if the business accepts urgent requests for help as soon as possible. Regular scheduling stays available either way.</p>
+      <div className="mt-4 space-y-3">
+        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <input type="checkbox" className="mt-0.5" checked={profile.emergencyServiceEnabled === true} onChange={(event) => updateEmergencyService(event.target.checked)} />
+          <span><strong className="block text-sm text-slate-900">Accept emergency / ASAP requests</strong><span className="mt-0.5 block text-xs font-semibold leading-5 text-slate-600">The receptionist will ask callers whether they need help as soon as possible or want to schedule a time.</span></span>
         </label>
-        {!acceptsAllHours && <HourPeriodPicker label="Earliest estimate time" explanation="Choose the earliest estimate-request time, or leave it blank when no schedule is set." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />}
-        {!acceptsAllHours && <HourPeriodPicker label="Latest estimate time" explanation="Choose the latest estimate-request time. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(hour) => update("estimateEndHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateEndPeriod", period, { saveImmediately: true })} />}
+        {profile.emergencyServiceEnabled === true ? <>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-950"><span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Receptionist question</span>“{ASAP_OR_SCHEDULED_QUESTION}”</div>
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+            <input type="checkbox" className="mt-0.5" checked={profile.emergencyService24Hours === true} onChange={(event) => update("emergencyService24Hours", event.target.checked, { saveImmediately: true })} />
+            <span><strong className="block text-sm text-slate-900">24/7 emergency availability</strong><span className="mt-0.5 block text-xs font-semibold leading-5 text-slate-600">When off, ASAP requests follow the regular service schedule above. The receptionist marks urgency but never promises dispatch or an arrival time.</span></span>
+          </label>
+          {profile.emergencyService24Hours !== true && !regularScheduleConfigured ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">Add regular service days and both regular times above, or turn on 24/7 emergency availability.</p> : null}
+        </> : null}
       </div>
     </section>
     <section>

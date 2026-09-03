@@ -2,6 +2,7 @@ import { createPublicKey, verify } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
 import { acceptedLeadPlanStatus } from "../../../lib/acceptedLeadPlanBilling";
+import { activeEmergencyServiceSettings, receptionistRequestRouting } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
@@ -114,6 +115,7 @@ function buildProfile(clientId, account) {
   const earliestEstimateStart = text(account.earliestEstimateStart);
   const latestEstimateStart = text(account.latestEstimateStart);
   const estimateSchedulingConfigured = Boolean(savedEstimateWeekdays.length && earliestEstimateStart && latestEstimateStart);
+  const emergencyService = activeEmergencyServiceSettings(account);
 
   return {
     clientId,
@@ -125,6 +127,8 @@ function buildProfile(clientId, account) {
     estimateWeekdays: estimateSchedulingConfigured ? savedEstimateWeekdays : [],
     earliestEstimateStart: estimateSchedulingConfigured ? earliestEstimateStart : "",
     latestEstimateStart: estimateSchedulingConfigured ? latestEstimateStart : "",
+    ...(emergencyService.emergencyServiceEnabled ? emergencyService : {}),
+    serviceRequestRouting: receptionistRequestRouting(account),
     businessType,
     businessBase,
     serviceAreas: normalizedServiceAreas,

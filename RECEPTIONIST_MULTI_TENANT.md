@@ -26,6 +26,17 @@ Railway must post each completed call once to the returned `callCompletionUrl` w
 
 The runtime response includes the selected accepted-lead plan for context. Runtime lookups do not block calls based on lead usage; the Client Center enforces the accepted-lead limit atomically when the owner taps **Accept**.
 
-The business profile includes the business name, owner, phone, email, hours, time zone, estimate availability, service areas, services, and business facts. Service areas use one of two valid shapes: multiple states with no counties, or exactly one state with any number of counties. Firestore keeps the backward-compatible flat `serviceAreas` array, while the receptionist runtime also supplies `serviceAreaMode`, `serviceAreaStates`, and `serviceAreaCounties` so county restrictions are evaluated within their selected state. AI runtime controls do not come from ARK Client Center.
+The business profile includes the business name, owner, phone, email, time zone, regular service availability, optional emergency availability, service areas, services, and business facts. Service areas use one of two valid shapes: multiple states with no counties, or exactly one state with any number of counties. Firestore keeps the backward-compatible flat `serviceAreas` array, while the receptionist runtime also supplies `serviceAreaMode`, `serviceAreaStates`, and `serviceAreaCounties` so county restrictions are evaluated within their selected state. AI runtime controls do not come from ARK Client Center.
+
+## Scheduled and emergency request contract
+
+Every runtime profile contains `serviceRequestRouting`. Railway must follow its `mode` exactly:
+
+- `scheduled-only`: offer normal scheduling and collect the caller's preferred day and time window. `timingQuestion` is empty, the `emergency` branch is omitted, and the receptionist must not ask whether the call is an emergency.
+- `asap-or-scheduled`: ask the exact non-leading `timingQuestion` returned by ARK. A caller who wants a normal project or a later visit stays on the scheduled path. A caller who requests help as soon as possible uses the returned `emergency` branch.
+
+For the emergency branch, Railway must submit `requestUrgency: "emergency"` and use `requestedTimeWindow: "As soon as possible"`. It must not promise dispatch, arrival, or a confirmed appointment. `emergency.availability` is `24/7` when the owner enabled around-the-clock emergency coverage and `regular-service-hours` otherwise. Regular scheduling remains available in both modes.
+
+ARK accepts the emergency marker only when that business has emergency service enabled. Accepted markers appear as an **Emergency · ASAP** indicator in Contacted You, remain attached if the owner accepts the lead into Clients, and use the urgent new-lead notification copy. Normal leads receive no emergency marker or emergency UI.
 
 The model, voice, turn timing, output limits, context limits, response ceiling, call-duration ceiling, and provider credentials remain on Railway. ARK Client Center is the business-information control panel, connection router, intake destination, and Firestore-backed lead store.

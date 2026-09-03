@@ -20,7 +20,7 @@ const PAGE_GUIDES = Object.freeze({
     title: "This is Settings",
     body: "Settings is where you control your business, your AI receptionist, your app, and your account.",
     points: [
-      "Use “Business Information” to update what your AI receptionist knows about your services, hours, and service area.",
+      "Use “Business Information” to update regular scheduling, optional Emergency / ASAP service, services, and service area.",
       "Customize the app and your client preferences.",
       "Review your monthly accepted-lead plan, accepted leads remaining, and payment method.",
       "Use “Docs,” “AI Chat,” or “Support,” download your client data, or delete your account.",

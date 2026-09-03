@@ -1,10 +1,11 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
 import { canonicalBusinessType, isSupportedBusinessType } from "./businessCatalog.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
+import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings } from "./emergencyService.js";
 import { normalizeServiceAreas, serviceAreaValidationError } from "./serviceAreas.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
-export const OWNER_SIGNUP_VERSION = 4;
+export const OWNER_SIGNUP_VERSION = 5;
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const PERIODS = new Set(["AM", "PM"]);
@@ -82,6 +83,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const estimateStartComplete = estimateStartHour && estimateStartPeriod;
   const estimateEndComplete = estimateEndHour && estimateEndPeriod;
   const businessInformation = normalizeBusinessInformation(receptionist.businessInformation);
+  const emergencyService = normalizeEmergencyServiceSettings(receptionist);
 
   return {
     version: OWNER_SIGNUP_VERSION,
@@ -109,6 +111,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       estimateEndPeriod,
       earliestEstimateStart: estimateStartComplete ? timeSummary(estimateStartHour, estimateStartPeriod) : "",
       latestEstimateStart: estimateEndComplete ? timeSummary(estimateEndHour, estimateEndPeriod) : "",
+      ...emergencyService,
       businessType: canonicalBusinessType(receptionist.businessType || receptionist.businessBase) || cleanText(receptionist.businessType || receptionist.businessBase, 120),
       serviceAreas: normalizeServiceAreas(textList(receptionist.serviceAreas)),
       services: servicesObject(receptionist.services),
@@ -148,9 +151,11 @@ export function validateReceptionistBusinessInformation(value = {}) {
   if (!receptionist.businessType) return "Enter the type of business.";
   if (!isSupportedBusinessType(receptionist.businessType)) return "Choose a business type from the list.";
   const hasEstimateSchedule = Boolean(receptionist.estimateWeekdays.length || receptionist.estimateStartHour || receptionist.estimateStartPeriod || receptionist.estimateEndHour || receptionist.estimateEndPeriod);
-  if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one estimate day or leave the estimate schedule blank.";
-  if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest estimate time or leave the estimate schedule blank.";
-  if (hasEstimateSchedule && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Complete the latest estimate time or leave the estimate schedule blank.";
+  if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one regular service day or leave the regular schedule blank.";
+  if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest regular time or leave the regular schedule blank.";
+  if (hasEstimateSchedule && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Complete the latest regular time or leave the regular schedule blank.";
+  const emergencyAvailabilityError = emergencyServiceAvailabilityError(receptionist);
+  if (emergencyAvailabilityError) return emergencyAvailabilityError;
   if (serviceAreaError) return serviceAreaError;
   if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";

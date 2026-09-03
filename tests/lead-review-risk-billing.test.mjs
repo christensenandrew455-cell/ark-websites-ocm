@@ -153,6 +153,21 @@ test("legacy leads are not described as low risk when no check was supplied", ()
   assert.equal(summary.riskScore, 0);
 });
 
+test("Contacted You exposes an explicit emergency marker without exposing private lead details", () => {
+  const summary = pendingLeadSummary("emergency-lead", {
+    Name: "Jordan Lee",
+    Job: "Burst pipe repair",
+    Phone: "+19785550123",
+    Address: "1 Main Street",
+    requestUrgency: "asap",
+    requestedTimeWindow: "As soon as possible",
+  });
+  assert.equal(summary.RequestUrgency, "emergency");
+  assert.equal(summary.PreferredTimeWindow, "As soon as possible");
+  assert.equal(Object.hasOwn(summary, "Phone"), false);
+  assert.equal(Object.hasOwn(summary, "Address"), false);
+});
+
 test("only accepted leads consume the plan and repeated acceptance is idempotent", async () => {
   const [intake, acceptance, completedCalls, component, leadRoute] = await Promise.all([
     source("app/api/intake/route.js"),

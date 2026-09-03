@@ -51,6 +51,8 @@ const RETIRED_PENDING_SIGNUP_FIELDS = [
   "estimateEndPeriod",
   "earliestEstimateStart",
   "latestEstimateStart",
+  "emergencyServiceEnabled",
+  "emergencyService24Hours",
   "businessBase",
   "businessType",
   "serviceAreas",
