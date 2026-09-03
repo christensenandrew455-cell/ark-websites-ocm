@@ -8,7 +8,7 @@ import GlobalConfirmDialog from "./components/GlobalConfirmDialog";
 
 export const metadata = {
   title: "ARK Client Center",
-  description: "AI receptionist activity, lead notifications, and client management for ARK customers.",
+  description: "Calls, leads, and clients for ARK businesses.",
   applicationName: "ARK Client Center",
   appleWebApp: {
     capable: true,
