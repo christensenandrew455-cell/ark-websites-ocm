@@ -25,7 +25,8 @@ test("launch switch disables messaging across UI and APIs", async () => {
   assert.ok(switches.includes('UPCOMING_FEATURE_LABEL = "Not available until next month"'));
   assert.ok(dashboard.includes('value={MESSAGES_AVAILABLE ? unreadMessages : ""}'));
   assert.ok(dashboard.includes("disabled={!MESSAGES_AVAILABLE}"));
-  assert.ok(settings.includes("MESSAGES_AVAILABLE && <label"));
+  assert.ok(settings.includes("MESSAGES_AVAILABLE && <section"));
+  assert.ok(settings.includes('id="messages-enabled"'));
   assert.equal(signup.includes("MESSAGES_AVAILABLE"), false);
   assert.ok(messagingApi.includes("if (!MESSAGES_AVAILABLE)"));
   assert.ok(accountFeatures.includes("if (!MESSAGES_AVAILABLE)"));
