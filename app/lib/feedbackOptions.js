@@ -1,7 +1,7 @@
 export const FEEDBACK_SENTIMENTS = Object.freeze([
-  Object.freeze({ key: "positive", label: "Going well", shortLabel: "Good" }),
-  Object.freeze({ key: "neutral", label: "An idea or mixed", shortLabel: "Neutral" }),
   Object.freeze({ key: "negative", label: "Needs work", shortLabel: "Bad" }),
+  Object.freeze({ key: "neutral", label: "An idea or mixed", shortLabel: "Okay" }),
+  Object.freeze({ key: "positive", label: "Going well", shortLabel: "Good" }),
 ]);
 
 export const FEEDBACK_TOPICS = Object.freeze([
