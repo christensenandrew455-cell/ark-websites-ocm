@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
 import HelpCenter from "./HelpCenter";
+import InfoTip from "./InfoTip";
 import MessageRetentionSettings from "./MessageRetentionSettings";
 import PaymentManagementPanel from "./PaymentManagementPanel";
 import { formatUsd } from "./SubscriptionPlanCard";
@@ -20,16 +21,16 @@ import { formatNotificationPhone, NOTIFICATION_SMS_FROM_DISPLAY } from "../lib/n
 
 const DEFAULT_SETTINGS = { billingProvider: "stripe", paymentMethodLabel: "", stripeCustomerId: "" };
 const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
-const ACCOUNT_RESOURCE_CLASS = "min-h-28 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
+const ACCOUNT_RESOURCE_CLASS = "min-h-20 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
 const SETTINGS_BLOCKS = [
-  { key: "business", title: "Business Information", description: "What your receptionist knows" },
-  { key: "customization", title: "Customization", description: "Appearance, notifications, and preferences" },
-  { key: "payment", title: "Payment", description: "Monthly accepted leads, plan, and payment method" },
-  { key: "account", title: "Help & Account", description: "Help and account controls" },
+  { key: "business", title: "Business information" },
+  { key: "customization", title: "App and alerts" },
+  { key: "payment", title: "Plan and payment" },
+  { key: "account", title: "Help & Account" },
 ];
 
-function SettingsBlock({ title, description, onClick }) {
-  return <button type="button" onClick={onClick} className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-28 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2><p className="mt-1.5 max-w-2xl text-xs font-semibold leading-5 text-slate-600 sm:text-sm sm:leading-6">{description}</p></button>;
+function SettingsBlock({ title, onClick }) {
+  return <button type="button" onClick={onClick} className="min-h-20 w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition active:scale-[0.99] sm:min-h-24 sm:rounded-3xl sm:px-6 sm:py-5"><h2 className="text-lg font-black tracking-tight text-slate-950 sm:text-2xl">{title}</h2></button>;
 }
 function SectionHeader({ title, onBack }) {
   return <div className="mb-4 sm:mb-6"><BackButton onClick={onBack} /><h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950 sm:text-4xl">{title}</h2></div>;
@@ -40,8 +41,8 @@ function SectionPanel({ children }) {
 function FieldLabel({ children }) {
   return <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{children}</span>;
 }
-function AccountResourceLink({ href, title, description }) {
-  return <Link href={href} className={ACCOUNT_RESOURCE_CLASS}><p className="text-lg font-black text-slate-950">{title}</p><p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{description}</p></Link>;
+function AccountResourceLink({ href, title }) {
+  return <Link href={href} className={ACCOUNT_RESOURCE_CLASS}><p className="text-lg font-black text-slate-950">{title}</p></Link>;
 }
 function featureValues(data = {}) {
   const notificationChannels = Array.isArray(data.notificationChannels)
@@ -414,21 +415,20 @@ export default function SettingsPanel() {
   }
 
   function businessSection() {
-    return <><SectionHeader title="Business Information" onBack={backToSettings} /><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={changeReceptionist} /></div>}</SectionPanel></>;
+    return <><SectionHeader title="Business information" onBack={backToSettings} /><SectionPanel>{isLoading || !receptionist ? <p className="rounded-xl border border-slate-200 p-5 text-center text-sm text-slate-500">Loading business information…</p> : <div className="settings-business-form"><ReceptionistBusinessForm profile={receptionist} onChange={changeReceptionist} /></div>}</SectionPanel></>;
   }
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;
     const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
-    return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
+    return <><SectionHeader title="App and alerts" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
       <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
       <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
-        <FieldLabel>Notification delivery</FieldLabel>
-        <p className="text-xs font-semibold leading-5 text-slate-600">Choose where ARK sends new-lead and important account alerts. Keep at least one method selected.</p>
+        <div className="flex items-center gap-2"><FieldLabel>Notification delivery</FieldLabel><InfoTip label="About notifications">ARK sends new-lead and important account alerts. Keep at least one method selected.</InfoTip></div>
         <div className="mt-4 space-y-3">
           <label className={controlClass}><span className="min-w-0"><span className="block text-sm font-black text-slate-950">Email</span><span className="mt-1 block break-words text-xs font-semibold text-slate-600">{features.notificationEmail || profile?.accountEmail}</span></span><input type="checkbox" checked={features.notificationChannels.includes("email")} onChange={(event) => updateNotificationChannel("email", event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-950" /></label>
           <label className={controlClass}><span className="min-w-0"><span className="block text-sm font-black text-slate-950">Text message</span><span className="mt-1 block text-xs font-semibold text-slate-600">{formatNotificationPhone(features.notificationPhone || profile?.accountPhone)} · sent from {NOTIFICATION_SMS_FROM_DISPLAY}</span></span><input type="checkbox" checked={features.notificationChannels.includes("sms")} onChange={(event) => updateNotificationChannel("sms", event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-950" /></label>
         </div>
-        <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">By selecting text message, you consent to automated transactional alerts from ARK at your verified account number. Frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.</p>
+        {features.notificationChannels.includes("sms") && <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">Text alerts are automated. Frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.</p>}
       </section>
       {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
       <MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
@@ -459,9 +459,9 @@ export default function SettingsPanel() {
     const acceptedLeadTopUps = Math.max(0, Number(planSummary?.acceptedLeadTopUps || 0));
     const acceptedLeadPeriodLimit = Math.max(monthlyAcceptedLeadLimit, Number(planSummary?.acceptedLeadPeriodLimit || monthlyAcceptedLeadLimit));
     const remainingProgress = Math.max(0, Math.min(100, acceptedLeadsRemaining / acceptedLeadPeriodLimit * 100));
-    return <><SectionHeader title="Payment" onBack={backToSettings} /><SectionPanel>
+    return <><SectionHeader title="Plan and payment" onBack={backToSettings} /><SectionPanel>
       <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
-        <div className="flex items-center justify-between gap-3"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Accepted leads left this month</p><button type="button" onClick={refreshPlanSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
+        <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Accepted leads left this month</p><InfoTip label="What counts as an accepted lead">One request counts once when you tap Accept. Calls, declines, edits, and deletions do not count.</InfoTip></div><button type="button" onClick={refreshPlanSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
         <p className="mt-3 text-4xl font-black">{planSummary ? acceptedLeadsRemaining : "—"} <span className="text-base text-blue-100">of {acceptedLeadPeriodLimit} remaining</span></p>
         <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Monthly accepted leads remaining" aria-valuemin={0} aria-valuemax={acceptedLeadPeriodLimit} aria-valuenow={Math.min(acceptedLeadPeriodLimit, acceptedLeadsRemaining)}><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${remainingProgress}%` }} /></div>
         <p className="mt-2 text-xs font-bold text-blue-100">{acceptedLeadsUsed} accepted lead{acceptedLeadsUsed === 1 ? "" : "s"} used · Resets {planSummary?.periodEndAt ? new Date(planSummary.periodEndAt).toLocaleDateString() : "each billing month"}</p>
@@ -469,12 +469,12 @@ export default function SettingsPanel() {
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} Plan</p><p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)} per month · {monthlyAcceptedLeadLimit} accepted leads</p>{acceptedLeadTopUps > 0 && <p className="mt-2 text-xs font-black text-blue-800">+{acceptedLeadTopUps} additional lead{acceptedLeadTopUps === 1 ? "" : "s"} for this billing month</p>}<p className="mt-2 text-xs font-black text-violet-800">{Math.max(0, Number(planSummary?.rewardLeadCreditBalance || 0))} free lead credit{Number(planSummary?.rewardLeadCreditBalance || 0) === 1 ? "" : "s"} banked</p></div>
       {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts {planSummary.pendingBillingPlanStartsAt ? new Date(planSummary.pendingBillingPlanStartsAt).toLocaleDateString() : "after payment is confirmed"}.</p>}
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      <button type="button" onClick={() => openPaymentManager("plan")} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage Plan & Payment</button>
+      <button type="button" onClick={() => openPaymentManager("plan")} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage plan and payment</button>
     </SectionPanel></>;
   }
   function accountSection() {
     const deletedRecords = MESSAGES_AVAILABLE ? "leads, clients, and conversations" : "leads and clients";
-    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and Resources</h3><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><AccountResourceLink href="/docs" title="Docs" description="App guide" /><HelpCenter className={ACCOUNT_RESOURCE_CLASS} />{TEMPORARY_FEATURES.feedback.enabled && <AccountResourceLink href="/feedback" title="Give Feedback" description="Tell ARK what is good or needs work" />}<AccountResourceLink href="/messages" title="Support" description="Account or technical help" /><AccountResourceLink href="/terms" title="Terms of Use" description="Service agreement" /><AccountResourceLink href="/privacy" title="Privacy Policy" description="How your data is handled" /></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete Account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">{appleBilling ? `Cancel the subscription in Apple first. Deleting ARK cannot cancel billing controlled by Apple. This permanently deletes the owner account, ${deletedRecords}.` : `This cancels the Stripe subscription and permanently deletes the owner account, ${deletedRecords}.`} Download needed data first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting Account…" : "Permanently Delete Account"}</button></section></SectionPanel></>;
+    return <><SectionHeader title="Help & Account" onBack={backToSettings} /><SectionPanel><section><h3 className="text-lg font-black">Help and resources</h3><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"><AccountResourceLink href="/docs" title="Docs" description="App guide" /><HelpCenter className={ACCOUNT_RESOURCE_CLASS} />{TEMPORARY_FEATURES.feedback.enabled && <AccountResourceLink href="/feedback" title="Give feedback" description="Share an idea or problem" />}<AccountResourceLink href="/messages" title="Support" description="Account or technical help" /><AccountResourceLink href="/terms" title="Terms of Use" description="Service agreement" /><AccountResourceLink href="/privacy" title="Privacy Policy" description="How ARK handles data" /></div></section><section className="mt-7 border-t border-red-200 pt-7"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Danger zone</p><h3 className="mt-1 text-lg font-black text-red-950">Delete account</h3><p className="mt-2 text-xs leading-5 text-red-800 sm:text-sm">{appleBilling ? `Cancel with Apple first. This permanently deletes the account, ${deletedRecords}.` : `This cancels the subscription and permanently deletes the account, ${deletedRecords}.`} Download anything you need first.</p><label className="mt-4 block"><span className="text-xs font-black text-red-900">Type {profile?.businessName} to confirm</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-2 w-full rounded-xl border border-red-300 bg-white px-4 py-3 outline-none focus:border-red-700" /></label><button type="button" disabled={isDeleting || deleteConfirmation.trim().toLowerCase() !== String(profile?.businessName || "").trim().toLowerCase()} onClick={deleteAccount} className="mt-4 w-full rounded-xl bg-red-700 px-5 py-3 text-sm font-black text-white disabled:opacity-40 sm:w-auto">{isDeleting ? "Deleting…" : "Delete account"}</button></section></SectionPanel></>;
   }
 
   return (
