@@ -119,7 +119,7 @@ export async function POST(request) {
     const hasValidPhone = Boolean(contactPhone) && validPhone(contactPhone);
 
     if (!categoryLabel || !name || (!hasValidEmail && !hasValidPhone) || message.length < 10 || !consent) {
-      return json({ error: "Choose a topic and complete your name, email or phone, description, and contact permission." }, { status: 400 });
+      return json({ error: "Complete the required fields and add an email or phone." }, { status: 400 });
     }
     if (category === "messaging" && !validPhone(senderNumber)) {
       return json({ error: "Enter the business number that sent the message." }, { status: 400 });
@@ -188,6 +188,6 @@ export async function POST(request) {
   } catch (error) {
     if (uploadedFile) await uploadedFile.delete({ ignoreNotFound: true }).catch(() => null);
     console.error("Unable to submit public support request", error);
-    return json({ error: "Support could not be contacted right now. Please try again." }, { status: 500 });
+    return json({ error: "Couldn’t send the request. Try again." }, { status: 500 });
   }
 }
