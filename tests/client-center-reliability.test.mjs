@@ -71,7 +71,7 @@ test("unreleased messaging is described only on the disabled dashboard button", 
   assert.equal(messagingApi.includes("UPCOMING_FEATURE_LABEL"), false);
 });
 
-test("first-visit guides are contextual and their progress is persisted in Firestore", async () => {
+test("first-visit help appears only when the receptionist number is assigned", async () => {
   const [tutorial, completion, profile, tourRoute, accountSections] = await Promise.all([
     source("app/components/GuidedOnboarding.js"),
     source("app/lib/ownerPaymentSetup.js"),
@@ -81,17 +81,15 @@ test("first-visit guides are contextual and their progress is persisted in Fires
   ]);
   assert.equal(tutorial.includes("localStorage"), false);
   assert.equal(tutorial.includes("sessionStorage"), false);
-  assert.ok(tutorial.includes('["pending", "started"].includes(legacyStatus)'));
   assert.ok(tutorial.includes('body: JSON.stringify({ guide: dismissed.id })'));
   assert.ok(tutorial.includes("profile.onboardingTourEligible !== true"));
-  assert.ok(tutorial.includes("Welcome to your ARK Client Center"));
-  assert.ok(tutorial.includes("“Contacted You” holds new leads"));
-  assert.ok(tutorial.includes("“Settings,” then “Payment.”"));
-  assert.equal(tutorial.includes("Messages is not available"), false);
-  assert.ok(tutorial.includes("Review your monthly accepted-lead plan, accepted leads remaining, and payment method."));
-  assert.ok(tutorial.includes("Tap anywhere to continue"));
+  assert.equal(tutorial.includes("Welcome to your ARK Client Center"), false);
+  assert.equal(tutorial.includes("This is Settings"), false);
+  assert.equal(tutorial.includes("This is your Leads page"), false);
   assert.ok(tutorial.includes('id: "number-assigned"'));
-  assert.ok(tutorial.includes("reap the benefits of the app"));
+  assert.ok(tutorial.includes("Your ARK number is ready"));
+  assert.ok(tutorial.includes("ARK answers calls to it."));
+  assert.ok(tutorial.includes("Tap to close"));
   for (const retiredCopy of ["Quick tour", "Open Settings", "Open Dashboard", "Finding this item…", ">Skip<", ">Next<"]) assert.equal(tutorial.includes(retiredCopy), false);
   assert.equal(tutorial.includes("Tap the highlighted item."), false);
   assert.equal(tutorial.includes("MutationObserver"), false);
@@ -137,10 +135,10 @@ test("payment keeps other plans behind the two-part manager", async () => {
   assert.ok(settings.includes('openPaymentManager("plan")'));
   assert.ok(settings.includes('router.replace(`/settings?section=payment&manage=${encodeURIComponent(requestedPanel)}`'));
   assert.ok(settings.includes('planSummary?.planName || "Starter"} Plan'));
-  assert.ok(manager.includes('title="Select a Plan"'));
-  assert.ok(manager.includes('title="Edit Card Information"'));
+  assert.ok(manager.includes('title="Plan and extra leads"'));
+  assert.ok(manager.includes('title="Payment card"'));
   assert.ok(manager.includes("Selected — not changed yet"));
-  assert.ok(manager.includes("Review Plan Change"));
+  assert.ok(manager.includes("Review change"));
   assert.equal(settings.includes("Accepted lead"), true);
   assert.equal(settings.includes("Referral discount"), false);
   const summaryRoute = await source("app/api/billing/plan-summary/route.js");
