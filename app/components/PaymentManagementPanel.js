@@ -385,6 +385,25 @@ export default function PaymentManagementPanel({
     }
   }
 
+  async function applyRewardCredits() {
+    if (busy || !planSummary?.limitReached || Number(planSummary?.rewardLeadCreditBalance || 0) < 5) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const data = await authenticatedJson(user, "/api/billing/reward-credits", {
+        method: "POST",
+        body: JSON.stringify({ requestId: requestId() }),
+      });
+      setNotice(`${data.acceptedLeadsAdded || 5} free lead credits are ready to use this billing month.`);
+      await onChanged();
+    } catch (rewardError) {
+      setError(String(rewardError?.message || "Free lead credits could not be applied."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <>
     <section className="rounded-2xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm sm:rounded-3xl sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-blue-900 p-4 text-white">
@@ -410,6 +429,10 @@ export default function PaymentManagementPanel({
           {selectedPlan && <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">{selectedPlan.name} is selected, but nothing changes until you review and confirm.</p><button type="button" disabled={busy} onClick={() => setConfirmationOpen(true)} className="mt-3 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">Review Plan Change</button></div>}
           <div id="accepted-lead-top-up" className="mt-6 border-t border-slate-200 pt-6">
             <h3 className="text-lg font-black text-slate-950">Add leads for this billing month</h3>
+            <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">Banked free lead credits</p><p className="mt-1 text-2xl font-black text-violet-950">{Number(planSummary?.rewardLeadCreditBalance || 0).toLocaleString("en-US")}</p></div><button type="button" disabled={busy || !planSummary?.limitReached || Number(planSummary?.rewardLeadCreditBalance || 0) < 5} onClick={applyRewardCredits} className="rounded-xl bg-violet-800 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Use 5 free leads</button></div>
+              <p className="mt-3 text-xs font-semibold leading-5 text-violet-900">Your bank stays saved. You can apply five only after this plan’s included lead allowance is exhausted.{!planSummary?.limitReached ? " Keep them for later—your current allowance still has leads available." : Number(planSummary?.rewardLeadCreditBalance || 0) < 5 ? " Earn at least five credits to use this option." : " Five credits are available now."}</p>
+            </div>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Additional accepted leads cost exactly $1 each. There is no volume discount, and unused top-up leads expire when your allowance resets on {renewalDate}.{appleBilling ? " Apple limits each confirmation to 10 leads, so a larger amount opens more than one Apple confirmation." : ""}</p>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"><label className="flex-1"><span className="mb-2 block text-xs font-black text-slate-700">Number of additional leads</span><input inputMode="numeric" type="number" min="1" step="1" value={topUpQuantity} disabled={stripeInsideIos || busy} onChange={(event) => setTopUpQuantity(event.target.value)} placeholder="20" className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black outline-none focus:border-blue-700" /></label><button type="button" disabled={!validTopUp || stripeInsideIos || busy} onClick={buyTopUp} className="h-12 rounded-xl bg-slate-950 px-5 text-sm font-black text-white disabled:opacity-40">{busy ? "Confirming…" : validTopUp ? `Buy ${topUpNumber} for ${formatUsd(topUpNumber * 100)}` : "Enter an amount"}</button></div>
           </div>

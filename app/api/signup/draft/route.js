@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import { ACCOUNT_ROLES, isStandardRole } from "../../../lib/accountRoles";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { normalizeOwnerSignup, validateReceptionistBusinessInformation } from "../../../lib/ownerSignup";
+import { normalizeNotificationPreferences, notificationPreferenceError } from "../../../lib/notificationPreferences";
 import {
   deletePendingOwnerSignup,
   pendingOwnerSignupAccount,
   pendingOwnerSignupBusiness,
   pendingOwnerSignupExpired,
   pendingOwnerSignupLegal,
+  pendingOwnerSignupPersonalization,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
   retiredPendingOwnerSignupFieldDeletes,
@@ -43,7 +45,7 @@ async function authorize(request) {
       await deletePendingOwnerSignup({ db, auth, uid: decoded.uid, pending });
       return { response: expiredResponse() };
     }
-    if (!pendingOwnerSignupVerified(pending.data) || !["pending_business_setup", "pending_payment"].includes(text(pending.data.stage))) {
+    if (!pendingOwnerSignupVerified(pending.data) || !["pending_business_setup", "pending_personalization", "pending_payment"].includes(text(pending.data.stage))) {
       return { response: NextResponse.json({ error: "Verify your email and phone before entering business information.", nextPath: "/signup/verify" }, { status: 403 }) };
     }
     return { auth, db, decoded, pending };
@@ -57,7 +59,7 @@ function profileFromPending(data = {}) {
   const account = pendingOwnerSignupAccount(data);
   const business = pendingOwnerSignupBusiness(data);
   return {
-    configured: text(data.stage) === "pending_payment",
+    configured: text(data.stage) !== "pending_business_setup",
     clientId: text(data.clientId),
     businessName: text(account.businessName || business.businessName),
     ownerName: text(account.ownerName || business.ownerName),
@@ -78,7 +80,11 @@ function profileFromPending(data = {}) {
 export async function GET(request) {
   const access = await authorize(request);
   if (access.response) return access.response;
-  return NextResponse.json({ profile: profileFromPending(access.pending.data) });
+  const account = pendingOwnerSignupAccount(access.pending.data);
+  return NextResponse.json({
+    profile: profileFromPending(access.pending.data),
+    personalization: normalizeNotificationPreferences(pendingOwnerSignupPersonalization(access.pending.data), account),
+  });
 }
 
 export async function POST(request) {
@@ -119,12 +125,62 @@ export async function POST(request) {
       extraInformation: text(business.extraInformation),
     };
     await access.pending.ref.update({
-      stage: "pending_payment",
+      stage: "pending_personalization",
       account,
       legal: pendingOwnerSignupLegal(access.pending.data),
       business: businessUpdate,
-      payment: { status: "ready" },
+      personalization: pendingOwnerSignupPersonalization(access.pending.data),
+      payment: { status: "not_started" },
       ...retiredPendingOwnerSignupFieldDeletes(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const userRecord = await access.auth.getUser(access.decoded.uid);
+    const claims = {
+      ...(userRecord.customClaims || {}),
+      role: ACCOUNT_ROLES.STANDARD,
+      accountStatus: "pending_personalization",
+      temporaryAccount: true,
+    };
+    await access.auth.setCustomUserClaims(access.decoded.uid, claims);
+
+    return NextResponse.json({
+      profile: { ...profileFromPending({ ...access.pending.data, stage: "pending_personalization", account, business: businessUpdate }), configured: true },
+      nextPath: "/setup/personalization",
+      continuationToken: await access.auth.createCustomToken(access.decoded.uid, claims),
+    });
+  } catch (error) {
+    console.error("Unable to save temporary business setup", error);
+    return NextResponse.json({ error: "Unable to save business information right now." }, { status: 500 });
+  }
+}
+
+export async function PUT(request) {
+  const access = await authorize(request);
+  if (access.response) return access.response;
+  if (!["pending_personalization", "pending_payment"].includes(text(access.pending.data.stage))) {
+    return NextResponse.json({ error: "Finish business information before choosing notifications.", nextPath: "/setup/business" }, { status: 409 });
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const account = pendingOwnerSignupAccount(access.pending.data);
+    const validationError = notificationPreferenceError(body, account);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+    const preferences = normalizeNotificationPreferences({ ...body, notificationPreferencesCompleted: true }, account);
+    const previous = pendingOwnerSignupPersonalization(access.pending.data);
+    const personalization = {
+      ...preferences,
+      notificationPreferencesCompleted: true,
+      notificationSmsConsentAt: preferences.notificationChannels.includes("sms")
+        ? previous.notificationSmsConsentAt || FieldValue.serverTimestamp()
+        : null,
+      notificationPreferencesUpdatedAt: FieldValue.serverTimestamp(),
+    };
+    await access.pending.ref.update({
+      stage: "pending_payment",
+      personalization,
+      payment: { ...(access.pending.data.payment || {}), status: "ready" },
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -136,15 +192,14 @@ export async function POST(request) {
       temporaryAccount: true,
     };
     await access.auth.setCustomUserClaims(access.decoded.uid, claims);
-
     return NextResponse.json({
-      profile: { ...profileFromPending({ ...access.pending.data, stage: "pending_payment", account, business: businessUpdate }), configured: true },
+      personalization: preferences,
       nextPath: "/signup/payment",
       continuationToken: await access.auth.createCustomToken(access.decoded.uid, claims),
     });
   } catch (error) {
-    console.error("Unable to save temporary business setup", error);
-    return NextResponse.json({ error: "Unable to save business information right now." }, { status: 500 });
+    console.error("Unable to save signup personalization", error);
+    return NextResponse.json({ error: "Unable to save notification preferences right now." }, { status: 500 });
   }
 }
 

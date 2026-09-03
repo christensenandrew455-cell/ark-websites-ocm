@@ -10,29 +10,36 @@ import { normalizeServiceAreas, serviceAreaFields, serviceAreaValidationError } 
 const root = fileURLToPath(new URL("../", import.meta.url));
 function source(path) { return readFile(new URL(`../${path}`, import.meta.url), "utf8"); }
 
-test("onboarding follows main information, verification, business, then payment", async () => {
-  const [signup, business, payment, verification, shell] = await Promise.all([
+test("onboarding follows main information, verification, business, personalization, then payment", async () => {
+  const [signup, business, personalization, payment, verification, shell] = await Promise.all([
     source("app/signup/page.js"),
     source("app/setup/business/page.js"),
+    source("app/setup/personalization/page.js"),
     source("app/signup/payment/PaymentSetupClient.js"),
     source("app/components/AccountVerificationGate.js"),
     source("app/components/SignupFlowShell.js"),
   ]);
-  assert.ok(signup.includes("Step 1 of 4 · Main information"));
+  assert.ok(signup.includes("Step 1 of 5 · Main information"));
   assert.ok(signup.includes('router.replace(data.nextPath || "/signup/verify")'));
-  assert.ok(verification.includes("Step 2 of 4 · Verify"));
+  assert.ok(verification.includes("Step 2 of 5 · Verify"));
   assert.ok(verification.includes('if (status.accountStatus === "pending_business_setup") return "/setup/business"'));
   assert.ok(verification.includes("window.location.replace(destination)"));
   assert.equal(verification.includes(">Continue</button>"), false);
-  assert.ok(business.includes("Step 3 of 4 · Business information"));
+  assert.ok(business.includes("Step 3 of 5 · Business information"));
   assert.ok(business.includes("window.location.replace(destination)"));
   assert.equal(business.includes("refreshProfile"), false);
-  assert.ok(payment.includes("Step 4 of 4 · Payment"));
+  assert.ok(personalization.includes("Step 4 of 5 · Personalization"));
+  assert.ok(personalization.includes("Email notifications"));
+  assert.ok(personalization.includes("Text message notifications"));
+  assert.ok(personalization.includes("NOTIFICATION_SMS_FROM_DISPLAY"));
+  assert.ok(personalization.includes('method: "PUT"'));
+  assert.ok(payment.includes("Step 5 of 5 · Plan &amp; payment"));
   assert.ok(payment.includes("Back to sign in"));
   assert.ok(payment.includes("Now, go sign in to your ARK Client Center."));
   assert.equal(payment.includes("window.setTimeout(() => window.location.replace(data.nextPath"), false);
   assert.ok(shell.includes('status === "pending_verification"'));
   assert.ok(shell.includes('status === "pending_business_setup"'));
+  assert.ok(shell.includes('status === "pending_personalization"'));
   assert.ok(shell.includes('status === "pending_payment"'));
 });
 
@@ -202,20 +209,24 @@ test("pending signup uses one canonical field for each value", async () => {
   assert.ok(paymentClient.includes("onDeclined={cancelDeclinedSignup}"));
 });
 
-test("business setup is saved into the temporary record before payment", async () => {
+test("business setup is saved before personalization and personalization is saved before payment", async () => {
   const [page, route] = await Promise.all([source("app/setup/business/page.js"), source("app/api/signup/draft/route.js")]);
   assert.ok(page.includes('fetch("/api/signup/draft"'));
   assert.equal(page.includes("sessionStorage"), false);
   assert.ok(route.includes("readPendingOwnerSignup"));
   assert.ok(route.includes("pendingOwnerSignupVerified"));
   assert.ok(route.includes("validateReceptionistBusinessInformation"));
-  assert.ok(route.includes('stage: "pending_payment"'));
+  assert.ok(route.includes('stage: "pending_personalization"'));
   assert.ok(route.includes("business: businessUpdate"));
   assert.equal(route.includes("businessSetupComplete: true"), false);
-  assert.ok(route.includes('accountStatus: "pending_payment"'));
+  assert.ok(route.includes('accountStatus: "pending_personalization"'));
   assert.ok(route.includes("createCustomToken"));
   assert.ok(page.includes("signInWithCustomToken"));
-  assert.ok(page.includes('data.nextPath === "/signup/payment"'));
+  assert.ok(page.includes('data.nextPath === "/setup/personalization"'));
+  assert.ok(route.includes("export async function PUT"));
+  assert.ok(route.includes("notificationPreferenceError"));
+  assert.ok(route.includes('stage: "pending_payment"'));
+  assert.ok(route.includes('nextPath: "/signup/payment"'));
   assert.ok(route.includes("export async function DELETE"));
 });
 
@@ -228,7 +239,7 @@ test("business-name login resumes verification or temporary setup while regular 
   assert.ok(route.includes('temporaryAccount: false'));
   assert.ok(route.includes("readPendingOwnerSignup({ db, clientId, allowExpired: true })"));
   assert.ok(route.includes('temporary: true'));
-  assert.ok(route.includes('["pending_business_setup", "pending_payment"].includes(stage)'));
+  assert.ok(route.includes('["pending_business_setup", "pending_personalization", "pending_payment"].includes(stage)'));
   for (const retiredStatus of ["pending_admin_approval", "approved_pending_payment"]) {
     assert.equal(route.includes(retiredStatus), false);
   }

@@ -15,9 +15,13 @@ import {
   pendingOwnerSignupBusiness,
   pendingOwnerSignupExpired,
   pendingOwnerSignupLegal,
+  pendingOwnerSignupPersonalization,
+  pendingOwnerSignupReferral,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
+import { normalizeNotificationPreferences } from "./notificationPreferences.js";
+import { completeReferralReward } from "./rewardLeadCredits.js";
 import { ensureCustomerBillingSubscription } from "./stripePlanBilling";
 import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
 
@@ -50,6 +54,11 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   if (!existingAccounts.empty) {
     const existingAccount = existingAccounts.docs[0].data();
     if (isStandardRole(existingAccount.role) && existingAccount.paymentSetupStatus === "complete" && text(existingAccount.stripeSetupIntentId) === safeSetupIntentId) {
+      if (text(existingAccount.referredByClientId)) {
+        await completeReferralReward({ db, referredClientId: existingAccount.clientId, referralCode: existingAccount.referredByClientId }).catch((error) => {
+          console.error("Unable to retry the signup referral reward", error);
+        });
+      }
       return completedResult(existingAccount, safeSetupIntentId);
     }
     throw new Error("PAYMENT_SETUP_FORBIDDEN");
@@ -65,6 +74,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const temporaryAccount = pendingOwnerSignupAccount(temporary);
   const business = pendingOwnerSignupBusiness(temporary);
   const legal = pendingOwnerSignupLegal(temporary);
+  const personalization = normalizeNotificationPreferences(pendingOwnerSignupPersonalization(temporary), temporaryAccount);
+  const referralCode = text(pendingOwnerSignupReferral(temporary).code);
   const payment = temporary.payment || {};
   const planKey = normalizeBillingPlanKey(payment.billingPlanKey);
   const plan = billingPlan(planKey);
@@ -183,6 +194,10 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     callsRemainingThisPeriod: plan.monthlyCalls,
     callLimitReached: false,
     billingPastDue: false,
+    rewardLeadCreditBalance: 0,
+    rewardLeadCreditsEarnedTotal: 0,
+    rewardLeadCreditsRedeemedTotal: 0,
+    ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
     receptionistPhone: "",
@@ -198,6 +213,11 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     clientRetentionDays: 0,
     messageRetentionDays: 0,
     clientStatusNoticeEnabled: true,
+    notificationChannels: personalization.notificationChannels,
+    notificationEmail: personalization.notificationEmail,
+    notificationPhone: personalization.notificationPhone,
+    notificationPreferencesCompleted: personalization.notificationPreferencesCompleted === true,
+    notificationSmsConsentAt: pendingOwnerSignupPersonalization(temporary).notificationSmsConsentAt || null,
     onboardingTourEligible: true,
     onboardingTourStatus: "pending",
     onboardingGuideVersion: 2,
@@ -226,6 +246,12 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   batch.create(customizationRef, customization);
   batch.delete(pending.ref);
   await batch.commit();
+
+  if (referralCode) {
+    await completeReferralReward({ db, referredClientId: clientId, referralCode }).catch((error) => {
+      console.error("Unable to apply the signup referral reward", error);
+    });
+  }
 
   const userRecord = await auth.getUser(safeUid);
   await auth.setCustomUserClaims(safeUid, {

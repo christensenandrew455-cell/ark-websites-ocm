@@ -68,8 +68,8 @@ export default function BusinessSetupPage() {
         body: JSON.stringify(receptionistRequestPayload(receptionist)),
       });
       const data = await readApiJson(response, "Unable to save business information.");
-      const destination = data.nextPath === "/signup/payment" ? data.nextPath : "";
-      if (!destination || !data.continuationToken) throw new Error("Unable to open payment setup.");
+      const destination = data.nextPath === "/setup/personalization" ? data.nextPath : "";
+      if (!destination || !data.continuationToken) throw new Error("Unable to open personalization.");
       try {
         await signInWithCustomToken(auth, data.continuationToken);
       } catch {
@@ -94,7 +94,7 @@ export default function BusinessSetupPage() {
     <main className="ark-auth-page min-h-screen px-5 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-10">
       <section className="ark-auth-card mx-auto w-full max-w-4xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
-        <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 3 of 4 · Business information</p>
+        <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 3 of 5 · Business information</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Set up your business</h1>
 
         <form onSubmit={continueSignup} className="mt-7">

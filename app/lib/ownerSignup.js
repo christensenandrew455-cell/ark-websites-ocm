@@ -89,6 +89,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
     ownerName,
     accountEmail,
     accountPhone,
+    referralCode: normalizeClientId(value.referralCode),
     ...(includePassword ? { password: String(value.password || "").slice(0, 256) } : {}),
     acceptedTerms: value.acceptedTerms === true,
     acceptedPrivacy: value.acceptedPrivacy === true,

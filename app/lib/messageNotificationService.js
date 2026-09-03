@@ -4,6 +4,7 @@ import { readAccountSections } from "./accountSections";
 import { getAdminMessaging } from "./firebase-admin";
 import { MESSAGES_AVAILABLE } from "./launchFeatures";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
+import { sendPreferredAccountNotification } from "./customerNotificationDelivery.js";
 
 function text(value) { return String(value || "").trim(); }
 function invalidToken(error) {
@@ -21,11 +22,21 @@ export async function sendInboundMessageNotification({ db, clientId, conversatio
     .map((document) => ({ ref: document.ref, ...document.data() }))
     .filter((device) => device.notificationsEnabled !== false && text(device.token))
     .filter((device) => isStandardRole(text(device.role)));
-  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
-
   const collectionKey = text(conversation.collectionKey) === "clients" ? "clients" : "contactedMe";
   const leadId = text(conversation.leadId);
   const route = `/lead-messages?lead=${encodeURIComponent(leadId)}&collection=${collectionKey}`;
+  const preferredPromise = sendPreferredAccountNotification({
+    db,
+    clientId,
+    notification: PUSH_NOTIFICATION_COPY.message,
+    type: "lead-message",
+    route,
+    eventId: `message-${text(conversationId)}`,
+  }).catch((error) => {
+    console.error("Unable to send selected message notification channels", error);
+    return { attempted: 0, sent: 0, failed: 0, channels: [] };
+  });
+  if (!devices.length) return { attempted: 0, sent: 0, failed: 0, preferred: await preferredPromise };
   const messaging = getAdminMessaging();
   const response = await messaging.sendEachForMulticast({
     tokens: devices.map((device) => device.token),
@@ -49,5 +60,5 @@ export async function sendInboundMessageNotification({ db, clientId, conversatio
     }
   });
   await batch.commit();
-  return { attempted: devices.length, sent, failed };
+  return { attempted: devices.length, sent, failed, preferred: await preferredPromise };
 }

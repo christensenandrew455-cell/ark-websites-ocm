@@ -133,9 +133,11 @@ export function publicAccountVerificationStatus({ account = {}, challenge = {}, 
     ? "/signup/verify"
     : accountStatus === "pending_business_setup"
       ? "/setup/business"
-      : accountStatus === "pending_payment"
-        ? "/signup/payment"
-        : "/");
+      : accountStatus === "pending_personalization"
+        ? "/setup/personalization"
+        : accountStatus === "pending_payment"
+          ? "/signup/payment"
+          : "/");
   return {
     required: !identityVerified && (account.identityVerificationRequired === true || accountStatus === "pending_verification"),
     // Matching both challenge codes is only the first half of verification. The

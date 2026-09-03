@@ -6,6 +6,7 @@ import { feedbackSentiment, feedbackTopic } from "../../lib/feedbackOptions";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { systemCollection } from "../../lib/firestoreLayout";
 import { checkRequestRateLimit, rateLimitResponse } from "../../lib/requestRateLimit";
+import { feedbackRewardUpdate } from "../../lib/rewardLeadCredits";
 import { TEMPORARY_FEATURES } from "../../lib/temporaryFeatures";
 import { trimmedText } from "../../lib/valueUtils";
 
@@ -39,36 +40,52 @@ export async function POST(request) {
     });
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit);
 
-    const accountSnapshot = await db.collection("accounts").doc(authorization.clientId).get();
-    if (!accountSnapshot.exists) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
-    const account = accountSnapshot.data();
-    const businessName = trimmedText(account.businessName || authorization.clientId);
+    const accountRef = db.collection("accounts").doc(authorization.clientId);
     const ref = systemCollection(db, "supportRequests").doc();
-    await ref.set({
-      clientId: authorization.clientId,
-      businessName,
-      ownerName: trimmedText(account.ownerName || authorization.decodedToken.name),
-      accountEmail: trimmedText(account.accountEmail || authorization.decodedToken.email).toLowerCase(),
-      contactPhone: trimmedText(account.accountPhone),
-      type: "feedback",
-      source: "client-center-feedback",
-      category: topic.key,
-      categoryLabel: topic.label,
-      sentiment: sentiment.key,
-      sentimentLabel: sentiment.label,
-      subject: `${sentiment.shortLabel} feedback · ${topic.label}`,
-      message,
-      status: "new",
-      priority: "normal",
-      createdByUid: authorization.decodedToken.uid,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
+    const saved = await db.runTransaction(async (transaction) => {
+      const accountSnapshot = await transaction.get(accountRef);
+      if (!accountSnapshot.exists) throw new Error("FEEDBACK_ACCOUNT_NOT_FOUND");
+      const account = accountSnapshot.data();
+      const reward = feedbackRewardUpdate(account);
+      const businessName = trimmedText(account.businessName || authorization.clientId);
+      const timestamp = FieldValue.serverTimestamp();
+      transaction.create(ref, {
+        clientId: authorization.clientId,
+        businessName,
+        ownerName: trimmedText(account.ownerName || authorization.decodedToken.name),
+        accountEmail: trimmedText(account.accountEmail || authorization.decodedToken.email).toLowerCase(),
+        contactPhone: trimmedText(account.accountPhone),
+        type: "feedback",
+        source: "client-center-feedback",
+        category: topic.key,
+        categoryLabel: topic.label,
+        sentiment: sentiment.key,
+        sentimentLabel: sentiment.label,
+        subject: `${sentiment.shortLabel} feedback · ${topic.label}`,
+        message,
+        status: "new",
+        priority: "normal",
+        createdByUid: authorization.decodedToken.uid,
+        rewardLeadCreditsGranted: reward.amount,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      if (reward.granted) {
+        transaction.set(accountRef, {
+          rewardLeadCreditBalance: reward.balance,
+          rewardLeadCreditsEarnedTotal: FieldValue.increment(reward.amount),
+          feedbackRewardGranted: true,
+          feedbackRewardGrantedAt: timestamp,
+          updatedAt: timestamp,
+        }, { merge: true });
+      }
+      return { account, businessName, reward };
     });
     await sendAdminEvent({
       id: `feedback-${ref.id}`,
       type: "feedback.created",
       clientId: authorization.clientId,
-      businessName,
+      businessName: saved.businessName,
       summary: `${sentiment.shortLabel} feedback about ${topic.label}`,
       metadata: {
         requestId: ref.id,
@@ -76,8 +93,17 @@ export async function POST(request) {
         topic: topic.key,
       },
     });
-    return NextResponse.json({ ok: true, id: ref.id }, { status: 201 });
+    return NextResponse.json({
+      ok: true,
+      id: ref.id,
+      rewardGranted: saved.reward.granted,
+      rewardLeadCredits: saved.reward.amount,
+      rewardLeadCreditBalance: saved.reward.balance,
+    }, { status: 201 });
   } catch (error) {
+    if (String(error?.message || "") === "FEEDBACK_ACCOUNT_NOT_FOUND") {
+      return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
+    }
     console.error("Unable to save customer feedback", error);
     return NextResponse.json({ error: "Feedback could not be sent. Try again." }, { status: 500 });
   }

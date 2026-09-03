@@ -42,7 +42,7 @@ async function resolveBusiness(db, identifier) {
       });
       return null;
     }
-    if (!["pending_business_setup", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
+    if (!["pending_business_setup", "pending_personalization", "pending_payment"].includes(stage) || normalizeClientId(data.clientId) !== clientId) return null;
     return {
       clientId,
       uid: String(data.uid || "").trim(),
@@ -162,7 +162,7 @@ export async function POST(request) {
         });
         return NextResponse.json({ error: "This temporary signup expired. Start signup again." }, { status: 403 });
       }
-      if (String(pending.uid || "") === userRecord.uid && ["pending_business_setup", "pending_payment"].includes(String(pending.stage || ""))) {
+      if (String(pending.uid || "") === userRecord.uid && ["pending_business_setup", "pending_personalization", "pending_payment"].includes(String(pending.stage || ""))) {
         const verified = pendingOwnerSignupVerified(pending);
         const claims = {
           role: ACCOUNT_ROLES.STANDARD,

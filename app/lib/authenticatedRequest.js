@@ -24,7 +24,7 @@ export async function requireAuthenticatedCustomer(request) {
   try {
     const decodedToken = await getAdminAuth().verifyIdToken(token);
     const clientId = cleanClientId(decodedToken.clientId);
-    if (decodedToken.temporaryAccount === true || ["pending_verification", "pending_business_setup", "pending_payment"].includes(String(decodedToken.accountStatus || ""))) {
+    if (decodedToken.temporaryAccount === true || ["pending_verification", "pending_business_setup", "pending_personalization", "pending_payment"].includes(String(decodedToken.accountStatus || ""))) {
       return {
         response: NextResponse.json({ error: "Complete signup before using the client center." }, { status: 403 }),
       };

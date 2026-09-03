@@ -16,13 +16,14 @@ import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError, publicFormError } from "../lib/userFacingError";
 import { appleIapAvailable } from "../lib/appleIapClient";
 import { TEMPORARY_FEATURES } from "../lib/temporaryFeatures";
+import { formatNotificationPhone, NOTIFICATION_SMS_FROM_DISPLAY } from "../lib/notificationPreferences";
 
 const DEFAULT_SETTINGS = { billingProvider: "stripe", paymentMethodLabel: "", stripeCustomerId: "" };
 const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
 const ACCOUNT_RESOURCE_CLASS = "min-h-28 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business Information", description: "What your receptionist knows" },
-  { key: "customization", title: "Customization", description: "Appearance and preferences" },
+  { key: "customization", title: "Customization", description: "Appearance, notifications, and preferences" },
   { key: "payment", title: "Payment", description: "Monthly accepted leads, plan, and payment method" },
   { key: "account", title: "Help & Account", description: "Help and account controls" },
 ];
@@ -43,7 +44,16 @@ function AccountResourceLink({ href, title, description }) {
   return <Link href={href} className={ACCOUNT_RESOURCE_CLASS}><p className="text-lg font-black text-slate-950">{title}</p><p className="mt-2 text-xs font-semibold leading-5 text-slate-600">{description}</p></Link>;
 }
 function featureValues(data = {}) {
-  return { messagesEnabled: data.messagesEnabled === true };
+  const notificationChannels = Array.isArray(data.notificationChannels)
+    ? ["email", "sms"].filter((channel) => data.notificationChannels.includes(channel))
+    : [];
+  return {
+    messagesEnabled: data.messagesEnabled === true,
+    notificationChannels,
+    notificationEmail: String(data.notificationEmail || data.accountEmail || "").trim().toLowerCase(),
+    notificationPhone: String(data.notificationPhone || data.accountPhone || "").trim(),
+    notificationPreferencesCompleted: data.notificationPreferencesCompleted === true,
+  };
 }
 function profileKey(value) { return JSON.stringify(receptionistRequestPayload(value || {})); }
 function customizationKey(features, darkMode) { return JSON.stringify({ ...featureValues(features), darkMode: darkMode === true }); }
@@ -317,6 +327,24 @@ export default function SettingsPanel() {
     document.documentElement.classList.toggle("ark-dark", checked);
     queueCustomizationSave({ features: featuresRef.current, darkMode: checked });
   }
+  function updateNotificationChannel(channel, checked) {
+    setError("");
+    const selected = new Set(featuresRef.current.notificationChannels || []);
+    if (checked) selected.add(channel);
+    else selected.delete(channel);
+    if (!selected.size) {
+      setError("Keep at least one notification method selected.");
+      return;
+    }
+    const nextFeatures = {
+      ...featuresRef.current,
+      notificationChannels: ["email", "sms"].filter((item) => selected.has(item)),
+      notificationPreferencesCompleted: true,
+    };
+    featuresRef.current = nextFeatures;
+    setFeatures(nextFeatures);
+    queueCustomizationSave({ features: nextFeatures, darkMode: darkModeRef.current });
+  }
   async function saveCustomization() {
     if (!user) return true;
     setError("");
@@ -393,6 +421,15 @@ export default function SettingsPanel() {
     const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
     return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
       <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
+      <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+        <FieldLabel>Notification delivery</FieldLabel>
+        <p className="text-xs font-semibold leading-5 text-slate-600">Choose where ARK sends new-lead and important account alerts. Keep at least one method selected.</p>
+        <div className="mt-4 space-y-3">
+          <label className={controlClass}><span className="min-w-0"><span className="block text-sm font-black text-slate-950">Email</span><span className="mt-1 block break-words text-xs font-semibold text-slate-600">{features.notificationEmail || profile?.accountEmail}</span></span><input type="checkbox" checked={features.notificationChannels.includes("email")} onChange={(event) => updateNotificationChannel("email", event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-950" /></label>
+          <label className={controlClass}><span className="min-w-0"><span className="block text-sm font-black text-slate-950">Text message</span><span className="mt-1 block text-xs font-semibold text-slate-600">{formatNotificationPhone(features.notificationPhone || profile?.accountPhone)} · sent from {NOTIFICATION_SMS_FROM_DISPLAY}</span></span><input type="checkbox" checked={features.notificationChannels.includes("sms")} onChange={(event) => updateNotificationChannel("sms", event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-950" /></label>
+        </div>
+        <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">By selecting text message, you consent to automated transactional alerts from ARK at your verified account number. Frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.</p>
+      </section>
       {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
       <MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
       <ClientDeclineNoticeSettings />
@@ -429,7 +466,7 @@ export default function SettingsPanel() {
         <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Monthly accepted leads remaining" aria-valuemin={0} aria-valuemax={acceptedLeadPeriodLimit} aria-valuenow={Math.min(acceptedLeadPeriodLimit, acceptedLeadsRemaining)}><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${remainingProgress}%` }} /></div>
         <p className="mt-2 text-xs font-bold text-blue-100">{acceptedLeadsUsed} accepted lead{acceptedLeadsUsed === 1 ? "" : "s"} used · Resets {planSummary?.periodEndAt ? new Date(planSummary.periodEndAt).toLocaleDateString() : "each billing month"}</p>
       </div>
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} Plan</p><p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)} per month · {monthlyAcceptedLeadLimit} accepted leads</p>{acceptedLeadTopUps > 0 && <p className="mt-2 text-xs font-black text-blue-800">+{acceptedLeadTopUps} top-up lead{acceptedLeadTopUps === 1 ? "" : "s"} for this billing month</p>}</div>
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} Plan</p><p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)} per month · {monthlyAcceptedLeadLimit} accepted leads</p>{acceptedLeadTopUps > 0 && <p className="mt-2 text-xs font-black text-blue-800">+{acceptedLeadTopUps} additional lead{acceptedLeadTopUps === 1 ? "" : "s"} for this billing month</p>}<p className="mt-2 text-xs font-black text-violet-800">{Math.max(0, Number(planSummary?.rewardLeadCreditBalance || 0))} free lead credit{Number(planSummary?.rewardLeadCreditBalance || 0) === 1 ? "" : "s"} banked</p></div>
       {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts {planSummary.pendingBillingPlanStartsAt ? new Date(planSummary.pendingBillingPlanStartsAt).toLocaleDateString() : "after payment is confirmed"}.</p>}
       <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
       <button type="button" onClick={() => openPaymentManager("plan")} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage Plan & Payment</button>

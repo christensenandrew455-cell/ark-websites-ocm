@@ -8,6 +8,7 @@ import {
   pendingOwnerSignupAccount,
   pendingOwnerSignupExpired,
   pendingOwnerSignupLegal,
+  pendingOwnerSignupPersonalization,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "../../../lib/pendingOwnerSignup";
@@ -74,6 +75,11 @@ function ownerProfile({ account, decodedToken, clientId }) {
     onboardingGuideSeen: onboardingGuideSeen(account.onboardingGuideSeen),
     onboardingNumberGuidePhone: text(account.onboardingNumberGuidePhone),
     darkMode: account.darkMode === true,
+    notificationChannels: Array.isArray(account.notificationChannels) ? account.notificationChannels : [],
+    notificationEmail: text(account.notificationEmail || account.accountEmail).toLowerCase(),
+    notificationPhone: text(account.notificationPhone || account.accountPhone),
+    notificationPreferencesCompleted: account.notificationPreferencesCompleted === true,
+    rewardLeadCreditBalance: Math.max(0, Math.floor(Number(account.rewardLeadCreditBalance || 0))),
     nativeSetupPromptStatus: text(account.nativeSetupPromptStatus),
     termsAccepted: account.termsAccepted === true || decodedToken.termsAccepted === true,
     privacyAccepted: account.privacyAccepted === true || decodedToken.privacyAccepted === true,
@@ -87,6 +93,10 @@ function temporaryOwnerProfile({ pending, decodedToken, clientId }) {
   const account = pendingOwnerSignupAccount(pending);
   const legal = pendingOwnerSignupLegal(pending);
   const verified = pendingOwnerSignupVerified(pending);
+  const storedStage = text(pending.stage || decodedToken.accountStatus || "pending_verification");
+  const stage = storedStage === "pending_payment" && pendingOwnerSignupPersonalization(pending).notificationPreferencesCompleted !== true
+    ? "pending_personalization"
+    : storedStage;
   return {
     uid: text(decodedToken.uid),
     email: text(decodedToken.email || account.accountEmail).toLowerCase(),
@@ -96,10 +106,12 @@ function temporaryOwnerProfile({ pending, decodedToken, clientId }) {
     accountType: decodedToken.accountType || ACCOUNT_TYPES.OWNER,
     businessRole: text(decodedToken.businessRole || "owner"),
     clientId,
-    status: text(pending.stage || decodedToken.accountStatus || "pending_verification"),
+    status: stage,
     businessName: text(account.businessName || clientId),
     ownerName: text(account.ownerName),
     messagesEnabled: false,
+    notificationChannels: [],
+    notificationPreferencesCompleted: false,
     paymentSetupStatus: text(pending.payment?.status),
     billingPlanKey: text(pending.payment?.billingPlanKey || "starter"),
     identityVerificationRequired: !verified,
@@ -136,6 +148,8 @@ function signupVerificationProfile({ request, decodedToken, clientId }) {
     businessName: text(account.businessName || clientId),
     ownerName: text(account.ownerName),
     messagesEnabled: false,
+    notificationChannels: [],
+    notificationPreferencesCompleted: false,
     paymentSetupStatus: "",
     identityVerificationRequired: true,
     identityVerificationVerified: false,
@@ -199,7 +213,7 @@ export async function GET(request) {
       return NextResponse.json({ error: "This verification request expired. Start signup again." }, { status: 410 });
     }
     const temporary = decodedToken.temporaryAccount === true
-      || ["pending_business_setup", "pending_payment"].includes(text(decodedToken.accountStatus));
+      || ["pending_business_setup", "pending_personalization", "pending_payment"].includes(text(decodedToken.accountStatus));
     if (temporary) {
       const pending = await readPendingOwnerSignup({ db, uid: decodedToken.uid, clientId, allowExpired: true });
       if (!pending || pendingOwnerSignupExpired(pending.data)) {
