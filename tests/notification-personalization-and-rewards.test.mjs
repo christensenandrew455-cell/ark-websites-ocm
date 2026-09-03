@@ -53,7 +53,8 @@ test("selected owner notifications reuse the signup sender and cover existing al
   assert.ok(notifications.includes("sendPreferredAccountNotification"));
   for (const type of ["new-lead", "request-status"]) assert.ok(notifications.includes(`type: "${type}"`));
   assert.ok(messages.includes("sendPreferredAccountNotification"));
-  assert.ok(settings.includes("Notification delivery"));
+  assert.ok(settings.includes('id="email-alerts"'));
+  assert.ok(settings.includes('id="text-alerts"'));
   assert.ok(settings.includes("NOTIFICATION_SMS_FROM_DISPLAY"));
 });
 
@@ -65,7 +66,7 @@ test("the first feedback reward is one-time and does not depend on positive sent
   assert.ok(route.includes("feedbackRewardUpdate(account)"));
   assert.ok(route.includes("feedbackRewardGrantedAt"));
   assert.equal(route.includes('sentiment.key === "positive"'), false);
-  assert.ok(page.includes("mystery thank-you"));
+  assert.ok(page.includes("may earn free leads"));
   assert.ok(page.includes("data.rewardGranted"));
 });
 
@@ -98,7 +99,8 @@ test("referrals reward the first three paid activations each month and credits r
   assert.ok(stripeActivation.includes("completeReferralReward"));
   assert.ok(appleActivation.includes("completeReferralReward"));
   assert.ok(signup.includes("referralCode"));
-  assert.ok(page.includes("first three completed paid referrals"));
+  assert.ok(page.includes("Up to three referrals earn rewards each month"));
+  assert.ok(page.includes("Copy invite link"));
 });
 
 test("free lead credits can be applied only after the included allowance is exhausted", async () => {
@@ -114,8 +116,8 @@ test("free lead credits can be applied only after the included allowance is exha
   assert.ok(route.includes("redeemRewardLeadCredits"));
   assert.ok(manager.includes("Use 5 free leads"));
   assert.ok(manager.includes("!planSummary?.limitReached"));
-  assert.ok(dashboard.includes('label="Rewards"'));
-  assert.ok(dashboard.includes('value="★"'));
+  assert.ok(dashboard.includes('label="Free Leads"'));
+  assert.equal(dashboard.includes('value="★"'), false);
 });
 
 test("terms use a seven-day first-payment refund window with provider boundaries", async () => {
