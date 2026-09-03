@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
+import InfoTip from "./InfoTip";
 
 const LABEL_CLASS = "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
 
@@ -57,19 +58,17 @@ export default function ClientDeclineNoticeSettings() {
 
   return (
     <div>
-      <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-        <span>
-          <span className={LABEL_CLASS}>Customer decision texts</span>
-          <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Text customers when you accept or decline their lead.</span>
-        </span>
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2"><label htmlFor="customer-decision-texts" className={LABEL_CLASS}>Customer decision texts</label><InfoTip label="About customer decision texts">Text customers when you accept or decline their request.</InfoTip></div>
         <input
+          id="customer-decision-texts"
           type="checkbox"
           disabled={loading || saving}
           checked={enabled}
           onChange={(event) => update(event.target.checked)}
           className="h-5 w-5 shrink-0 accent-slate-950"
         />
-      </label>
+      </div>
       {error && <p className="mt-2 text-xs font-bold text-red-700">{error}</p>}
     </div>
   );
