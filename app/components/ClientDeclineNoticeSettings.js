@@ -3,9 +3,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
-import InfoTip from "./InfoTip";
-
-const LABEL_CLASS = "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
 
 export default function ClientDeclineNoticeSettings() {
   const { user } = useAuth();
@@ -57,19 +54,14 @@ export default function ClientDeclineNoticeSettings() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2"><label htmlFor="customer-decision-texts" className={LABEL_CLASS}>Customer decision texts</label><InfoTip label="About customer decision texts">Text customers when you accept or decline their request.</InfoTip></div>
-        <input
-          id="customer-decision-texts"
-          type="checkbox"
-          disabled={loading || saving}
-          checked={enabled}
-          onChange={(event) => update(event.target.checked)}
-          className="h-5 w-5 shrink-0 accent-slate-950"
-        />
-      </div>
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <h3 className="text-base font-black text-slate-950">Customer updates</h3>
+      <label htmlFor="customer-decision-texts" className={`mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4 ${loading || saving ? "cursor-not-allowed bg-slate-50 opacity-60" : "cursor-pointer bg-white"}`}>
+        <span className="min-w-0"><span className="block text-sm font-black text-slate-950">Text customers</span><span className="mt-1 block text-xs font-semibold text-slate-600">After you accept or decline.</span></span>
+        <input id="customer-decision-texts" type="checkbox" disabled={loading || saving} checked={enabled} onChange={(event) => update(event.target.checked)} className="sr-only" />
+        <span aria-hidden="true" className={`relative h-7 w-12 shrink-0 rounded-full transition ${enabled ? "bg-blue-800" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition ${enabled ? "left-6" : "left-1"}`} /></span>
+      </label>
       {error && <p className="mt-2 text-xs font-bold text-red-700">{error}</p>}
-    </div>
+    </section>
   );
 }
