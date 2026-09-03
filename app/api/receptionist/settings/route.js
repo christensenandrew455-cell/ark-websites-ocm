@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { businessRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { canonicalBusinessType, isSupportedBusinessType } from "../../../lib/businessCatalog";
+import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaValidationError } from "../../../lib/serviceAreas";
@@ -54,6 +55,7 @@ function profilePayload(clientId, account = {}) {
     estimateWeekdays: list(account.estimateWeekdays).map((day) => day.toLowerCase()),
     earliestEstimateStart: text(account.earliestEstimateStart),
     latestEstimateStart: text(account.latestEstimateStart),
+    ...normalizeEmergencyServiceSettings(account),
     businessType: canonicalBusinessType(account.businessType || account.businessBase) || text(account.businessType || account.businessBase),
     serviceAreas: normalizeServiceAreas(account.serviceAreas),
     services,
@@ -69,8 +71,8 @@ function clockMinutes(value) {
   return (hour + (match[3] === "PM" ? 12 : 0)) * 60 + Number(match[2] || 0);
 }
 function validateEstimateSchedule(profile) {
-  if (profile.earliestEstimateStart && clockMinutes(profile.earliestEstimateStart) === null) return "Choose a valid earliest estimate time.";
-  if (profile.latestEstimateStart && clockMinutes(profile.latestEstimateStart) === null) return "Choose a valid latest estimate time.";
+  if (profile.earliestEstimateStart && clockMinutes(profile.earliestEstimateStart) === null) return "Choose a valid earliest regular time.";
+  if (profile.latestEstimateStart && clockMinutes(profile.latestEstimateStart) === null) return "Choose a valid latest regular time.";
   return "";
 }
 
@@ -100,7 +102,7 @@ function validateProfile(profile) {
   if (serviceAreaError) return serviceAreaError;
   if (!Object.keys(profile.services).length) return "Add at least one service.";
   try { new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format(); } catch { return "Choose a valid time zone."; }
-  return validateEstimateSchedule(profile);
+  return validateEstimateSchedule(profile) || emergencyServiceAvailabilityError(profile);
 }
 async function validateBusinessName(db, clientId, value) {
   const businessNameKey = normalizeClientId(value);
@@ -154,6 +156,10 @@ export async function POST(request) {
     estimateWeekdays: list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
     earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
     latestEstimateStart: text(body.latestEstimateStart ?? current.latestEstimateStart),
+    ...normalizeEmergencyServiceSettings({
+      emergencyServiceEnabled: body.emergencyServiceEnabled ?? current.emergencyServiceEnabled,
+      emergencyService24Hours: body.emergencyService24Hours ?? current.emergencyService24Hours,
+    }),
     businessType: canonicalBusinessType(body.businessType ?? current.businessType) || text(body.businessType ?? current.businessType),
     serviceAreas: normalizeServiceAreas(serviceAreas),
     services: servicesObject(body.services ?? current.services),
@@ -176,6 +182,8 @@ export async function POST(request) {
     estimateWeekdays: profile.estimateWeekdays,
     earliestEstimateStart: profile.earliestEstimateStart,
     latestEstimateStart: profile.latestEstimateStart,
+    emergencyServiceEnabled: profile.emergencyServiceEnabled,
+    emergencyService24Hours: profile.emergencyService24Hours,
     businessType: profile.businessType,
     serviceAreas: profile.serviceAreas,
     services: profile.services,

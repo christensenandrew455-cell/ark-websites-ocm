@@ -4,14 +4,17 @@ import { Capacitor } from "@capacitor/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import { isEmergencyRequest, normalizeRequestUrgency } from "../lib/emergencyService";
 import { MESSAGES_AVAILABLE } from "../lib/launchFeatures";
 import { ownerFacingError } from "../lib/userFacingError";
 import { stripLeadContactFields } from "../lib/leadContactFields";
 import { leadRiskLabel, leadRiskLevel } from "../lib/leadRiskAssessment";
 import {
-  estimateRequestCreatedAt,
-  estimateRequestLifecycle,
-} from "../lib/estimateRequestLifecycle";
+  compareOldestLead,
+  formatLeadReceivedAt,
+  leadCreatedAt,
+  regularLeadAgeBand,
+} from "../lib/leadQueuePresentation";
 
 function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") || "";
@@ -23,14 +26,6 @@ function serviceRequestSummaryItems(value) {
     .map((line) => line.trim().replace(/^[-•]\s*/, ""))
     .filter((line) => /^(?:Service|Preferred (?:time|window)|Address|Notes):\s*\S/i.test(line))
     .slice(0, 4);
-}
-
-function toMillis(value) {
-  if (!value) return 0;
-  if (value?.toMillis) return value.toMillis();
-  if (value?.seconds) return value.seconds * 1000;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function normalizeRow(id, source, collectionKey) {
@@ -57,18 +52,10 @@ function normalizeRow(id, source, collectionKey) {
     Notes: ClientNotes,
     PreferredDay: firstValue(data.PreferredDay, data.preferredDay, data.PreferredDate, data.preferredDate, data.requestedDate, data.estimateDay),
     PreferredTimeWindow: firstValue(data.PreferredTimeWindow, data.preferredTimeWindow, data.requestedTimeWindow, data.PreferredTime, data.preferredTime, data.requestedTime),
+    RequestUrgency: normalizeRequestUrgency(data),
     EstimateDate: firstValue(data.EstimateDate, data.estimateDate, currentJob.estimateDate),
     EstimateTime: firstValue(data.EstimateTime, data.estimateTime, currentJob.estimateTime),
   };
-}
-
-function rowTime(row) {
-  return toMillis(row.createdAt || row.contactedAt || row.acceptedAt || row.movedAt || row.updatedAt);
-}
-
-function isEstimateRequestFinalDay(row) {
-  if (row.collectionKey !== "contactedMe") return false;
-  return estimateRequestLifecycle(estimateRequestCreatedAt(row)).finalDay;
 }
 
 async function leadsApi(user, options = {}) {
@@ -287,6 +274,95 @@ function RiskBadge({ row }) {
   return <span aria-label={`${leadRiskLabel(level)}, ${points} points`} className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${riskBadgeClasses[level]}`}><span aria-hidden="true">{riskIcons[level]}</span>{leadRiskLabel(level)} · {points} {points === 1 ? "point" : "points"}</span>;
 }
 
+function EmergencyBadge({ row }) {
+  if (!isEmergencyRequest(row)) return null;
+  return <span className="mb-2 inline-flex rounded-full border border-red-300 bg-red-100 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-red-800">Emergency · ASAP</span>;
+}
+
+const regularLeadCardClasses = {
+  new: "border-blue-400 bg-white",
+  waiting: "border-amber-400 bg-amber-50/40",
+  overdue: "border-red-500 bg-red-50/60",
+};
+
+function LeadReceivedTime({ row, now }) {
+  const receivedAt = leadCreatedAt(row);
+  const label = formatLeadReceivedAt(receivedAt, now);
+  if (!label || receivedAt === null) return null;
+  const receivedDate = new Date(receivedAt);
+  return <time dateTime={receivedDate.toISOString()} title={receivedDate.toLocaleString()} className="shrink-0 rounded-lg bg-slate-950/5 px-2 py-1 text-xs font-black text-slate-600">{label}</time>;
+}
+
+function PendingLeadCard({ row, now, busy, onAccept, onDecline }) {
+  const emergency = isEmergencyRequest(row);
+  const ageBand = regularLeadAgeBand(leadCreatedAt(row), now);
+  const cardClasses = emergency
+    ? "border-red-500 bg-red-50"
+    : regularLeadCardClasses[ageBand];
+  const requestedDay = displayRequestedDate(row.PreferredDay);
+  const requestedWindow = displayRequestedTime(row.PreferredTimeWindow);
+  const notes = row.ClientNotes || row.Notes;
+
+  return <article className={`rounded-2xl border-2 p-4 shadow-sm ${cardClasses}`}>
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <EmergencyBadge row={row} />
+        <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Job type</span>
+        <h4 className="mt-1 break-words text-base font-black text-slate-950">{row.Job || "Service not entered"}</h4>
+      </div>
+      <LeadReceivedTime row={row} now={now} />
+    </div>
+    {!emergency && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="rounded-xl border border-slate-200/90 bg-white/80 p-3">
+        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Requested day</span>
+        <p className="mt-1 text-sm font-black text-slate-900">{requestedDay || "Not provided"}</p>
+      </div>
+      <div className="rounded-xl border border-slate-200/90 bg-white/80 p-3">
+        <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Time window</span>
+        <p className="mt-1 text-sm font-black text-slate-900">{requestedWindow || "Not provided"}</p>
+      </div>
+    </div>}
+    <div className="mt-3 rounded-xl border border-slate-200/90 bg-white/80 p-3">
+      <span className="block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Notes</span>
+      <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-5 text-slate-700">{notes || "No notes provided."}</p>
+    </div>
+    <RiskBadge row={row} />
+    <div className="mt-4 grid grid-cols-2 gap-2">
+      <button type="button" disabled={Boolean(busy)} onClick={() => onAccept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">{busy === `accept:${row.id}` ? "Accepting…" : "Accept"}</button>
+      <button type="button" disabled={Boolean(busy)} onClick={() => onDecline(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline</button>
+    </div>
+  </article>;
+}
+
+function PendingLeadSection({ title, rows, now, busy, onAccept, onDecline, emptyMessage }) {
+  return <section aria-label={`${title} service requests`}>
+    <div className="mb-3 flex items-center gap-2">
+      <h3 className="text-lg font-black text-slate-950">{title}</h3>
+      <span className="rounded-full bg-slate-950 px-2 py-0.5 text-xs font-black text-white">{rows.length}</span>
+    </div>
+    <div className="space-y-3">
+      {rows.map((row) => <PendingLeadCard key={row.id} row={row} now={now} busy={busy} onAccept={onAccept} onDecline={onDecline} />)}
+      {rows.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm font-semibold text-slate-500">{emptyMessage}</p>}
+    </div>
+  </section>;
+}
+
+function AcceptedLeadCard({ row, busy, onView, onDelete }) {
+  const emergency = isEmergencyRequest(row);
+  const schedule = requestedSchedule(row);
+  return <article className={emergency ? "rounded-2xl border-2 border-red-400 bg-red-50 p-4 shadow-sm" : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}>
+    <div className="flex items-start gap-3">
+      <button type="button" onClick={() => onView(row)} className="min-w-0 flex-1 text-left">
+        <EmergencyBadge row={row} />
+        <h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3>
+        <p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{row.Address ? ` · ${row.Address}` : ""}</p>
+        {schedule && <p className="mt-2 text-sm font-black text-blue-800">Requested: {schedule}</p>}
+      </button>
+      <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => onDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>
+    </div>
+  </article>;
+}
+
 function Modal({ title, children, onClose }) {
   useEffect(() => {
     const listener = (event) => { if (event.key === "Escape") onClose(); };
@@ -373,7 +449,7 @@ function ClientModal({ row, messagesEnabled, onClose, onMessage, onAddContact, o
   return <Modal title={form.Name || "Client"} onClose={closeWithAutosave}>
     <div className="flex items-center gap-3 border-b border-slate-200 p-4 sm:p-6">
       <button type="button" disabled={saving} onClick={closeWithAutosave} aria-label="Back" title="Back" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-white text-2xl font-black text-slate-900 shadow-sm disabled:opacity-50">←</button>
-      <h2 className="min-w-0 truncate text-2xl font-black sm:text-3xl">{form.Name || "Unnamed caller"}</h2>
+      <div className="min-w-0"><EmergencyBadge row={row} /><h2 className="truncate text-2xl font-black sm:text-3xl">{form.Name || "Unnamed caller"}</h2></div>
     </div>
     <div className="grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-5 sm:p-7">
       {saveError && <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{saveError}</div>}
@@ -425,14 +501,15 @@ export default function ReviewClientsNative() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
+  const [clockNow, setClockNow] = useState(null);
 
   const load = useCallback(async (silent = false) => {
     if (!user) return;
     if (!silent) setLoading(true);
     try {
       const data = await leadsApi(user);
-      setContacted((data.contacted || []).map((item) => normalizeRow(item.id, item, "contactedMe")).sort((a, b) => rowTime(a) - rowTime(b)));
-      setClients((data.clients || []).map((item) => normalizeRow(item.id, item, "clients")).sort((a, b) => rowTime(a) - rowTime(b)));
+      setContacted((data.contacted || []).map((item) => normalizeRow(item.id, item, "contactedMe")).sort(compareOldestLead));
+      setClients((data.clients || []).map((item) => normalizeRow(item.id, item, "clients")).sort(compareOldestLead));
       setError("");
     } catch (loadError) {
       setError(ownerFacingError(loadError));
@@ -452,9 +529,17 @@ export default function ReviewClientsNative() {
     };
   }, [load]);
 
+  useEffect(() => {
+    const refreshClock = () => setClockNow(Date.now());
+    refreshClock();
+    const timer = window.setInterval(refreshClock, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   useEffect(() => { const section = searchParams.get("section"); if (section === "contacted" || section === "clients") setActiveSection(section); }, [searchParams]);
 
-  const rows = activeSection === "contacted" ? contacted : activeSection === "clients" ? clients : [];
+  const emergencyLeads = contacted.filter((row) => isEmergencyRequest(row)).sort(compareOldestLead);
+  const regularLeads = contacted.filter((row) => !isEmergencyRequest(row)).sort(compareOldestLead);
 
   async function accept(row) {
     if (!user || busy) return;
@@ -486,7 +571,7 @@ export default function ReviewClientsNative() {
       if (result.record) {
         const acceptedRow = normalizeRow(result.record.id, result.record, "clients");
         setContacted((current) => current.filter((item) => item.id !== row.id));
-        setClients((current) => [...current.filter((item) => item.id !== acceptedRow.id), acceptedRow].sort((a, b) => rowTime(a) - rowTime(b)));
+        setClients((current) => [...current.filter((item) => item.id !== acceptedRow.id), acceptedRow].sort(compareOldestLead));
       }
       await load(true);
     } catch (acceptError) {
@@ -575,5 +660,44 @@ export default function ReviewClientsNative() {
   const inactiveCard = "min-h-36 rounded-3xl border border-slate-200 bg-white p-5 text-left text-slate-950 shadow-sm transition active:scale-[0.99]";
   const activeCard = "min-h-36 rounded-3xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99]";
 
-  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8"><div className="mx-auto max-w-6xl">{error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700"><span>{error}</span><button type="button" disabled={loading} onClick={() => load()} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs text-white disabled:opacity-50">Try again</button></div>}{notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}<section className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5"><div className="grid grid-cols-2 gap-3 sm:gap-5"><button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}><p className="text-4xl font-black">{contacted.length}</p><h2 className="mt-2 text-lg font-black">Contacted You</h2><p className="mt-1 text-xs font-semibold opacity-70">New leads</p></button><button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}><p className="text-4xl font-black">{clients.length}</p><h2 className="mt-2 text-lg font-black">Clients</h2><p className="mt-1 text-xs font-semibold opacity-70">Accepted</p></button></div>{activeSection && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5"><h2 className="text-2xl font-black">{activeSection === "contacted" ? "Contacted You" : "Clients"}</h2><div className="mt-4 space-y-3 text-slate-950">{rows.map((row) => { const expiring = activeSection === "contacted" && isEstimateRequestFinalDay(row); const schedule = requestedSchedule(row); return <article key={row.id} className={expiring ? "rounded-2xl border border-red-300 bg-red-50/95 p-4 shadow-sm" : "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"}><div className="flex items-start gap-3"><button type="button" onClick={() => activeSection === "clients" && setViewing(row)} className={activeSection === "clients" ? "min-w-0 flex-1 text-left" : "min-w-0 flex-1 cursor-default text-left"}><h3 className="truncate text-base font-black">{row.Name || "Unnamed person"}</h3><p className="mt-1 truncate text-sm font-semibold text-slate-500">{row.Job || "Service not entered"}{activeSection === "clients" && row.Address ? ` · ${row.Address}` : ""}</p>{schedule && <p className="mt-2 text-sm font-black text-blue-800">Requested: {schedule}</p>}{activeSection === "contacted" && <RiskBadge row={row} />}</button>{activeSection === "clients" && <button type="button" aria-label="Delete client" title="Delete client" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-300 bg-red-50 text-red-700 disabled:opacity-50"><TrashIcon /></button>}</div>{activeSection === "contacted" && <div className="mt-4 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => accept(row)} className="rounded-xl bg-green-700 px-3 py-3 text-xs font-black text-white disabled:opacity-50">{busy === `accept:${row.id}` ? "Accepting…" : "Accept"}</button><button type="button" disabled={Boolean(busy)} onClick={() => setPendingDelete(row)} className="rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50">Decline</button></div>}</article>; })}{rows.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{loading ? "Loading leads…" : "Nothing here yet."}</p>}</div></div>}</section></div>{viewing && <ClientModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onSave={saveClient} onSaved={() => setNotice("Client changes were saved.")} />}<ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} /><LeadLimitDialog plan={leadLimit} onClose={() => setLeadLimit(null)} onManage={(panel) => router.push(`/settings?section=payment&manage=${panel}`)} /></div>;
+  return <div className="px-3 pb-24 pt-4 sm:px-5 sm:pt-6 md:px-8">
+    <div className="mx-auto max-w-6xl">
+      {error && <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+        <span>{error}</span>
+        <button type="button" disabled={loading} onClick={() => load()} className="shrink-0 rounded-lg bg-red-700 px-3 py-2 text-xs text-white disabled:opacity-50">Try again</button>
+      </div>}
+      {notice && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</div>}
+      <section className="rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:p-5">
+        <div className="grid grid-cols-2 gap-3 sm:gap-5">
+          <button type="button" onClick={() => setActiveSection(activeSection === "contacted" ? null : "contacted")} className={activeSection === "contacted" ? activeCard : inactiveCard}>
+            <p className="text-4xl font-black">{contacted.length}</p>
+            <h2 className="mt-2 text-lg font-black">Contacted You</h2>
+            <p className="mt-1 text-xs font-semibold opacity-70">New leads</p>
+          </button>
+          <button type="button" onClick={() => setActiveSection(activeSection === "clients" ? null : "clients")} className={activeSection === "clients" ? activeCard : inactiveCard}>
+            <p className="text-4xl font-black">{clients.length}</p>
+            <h2 className="mt-2 text-lg font-black">Clients</h2>
+            <p className="mt-1 text-xs font-semibold opacity-70">Accepted</p>
+          </button>
+        </div>
+        {activeSection === "contacted" && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5">
+          <h2 className="text-2xl font-black">Contacted You</h2>
+          <div className="mt-4 space-y-7">
+            {emergencyLeads.length > 0 && <PendingLeadSection title="Emergencies" rows={emergencyLeads} now={clockNow} busy={busy} onAccept={accept} onDecline={setPendingDelete} emptyMessage="No emergency requests." />}
+            <PendingLeadSection title="Regular" rows={regularLeads} now={clockNow} busy={busy} onAccept={accept} onDecline={setPendingDelete} emptyMessage={loading ? "Loading leads…" : "No regular requests."} />
+          </div>
+        </div>}
+        {activeSection === "clients" && <div className="mt-4 border-t border-slate-300 pt-4 text-slate-950 sm:mt-5 sm:pt-5">
+          <h2 className="text-2xl font-black">Clients</h2>
+          <div className="mt-4 space-y-3 text-slate-950">
+            {clients.map((row) => <AcceptedLeadCard key={row.id} row={row} busy={busy} onView={setViewing} onDelete={setPendingDelete} />)}
+            {clients.length === 0 && <p className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">{loading ? "Loading leads…" : "Nothing here yet."}</p>}
+          </div>
+        </div>}
+      </section>
+    </div>
+    {viewing && <ClientModal row={viewing} messagesEnabled={messagesEnabled} onClose={() => setViewing(null)} onMessage={() => openMessage(viewing)} onAddContact={() => addContact(viewing)} onDate={confirmDate} onSave={saveClient} onSaved={() => setNotice("Client changes were saved.")} />}
+    <ConfirmDialog row={pendingDelete} busy={Boolean(busy)} onCancel={() => !busy && setPendingDelete(null)} onConfirm={() => remove(pendingDelete)} />
+    <LeadLimitDialog plan={leadLimit} onClose={() => setLeadLimit(null)} onManage={(panel) => router.push(`/settings?section=payment&manage=${panel}`)} />
+  </div>;
 }

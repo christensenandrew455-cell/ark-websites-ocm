@@ -43,7 +43,7 @@ test("onboarding follows main information, verification, business, personalizati
   assert.ok(shell.includes('status === "pending_payment"'));
 });
 
-test("business setup uses in-app business fields and a 24-hours shortcut", async () => {
+test("business setup separates regular scheduling from optional emergency service", async () => {
   const [form, settingsRoute, runtimeRoute] = await Promise.all([
     source("app/components/ReceptionistBusinessForm.js"),
     source("app/api/receptionist/settings/route.js"),
@@ -70,13 +70,18 @@ test("business setup uses in-app business fields and a 24-hours shortcut", async
   assert.ok(form.includes("grid-cols-[minmax(0,1fr)_88px]"));
   assert.ok(form.includes('ariaLabel={`${label} hour`}'));
   assert.ok(form.includes('ariaLabel={`${label} AM or PM`}'));
-  assert.ok(form.includes(">24 hours<"));
-  assert.ok(form.includes("{!acceptsAllHours && <HourPeriodPicker"));
-  assert.ok(form.includes('estimateStartHour: 12'));
-  assert.ok(form.includes('estimateStartPeriod: "AM"'));
-  assert.ok(form.includes('estimateEndHour: 11'));
-  assert.ok(form.includes('estimateEndPeriod: "PM"'));
+  assert.ok(form.includes("Regular service scheduling"));
+  assert.ok(form.includes('label="Regular service days"'));
+  assert.ok(form.includes("Emergency / ASAP service"));
+  assert.ok(form.includes("Accept emergency / ASAP requests"));
+  assert.ok(form.includes("24/7 emergency availability"));
+  assert.ok(form.includes("ASAP_OR_SCHEDULED_QUESTION"));
+  assert.ok(form.includes("profile.emergencyServiceEnabled === true ?"));
+  assert.equal(form.includes("acceptsAllHours"), false);
+  assert.ok(settingsRoute.includes("emergencyServiceEnabled"));
+  assert.ok(settingsRoute.includes("emergencyService24Hours"));
   assert.equal(settingsRoute.includes("earliest > latest"), false);
+  assert.ok(runtimeRoute.includes("serviceRequestRouting"));
   assert.ok(runtimeRoute.includes("serviceAreaStates"));
   assert.ok(runtimeRoute.includes("serviceAreaCounties"));
   assert.ok(runtimeRoute.includes('serviceAreaMode: serviceAreaCounties.length ? "counties" : "states"'));

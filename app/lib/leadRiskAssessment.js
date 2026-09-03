@@ -61,6 +61,9 @@ export function calculateLeadRisk(input = {}) {
   const root = object(input);
   const assessment = object(root.riskAssessment);
   const risk = object(root.risk);
+  const riskChecks = object(risk.checks);
+  const addressCheck = object(riskChecks.address);
+  const phoneCheck = object(riskChecks.phone);
   const backgroundCheck = object(root.backgroundCheck);
   const sources = [
     object(assessment.signals),
@@ -75,11 +78,13 @@ export function calculateLeadRisk(input = {}) {
 
   const addressVerifiedValue = firstValue(sources, ["addressVerified", "isAddressVerified"]);
   const addressFailureValue = firstValue(sources, ["addressVerificationFailed", "addressInvalid", "invalidAddress"]);
-  const addressStatus = firstValue(sources, ["addressVerificationStatus", "addressStatus"]);
+  const addressStatus = firstValue([addressCheck], ["status"])
+    ?? firstValue(sources, ["addressVerificationStatus", "addressStatus"]);
   const addressVerified = optionalBoolean(addressVerifiedValue);
+  const addressCheckUnavailable = statusMatches(addressStatus, ["not_configured", "error", "unavailable"]);
   const addressUnverified = optionalBoolean(addressFailureValue) === true
-    || addressVerified === false
-    || statusMatches(addressStatus, ["failed", "invalid", "unverified", "not_found"]);
+    || statusMatches(addressStatus, ["failed", "invalid", "unverified", "not_found"])
+    || (addressVerified === false && !addressCheckUnavailable);
 
   const outsideValue = firstValue(sources, ["outsideServiceArea", "serviceAddressOutsideArea", "addressOutsideServiceArea"]);
   const insideValue = firstValue(sources, ["insideServiceArea", "inServiceArea", "serviceable"]);
@@ -87,7 +92,8 @@ export function calculateLeadRisk(input = {}) {
     || optionalBoolean(insideValue) === false;
 
   const lookupFailureValue = firstValue(sources, ["phoneLookupFailed", "phoneInvalid", "invalidPhoneNumber", "phoneNumberInvalid"]);
-  const lookupStatus = firstValue(sources, ["phoneLookupStatus", "telnyxLookupStatus"]);
+  const lookupStatus = firstValue([phoneCheck], ["status"])
+    ?? firstValue(sources, ["phoneLookupStatus", "telnyxLookupStatus"]);
   const phoneLookupFailed = optionalBoolean(lookupFailureValue) === true
     || statusMatches(lookupStatus, ["failed", "invalid", "not_found", "unavailable", "error"]);
 
