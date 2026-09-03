@@ -34,7 +34,9 @@ export default function FeedbackPage() {
       setMessage("");
       setSentiment("neutral");
       setTopic("overall");
-      setNotice("Thank you. Your feedback was sent to ARK.");
+      setNotice(data.rewardGranted
+        ? `Surprise — thanks for your first feedback! ${data.rewardLeadCredits} free lead credits were added to your Rewards balance.`
+        : "Thank you. Your feedback was sent to ARK.");
     } catch (submitError) {
       setError(ownerFacingError(submitError));
     } finally {
@@ -49,11 +51,12 @@ export default function FeedbackPage() {
 
   return <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
     <div className="mx-auto max-w-2xl">
-      <BackButton href="/settings?section=account" label="Back to Help and Account" />
+      <BackButton href="/rewards" label="Back to Rewards" />
       <header className="mt-5">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-700">ARK Client Center</p>
         <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Give Feedback</h1>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Tell us what is working, what is not, or what you want ARK to improve.</p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Tell us honestly what is working, what is not, or what you want ARK to improve.</p>
+        <p className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-900">Your first thoughtful feedback may unlock a mystery thank-you.</p>
       </header>
 
       {notice && <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800" role="status">{notice}</p>}

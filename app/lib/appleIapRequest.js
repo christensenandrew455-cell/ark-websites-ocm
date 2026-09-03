@@ -6,6 +6,7 @@ import { getAdminAuth, getAdminDb } from "./firebase-admin.js";
 import {
   deletePendingOwnerSignup,
   pendingOwnerSignupExpired,
+  pendingOwnerSignupPersonalization,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup.js";
@@ -43,6 +44,9 @@ export async function authorizeAppleBillingRequest(request, { allowPending = tru
       }
       if (!pending || !pendingOwnerSignupVerified(pending.data) || text(pending.data.stage) !== "pending_payment") {
         return { response: errorResponse() };
+      }
+      if (pendingOwnerSignupPersonalization(pending.data).notificationPreferencesCompleted !== true) {
+        return { response: errorResponse("Choose where to receive notifications before payment.", 409) };
       }
       return { kind: "pending", auth, db, decoded, clientId, pending };
     }

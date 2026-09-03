@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { isStandardRole } from "./accountRoles";
 import { getAdminMessaging } from "./firebase-admin";
 import { PUSH_NOTIFICATION_COPY } from "./notificationCopy";
+import { sendPreferredAccountNotification } from "./customerNotificationDelivery.js";
 
 const MAX_MULTICAST_TARGETS = 500;
 const REMINDER_COOLDOWN_MS = 50 * 60 * 1000;
@@ -48,6 +49,15 @@ function isRetryableTarget(error) {
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function preferredDelivery(options) {
+  try {
+    return await sendPreferredAccountNotification(options);
+  } catch (error) {
+    console.error("Unable to send the selected owner notification channels", error);
+    return { attempted: 0, sent: 0, failed: 0, channels: [] };
+  }
 }
 
 async function sendDeviceChunk(messaging, deviceChunk, message) {
@@ -148,11 +158,20 @@ async function recordLeadDelivery(db, clientId, leadId, summary) {
 }
 
 export async function sendNewLeadNotification({ db, clientId, leadId }) {
+  const eventId = `lead-${text(leadId)}`;
+  const preferredPromise = preferredDelivery({
+    db,
+    clientId,
+    notification: PUSH_NOTIFICATION_COPY.lead,
+    type: "new-lead",
+    route: "/review-my-clients?section=contacted",
+    eventId,
+  });
   const devices = await notificationDevices(db, clientId, { ownerOnly: true });
   if (!devices.length) {
     const summary = { attempted: 0, sent: 0, failed: 0, errorMessage: "No registered owner notification devices." };
     await recordLeadDelivery(db, clientId, leadId, summary);
-    return summary;
+    return { ...summary, preferred: await preferredPromise };
   }
 
   const results = await sendToDevices(devices, {
@@ -162,7 +181,7 @@ export async function sendNewLeadNotification({ db, clientId, leadId }) {
       route: "/review-my-clients?section=contacted",
       clientId,
       leadId: text(leadId),
-      eventId: `lead-${text(leadId)}-${Date.now()}`,
+      eventId,
     },
     android: {
       priority: "high",
@@ -214,15 +233,17 @@ export async function sendNewLeadNotification({ db, clientId, leadId }) {
     errorMessage: errors.filter(Boolean).join(" | "),
   };
   await recordLeadDelivery(db, clientId, leadId, summary);
-  return summary;
+  return { ...summary, preferred: await preferredPromise };
 }
 
 export async function sendAccountPushNotification({ db, clientId, notification, type, route = "/settings?section=payment", eventId = "" }) {
+  const resolvedEventId = text(eventId) || `${text(type)}-${Date.now()}`;
+  const preferredPromise = preferredDelivery({ db, clientId, notification, type, route, eventId: resolvedEventId });
   const devices = await notificationDevices(db, clientId, { ownerOnly: true });
-  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
+  if (!devices.length) return { attempted: 0, sent: 0, failed: 0, preferred: await preferredPromise };
   const results = await sendToDevices(devices, {
     notification,
-    data: { type: text(type), route: text(route), clientId, eventId: text(eventId) || `${text(type)}-${Date.now()}` },
+    data: { type: text(type), route: text(route), clientId, eventId: resolvedEventId },
     android: { priority: "high", notification: { channelId: "account-alerts", sound: "default", tag: `${text(type)}-${clientId}`, defaultVibrateTimings: true } },
   });
   const batch = db.batch();
@@ -239,7 +260,7 @@ export async function sendAccountPushNotification({ db, clientId, notification, 
     }
   });
   await batch.commit();
-  return { attempted: devices.length, sent, failed };
+  return { attempted: devices.length, sent, failed, preferred: await preferredPromise };
 }
 
 export async function sendUnreadLeadReminders(db) {
@@ -316,8 +337,16 @@ export async function sendUnreadLeadReminders(db) {
 }
 
 export async function sendRequestStatusNotification({ db, clientId, requestId, status, recipientUid = "" }) {
+  const preferredPromise = preferredDelivery({
+    db,
+    clientId,
+    notification: PUSH_NOTIFICATION_COPY.helpUpdate,
+    type: "request-status",
+    route: "/messages",
+    eventId: `request-${text(requestId)}-${text(status)}`,
+  });
   const devices = await notificationDevices(db, clientId, { uid: recipientUid });
-  if (!devices.length) return { attempted: 0, sent: 0, failed: 0 };
+  if (!devices.length) return { attempted: 0, sent: 0, failed: 0, preferred: await preferredPromise };
 
   const results = await sendToDevices(devices, {
     notification: PUSH_NOTIFICATION_COPY.helpUpdate,
@@ -362,5 +391,5 @@ export async function sendRequestStatusNotification({ db, clientId, requestId, s
   });
 
   await batch.commit();
-  return { attempted: devices.length, sent, failed };
+  return { attempted: devices.length, sent, failed, preferred: await preferredPromise };
 }

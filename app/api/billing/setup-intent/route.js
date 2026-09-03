@@ -8,6 +8,7 @@ import {
   deletePendingOwnerSignup,
   pendingOwnerSignupAccount,
   pendingOwnerSignupExpired,
+  pendingOwnerSignupPersonalization,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "../../../lib/pendingOwnerSignup";
@@ -79,6 +80,9 @@ async function authorize(request) {
     }
     if (!pending || !pendingOwnerSignupVerified(pending.data) || text(pending.data.stage) !== "pending_payment") {
       return { response: NextResponse.json({ error: paymentFailure() }, { status: 403 }) };
+    }
+    if (pendingOwnerSignupPersonalization(pending.data).notificationPreferencesCompleted !== true) {
+      return { response: NextResponse.json({ error: "Choose where to receive notifications before payment.", nextPath: "/setup/personalization" }, { status: 409 }) };
     }
     return { auth, db, decoded, pending };
   } catch {

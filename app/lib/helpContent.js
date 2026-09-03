@@ -6,6 +6,7 @@ const ALL_HELP_LINKS = [
   { label: "Leads", href: "/leads" },
   { label: "Messages", href: "/lead-messages" },
   { label: "Settings", href: "/settings" },
+  { label: "Rewards", href: "/rewards" },
   { label: "Help & Account", href: "/settings?section=account" },
   { label: "AI Chat", href: "/settings?section=account&chat=open" },
   { label: "Support", href: "/messages" },
@@ -31,24 +32,25 @@ const sections = [
     points: [
       MESSAGES_AVAILABLE
         ? "The Dashboard is the main page after sign-in and provides shortcuts to leads, messaging, and Settings."
-        : "The Dashboard is the main page after sign-in and provides shortcuts to Leads and Settings.",
+        : "The Dashboard is the main page after sign-in and provides shortcuts to Leads, Rewards, and Settings.",
       "The header shows ARK Client Center, the business name, Settings, and Sign out without a permanent navigation bar.",
       MESSAGES_AVAILABLE
         ? "Leads, Messages, and Settings open as focused pages with a Back to Dashboard control."
         : "Leads and Settings open as focused pages with a Back to Dashboard control.",
       "Each business has one owner account for receptionist details, feature controls, billing, policies, downloads, and account deletion.",
     ],
-    links: ["Dashboard", "Settings", "Help & Account"],
+    links: ["Dashboard", "Rewards", "Settings", "Help & Account"],
   },
   {
     id: "account-setup",
     title: "Creating an account",
-    summary: "Account setup verifies the owner's contact information before business information and payment, then creates the regular account after Apple or Stripe succeeds.",
+    summary: "Account setup verifies the owner's contact information, collects business information and notification choices, then creates the regular account after Apple or Stripe payment succeeds.",
     points: [
       "Step 1 collects the main account information and password.",
       "Step 2 verifies both the email address and phone number with separate four-digit codes.",
       "Step 3 collects the business and AI receptionist information.",
-      "Step 4 lets the owner choose Starter, Standard, Growth, or Scale, then uses Apple In-App Purchase on iPhone or Stripe's secure Payment Element elsewhere.",
+      "Step 4 asks whether new-lead and important account alerts should arrive by email, text message, or both.",
+      "Step 5 lets the owner choose Starter, Standard, Growth, or Scale, then uses Apple In-App Purchase on iPhone or Stripe's secure Payment Element elsewhere.",
       "After payment details succeed, ARK moves the temporary signup into a regular account.",
     ],
     links: ["Payment Terms", "Privacy Policy"],
@@ -64,7 +66,8 @@ const sections = [
       "Scale is $169.99 per month for 200 accepted leads, saves 15% compared with $1 per lead, and fits very high lead volume.",
       "Only tapping Accept uses the plan. Calls, declines, edits, and deletions do not count.",
       "At renewal, the allowance resets to exactly 25, 50, 100, or 200 for the selected plan. Unused leads do not roll over.",
-      "If the allowance runs out, wait for the reset, upgrade, or buy any whole-number quantity of additional leads for $1 each. Top-up leads expire at the next reset and receive no volume discount.",
+      "If the allowance runs out, apply banked free lead credits in groups of five, wait for the reset, upgrade, or buy any whole-number quantity of additional leads for $1 each. Purchased and applied additional leads expire at the next reset.",
+      "A web subscription's first Stripe charge has a seven-calendar-day refund-request window. Renewals and lead top-ups are excluded; Apple handles App Store refund requests.",
       "Settings → Payment shows only the current plan, accepted leads used and remaining, reset date, and payment method. Manage Plan & Payment contains plan selection, top-ups, and card controls.",
     ],
     links: ["Settings", "Payment Terms", "Terms of Use"],
@@ -75,10 +78,22 @@ const sections = [
     summary: "The Dashboard shows operational statistics instead of billing details.",
     points: [
       "Accepted Leads shows the current number of accepted clients and opens the Clients list; its subtitle shows how many new leads are waiting.",
+      "Rewards opens feedback, referral details, and the banked free-lead balance.",
       ...(MESSAGES_AVAILABLE ? ["Messages shows the current conversation count and opens the phone-style inbox when enabled."] : []),
       ...(MESSAGES_AVAILABLE ? ["If Messages is off for the account, enable it in Settings before using that workspace."] : []),
     ],
-    links: ["Dashboard", "Leads", ...(MESSAGES_AVAILABLE ? ["Messages"] : []), "Settings"],
+    links: ["Dashboard", "Leads", "Rewards", ...(MESSAGES_AVAILABLE ? ["Messages"] : []), "Settings"],
+  },
+  {
+    id: "rewards",
+    title: "Rewards and referrals",
+    summary: "Rewards keeps earned free lead credits banked until the monthly plan allowance has been used.",
+    points: [
+      "The first candid feedback submission receives a one-time mystery thank-you; the reward does not depend on whether the opinion is positive or negative.",
+      "Share the business referral code or link as often as desired. Each of the first three completed paid referrals per calendar month earns five free lead credits.",
+      "Free lead credits stay banked and can be applied in groups of five from Manage Plan & Payment only after the included lead allowance is exhausted.",
+    ],
+    links: ["Rewards", ...(TEMPORARY_FEATURES.feedback.enabled ? ["Give Feedback"] : []), "Settings", "Payment Terms"],
   },
   ...(MESSAGES_AVAILABLE ? [{
     id: "lead-messages",
@@ -115,8 +130,8 @@ const sections = [
     points: [
       "Business Information contains business details, services, service areas, optional estimate availability, and information the AI receptionist can use during calls.",
       MESSAGES_AVAILABLE
-        ? "Customization contains Dark Mode, the Messages control, AI timing, retention settings, and Download Client Data."
-        : "Customization contains Dark Mode, AI timing, retention settings, and Download Client Data.",
+        ? "Customization contains Dark Mode, email and text notification choices, the Messages control, AI timing, retention settings, and Download Client Data."
+        : "Customization contains Dark Mode, email and text notification choices, AI timing, retention settings, and Download Client Data.",
       "Payment contains the current monthly plan, an accepted-leads-remaining bar, the reset date, payment method, and Manage Plan & Payment. The manager has two sections: Select a Plan and Edit Card Information.",
       "Stripe plan changes can start on the next renewal or start immediately after payment; an immediate switch begins a fresh billing month and discards unused prior-plan leads. Apple shows its own change timing before confirmation.",
       `Help & Account contains Docs, AI Chat, Support,${TEMPORARY_FEATURES.feedback.enabled ? " Give Feedback," : ""} Terms of Use, Privacy Policy, and the typed-confirmation Delete Account control.`,

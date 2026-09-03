@@ -5,6 +5,7 @@ import {
   signupVerificationRequestAccount,
   signupVerificationRequestExpired,
   signupVerificationRequestLegal,
+  signupVerificationRequestReferral,
   signupVerificationRequestCollection,
   signupVerificationRequestRef,
 } from "./signupVerificationRequest.js";
@@ -111,6 +112,15 @@ export function pendingOwnerSignupLegal(data = {}) {
   };
 }
 
+export function pendingOwnerSignupPersonalization(data = {}) {
+  return object(data.personalization);
+}
+
+export function pendingOwnerSignupReferral(data = {}) {
+  const nested = object(data.referral);
+  return { code: text(nested.code) };
+}
+
 export function pendingOwnerSignupVerified(data = {}) {
   return object(data.verification).verified === true || data.identityVerificationVerified === true;
 }
@@ -138,7 +148,7 @@ export async function readPendingOwnerSignup({ db, uid, clientId = "", allowExpi
   return { ref: snapshot.ref, data };
 }
 
-function verifiedPendingSignupData({ uid, clientId, signup, legal = {}, now = new Date() }) {
+function verifiedPendingSignupData({ uid, clientId, signup, legal = {}, referral = {}, now = new Date() }) {
   const expiresAt = new Date(now.getTime() + PENDING_OWNER_SIGNUP_TTL_MS);
   const accountPhone = text(signup.accountPhone);
   return {
@@ -162,6 +172,8 @@ function verifiedPendingSignupData({ uid, clientId, signup, legal = {}, now = ne
       },
       verification: { verified: true, completedAt: FieldValue.serverTimestamp() },
       business: {},
+      personalization: {},
+      referral: { code: text(referral.code || signup.referralCode) },
       payment: { status: "not_started" },
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -172,7 +184,7 @@ function verifiedPendingSignupData({ uid, clientId, signup, legal = {}, now = ne
 
 export async function createPendingOwnerSignup({ db, uid, clientId, signup, legal = {} }) {
   const now = new Date();
-  const { data, expiresAt } = verifiedPendingSignupData({ uid, clientId, signup, legal, now });
+  const { data, expiresAt } = verifiedPendingSignupData({ uid, clientId, signup, legal, referral: { code: signup.referralCode }, now });
   const accountPhone = text(data.account.accountPhone);
   const pendingRef = pendingOwnerSignupRef(db, clientId);
   const accounts = accountCollection(db);
@@ -241,12 +253,14 @@ export async function createPendingOwnerSignupFromVerification({ db, uid, client
       accountPhone: verifiedPhone,
     };
     const legal = signupVerificationRequestLegal(request);
+    const referral = signupVerificationRequestReferral(request);
     const now = new Date();
     const prepared = verifiedPendingSignupData({
       uid,
       clientId,
       signup: account,
       legal,
+      referral,
       now,
     });
     transaction.create(pendingRef, prepared.data);

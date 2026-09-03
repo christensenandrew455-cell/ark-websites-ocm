@@ -304,6 +304,7 @@ export default function PaymentSetupClient() {
     if (profile?.status === "active" && profile?.identityVerificationRequired && !profile?.identityVerificationVerified) { router.replace("/signup/verify"); return; }
     if (profile?.status === "pending_verification") { router.replace("/signup/verify"); return; }
     if (profile?.status === "pending_business_setup") { router.replace("/setup/business"); return; }
+    if (profile?.status === "pending_personalization") { router.replace("/setup/personalization"); return; }
     if (profile?.status === "active") {
       signOut(auth).catch((signOutError) => console.warn("Unable to clear the completed signup sign-in", signOutError)).finally(() => window.location.replace("/login"));
       return;
@@ -344,7 +345,7 @@ export default function PaymentSetupClient() {
     <main className="ark-auth-page grid min-h-screen place-items-center px-5 py-10">
       <section className="ark-auth-card w-full max-w-xl rounded-3xl p-6 shadow-2xl sm:p-9">
         <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
-        <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 4 · Payment</p>
+        <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 5 of 5 · Plan &amp; payment</p>
         {!success && !checking && billingPlatform !== "checking" && <div className="mt-6"><PlanSelector selectedPlanKey={selectedPlanKey} onSelect={selectPlan} promotion={promotion} disabled={leaving} /></div>}
         {success ? <p id="success-message" className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center text-lg font-black text-emerald-900" role="status">Payment setup complete</p>
           : checking ? <p className="mt-8 text-center text-sm font-bold text-slate-600">Confirming payment…</p>

@@ -16,9 +16,13 @@ import {
   pendingOwnerSignupBusiness,
   pendingOwnerSignupExpired,
   pendingOwnerSignupLegal,
+  pendingOwnerSignupPersonalization,
+  pendingOwnerSignupReferral,
   pendingOwnerSignupVerified,
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup.js";
+import { normalizeNotificationPreferences } from "./notificationPreferences.js";
+import { completeReferralReward } from "./rewardLeadCredits.js";
 
 function text(value) { return String(value || "").trim(); }
 function completedResult(account, transactionId) {
@@ -51,6 +55,11 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
       && existingAccount.billingProvider === "apple"
       && (text(existingAccount.appleOriginalTransactionId) === originalTransactionId
         || text(existingAccount.appleSubscriptionTransactionId) === transactionId)) {
+      if (text(existingAccount.referredByClientId)) {
+        await completeReferralReward({ db, referredClientId: existingAccount.clientId, referralCode: existingAccount.referredByClientId }).catch((error) => {
+          console.error("Unable to retry the signup referral reward", error);
+        });
+      }
       return completedResult(existingAccount, transactionId);
     }
     throw new Error("APPLE_PAYMENT_SETUP_FORBIDDEN");
@@ -62,6 +71,8 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   const temporaryAccount = pendingOwnerSignupAccount(temporary);
   const business = pendingOwnerSignupBusiness(temporary);
   const legal = pendingOwnerSignupLegal(temporary);
+  const personalization = normalizeNotificationPreferences(pendingOwnerSignupPersonalization(temporary), temporaryAccount);
+  const referralCode = text(pendingOwnerSignupReferral(temporary).code);
   const payment = temporary.payment || {};
   const clientId = text(temporary.clientId);
   if (!pendingOwnerSignupVerified(temporary)
@@ -136,6 +147,10 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     callsRemainingThisPeriod: purchasedPlan.monthlyCalls,
     callLimitReached: false,
     billingPastDue: false,
+    rewardLeadCreditBalance: 0,
+    rewardLeadCreditsEarnedTotal: 0,
+    rewardLeadCreditsRedeemedTotal: 0,
+    ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
     receptionistPhone: "",
@@ -151,6 +166,11 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     clientRetentionDays: 0,
     messageRetentionDays: 0,
     clientStatusNoticeEnabled: true,
+    notificationChannels: personalization.notificationChannels,
+    notificationEmail: personalization.notificationEmail,
+    notificationPhone: personalization.notificationPhone,
+    notificationPreferencesCompleted: personalization.notificationPreferencesCompleted === true,
+    notificationSmsConsentAt: pendingOwnerSignupPersonalization(temporary).notificationSmsConsentAt || null,
     onboardingTourEligible: true,
     onboardingTourStatus: "pending",
     onboardingGuideVersion: 2,
@@ -195,6 +215,12 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   });
   batch.delete(pending.ref);
   await batch.commit();
+
+  if (referralCode) {
+    await completeReferralReward({ db, referredClientId: clientId, referralCode }).catch((error) => {
+      console.error("Unable to apply the signup referral reward", error);
+    });
+  }
 
   const userRecord = await auth.getUser(safeUid);
   await auth.setCustomUserClaims(safeUid, {

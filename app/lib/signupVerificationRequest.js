@@ -49,6 +49,11 @@ export function signupVerificationRequestLegal(data = {}) {
   };
 }
 
+export function signupVerificationRequestReferral(data = {}) {
+  const referral = data.referral && typeof data.referral === "object" && !Array.isArray(data.referral) ? data.referral : {};
+  return { code: text(referral.code) };
+}
+
 export async function readSignupVerificationRequest({ db, uid, clientId = "", allowExpired = false }) {
   let snapshot = null;
   const collection = signupVerificationRequestCollection(db);
@@ -87,6 +92,7 @@ export async function createSignupVerificationRequest({ db, uid, clientId, signu
       privacyVersion: text(signup.privacyVersion),
       acceptedAt: now,
     },
+    referral: { code: text(signup.referralCode) },
     verification: { verified: false },
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),

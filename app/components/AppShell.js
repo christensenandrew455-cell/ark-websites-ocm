@@ -13,7 +13,7 @@ import { billingPaymentDeadline } from "../lib/billingNotice";
 import { appleIapAvailable } from "../lib/appleIapClient";
 import { requestUnsavedNavigation } from "./UnsavedChangesPrompt";
 
-const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/forgot-password", "/docs"];
+const AUTH_PUBLIC_PATHS = ["/login", "/signup", "/setup/business", "/setup/personalization", "/forgot-password", "/docs"];
 const POLICY_PUBLIC_PATHS = ["/terms", "/privacy"];
 
 function matchesPath(pathname, paths) {

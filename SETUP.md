@@ -89,7 +89,7 @@ Configure:
 - `TELNYX_SIGNUP_FROM_NUMBER=+17742316164`
 - `ACCOUNT_VERIFICATION_SECRET` with a long random server-only value
 
-Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `TELNYX_SIGNUP_FROM_NUMBER` sends signup codes and later number-ready messages.
+Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `TELNYX_SIGNUP_FROM_NUMBER` must remain `+17742316164`; the same sender delivers signup codes and every owner-selected transactional SMS notification. Resend delivers signup codes and owner-selected transactional email notifications.
 
 ## ARK Admin event bridge
 

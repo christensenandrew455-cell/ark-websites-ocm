@@ -44,6 +44,7 @@ export async function GET(request) {
       pendingBillingPlanName: String(account.pendingBillingPlanName || ""),
       pendingBillingPlanStartsAt: account.pendingBillingPlanStartsAt?.toDate?.()?.toISOString?.() || "",
       pendingBillingPlanTiming: String(account.pendingBillingPlanTiming || ""),
+      rewardLeadCreditBalance: Math.max(0, Math.floor(Number(account.rewardLeadCreditBalance || 0))),
       ...planSummary,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

@@ -27,7 +27,7 @@ async function statusWithContinuation(authorization, status) {
   if (status?.verified !== true) return status;
   const accountStatus = text(status.accountStatus);
   const onboarding = authorization.signupVerification || authorization.temporary;
-  if (onboarding && !["pending_business_setup", "pending_payment"].includes(accountStatus)) {
+  if (onboarding && !["pending_business_setup", "pending_personalization", "pending_payment"].includes(accountStatus)) {
     return { ...status, verified: false, nextPath: "/signup/verify" };
   }
   if (!onboarding) return status;
@@ -77,7 +77,7 @@ async function authorize(request) {
         };
       }
       const promoted = await readPendingOwnerSignup({ db, uid: decoded.uid, clientId, allowExpired: true });
-      if (promoted && ["pending_business_setup", "pending_payment"].includes(text(promoted.data.stage))) {
+      if (promoted && ["pending_business_setup", "pending_personalization", "pending_payment"].includes(text(promoted.data.stage))) {
         return { decoded, account: pendingOwnerSignupAccount(promoted.data), clientId, pending: promoted, signupVerification: false, temporary: true };
       }
       return { response: NextResponse.json({ error: "A signup verification request is required." }, { status: 403 }) };
@@ -85,7 +85,7 @@ async function authorize(request) {
     if (decoded.temporaryAccount === true) {
       const pending = await readPendingOwnerSignup({ db, uid: decoded.uid, clientId, allowExpired: true });
       const stage = text(pending?.data?.stage);
-      if (!pending || !["pending_business_setup", "pending_payment"].includes(stage)) {
+      if (!pending || !["pending_business_setup", "pending_personalization", "pending_payment"].includes(stage)) {
         return { response: NextResponse.json({ error: "A temporary owner account in verification is required." }, { status: 403 }) };
       }
       return { decoded, account: pendingOwnerSignupAccount(pending.data), clientId, pending, signupVerification: false, temporary: true };
