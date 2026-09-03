@@ -67,7 +67,7 @@ test("iPhone signup and account management use Apple while other platforms keep 
   assert.ok(client.includes("<PaymentElement"));
   assert.ok(configuration.includes("applePlanProduct(planKey)"));
   assert.ok(configuration.includes("plans: catalog.plans"));
-  assert.ok(settings.includes("Manage Plan & Payment"));
+  assert.ok(settings.includes('SectionHeader title="Plan and payment"'));
   assert.ok(manager.includes("Continue with Apple"));
   assert.ok(manager.includes("Open Apple payment settings"));
   assert.ok(manager.includes("quantity: purchaseQuantity"));
