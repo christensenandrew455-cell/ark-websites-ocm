@@ -624,8 +624,8 @@ test("the custom Stripe manager requires explicit timing and full immediate paym
   assert.ok(cardRoute.includes("stripe.setupIntents.create"));
   assert.ok(cardRoute.includes("default_payment_method: paymentMethodId"));
   assert.ok(manager.includes("No charge today"));
-  assert.ok(manager.includes("Unused leads from the current plan are not carried over or refunded"));
-  assert.ok(manager.includes("cost exactly $1 each"));
+  assert.ok(manager.includes("Unused leads expire and are not refunded"));
+  assert.ok(manager.includes("$1 each"));
 });
 
 test("retired variable-charge modules and routes are gone", async () => {
