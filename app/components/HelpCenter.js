@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
+import InfoTip from "./InfoTip";
 
 const CHAT_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -110,9 +111,8 @@ export default function HelpCenter({ className = "" }) {
 
   return (
     <>
-      <button type="button" onClick={() => setChatOpen(true)} className={className || "min-h-28 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]"}>
+      <button type="button" onClick={() => setChatOpen(true)} className={className || "min-h-20 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]"}>
         <p className="text-lg font-black text-slate-950">AI Chat</p>
-        <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Quick answers</p>
       </button>
       {chatOpen && (
         <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="help-chat-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setChatOpen(false); }}>
@@ -120,12 +120,12 @@ export default function HelpCenter({ className = "" }) {
             <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
               <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">ARK Client Center</p><h2 id="help-chat-title" className="mt-0.5 text-lg font-black text-slate-950 sm:text-xl">AI Chat</h2></div>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={clearChat} className="rounded-xl border border-slate-300 px-3 py-2 text-[11px] font-black text-slate-700">Delete Chat</button>
+                <button type="button" onClick={clearChat} className="rounded-xl border border-slate-300 px-3 py-2 text-[11px] font-black text-slate-700">Delete chat</button>
                 <button type="button" onClick={() => setChatOpen(false)} aria-label="Close help chat" className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white">×</button>
               </div>
             </header>
             <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-5">
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-900">Ask where something is or how to use the app. AI can explain and provide links, but it cannot change your account or billing. This chat clears 24 hours after the last message.</div>
+              <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs font-black text-blue-900">App help · clears after 24 hours <InfoTip label="About AI Chat">Ask how the app works or where to find something. AI Chat can explain and link to pages, but it cannot change your account, leads, settings, or billing.</InfoTip></div>
               <div className="mt-4 space-y-3">
                 {messages.map((message) => (
                   <div key={message.id} className={message.role === "user" ? "flex justify-end" : "flex justify-start"}>
