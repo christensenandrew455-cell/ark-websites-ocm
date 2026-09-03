@@ -122,6 +122,8 @@ test("runtime, intake, lead cards, and notifications share the explicit emergenc
   assert.ok(intake.includes("...(RequestUrgency ? { RequestUrgency } : {})"));
   assert.ok(leadCards.includes("function EmergencyBadge"));
   assert.ok(leadCards.includes("Emergency · ASAP"));
-  assert.ok(leadCards.includes("sort(contactedLeadOrder)"));
+  assert.ok(leadCards.includes('title="Emergencies"'));
+  assert.ok(leadCards.includes('title="Regular"'));
+  assert.ok(leadCards.includes("sort(compareOldestLead)"));
   assert.ok(notifications.includes("PUSH_NOTIFICATION_COPY.emergencyLead"));
 });

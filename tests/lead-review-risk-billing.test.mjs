@@ -107,7 +107,32 @@ test("nested receptionist signal payloads are scored without trusting a supplied
   assert.equal(result.level, "low");
 });
 
-test("Contacted You summaries exclude private contact fields but show the requested time window", () => {
+test("an unavailable receptionist address check is not rewritten as an invalid address", () => {
+  const result = calculateLeadRisk({
+    riskAssessment: {
+      addressVerified: false,
+      outsideServiceArea: false,
+      phoneLookupFailed: false,
+      phoneLocationMismatch: false,
+      phoneIsVoip: false,
+      callerNameUnavailable: false,
+      callerNameMismatch: false,
+      resistanceCount: 0,
+    },
+    risk: {
+      checks: {
+        address: { status: "not_configured" },
+        phone: { status: "verified" },
+      },
+    },
+    riskScore: 0,
+  });
+  assert.equal(result.assessed, true);
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.breakdown, []);
+});
+
+test("Contacted You summaries hide identity but show job, schedule, and notes", () => {
   const summary = pendingLeadSummary("lead-1", {
     Name: "Jordan Lee",
     Job: "Replace water heater",
@@ -122,7 +147,7 @@ test("Contacted You summaries exclude private contact fields but show the reques
   });
   assert.deepEqual(Object.keys(summary).sort(), [
     "Job",
-    "Name",
+    "Notes",
     "PreferredDay",
     "PreferredTimeWindow",
     "collectionKey",
@@ -136,9 +161,11 @@ test("Contacted You summaries exclude private contact fields but show the reques
   ]);
   assert.equal(Object.hasOwn(summary, "Phone"), false);
   assert.equal(Object.hasOwn(summary, "Address"), false);
+  assert.equal(Object.hasOwn(summary, "Name"), false);
   assert.equal(Object.hasOwn(summary, "RequestSummary"), false);
   assert.equal(summary.PreferredDay, "2026-09-02");
   assert.equal(summary.PreferredTimeWindow, "Afternoon");
+  assert.equal(summary.Notes, "Private details");
   assert.equal(summary.riskScore, 5);
   assert.equal(summary.riskLevel, "moderate");
 });
@@ -164,6 +191,7 @@ test("Contacted You exposes an explicit emergency marker without exposing privat
   });
   assert.equal(summary.RequestUrgency, "emergency");
   assert.equal(summary.PreferredTimeWindow, "As soon as possible");
+  assert.equal(Object.hasOwn(summary, "Name"), false);
   assert.equal(Object.hasOwn(summary, "Phone"), false);
   assert.equal(Object.hasOwn(summary, "Address"), false);
 });

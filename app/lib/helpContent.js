@@ -112,7 +112,7 @@ const sections = [
     title: "Leads, Contacted You, and Clients",
     summary: "The dedicated Leads page contains both new receptionist leads and accepted clients.",
     points: [
-      "Contacted You shows only the caller's name, requested service, requested window, and risk level until the lead is accepted. Actual ASAP requests also show an Emergency badge.",
+      "Contacted You hides the caller's identity until acceptance and shows only the job type, requested day and window, project notes, received time, and risk level. Actual ASAP requests appear in a separate Emergency section with a red badge.",
       "Accept moves a person into Clients. Decline removes the lead.",
       "Risk levels are Low (0–2), Moderate (3–5), High (6–8), and Very high (9+).",
       MESSAGES_AVAILABLE
