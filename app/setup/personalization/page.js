@@ -9,12 +9,15 @@ import { auth } from "../../lib/firebase";
 import { formatNotificationPhone, NOTIFICATION_SMS_FROM_DISPLAY } from "../../lib/notificationPreferences";
 import { publicFormError } from "../../lib/userFacingError";
 import { useAuth } from "../../components/AuthProvider";
+import InfoTip from "../../components/InfoTip";
 
-function ChannelChoice({ checked, onChange, title, destination, description }) {
-  return <label className={`flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition ${checked ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100" : "border-slate-200 bg-white"}`}>
-    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-indigo-700" />
-    <span className="min-w-0"><span className="block text-lg font-black text-slate-950">{title}</span><span className="mt-1 block break-words text-sm font-bold text-indigo-800">{destination}</span><span className="mt-2 block text-xs font-semibold leading-5 text-slate-600">{description}</span></span>
-  </label>;
+function ChannelChoice({ checked, onChange, title, destination, help }) {
+  const id = `channel-${title.toLowerCase().replaceAll(" ", "-")}`;
+  return <div className={`flex items-start gap-3 rounded-2xl border p-5 transition ${checked ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100" : "border-slate-200 bg-white"}`}>
+    <input id={id} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-indigo-700" />
+    <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer"><span className="block text-lg font-black text-slate-950">{title}</span><span className="mt-1 block break-words text-sm font-bold text-indigo-800">{destination}</span></label>
+    {help && <InfoTip label={`About ${title.toLowerCase()}`} align="right">{help}</InfoTip>}
+  </div>;
 }
 
 export default function PersonalizationSetupPage() {
@@ -89,8 +92,7 @@ export default function PersonalizationSetupPage() {
     <section className="ark-auth-card mx-auto w-full max-w-3xl rounded-3xl p-6 shadow-2xl sm:p-9">
       <p className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">ARK Client Center</p>
       <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">Step 4 of 5 · Personalization</p>
-      <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Where should alerts go?</h1>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Choose email, text message, or both for new leads and important account updates. You can change this later in Settings.</p>
+      <div className="mt-3 flex items-center gap-2"><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Where should alerts go?</h1><InfoTip label="About alerts">Choose email, text, or both for new leads and important account updates. You can change this later.</InfoTip></div>
 
       <form onSubmit={continueSignup} className="mt-7 space-y-4">
         <ChannelChoice
@@ -98,14 +100,13 @@ export default function PersonalizationSetupPage() {
           onChange={(selected) => updateChannel("email", selected)}
           title="Email notifications"
           destination={account.accountEmail}
-          description="Receive the same short account alerts at your verified email address."
         />
         <ChannelChoice
           checked={channels.includes("sms")}
           onChange={(selected) => updateChannel("sms", selected)}
           title="Text message notifications"
           destination={formatNotificationPhone(account.accountPhone)}
-          description={`Alerts come from ${NOTIFICATION_SMS_FROM_DISPLAY}, the same ARK number used during signup.`}
+          help={`Alerts come from ${NOTIFICATION_SMS_FROM_DISPLAY}, the ARK number used during signup.`}
         />
         {channels.includes("sms") && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold leading-5 text-slate-600">By choosing text notifications, you consent to receive automated transactional texts from ARK at your verified account phone number. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.</p>}
         {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
