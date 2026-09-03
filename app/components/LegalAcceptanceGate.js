@@ -59,9 +59,7 @@ export default function LegalAcceptanceGate() {
       <section className="ark-modal-surface ark-modal-scroll max-w-lg p-5 sm:p-8">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Required before continuing</p>
         <h1 id="legal-acceptance-title" className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Review the current policies</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          The Terms of Use or Privacy Policy has not been accepted for this account, or a newer version is available. You must accept both current policies before using the app.
-        </p>
+        <p className="mt-3 text-sm font-semibold text-slate-600">Accept both to continue.</p>
 
         <div className="mt-5 grid grid-cols-2 gap-2">
           <Link href="/terms" className="rounded-xl border border-slate-300 px-3 py-3 text-center text-xs font-black text-slate-800 hover:bg-slate-50 sm:text-sm">
@@ -104,7 +102,7 @@ export default function LegalAcceptanceGate() {
             disabled={!acceptedTerms || !acceptedPrivacy || saving}
             className="w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:bg-slate-300"
           >
-            {saving ? "Saving acceptance…" : "Accept and Continue"}
+            {saving ? "Saving…" : "Accept and continue"}
           </button>
         </form>
 

@@ -17,7 +17,6 @@ export default function SubscriptionPlanCard({ plan, promotionalAmountCents = 0 
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <p className="text-xl font-black tracking-tight text-slate-950">{plan.name}</p>
-        <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-indigo-700">{plan.positioning}</p>
         <p className="mt-2 text-sm font-bold text-slate-600">{plan.monthlyAcceptedLeads} accepted leads per month</p>
       </div>
       <div className="shrink-0 text-right">

@@ -48,11 +48,11 @@ test("login and both signup password fields use tappable visibility controls", a
 
 test("payment warnings show the plain message, recovery deadline, and payment update action", async () => {
   const source = await readFile(new URL("../app/components/AppShell.js", import.meta.url), "utf8");
-  assert.ok(source.includes("You need to update your payment method."));
+  assert.ok(source.includes("Update your payment method"));
   assert.ok(source.includes("Update before"));
   assert.ok(source.includes("Payment status couldn’t refresh"));
   assert.ok(source.includes("Try again"));
-  assert.ok(source.includes("Update Payment Method"));
+  assert.ok(source.includes("Update payment method"));
 
   assert.equal(billingPaymentDeadline({
     recoveryEndsAt: "2026-08-20T12:00:00.000Z",

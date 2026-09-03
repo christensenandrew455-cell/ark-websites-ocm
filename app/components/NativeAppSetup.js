@@ -4,6 +4,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
+import InfoTip from "./InfoTip";
 
 const PhonePermissions = registerPlugin("PhonePermissions");
 const PERMISSION_KEYS = ["notifications", "calendar", "contacts"];
@@ -110,10 +111,7 @@ function PermissionRow({ permissionKey, title, description, status, busy, onEnab
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-black text-slate-950">{title}</h3>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
-        </div>
+        <div className="flex min-w-0 items-center gap-2"><h3 className="text-sm font-black text-slate-950">{title}</h3><InfoTip label={`Why ARK requests ${title.toLowerCase()}`}>{description}</InfoTip></div>
         <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase text-amber-800">
           Not enabled
         </span>
@@ -124,7 +122,7 @@ function PermissionRow({ permissionKey, title, description, status, busy, onEnab
         onClick={() => onEnable(permissionKey)}
         className="mt-3 w-full rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-500"
       >
-        {busy ? "Opening permission…" : needsSettings ? `Open ${title} Settings` : `Enable ${title}`}
+        {busy ? "Opening…" : needsSettings ? `Open ${title.toLowerCase()} settings` : `Enable ${title.toLowerCase()}`}
       </button>
     </div>
   );
@@ -414,10 +412,6 @@ export default function NativeAppSetup() {
             </button>
             <p className="pr-12 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">ARK Client Center</p>
             <h2 id="phone-setup-title" className="mt-2 pr-12 text-2xl font-black tracking-tight">Finish phone setup</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              This setup is offered once after account creation. Enable any phone access you want to use.
-            </p>
-
             {error && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{error}</div>}
 
             <div className="mt-5 space-y-3">
@@ -450,9 +444,6 @@ export default function NativeAppSetup() {
             <button type="button" disabled={savingPrompt} onClick={dismissSetup} className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white disabled:opacity-50">
               {savingPrompt ? "Saving…" : "Done"}
             </button>
-            <p className="mt-2 text-center text-[10px] font-semibold leading-4 text-slate-500">
-              This permission setup will not be shown again after it is closed.
-            </p>
           </section>
         </div>
       )}

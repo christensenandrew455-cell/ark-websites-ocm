@@ -6,6 +6,7 @@ import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, regularS
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
+import InfoTip from "./InfoTip";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
@@ -52,25 +53,13 @@ function formatTime(hour, period) {
 }
 
 function ExplainedLabel({ label, explanation, heading = false }) {
-  const [open, setOpen] = useState(false);
   const labelClassName = heading
     ? "text-lg font-black"
     : "text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs";
   return (
-    <div>
-      <div className="flex items-center gap-2">
-        {heading ? <h3 className={labelClassName}>{label}</h3> : <p className={labelClassName}>{label}</p>}
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-label={`${open ? "Hide" : "Show"} explanation for ${label}`}
-          onClick={() => setOpen((current) => !current)}
-          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black ${open ? "border-slate-950 bg-slate-950 text-white" : "border-slate-300 bg-white text-slate-600"}`}
-        >
-          ?
-        </button>
-      </div>
-      {open && <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600">{explanation}</p>}
+    <div className="flex items-center gap-2">
+      {heading ? <h3 className={labelClassName}>{label}</h3> : <p className={labelClassName}>{label}</p>}
+      {explanation && <InfoTip label={`About ${label}`}>{explanation}</InfoTip>}
     </div>
   );
 }
@@ -312,7 +301,7 @@ function ServiceAreaEditor({ serviceAreas, onChange }) {
   return (
     <div className="space-y-4">
       <div>
-        <ExplainedLabel label="States" explanation="Add every state the business serves. Counties can only be used when exactly one state is selected." />
+        <ExplainedLabel label="States" />
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <InAppSelect
             ariaLabel="State to add"
@@ -340,7 +329,7 @@ function ServiceAreaEditor({ serviceAreas, onChange }) {
       </div>
 
       <div>
-        <ExplainedLabel label="Counties (optional)" explanation="When the business serves exactly one state, add as many counties as needed." />
+        <ExplainedLabel label="Counties (optional)" explanation="Counties are available when exactly one state is selected." />
         {states.length === 1 ? (
           <div className="mt-2">
             <StackedListEditor items={counties} onChange={(nextCounties) => onChange(serviceAreaValues(states, nextCounties))} placeholder="Worcester County" addLabel="Add County" inputLabel="County" />
@@ -469,10 +458,10 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
     <section>
       <h3 className="text-lg font-black">Business details</h3>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <Field label="Business name" explanation="Enter the name customers know the business by."><Input ariaLabel="Business name" value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} onBlur={() => update("businessName", profile.businessName, { saveImmediately: true })} /></Field>
-        <Field label="Owner name" explanation="Enter the business owner&apos;s name."><Input ariaLabel="Owner name" value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} onBlur={() => update("ownerName", profile.ownerName, { saveImmediately: true })} /></Field>
-        <Field label="Business phone" explanation="Enter the main phone number used for this business account."><Input ariaLabel="Business phone" type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} onBlur={() => update("businessPhone", profile.businessPhone, { saveImmediately: true })} /></Field>
-        <Field label="Business email" explanation="Enter the main email address used for this business account."><Input ariaLabel="Business email" type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} onBlur={() => update("businessEmail", profile.businessEmail, { saveImmediately: true })} /></Field>
+        <Field label="Business name"><Input ariaLabel="Business name" value={profile.businessName} onChange={(event) => update("businessName", dashBusinessName(event.target.value))} onBlur={() => update("businessName", profile.businessName, { saveImmediately: true })} /></Field>
+        <Field label="Owner name"><Input ariaLabel="Owner name" value={profile.ownerName} onChange={(event) => update("ownerName", event.target.value)} onBlur={() => update("ownerName", profile.ownerName, { saveImmediately: true })} /></Field>
+        <Field label="Business phone"><Input ariaLabel="Business phone" type="tel" value={profile.businessPhone} onChange={(event) => update("businessPhone", event.target.value)} onBlur={() => update("businessPhone", profile.businessPhone, { saveImmediately: true })} /></Field>
+        <Field label="Business email"><Input ariaLabel="Business email" type="email" value={profile.businessEmail} onChange={(event) => update("businessEmail", event.target.value)} onBlur={() => update("businessEmail", profile.businessEmail, { saveImmediately: true })} /></Field>
       </div>
     </section>
   );
@@ -480,37 +469,36 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
     <section>
       <h3 className="text-lg font-black">Business type</h3>
       <div className="mt-4">
-        <Field label="Type of business" explanation="Choose the business&apos;s primary type from the supported list.">
+        <Field label="Type of business">
           <InAppSelect ariaLabel="Type of business" value={profile.businessType} options={BUSINESS_TYPES} onChange={(value) => update("businessType", value, { saveImmediately: true })} placeholder="Choose a business type" />
         </Field>
       </div>
     </section>
     <section>
-      <h3 className="text-lg font-black">Regular service scheduling</h3>
-      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Normal projects and non-urgent requests can always be scheduled. Add the usual service window so the receptionist can guide callers without promising a confirmed appointment.</p>
+      <ExplainedLabel label="Regular scheduling" explanation="Callers request a day and a morning or afternoon window. You confirm the exact appointment after accepting the lead." heading />
       <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <Field label="Time zone" explanation="Choose the time zone where the business is located so appointment times are interpreted correctly.">
+        <Field label="Time zone">
           <InAppSelect ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
         </Field>
-        <DayCheckboxes label="Regular service days" explanation="Choose the days callers may request normal projects and scheduled service. Leave these blank only when the business has no fixed schedule." selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
-        <HourPeriodPicker label="Earliest regular time" explanation="Choose the earliest time for a normal scheduled request, or leave it blank when there is no fixed schedule." hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />
+        <DayCheckboxes label="Regular service days" selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
+        <HourPeriodPicker label="Earliest regular time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />
         <HourPeriodPicker label="Latest regular time" explanation="Choose the latest time for a normal scheduled request. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(hour) => update("estimateEndHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateEndPeriod", period, { saveImmediately: true })} />
       </div>
     </section>
     <section>
-      <h3 className="text-lg font-black">Emergency / ASAP service</h3>
-      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Turn this on only if the business accepts urgent requests for help as soon as possible. Regular scheduling stays available either way.</p>
+      <ExplainedLabel label="Emergency requests" explanation="Turn this on only if the business accepts urgent requests for help as soon as possible. Regular scheduling stays available either way." heading />
       <div className="mt-4 space-y-3">
-        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-          <input type="checkbox" className="mt-0.5" checked={profile.emergencyServiceEnabled === true} onChange={(event) => updateEmergencyService(event.target.checked)} />
-          <span><strong className="block text-sm text-slate-900">Accept emergency / ASAP requests</strong><span className="mt-0.5 block text-xs font-semibold leading-5 text-slate-600">The receptionist will ask callers whether they need help as soon as possible or want to schedule a time.</span></span>
-        </label>
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <input id="accept-emergency-requests" type="checkbox" className="mt-0.5" checked={profile.emergencyServiceEnabled === true} onChange={(event) => updateEmergencyService(event.target.checked)} />
+          <label htmlFor="accept-emergency-requests" className="flex-1 text-sm font-black text-slate-900">Accept emergency requests</label>
+          <InfoTip label="How emergency requests work" align="right">The receptionist asks: “{ASAP_OR_SCHEDULED_QUESTION}”</InfoTip>
+        </div>
         {profile.emergencyServiceEnabled === true ? <>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-950"><span className="block text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">Receptionist question</span>“{ASAP_OR_SCHEDULED_QUESTION}”</div>
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
-            <input type="checkbox" className="mt-0.5" checked={profile.emergencyService24Hours === true} onChange={(event) => update("emergencyService24Hours", event.target.checked, { saveImmediately: true })} />
-            <span><strong className="block text-sm text-slate-900">24/7 emergency availability</strong><span className="mt-0.5 block text-xs font-semibold leading-5 text-slate-600">When off, ASAP requests follow the regular service schedule above. The receptionist marks urgency but never promises dispatch or an arrival time.</span></span>
-          </label>
+          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+            <input id="emergency-available-all-day" type="checkbox" className="mt-0.5" checked={profile.emergencyService24Hours === true} onChange={(event) => update("emergencyService24Hours", event.target.checked, { saveImmediately: true })} />
+            <label htmlFor="emergency-available-all-day" className="flex-1 text-sm font-black text-slate-900">Available 24/7</label>
+            <InfoTip label="About 24/7 emergency requests" align="right">When off, emergency requests follow the regular schedule. ARK marks them urgent but does not promise an arrival time.</InfoTip>
+          </div>
           {profile.emergencyService24Hours !== true && !regularScheduleConfigured ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">Add regular service days and both regular times above, or turn on 24/7 emergency availability.</p> : null}
         </> : null}
       </div>
@@ -520,7 +508,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       <div className="mt-4"><ServiceAreaEditor serviceAreas={profile.serviceAreas} onChange={(serviceAreas) => update("serviceAreas", serviceAreas, { saveImmediately: true })} /></div>
     </section>
     <section>
-      <ExplainedLabel label="Services" explanation="Add each type of work customers can request from the business." heading />
+      <ExplainedLabel label="Services" heading />
       <div className="mt-4"><ServicesEditor services={profile.services} businessType={profile.businessType} onChange={(services) => update("services", services, { saveImmediately: true })} /></div>
     </section>
     <section>

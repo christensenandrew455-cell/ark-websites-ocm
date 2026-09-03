@@ -31,8 +31,7 @@ export default function GlobalConfirmDialog() {
   return (
     <div className="ark-modal-overlay z-[240]" role="dialog" aria-modal="true" aria-labelledby="global-confirm-title">
       <div className="ark-modal-surface max-w-md p-5 sm:p-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-700">Please confirm</p>
-        <h2 id="global-confirm-title" className="mt-2 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{request.title || "Are you sure?"}</h2>
+        <h2 id="global-confirm-title" className="text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{request.title || "Are you sure?"}</h2>
         {request.message && <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{request.message}</p>}
         {requiredText && (
           <label className="mt-5 block">

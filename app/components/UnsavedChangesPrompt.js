@@ -158,13 +158,11 @@ export default function UnsavedChangesPrompt({ dirty, onSave, onDiscard }) {
   return (
     <div className="ark-modal-overlay z-[200]" role="dialog" aria-modal="true" aria-labelledby="unsaved-title">
       <div className="ark-modal-surface max-w-md p-6 text-slate-950 sm:p-7">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700">Unsaved changes</p>
-        <h2 id="unsaved-title" className="mt-2 text-2xl font-black tracking-tight">You have unsaved changes</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Save what you changed, or continue to {pending.label || "the next page"} without saving.</p>
+        <h2 id="unsaved-title" className="text-2xl font-black tracking-tight">Save your changes?</h2>
         <div className="mt-6 grid gap-2">
-          <button type="button" disabled={saving} onClick={saveAndContinue} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{saving ? "Saving…" : "Save Changes"}</button>
-          <button type="button" disabled={saving} onClick={discardAndContinue} className="rounded-xl border border-red-300 px-5 py-3 text-sm font-black text-red-700 disabled:opacity-50">Continue to {pending.label || "Next Page"} Without Saving</button>
-          <button type="button" disabled={saving} onClick={() => setPending(null)} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-black text-slate-700 disabled:opacity-50">Stay Here</button>
+          <button type="button" disabled={saving} onClick={saveAndContinue} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{saving ? "Saving…" : "Save and continue"}</button>
+          <button type="button" disabled={saving} onClick={discardAndContinue} className="rounded-xl border border-red-300 px-5 py-3 text-sm font-black text-red-700 disabled:opacity-50">Continue without saving</button>
+          <button type="button" disabled={saving} onClick={() => setPending(null)} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-black text-slate-700 disabled:opacity-50">Stay</button>
         </div>
       </div>
     </div>

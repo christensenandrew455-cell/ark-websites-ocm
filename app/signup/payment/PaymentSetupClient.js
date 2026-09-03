@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { readApiJson } from "../../lib/apiResponse";
 import { billingPlan, publicBillingPlans } from "../../lib/billingPricing";
 import SubscriptionPlanCard from "../../components/SubscriptionPlanCard";
+import InfoTip from "../../components/InfoTip";
 import { discountedAmountCents } from "../../lib/temporaryFeatures";
 import { useAuth } from "../../components/AuthProvider";
 import { auth } from "../../lib/firebase";
@@ -21,7 +22,7 @@ import {
   unfinishedAppleTransactions,
 } from "../../lib/appleIapClient";
 
-const FAILURE_MESSAGE = "your payment has failed update your payment method or try again later";
+const FAILURE_MESSAGE = "Payment failed. Update your payment method or try again later.";
 const MONTHLY_PLANS = publicBillingPlans();
 
 function money(cents) {
@@ -35,9 +36,8 @@ function money(cents) {
 
 function PlanSelector({ selectedPlanKey, onSelect, promotion, disabled = false }) {
   return <section aria-labelledby="choose-plan-title">
-    <h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose your monthly accepted-lead plan</h1>
-    <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Each unique service request counts once when you accept it. Calls do not count, and your allowance resets every billing month.</p>
-    {promotion && <div className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950"><p className="text-sm font-black">Saved promotional price</p><p className="mt-1 text-xs font-semibold leading-5">This signup already locked in {promotion.percentOff}% off before the website offer ended.</p></div>}
+    <div className="flex items-center gap-2"><h1 id="choose-plan-title" className="text-2xl font-black tracking-tight text-slate-950">Choose a monthly plan</h1><InfoTip label="What counts as an accepted lead">One request counts once when you accept it. Calls do not count. Your limit resets each billing month.</InfoTip></div>
+    {promotion && <div className="mt-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm font-black text-emerald-950">Saved price: {promotion.percentOff}% off</div>}
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
       {MONTHLY_PLANS.map((plan) => {
         const selected = plan.key === selectedPlanKey;
@@ -103,7 +103,7 @@ function PaymentForm({ clientSecret, returnUrl, selectedPlan, promotion, onSucce
   return <form onSubmit={submit} className="space-y-5">
     <PaymentElement options={{ layout: "accordion" }} />
     <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.{promotion ? ` This signup already has a saved ${promotion.percentOff}% promotional price (normally ${money(selectedPlan.listAmountCents)}).` : ""}</p>
-    <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay & Continue</button>
+    <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay and continue</button>
     {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </form>;
 }
@@ -210,12 +210,12 @@ function ApplePaymentForm({ configuration, user, onSucceeded }) {
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
       <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">ARK {configuration.selectedPlan.name} plan</p>
       <p className="mt-2 text-3xl font-black text-slate-950">{storeProduct?.displayPrice || money(configuration.selectedPlan.amountCents)} <span className="text-sm text-slate-500">per month</span></p>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Includes ARK Client Center and {configuration.selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.</p>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">{configuration.selectedPlan.monthlyAcceptedLeads} accepted leads each month · calls included</p>
     </div>
     <p className="text-xs font-semibold leading-5 text-slate-600">Payment is charged to your Apple Account at confirmation. The subscription automatically renews monthly unless canceled at least 24 hours before the current period ends. Your Apple Account is charged for renewal within 24 hours before the period ends. Manage or cancel in your App Store subscription settings.</p>
     <p className="text-xs font-semibold text-slate-600"><Link href="/terms" className="font-black underline">Terms of Use</Link><span aria-hidden="true"> · </span><Link href="/privacy" className="font-black underline">Privacy Policy</Link></p>
     <button id="apple-subscribe-button" type="button" onClick={subscribe} disabled={!storeProduct || submitting || restoring} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-50">{submitting ? "Confirming with Apple…" : `Choose ${configuration.selectedPlan.name} with Apple`}</button>
-    <button type="button" onClick={restore} disabled={submitting || restoring} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800 disabled:opacity-50">{restoring ? "Restoring…" : "Restore Purchases"}</button>
+    <button type="button" onClick={restore} disabled={submitting || restoring} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800 disabled:opacity-50">{restoring ? "Restoring…" : "Restore purchases"}</button>
     {notice && <p className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-800" role="status">{notice}</p>}
     {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </div>;
@@ -359,7 +359,7 @@ export default function PaymentSetupClient() {
       <section className="w-full max-w-md rounded-3xl border border-emerald-200 bg-white p-7 text-center text-slate-950 shadow-2xl sm:p-9">
         <div aria-hidden="true" className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-100 text-2xl font-black text-emerald-800">✓</div>
         <h1 id="payment-complete-title" className="mt-5 text-2xl font-black tracking-tight">Your account is ready</h1>
-        <p id="payment-complete-message" className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your payment information is set up. Now, go sign in to your ARK Client Center.</p>
+        <p id="payment-complete-message" className="mt-3 text-sm font-semibold leading-6 text-slate-600">Sign in to continue.</p>
         <button type="button" onClick={backToSignIn} disabled={leaving} className="mt-6 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:opacity-60">{leaving ? "Opening sign in…" : "Back to sign in"}</button>
       </section>
     </div>}

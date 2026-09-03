@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import BackButton from "../components/BackButton";
+import InfoTip from "../components/InfoTip";
 import { useAuth } from "../components/AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
 
@@ -52,14 +53,12 @@ export default function RewardsPage() {
       <header className="mt-5">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">ARK Client Center</p>
         <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Rewards</h1>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Share honest feedback, refer other businesses, and keep free lead credits ready for when you need them.</p>
       </header>
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700" role="alert">{error}</p>}
       {rewards && <div className="mt-5 grid gap-4">
         <section className="rounded-3xl bg-violet-800 p-6 text-white shadow-sm sm:p-8">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-200">Banked free lead credits</p>
+          <div className="flex items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-200">Banked free lead credits</p><InfoTip label="About banked free leads">Credits stay here until you use them. After your monthly included leads reach zero, apply five at a time in Plan and payment.</InfoTip></div>
           <p className="mt-2 text-5xl font-black">{Number(rewards.rewardLeadCreditBalance || 0).toLocaleString("en-US")}</p>
-          <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-violet-100">Credits stay in your Rewards balance. Once your included monthly leads are used up, apply them in Plan &amp; Payment in groups of five.</p>
           <Link href="/settings?section=payment&manage=topup" className="mt-5 inline-flex rounded-xl bg-white px-5 py-3 text-sm font-black text-violet-900">Open lead options</Link>
         </section>
 
@@ -67,8 +66,8 @@ export default function RewardsPage() {
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-amber-100 text-xl" aria-hidden="true">★</div>
             <h2 className="mt-4 text-xl font-black">Give feedback</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Tell us what is working and what needs work. Send feedback anytime.</p>
-            {!rewards.feedbackRewardEarned && <p className="mt-3 rounded-xl bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-900">Your first thoughtful feedback may unlock a mystery thank-you.</p>}
+            <p className="mt-2 text-sm font-semibold text-slate-600">Share an idea or problem.</p>
+            {!rewards.feedbackRewardEarned && <div className="mt-3 flex items-center gap-2 text-xs font-black text-violet-900">First-feedback thank-you <InfoTip label="About the first-feedback thank-you">Your first thoughtful feedback may unlock a mystery thank-you. Honest feedback counts whether it is positive or negative.</InfoTip></div>}
             {rewards.feedbackRewardEarned && <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">First-feedback thank-you unlocked.</p>}
             <Link href="/feedback" className="mt-4 inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Give feedback</Link>
           </section>
@@ -76,7 +75,7 @@ export default function RewardsPage() {
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-100 text-xl" aria-hidden="true">↗</div>
             <h2 className="mt-4 text-xl font-black">Refer businesses</h2>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Share as many referrals as you want. Each of your first three completed paid referrals per calendar month adds five free lead credits.</p>
+            <div className="mt-2 flex items-center gap-2 text-sm font-black text-slate-700">5 leads per paid referral · up to 3/month <InfoTip label="About referral rewards">Share as often as you want. Your first three completed paid referrals each calendar month earn five credits.</InfoTip></div>
             <div className="mt-4 rounded-xl bg-slate-50 p-4">
               <div className="flex items-center justify-between gap-3"><p className="text-xs font-black text-slate-700">{rewarded} of {maximum} rewarded this month</p><p className="text-xs font-black text-violet-700">+5 each</p></div>
               <Progress value={rewarded} maximum={maximum} />
@@ -85,8 +84,7 @@ export default function RewardsPage() {
         </div>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-black">Your referral details</h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Your business username is also your referral code. A referral counts after the new business finishes signup and payment.</p>
+          <div className="flex items-center gap-2"><h2 className="text-xl font-black">Your referral details</h2><InfoTip label="How referrals count">Your username is your referral code. A referral counts after the new business finishes signup and payment with that code.</InfoTip></div>
           <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Referral code / username</p><p className="mt-1 break-all text-sm font-black text-slate-950">{rewards.referralCode}</p></div>
             <button type="button" onClick={() => copy("code", rewards.referralCode)} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-black">{copied === "code" ? "Copied" : "Copy code"}</button>

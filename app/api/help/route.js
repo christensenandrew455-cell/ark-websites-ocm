@@ -2,6 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { HELP_KNOWLEDGE, HELP_LINKS } from "../../lib/helpContent";
+import { LEGAL_KNOWLEDGE } from "../../lib/legalKnowledge";
 import { requireUser } from "../../lib/userRequest";
 
 export const runtime = "nodejs";
@@ -130,20 +131,23 @@ export async function POST(request) {
     }
 
     const model = String(process.env.OPENAI_HELP_MODEL || "gpt-4o-mini").trim();
-    const systemPrompt = `You are the built-in help assistant for ARK Client Center. Your only job is to explain how this app works and direct signed-in customers to the correct page. Be friendly, direct, and brief. Use only the documentation below. Never invent features, prices, policy promises, account status, request status, or customer data. Never claim that you performed an action. You cannot edit accounts, billing, clients, support requests, or policies. When an action is needed, explain the steps and provide the correct page link. Refer to links by their actual page names, such as Clients, Settings, Support, Docs, Terms of Use, or Privacy Policy.
+    const systemPrompt = `You are the built-in help assistant for ARK Client Center. Explain how the app works and direct signed-in customers to the correct page. Answer the question directly, using everyday words and short steps when steps are needed. Use only the app documentation, Terms of Use, and Privacy Policy below. Treat exact labels, prices, time limits, definitions, and policy conditions as facts that must not be changed. Never invent features, promises, account status, request status, or customer data. Never claim that you performed an action. You cannot edit accounts, billing, clients, support requests, or policies. For legal or privacy questions, state which policy supports the answer and link to it.
 
 If the documentation does not clearly answer the question, do not guess. Set "found" to false. The application will then direct the user to Support and Docs.
 
 Return valid JSON only in this exact shape:
-{"found":true,"answer":"A plain-language answer under 160 words.","links":[{"label":"Exact allowed label","href":"Exact allowed href"}]}
+{"found":true,"answer":"A plain-language answer under 120 words.","links":[{"label":"Exact allowed label","href":"Exact allowed href"}]}
 
 Use no more than three links. Only use these exact links:
 ${HELP_LINKS.map((link) => `- ${link.label}: ${link.href}`).join("\n")}
 
 Current page: ${currentPath}
 
-DOCUMENTATION:
-${HELP_KNOWLEDGE}`;
+APP DOCUMENTATION:
+${HELP_KNOWLEDGE}
+
+LEGAL AND PRIVACY DOCUMENTATION:
+${LEGAL_KNOWLEDGE}`;
 
     const openAiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
