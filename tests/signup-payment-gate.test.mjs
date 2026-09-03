@@ -35,7 +35,7 @@ test("onboarding follows main information, verification, business, personalizati
   assert.ok(personalization.includes('method: "PUT"'));
   assert.ok(payment.includes("Step 5 of 5 · Plan &amp; payment"));
   assert.ok(payment.includes("Back to sign in"));
-  assert.ok(payment.includes("Now, go sign in to your ARK Client Center."));
+  assert.ok(payment.includes("Sign in to continue."));
   assert.equal(payment.includes("window.setTimeout(() => window.location.replace(data.nextPath"), false);
   assert.ok(shell.includes('status === "pending_verification"'));
   assert.ok(shell.includes('status === "pending_business_setup"'));
@@ -70,11 +70,11 @@ test("business setup separates regular scheduling from optional emergency servic
   assert.ok(form.includes("grid-cols-[minmax(0,1fr)_88px]"));
   assert.ok(form.includes('ariaLabel={`${label} hour`}'));
   assert.ok(form.includes('ariaLabel={`${label} AM or PM`}'));
-  assert.ok(form.includes("Regular service scheduling"));
+  assert.ok(form.includes("Regular scheduling"));
   assert.ok(form.includes('label="Regular service days"'));
-  assert.ok(form.includes("Emergency / ASAP service"));
-  assert.ok(form.includes("Accept emergency / ASAP requests"));
-  assert.ok(form.includes("24/7 emergency availability"));
+  assert.ok(form.includes("Emergency requests"));
+  assert.ok(form.includes("Accept emergency requests"));
+  assert.ok(form.includes("Available 24/7"));
   assert.ok(form.includes("ASAP_OR_SCHEDULED_QUESTION"));
   assert.ok(form.includes("profile.emergencyServiceEnabled === true ?"));
   assert.equal(form.includes("acceptsAllHours"), false);
@@ -357,7 +357,7 @@ test("payment page uses Stripe Payment Element without raw card fields", async (
   assert.ok(client.includes("<PaymentElement"));
   assert.ok(client.includes("stripe.confirmSetup({"));
   assert.ok(client.includes('redirect: "if_required"'));
-  assert.ok(client.includes("Pay & Continue"));
+  assert.ok(client.includes("Pay and continue"));
   assert.ok(client.includes("Your account is ready"));
   assert.ok(client.includes("Back to sign in"));
   assert.ok(client.includes('window.location.replace("/login")'));
