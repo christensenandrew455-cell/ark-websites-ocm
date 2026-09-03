@@ -36,16 +36,14 @@ export default function ForgotPasswordPage() {
     <main className="ark-auth-page grid min-h-screen place-items-center p-5">
       <div className="ark-auth-card w-full max-w-md rounded-3xl p-7 shadow-2xl md:p-9">
         <h1 className="text-3xl font-bold">Reset your password</h1>
-        <p className="mt-2 text-sm text-slate-600">Enter the business name or account email.</p>
         <form onSubmit={handleSubmit} className="mt-7 space-y-4">
-          <input
-            required
-            autoComplete="username"
-            value={businessName}
-            onChange={(event) => setBusinessName(event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-            placeholder="Business name or email"
-          />
+          <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-700">Business name or email</span><input
+              required
+              autoComplete="username"
+              value={businessName}
+              onChange={(event) => setBusinessName(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
+            /></label>
           {message && <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{message}</p>}
           {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
           <button disabled={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60">
