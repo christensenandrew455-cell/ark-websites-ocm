@@ -6,6 +6,7 @@ import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, regularS
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
+import AppSelect from "./AppSelect";
 import InfoTip from "./InfoTip";
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -75,63 +76,6 @@ function Field({ label, explanation, children }) {
 
 function Input({ value, onChange, type = "text", placeholder = "", readOnly = false, ariaLabel, ...inputProps }) {
   return <input {...inputProps} aria-label={ariaLabel} type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
-}
-
-function normalizedOptions(options = []) {
-  return options.map((option) => typeof option === "string" ? { value: option, label: option } : option);
-}
-
-function InAppSelect({ value, onChange, options, ariaLabel, placeholder = "Choose", disabled = false }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  const items = normalizedOptions(options);
-  const selected = items.find((item) => String(item.value) === String(value ?? ""));
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function dismiss(event) {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    }
-    function dismissWithKeyboard(event) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", dismissWithKeyboard);
-    return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", dismissWithKeyboard);
-    };
-  }, [open]);
-
-  function choose(nextValue) {
-    onChange(nextValue);
-    setOpen(false);
-  }
-
-  return (
-    <div ref={rootRef} className="relative min-w-0">
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        className="flex h-11 w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm outline-none focus:border-slate-950 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-      >
-        <span className={selected ? "truncate text-slate-900" : "truncate text-slate-500"}>{selected?.label || placeholder}</span>
-        <span aria-hidden="true" className={`shrink-0 text-xs text-slate-500 transition ${open ? "rotate-180" : ""}`}>▼</span>
-      </button>
-      {open && (
-        <div role="listbox" aria-label={ariaLabel} className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-40 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white p-1.5 shadow-2xl">
-          {items.map((item) => {
-            const itemSelected = String(item.value) === String(value ?? "");
-            return <button key={`${item.label}-${String(item.value)}`} type="button" role="option" aria-selected={itemSelected} onClick={() => choose(item.value)} className={itemSelected ? "flex w-full items-center justify-between rounded-lg bg-slate-950 px-3 py-3 text-left text-sm font-bold text-white" : "flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm font-semibold text-slate-800 active:bg-slate-100"}><span>{item.label}</span>{itemSelected && <span aria-hidden="true">✓</span>}</button>;
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function SuggestionInput({ value, onChange, onBlur, onSubmit, suggestions = [], ariaLabel, placeholder }) {
@@ -240,8 +184,8 @@ function HourPeriodPicker({ label, explanation, hour, period, onHourChange, onPe
   return (
     <Field label={label} explanation={explanation}>
       <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
-        <InAppSelect ariaLabel={`${label} hour`} value={selectedHour} options={HOUR_OPTIONS} placeholder="Choose" onChange={(value) => onHourChange(value ? Number(value) : "")} />
-        <InAppSelect ariaLabel={`${label} AM or PM`} value={selectedPeriod} options={PERIOD_OPTIONS} placeholder="Choose" onChange={onPeriodChange} />
+        <AppSelect label={`${label} hour`} ariaLabel={`${label} hour`} value={selectedHour} options={HOUR_OPTIONS} placeholder="Choose" onChange={(value) => onHourChange(value ? Number(value) : "")} />
+        <AppSelect label={`${label} AM or PM`} ariaLabel={`${label} AM or PM`} value={selectedPeriod} options={PERIOD_OPTIONS} placeholder="Choose" onChange={onPeriodChange} align="right" />
       </div>
     </Field>
   );
@@ -303,7 +247,8 @@ function ServiceAreaEditor({ serviceAreas, onChange }) {
       <div>
         <ExplainedLabel label="States" />
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-          <InAppSelect
+          <AppSelect
+            label="State"
             ariaLabel="State to add"
             value={selectedStateToAdd}
             options={availableStates}
@@ -470,7 +415,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       <h3 className="text-lg font-black">Business type</h3>
       <div className="mt-4">
         <Field label="Type of business">
-          <InAppSelect ariaLabel="Type of business" value={profile.businessType} options={BUSINESS_TYPES} onChange={(value) => update("businessType", value, { saveImmediately: true })} placeholder="Choose a business type" />
+          <AppSelect label="Type of business" ariaLabel="Type of business" value={profile.businessType} options={BUSINESS_TYPES} onChange={(value) => update("businessType", value, { saveImmediately: true })} placeholder="Choose a business type" />
         </Field>
       </div>
     </section>
@@ -478,7 +423,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       <ExplainedLabel label="Regular scheduling" explanation="Callers request a day and a morning or afternoon window. You confirm the exact appointment after accepting the lead." heading />
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Time zone">
-          <InAppSelect ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
+          <AppSelect label="Time zone" ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
         </Field>
         <DayCheckboxes label="Regular service days" selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
         <HourPeriodPicker label="Earliest regular time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />

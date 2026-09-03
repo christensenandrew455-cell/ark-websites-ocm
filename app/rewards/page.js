@@ -51,48 +51,37 @@ export default function RewardsPage() {
     <div className="mx-auto max-w-4xl">
       <BackButton href="/" label="Back to Dashboard" />
       <header className="mt-5">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-700">ARK Client Center</p>
-        <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Rewards</h1>
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Free leads</h1>
       </header>
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700" role="alert">{error}</p>}
-      {rewards && <div className="mt-5 grid gap-4">
+      {rewards && <div className="mt-5 space-y-4">
         <section className="rounded-3xl bg-violet-800 p-6 text-white shadow-sm sm:p-8">
-          <div className="flex items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-200">Banked free lead credits</p><InfoTip label="About banked free leads">Credits stay here until you use them. After your monthly included leads reach zero, apply five at a time in Plan and payment.</InfoTip></div>
+          <div className="flex items-center gap-2"><h2 className="text-sm font-black text-violet-100">Free leads</h2><InfoTip label="About free leads">These stay in Rewards until your monthly plan reaches zero. Then you can use five at a time.</InfoTip></div>
           <p className="mt-2 text-5xl font-black">{Number(rewards.rewardLeadCreditBalance || 0).toLocaleString("en-US")}</p>
-          <Link href="/settings?section=payment&manage=topup" className="mt-5 inline-flex rounded-xl bg-white px-5 py-3 text-sm font-black text-violet-900">Open lead options</Link>
+          <Link href="/settings?section=payment&manage=topup" className="mt-5 inline-flex rounded-xl bg-white px-5 py-3 text-sm font-black text-violet-900">Use leads</Link>
         </section>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-amber-100 text-xl" aria-hidden="true">★</div>
-            <h2 className="mt-4 text-xl font-black">Give feedback</h2>
-            <p className="mt-2 text-sm font-semibold text-slate-600">Share an idea or problem.</p>
-            {!rewards.feedbackRewardEarned && <div className="mt-3 flex items-center gap-2 text-xs font-black text-violet-900">First-feedback thank-you <InfoTip label="About the first-feedback thank-you">Your first thoughtful feedback may unlock a mystery thank-you. Honest feedback counts whether it is positive or negative.</InfoTip></div>}
-            {rewards.feedbackRewardEarned && <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">First-feedback thank-you unlocked.</p>}
-            <Link href="/feedback" className="mt-4 inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Give feedback</Link>
-          </section>
-
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-100 text-xl" aria-hidden="true">↗</div>
-            <h2 className="mt-4 text-xl font-black">Refer businesses</h2>
-            <div className="mt-2 flex items-center gap-2 text-sm font-black text-slate-700">5 leads per paid referral · up to 3/month <InfoTip label="About referral rewards">Share as often as you want. Your first three completed paid referrals each calendar month earn five credits.</InfoTip></div>
-            <div className="mt-4 rounded-xl bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3"><p className="text-xs font-black text-slate-700">{rewarded} of {maximum} rewarded this month</p><p className="text-xs font-black text-violet-700">+5 each</p></div>
-              <Progress value={rewarded} maximum={maximum} />
-            </div>
-          </section>
-        </div>
-
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex items-center gap-2"><h2 className="text-xl font-black">Your referral details</h2><InfoTip label="How referrals count">Your username is your referral code. A referral counts after the new business finishes signup and payment with that code.</InfoTip></div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Referral code / username</p><p className="mt-1 break-all text-sm font-black text-slate-950">{rewards.referralCode}</p></div>
-            <button type="button" onClick={() => copy("code", rewards.referralCode)} className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-black">{copied === "code" ? "Copied" : "Copy code"}</button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2"><h2 className="text-xl font-black">Invite a business</h2><InfoTip label="Referral reward">You get five free leads after a business signs up and pays with your link or code. Up to three referrals earn rewards each month.</InfoTip></div>
+              <p className="mt-1 text-sm font-bold text-slate-600">5 free leads each · {rewarded}/{maximum} this month</p>
+            </div>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Referral link</p><p className="mt-1 truncate text-sm font-bold text-slate-700">{referralLink}</p></div>
-            <button type="button" onClick={() => copy("link", referralLink)} className="rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white">{copied === "link" ? "Copied" : "Copy link"}</button>
+          <Progress value={rewarded} maximum={maximum} />
+          <button type="button" onClick={() => copy("link", referralLink)} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">{copied === "link" ? "Link copied" : "Copy invite link"}</button>
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-4">
+            <p className="min-w-0 flex-1 break-all text-sm font-bold text-slate-600">Code: <span className="text-slate-950">{rewards.referralCode}</span></p>
+            <button type="button" onClick={() => copy("code", rewards.referralCode)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-xs font-black">{copied === "code" ? "Copied" : "Copy code"}</button>
           </div>
+        </section>
+
+        <section className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div>
+            <div className="flex items-center gap-2"><h2 className="text-xl font-black">Give feedback</h2>{!rewards.feedbackRewardEarned && <InfoTip label="Feedback thank-you">Your first useful feedback may earn free leads. Positive or negative both count.</InfoTip>}</div>
+            <p className="mt-1 text-sm font-semibold text-slate-600">Share a problem or idea.</p>
+          </div>
+          <Link href="/feedback" className="inline-flex justify-center rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">{rewards.feedbackRewardEarned ? "Send feedback" : "Give feedback"}</Link>
         </section>
       </div>}
     </div>

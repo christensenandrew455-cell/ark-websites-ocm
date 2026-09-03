@@ -4,6 +4,7 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { loadStripe } from "@stripe/stripe-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readApiJson } from "../lib/apiResponse";
+import { SIMPLE_CARD_ELEMENT_OPTIONS, simpleCardConfirmParams } from "../lib/stripeElementOptions";
 import {
   appleIapAvailable,
   finishAppleTransaction,
@@ -40,15 +41,12 @@ async function authenticatedJson(user, url, options = {}) {
   return readApiJson(response);
 }
 
-function Accordion({ title, description, open, onToggle, children }) {
+function Accordion({ title, open, onToggle, children }) {
   return <section className="rounded-2xl border border-slate-200 bg-white">
-    <div className="flex items-center gap-3 p-5 sm:p-6">
-      <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left">
+    <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center justify-between gap-4 p-5 text-left sm:p-6">
       <span className="block text-lg font-black text-slate-950">{title}</span>
       <span aria-hidden="true" className="text-2xl font-black text-slate-500">{open ? "−" : "+"}</span>
-      </button>
-      {description && <InfoTip label={`About ${title}`} align="right">{description}</InfoTip>}
-    </div>
+    </button>
     {open && <div className="border-t border-slate-200 p-5 sm:p-6">{children}</div>}
   </section>;
 }
@@ -70,7 +68,7 @@ function PaymentMethodForm({ configuration, user, onSaved }) {
       const confirmed = await stripe.confirmSetup({
         elements,
         clientSecret: configuration.clientSecret,
-        confirmParams: { return_url: configuration.returnUrl },
+        confirmParams: simpleCardConfirmParams(configuration.returnUrl),
         redirect: "if_required",
       });
       if (confirmed.error || !confirmed.setupIntent?.id) throw confirmed.error || new Error("The card was not confirmed.");
@@ -88,7 +86,7 @@ function PaymentMethodForm({ configuration, user, onSaved }) {
 
   return <form onSubmit={submit} className="space-y-5">
     <div className="flex items-center gap-2 text-sm font-black text-slate-800">Card details <InfoTip label="How this card is used">This becomes the default card for renewals, immediate plan changes, and lead top-ups.</InfoTip></div>
-    <PaymentElement options={{ layout: "accordion" }} />
+    <PaymentElement options={SIMPLE_CARD_ELEMENT_OPTIONS} />
     <button type="submit" disabled={!stripe || !elements || busy} className="w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? "Saving…" : "Save card"}</button>
     {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
   </form>;
@@ -149,15 +147,15 @@ function PlanConfirmation({ plan, currentPlan, timing, setTiming, renewalDate, a
   return <div className="fixed inset-0 z-[260] grid place-items-center bg-slate-950/75 p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-plan-title">
     <section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950 shadow-2xl sm:p-8">
       <h2 id="confirm-plan-title" className="text-2xl font-black">Change to {plan.name}?</h2>
-      <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{formatUsd(plan.effectiveAmountCents)} per month for {plan.monthlyAcceptedLeads} accepted leads. You must confirm payment before anything changes.</p>
-      {appleBilling ? <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-700">Apple will show the price and whether the change starts immediately or at renewal before you confirm. Apple controls that timing for App Store subscriptions.</p>
+      <p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(plan.effectiveAmountCents)}/month · {plan.monthlyAcceptedLeads} accepted leads</p>
+      {appleBilling ? <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-700">Apple shows the final price and start date before you confirm.</p>
         : <fieldset className="mt-5 space-y-3"><legend className="text-sm font-black">When should {plan.name} start?</legend>
-          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-blue-800" /><span className="text-sm font-black">On {renewalDate}</span><span className="mt-1 block pl-7 text-xs font-semibold leading-5 text-slate-600">Keep the {currentPlan} plan and remaining leads until renewal. No charge today.</span></label>
-          <label className={`block rounded-2xl border p-4 ${timing === "now" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="now" checked={timing === "now"} onChange={() => setTiming("now")} className="mr-3 accent-blue-800" /><span className="text-sm font-black">Switch now and pay {formatUsd(plan.effectiveAmountCents)}</span><span className="mt-1 block pl-7 text-xs font-semibold leading-5 text-slate-600">Start a fresh billing month now. Unused leads from the current plan are not carried over or refunded.</span></label>
+          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-blue-800" /><span className="text-sm font-black">At renewal · {renewalDate}</span><span className="mt-1 block pl-7 text-xs font-semibold leading-5 text-slate-600">Keep {currentPlan} until then. No charge today.</span></label>
+          <label className={`block rounded-2xl border p-4 ${timing === "now" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="now" checked={timing === "now"} onChange={() => setTiming("now")} className="mr-3 accent-blue-800" /><span className="text-sm font-black">Now · pay {formatUsd(plan.effectiveAmountCents)}</span><span className="mt-1 block pl-7 text-xs font-semibold leading-5 text-slate-600">Your billing month restarts. Unused leads expire and are not refunded.</span></label>
         </fieldset>}
       <div className="mt-6 grid grid-cols-2 gap-3">
         <button type="button" disabled={busy} onClick={onCancel} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:opacity-50">Cancel</button>
-        <button type="button" disabled={busy} onClick={onConfirm} className="rounded-xl bg-blue-800 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? "Confirming…" : appleBilling ? "Continue with Apple" : timing === "now" ? `Pay ${formatUsd(plan.effectiveAmountCents)} & Switch` : `Schedule ${plan.name}`}</button>
+        <button type="button" disabled={busy} onClick={onConfirm} className="rounded-xl bg-blue-800 px-4 py-3 text-sm font-black text-white disabled:opacity-50">{busy ? "Confirming…" : appleBilling ? "Continue with Apple" : timing === "now" ? `Pay ${formatUsd(plan.effectiveAmountCents)} and switch` : "Schedule change"}</button>
       </div>
     </section>
   </div>;
@@ -168,7 +166,6 @@ export default function PaymentManagementPanel({
   planSummary,
   billingProvider,
   nativeIos,
-  paymentMethodLabel,
   initialPanel = "",
   onChanged,
   onPaymentMethodChanged,
@@ -176,7 +173,7 @@ export default function PaymentManagementPanel({
 }) {
   const appleBilling = billingProvider === "apple";
   const stripeInsideIos = nativeIos && !appleBilling;
-  const [openPanel, setOpenPanel] = useState(initialPanel === "card" ? "card" : initialPanel ? "plan" : "");
+  const [openPanel, setOpenPanel] = useState(["plan", "topup", "card"].includes(initialPanel) ? initialPanel : "");
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [timing, setTiming] = useState("renewal");
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -203,7 +200,7 @@ export default function PaymentManagementPanel({
   }, [appleBilling, user]);
 
   useEffect(() => {
-    if (appleBilling && openPanel === "plan" && !appleConfiguration) {
+    if (appleBilling && ["plan", "topup"].includes(openPanel) && !appleConfiguration) {
       refreshAppleConfiguration().catch((loadError) => setError(String(loadError?.message || "Apple billing could not open.")));
     }
   }, [appleBilling, appleConfiguration, openPanel, refreshAppleConfiguration]);
@@ -233,14 +230,6 @@ export default function PaymentManagementPanel({
       setError(String(resumeError?.message || "An unfinished Apple purchase could not be verified."));
     });
   }, [appleConfiguration, onChanged, user]);
-
-  useEffect(() => {
-    if (initialPanel !== "topup" || openPanel !== "plan") return undefined;
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById("accepted-lead-top-up")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [initialPanel, openPanel]);
 
   const finishReturnedPayment = useCallback(async () => {
     if (!user || appleBilling) return;
@@ -418,7 +407,7 @@ export default function PaymentManagementPanel({
       {error && <p className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}
       {stripeInsideIos && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">This Stripe account can be viewed here, but billing changes must be completed on the ARK website outside the iPhone app.</p>}
       <div className="space-y-3">
-        <Accordion title="Plan and extra leads" description="Change plans or add accepted leads for this billing month." open={openPanel === "plan"} onToggle={() => setOpenPanel((current) => current === "plan" ? "" : "plan")}>
+        <Accordion title="Change plan" open={openPanel === "plan"} onToggle={() => setOpenPanel((current) => current === "plan" ? "" : "plan")}>
           {planSummary?.pendingBillingPlanKey && <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} is scheduled for {dateLabel(planSummary.pendingBillingPlanStartsAt)}.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             {plans.map((plan) => {
@@ -426,22 +415,22 @@ export default function PaymentManagementPanel({
               const chosen = plan.key === selectedPlan?.key;
               return <button key={plan.key} type="button" disabled={current || stripeInsideIos || busy} onClick={() => { setSelectedPlan(plan); setNotice(""); setError(""); }} className={`rounded-2xl border p-4 text-left disabled:opacity-60 ${chosen ? "border-blue-600 bg-blue-50 ring-2 ring-blue-200" : current ? "border-slate-300 bg-slate-100" : "border-slate-200 bg-white"}`}>
                 <SubscriptionPlanCard plan={plan} promotionalAmountCents={plan.promotionalAmountCents} />
-                <span className={`mt-3 block text-[10px] font-black uppercase tracking-[0.14em] ${current ? "text-slate-600" : chosen ? "text-blue-700" : "text-slate-500"}`}>{current ? "Current plan" : chosen ? "Selected — not changed yet" : "Select"}</span>
+                <span className={`mt-3 block text-xs font-black ${current ? "text-slate-600" : chosen ? "text-blue-700" : "text-slate-500"}`}>{current ? "Current" : chosen ? "Selected" : "Choose"}</span>
               </button>;
             })}
           </div>
-          {selectedPlan && <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-sm font-black text-blue-950">{selectedPlan.name} selected. Nothing changes yet.</p><button type="button" disabled={busy} onClick={() => setConfirmationOpen(true)} className="mt-3 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-50 sm:w-auto">Review change</button></div>}
-          <div id="accepted-lead-top-up" className="mt-6 border-t border-slate-200 pt-6">
-            <div className="flex items-center gap-2"><h3 className="text-lg font-black text-slate-950">Extra leads</h3><InfoTip label="About extra leads">Extra leads cost exactly $1 each, expire at the next reset on {renewalDate}, and do not have a volume discount.{appleBilling ? " Apple confirms up to 10 at a time." : ""}</InfoTip></div>
-            <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">Banked free lead credits</p><p className="mt-1 text-2xl font-black text-violet-950">{Number(planSummary?.rewardLeadCreditBalance || 0).toLocaleString("en-US")}</p></div><button type="button" disabled={busy || !planSummary?.limitReached || Number(planSummary?.rewardLeadCreditBalance || 0) < 5} onClick={applyRewardCredits} className="rounded-xl bg-violet-800 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Use 5 free leads</button></div>
-              <div className="mt-3 flex items-center gap-2 text-xs font-black text-violet-900">Use after your plan reaches zero <InfoTip label="About banked free leads">Free leads stay banked. You can apply five at a time after the included monthly leads are used.</InfoTip></div>
-            </div>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"><label className="flex-1"><span className="mb-2 block text-xs font-black text-slate-700">Number of additional leads</span><input inputMode="numeric" type="number" min="1" step="1" value={topUpQuantity} disabled={stripeInsideIos || busy} onChange={(event) => setTopUpQuantity(event.target.value)} placeholder="20" className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black outline-none focus:border-blue-700" /></label><button type="button" disabled={!validTopUp || stripeInsideIos || busy} onClick={buyTopUp} className="h-12 rounded-xl bg-slate-950 px-5 text-sm font-black text-white disabled:opacity-40">{busy ? "Confirming…" : validTopUp ? `Buy ${topUpNumber} for ${formatUsd(topUpNumber * 100)}` : "Enter an amount"}</button></div>
-          </div>
           {appleBilling && appleIapAvailable() && <button type="button" onClick={() => manageAppleSubscriptions().catch((manageError) => setError(String(manageError?.message || "Apple subscription settings could not open.")))} className="mt-5 w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800">Open Apple Subscription Settings</button>}
+          {selectedPlan && <button type="button" disabled={busy} onClick={() => setConfirmationOpen(true)} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-50">Continue with {selectedPlan.name}</button>}
         </Accordion>
-        <Accordion title="Payment card" description={appleBilling ? "Apple manages the card used for this subscription." : paymentMethodLabel || "Update the default billing card."} open={openPanel === "card"} onToggle={() => setOpenPanel((current) => current === "card" ? "" : "card")}>
+        <Accordion title="Add leads" open={openPanel === "topup"} onToggle={() => setOpenPanel((current) => current === "topup" ? "" : "topup")}>
+          <p className="text-sm font-bold text-slate-700">$1 each · available until {renewalDate}</p>
+          <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-black text-violet-900">Free leads</p><p className="mt-1 text-2xl font-black text-violet-950">{Number(planSummary?.rewardLeadCreditBalance || 0).toLocaleString("en-US")}</p></div><button type="button" disabled={busy || !planSummary?.limitReached || Number(planSummary?.rewardLeadCreditBalance || 0) < 5} onClick={applyRewardCredits} className="rounded-xl bg-violet-800 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Use 5 free leads</button></div>
+            <div className="mt-2 flex items-center gap-2 text-xs font-bold text-violet-900">Available when your plan reaches zero <InfoTip label="Using free leads">Free leads stay in Rewards until your monthly plan reaches zero. Then you can use five at a time.</InfoTip></div>
+          </div>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"><label className="flex-1"><span className="mb-2 block text-xs font-black text-slate-700">Leads to add</span><input inputMode="numeric" type="number" min="1" step="1" value={topUpQuantity} disabled={stripeInsideIos || busy} onChange={(event) => setTopUpQuantity(event.target.value)} placeholder="20" className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black outline-none focus:border-blue-700" /></label><button type="button" disabled={!validTopUp || stripeInsideIos || busy} onClick={buyTopUp} className="h-12 rounded-xl bg-slate-950 px-5 text-sm font-black text-white disabled:opacity-40">{busy ? "Confirming…" : validTopUp ? `Buy for ${formatUsd(topUpNumber * 100)}` : "Enter an amount"}</button></div>
+        </Accordion>
+        <Accordion title="Payment card" open={openPanel === "card"} onToggle={() => setOpenPanel((current) => current === "card" ? "" : "card")}>
           {appleBilling ? <div><div className="flex items-center gap-2 text-sm font-black text-slate-800">Managed by Apple <InfoTip label="About Apple billing">Update the card in your Apple Account’s Payment & Shipping settings. ARK does not receive the full card number.</InfoTip></div><a href="https://apps.apple.com/account/billing" target="_blank" rel="noreferrer" className="mt-4 inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Open Apple payment settings</a></div>
             : stripeInsideIos ? <a href="https://www.arkclientcenter.com/settings?section=payment&manage=card" target="_blank" rel="noreferrer" className="inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Open Secure Website</a>
               : <StripeCardEditor user={user} onSaved={onPaymentMethodChanged} />}

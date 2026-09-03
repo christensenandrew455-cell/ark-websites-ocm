@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import AppSelect from "./AppSelect";
 import { useAuth } from "./AuthProvider";
 import { ownerFacingError } from "../lib/userFacingError";
 import InfoTip from "./InfoTip";
@@ -57,19 +58,17 @@ function RetentionSelect({ title, endpoint }) {
     }
   }
 
-  return <label className="block rounded-xl border border-slate-200 p-4">
+  return <div className="block rounded-xl border border-slate-200 p-4">
     <span className="flex items-center justify-between gap-3"><span className={FIELD_LABEL_CLASS}>{title}</span>{saving && <span className="text-xs font-bold text-slate-400">Saving…</span>}</span>
-    <select value={retentionDays} disabled={saving} onChange={(event) => updateRetention(event.target.value)} className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black outline-none focus:border-slate-950 disabled:opacity-50">
-      {OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
+    <AppSelect className="mt-3" label={`${title} auto-delete`} value={retentionDays} disabled={saving} onChange={updateRetention} options={OPTIONS} />
     {error && <span className="mt-2 block text-xs font-bold text-red-700">{error}</span>}
-  </label>;
+  </div>;
 }
 
 export default function MessageRetentionSettings({ showMessages = false }) {
   return (
-    <section className="border-t border-slate-200 pt-6">
-      <span className="flex items-center gap-2"><span className={FIELD_LABEL_CLASS}>Auto-delete</span><InfoTip label="About auto-delete">Records are permanently deleted after the selected time. Choose Never delete to keep them until you remove them.</InfoTip></span>
+    <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+      <span className="flex items-center gap-2"><h3 className="text-base font-black text-slate-950">Auto-delete</h3><InfoTip label="About auto-delete">Deletes old records after the time you choose. “Never delete” keeps them until you remove them.</InfoTip></span>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <RetentionSelect title="Leads" endpoint="/api/business/leads/retention" />
         <RetentionSelect title="Clients" endpoint="/api/business/clients/retention" />

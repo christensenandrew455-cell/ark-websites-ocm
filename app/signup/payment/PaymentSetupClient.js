@@ -11,6 +11,7 @@ import { billingPlan, publicBillingPlans } from "../../lib/billingPricing";
 import SubscriptionPlanCard from "../../components/SubscriptionPlanCard";
 import InfoTip from "../../components/InfoTip";
 import { discountedAmountCents } from "../../lib/temporaryFeatures";
+import { SIMPLE_CARD_ELEMENT_OPTIONS, simpleCardConfirmParams } from "../../lib/stripeElementOptions";
 import { useAuth } from "../../components/AuthProvider";
 import { auth } from "../../lib/firebase";
 import {
@@ -78,7 +79,7 @@ function PaymentForm({ clientSecret, returnUrl, selectedPlan, promotion, onSucce
       const result = await stripe.confirmSetup({
         elements,
         clientSecret,
-        confirmParams: { return_url: returnUrl },
+        confirmParams: simpleCardConfirmParams(returnUrl),
         redirect: "if_required",
       });
       if (result.error || !result.setupIntent?.id) throw result.error || new Error("SetupIntent was not returned.");
@@ -101,7 +102,7 @@ function PaymentForm({ clientSecret, returnUrl, selectedPlan, promotion, onSucce
   }
 
   return <form onSubmit={submit} className="space-y-5">
-    <PaymentElement options={{ layout: "accordion" }} />
+    <PaymentElement options={SIMPLE_CARD_ELEMENT_OPTIONS} />
     <p className="text-sm leading-6 text-slate-600">By adding your card, you agree to the {selectedPlan.name} plan at {money(selectedPlan.amountCents)} per month for {selectedPlan.monthlyAcceptedLeads} accepted leads each billing month. Calls do not count.{promotion ? ` This signup already has a saved ${promotion.percentOff}% promotional price (normally ${money(selectedPlan.listAmountCents)}).` : ""}</p>
     <button id="checkout-and-portal-button" type="submit" disabled={!stripe || !elements || submitting} aria-busy={submitting} className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50">Pay and continue</button>
     {error && <p id="error-message" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700" role="alert">{error}</p>}

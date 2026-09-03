@@ -40,8 +40,10 @@ test("Give Feedback is available to signed-in clients and saved for ARK Admin", 
   ]);
   assert.ok(configuration.includes("feedback: Object.freeze"));
   assert.ok(settings.includes('href="/feedback" title="Give feedback"'));
-  assert.ok(page.includes("What is it about?"));
-  assert.ok(page.includes("How does this feel?"));
+  assert.ok(page.includes(">About</"));
+  assert.ok(page.includes(">Rating</"));
+  assert.ok(page.includes("<AppSelect"));
+  assert.equal(page.includes("<select"), false);
   assert.ok(route.includes('type: "feedback"'));
   assert.ok(route.includes('source: "client-center-feedback"'));
   assert.ok(route.includes('type: "feedback.created"'));

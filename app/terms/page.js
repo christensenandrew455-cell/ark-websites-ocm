@@ -49,7 +49,7 @@ const sections = [
   {
     id: "data-export",
     title: "Client-data download and retention",
-    body: <><p>While an account is in good standing, Settings includes Download Client Data, which provides a JSON copy of current Contacted You records, accepted Clients, account details, and Help-message history.</p><p>ARK may disable downloads while required service charges remain unpaid or the account is payment-restricted. A separate custom export may require additional preparation time or an agreed service charge.</p></>,
+    body: <><p>While an account is in good standing, Settings includes Download data, which provides a JSON copy of current Contacted You records, accepted Clients, account details, and Help-message history.</p><p>ARK may disable downloads while required service charges remain unpaid or the account is payment-restricted. A separate custom export may require additional preparation time or an agreed service charge.</p></>,
   },
   {
     id: "support",

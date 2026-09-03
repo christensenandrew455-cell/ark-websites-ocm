@@ -24,7 +24,7 @@ const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
 const ACCOUNT_RESOURCE_CLASS = "min-h-20 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business information" },
-  { key: "customization", title: "App and alerts" },
+  { key: "customization", title: "App" },
   { key: "payment", title: "Plan and payment" },
   { key: "account", title: "Help & Account" },
 ];
@@ -38,8 +38,12 @@ function SectionHeader({ title, onBack }) {
 function SectionPanel({ children }) {
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-7">{children}</section>;
 }
-function FieldLabel({ children }) {
-  return <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{children}</span>;
+function ToggleRow({ id, title, detail, checked, disabled = false, onChange }) {
+  return <label htmlFor={id} className={`flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-slate-200 p-4 ${disabled ? "cursor-not-allowed bg-slate-50 opacity-60" : "bg-white"}`}>
+    <span className="min-w-0"><span className="block text-sm font-black text-slate-950">{title}</span>{detail && <span className="mt-1 block break-words text-xs font-semibold text-slate-600">{detail}</span>}</span>
+    <input id={id} type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} className="sr-only" />
+    <span aria-hidden="true" className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-blue-800" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition ${checked ? "left-6" : "left-1"}`} /></span>
+  </label>;
 }
 function AccountResourceLink({ href, title }) {
   return <Link href={href} className={ACCOUNT_RESOURCE_CLASS}><p className="text-lg font-black text-slate-950">{title}</p></Link>;
@@ -419,31 +423,32 @@ export default function SettingsPanel() {
   }
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;
-    const controlClass = "flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4";
-    return <><SectionHeader title="App and alerts" onBack={backToSettings} /><SectionPanel><div className="space-y-6">
-      <label className={controlClass}><FieldLabel>Dark mode</FieldLabel><input type="checkbox" checked={darkMode} onChange={(event) => updateTheme(event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>
-      <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
-        <div className="flex items-center gap-2"><FieldLabel>Notification delivery</FieldLabel><InfoTip label="About notifications">ARK sends new-lead and important account alerts. Keep at least one method selected.</InfoTip></div>
-        <div className="mt-4 space-y-3">
-          <label className={controlClass}><span className="min-w-0"><span className="block text-sm font-black text-slate-950">Email</span><span className="mt-1 block break-words text-xs font-semibold text-slate-600">{features.notificationEmail || profile?.accountEmail}</span></span><input type="checkbox" checked={features.notificationChannels.includes("email")} onChange={(event) => updateNotificationChannel("email", event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-950" /></label>
-          <label className={controlClass}><span className="min-w-0"><span className="block text-sm font-black text-slate-950">Text message</span><span className="mt-1 block text-xs font-semibold text-slate-600">{formatNotificationPhone(features.notificationPhone || profile?.accountPhone)} · sent from {NOTIFICATION_SMS_FROM_DISPLAY}</span></span><input type="checkbox" checked={features.notificationChannels.includes("sms")} onChange={(event) => updateNotificationChannel("sms", event.target.checked)} className="h-5 w-5 shrink-0 accent-slate-950" /></label>
-        </div>
-        {features.notificationChannels.includes("sms") && <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">Text alerts are automated. Frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help.</p>}
+    return <><SectionHeader title="App" onBack={backToSettings} /><div className="space-y-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <h3 className="mb-4 text-base font-black text-slate-950">Appearance</h3>
+        <ToggleRow id="dark-mode" title="Dark mode" checked={darkMode} onChange={updateTheme} />
       </section>
-      {MESSAGES_AVAILABLE && <label className={`${controlClass}${messageBlocked ? " bg-slate-50" : ""}`}><FieldLabel>Messages</FieldLabel><input type="checkbox" disabled={messageBlocked} checked={features.messagesEnabled} onChange={(event) => updateFeature("messagesEnabled", event.target.checked)} className="h-5 w-5 accent-slate-950" /></label>}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex items-center gap-2"><h3 className="text-base font-black text-slate-950">Alerts</h3><InfoTip label="About alerts">New leads and important account updates. Keep email, text, or both turned on.</InfoTip></div>
+        <div className="mt-4 space-y-3">
+          <ToggleRow id="email-alerts" title="Email" detail={features.notificationEmail || profile?.accountEmail} checked={features.notificationChannels.includes("email")} onChange={(checked) => updateNotificationChannel("email", checked)} />
+          <ToggleRow id="text-alerts" title="Text message" detail={formatNotificationPhone(features.notificationPhone || profile?.accountPhone)} checked={features.notificationChannels.includes("sms")} onChange={(checked) => updateNotificationChannel("sms", checked)} />
+        </div>
+        {features.notificationChannels.includes("sms") && <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">Sent from {NOTIFICATION_SMS_FROM_DISPLAY}. Message and data rates may apply. Reply STOP to opt out.</p>}
+      </section>
+      {MESSAGES_AVAILABLE && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><h3 className="mb-4 text-base font-black text-slate-950">Messages</h3><ToggleRow id="messages-enabled" title="Customer messages" checked={features.messagesEnabled} disabled={messageBlocked} onChange={(checked) => updateFeature("messagesEnabled", checked)} /></section>}
       <MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
       <ClientDeclineNoticeSettings />
-      <div id="account-data" className="border-t border-slate-200 pt-6"><FieldLabel>Client data</FieldLabel><button type="button" onClick={downloadClientData} disabled={isDownloading} className="w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing Download…" : "Download Client Data"}</button></div>
-    </div></SectionPanel></>;
+      <section id="account-data" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><h3 className="text-base font-black text-slate-950">Your data</h3><button type="button" onClick={downloadClientData} disabled={isDownloading} className="mt-4 w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing…" : "Download data"}</button></section>
+    </div></>;
   }
   function paymentSection() {
     if (paymentManagerOpen) {
-      return <><SectionHeader title="Manage Plan & Payment" onBack={closePaymentManager} /><PaymentManagementPanel
+      return <><SectionHeader title="Plan and payment" onBack={closePaymentManager} /><PaymentManagementPanel
         user={user}
         planSummary={planSummary}
         billingProvider={billingProvider}
         nativeIos={nativeIos}
-        paymentMethodLabel={paymentLabel}
         initialPanel={paymentManagerPanel}
         onChanged={refreshPlanSummary}
         onPaymentMethodChanged={(label) => {
@@ -453,23 +458,21 @@ export default function SettingsPanel() {
         onClose={closePaymentManager}
       /></>;
     }
-    const acceptedLeadsUsed = Math.max(0, Number(planSummary?.acceptedLeadsUsed || 0));
     const acceptedLeadsRemaining = Math.max(0, Number(planSummary?.acceptedLeadsRemaining || 0));
     const monthlyAcceptedLeadLimit = Math.max(1, Number(planSummary?.monthlyAcceptedLeadLimit || 25));
-    const acceptedLeadTopUps = Math.max(0, Number(planSummary?.acceptedLeadTopUps || 0));
     const acceptedLeadPeriodLimit = Math.max(monthlyAcceptedLeadLimit, Number(planSummary?.acceptedLeadPeriodLimit || monthlyAcceptedLeadLimit));
-    const remainingProgress = Math.max(0, Math.min(100, acceptedLeadsRemaining / acceptedLeadPeriodLimit * 100));
     return <><SectionHeader title="Plan and payment" onBack={backToSettings} /><SectionPanel>
       <div className="rounded-2xl bg-blue-900 p-5 text-white sm:p-7">
-        <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">Accepted leads left this month</p><InfoTip label="What counts as an accepted lead">One request counts once when you tap Accept. Calls, declines, edits, and deletions do not count.</InfoTip></div><button type="button" onClick={refreshPlanSummary} disabled={isLoadingBilling} className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-[10px] font-black text-white disabled:opacity-50">{isLoadingBilling ? "Refreshing…" : "Refresh"}</button></div>
-        <p className="mt-3 text-4xl font-black">{planSummary ? acceptedLeadsRemaining : "—"} <span className="text-base text-blue-100">of {acceptedLeadPeriodLimit} remaining</span></p>
-        <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/20" role="progressbar" aria-label="Monthly accepted leads remaining" aria-valuemin={0} aria-valuemax={acceptedLeadPeriodLimit} aria-valuenow={Math.min(acceptedLeadPeriodLimit, acceptedLeadsRemaining)}><div className="h-full rounded-full bg-blue-400 transition-[width]" style={{ width: `${remainingProgress}%` }} /></div>
-        <p className="mt-2 text-xs font-bold text-blue-100">{acceptedLeadsUsed} accepted lead{acceptedLeadsUsed === 1 ? "" : "s"} used · Resets {planSummary?.periodEndAt ? new Date(planSummary.periodEndAt).toLocaleDateString() : "each billing month"}</p>
+        <div className="flex items-center gap-2"><p className="text-sm font-black text-blue-100">Leads left</p><InfoTip label="About leads left">One request counts when you tap Accept. Calls and declined requests do not count.</InfoTip></div>
+        <p className="mt-2 text-5xl font-black">{planSummary ? acceptedLeadsRemaining : "—"}<span className="ml-2 text-base text-blue-100">of {acceptedLeadPeriodLimit}</span></p>
+        <p className="mt-3 text-xs font-bold text-blue-100">Resets {planSummary?.periodEndAt ? new Date(planSummary.periodEndAt).toLocaleDateString() : "each billing month"}{isLoadingBilling ? " · Updating…" : ""}</p>
       </div>
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5"><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Current plan</p><p className="mt-1 text-2xl font-black text-slate-950">{planSummary?.planName || "Starter"} Plan</p><p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)} per month · {monthlyAcceptedLeadLimit} accepted leads</p>{acceptedLeadTopUps > 0 && <p className="mt-2 text-xs font-black text-blue-800">+{acceptedLeadTopUps} additional lead{acceptedLeadTopUps === 1 ? "" : "s"} for this billing month</p>}<p className="mt-2 text-xs font-black text-violet-800">{Math.max(0, Number(planSummary?.rewardLeadCreditBalance || 0))} free lead credit{Number(planSummary?.rewardLeadCreditBalance || 0) === 1 ? "" : "s"} banked</p></div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-xs font-black text-slate-500">Plan</p><p className="mt-1 text-xl font-black text-slate-950">{planSummary?.planName || "Starter"}</p><p className="mt-1 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)}/month</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-xs font-black text-slate-500">Payment</p><p className="mt-1 text-sm font-black text-slate-950">{paymentLabel}</p><p className="mt-1 text-xs font-bold text-slate-600">{billingStatus}</p></div>
+      </div>
       {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts {planSummary.pendingBillingPlanStartsAt ? new Date(planSummary.pendingBillingPlanStartsAt).toLocaleDateString() : "after payment is confirmed"}.</p>}
-      <div className="mt-5 flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Payment method</p><p className="mt-2 text-sm font-bold text-slate-800">{paymentLabel}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase text-slate-700">{billingStatus}</span></div>
-      <button type="button" onClick={() => openPaymentManager("plan")} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage plan and payment</button>
+      <button type="button" onClick={() => openPaymentManager("plan")} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage</button>
     </SectionPanel></>;
   }
   function accountSection() {
