@@ -120,26 +120,27 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });
 
-test("payment keeps other plans behind the two-part manager", async () => {
+test("payment keeps plan changes behind a simple manager", async () => {
   const [settings, manager] = await Promise.all([
     source("app/components/SettingsPanel.js"),
     source("app/components/PaymentManagementPanel.js"),
   ]);
-  assert.ok(settings.includes("Accepted leads left this month"));
-  assert.ok(settings.includes("Monthly accepted leads remaining"));
+  assert.ok(settings.includes("Leads left"));
   assert.ok(settings.includes("acceptedLeadsRemaining"));
-  assert.ok(settings.includes("Current plan"));
+  assert.ok(settings.includes('<p className="text-xs font-black text-slate-500">Plan</p>'));
+  assert.ok(settings.includes('<p className="text-xs font-black text-slate-500">Payment</p>'));
   assert.equal(settings.includes("Available monthly plans"), false);
-  assert.ok(settings.includes("Manage Plan & Payment"));
+  assert.ok(settings.includes('SectionHeader title="Plan and payment"'));
   assert.ok(settings.includes('function openPaymentManager(panel = "plan")'));
   assert.ok(settings.includes('openPaymentManager("plan")'));
   assert.ok(settings.includes('router.replace(`/settings?section=payment&manage=${encodeURIComponent(requestedPanel)}`'));
-  assert.ok(settings.includes('planSummary?.planName || "Starter"} Plan'));
-  assert.ok(manager.includes('title="Plan and extra leads"'));
+  assert.ok(settings.includes('planSummary?.planName || "Starter"'));
+  assert.ok(manager.includes('title="Change plan"'));
+  assert.ok(manager.includes('title="Add leads"'));
   assert.ok(manager.includes('title="Payment card"'));
-  assert.ok(manager.includes("Selected — not changed yet"));
-  assert.ok(manager.includes("Review change"));
-  assert.equal(settings.includes("Accepted lead"), true);
+  assert.ok(manager.includes("Continue with {selectedPlan.name}"));
+  assert.equal(manager.includes("Plan and extra leads"), false);
+  assert.equal(settings.includes("One request counts when you tap Accept"), true);
   assert.equal(settings.includes("Referral discount"), false);
   const summaryRoute = await source("app/api/billing/plan-summary/route.js");
   assert.ok(summaryRoute.includes("publicAcceptedLeadPlanSummary(account, new Date(), currentAcceptedClients)"));
