@@ -1,10 +1,12 @@
 import { createPublicKey, verify } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
 import { acceptedLeadPlanStatus } from "../../../lib/acceptedLeadPlanBilling";
+import { sendAdminEvent } from "../../../lib/adminEvents";
 import { activeEmergencyServiceSettings, normalizeRegularServiceSettings, receptionistRequestRouting, REGULAR_SERVICE_WEEKDAYS } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
+import { incomingReceptionistCallEvent } from "../../../lib/receptionistCallNotification";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
 
 export const runtime = "nodejs";
@@ -190,6 +192,11 @@ export async function POST(request) {
     const clientId = accountSnapshot.id;
     const sections = await readAccountSections(accountSnapshot);
     const account = sections.combined;
+    const incomingCallEvent = incomingReceptionistCallEvent({
+      body,
+      clientId,
+    });
+    if (incomingCallEvent) after(() => sendAdminEvent(incomingCallEvent));
 
     if (account.status !== "active" || account.billingPastDue === true) {
       return NextResponse.json({ ok: false, error: "The connected business account is not active." }, { status: 404 });

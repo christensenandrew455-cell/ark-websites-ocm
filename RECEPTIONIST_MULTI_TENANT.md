@@ -22,6 +22,8 @@ ARK_RUNTIME_URL=https://<ocm-host>/api/receptionist/runtime
 
 No receptionist configuration secret is required. The removed `/api/receptionist/config` and `/api/receptionist/intake` compatibility routes must not be used.
 
+For each verified incoming `call.initiated` event, the runtime also schedules one signed `receptionist.call.started` event for ARK Admin. The event uses the Telnyx call identifier for deduplication but stores no caller identity or caller number. Notification delivery runs after the runtime response so it does not delay the receptionist from answering.
+
 Railway must post each completed call once to the returned `callCompletionUrl` with `action: "record"`, the returned `callCompletionKey`, and a stable provider `callId`. ARK hashes the account and call ID into one idempotent analytics event. Calls do not consume the monthly allowance. A unique lead counts once only when the business owner accepts it.
 
 The runtime response includes the selected accepted-lead plan for context. Runtime lookups do not block calls based on lead usage; the Client Center enforces the accepted-lead limit atomically when the owner taps **Accept**.
