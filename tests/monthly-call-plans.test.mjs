@@ -624,7 +624,7 @@ test("the custom Stripe manager requires explicit timing and full immediate paym
   assert.ok(cardRoute.includes("stripe.setupIntents.create"));
   assert.ok(cardRoute.includes("default_payment_method: paymentMethodId"));
   assert.ok(manager.includes("No charge today"));
-  assert.ok(manager.includes("Unused leads expire and are not refunded"));
+  assert.ok(manager.includes("Unused leads expire. No refunds."));
   assert.ok(manager.includes("$1 each"));
 });
 
