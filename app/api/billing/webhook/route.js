@@ -5,8 +5,10 @@ import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
 import { reportRevenuePayment } from "../../../lib/revenueLedger";
 import {
+  stripePaidInvoiceEntitlement,
   stripeAcceptedLeadTopUpPaymentFields,
   stripeSubscriptionAccountFields,
+  stripeSubscriptionStatusFields,
 } from "../../../lib/stripePlanBilling";
 import {
   findBusinessForStripeCustomer,
@@ -33,7 +35,7 @@ function billingMetadataFromInvoice(invoice) {
   };
 }
 
-async function syncStripeSubscription({ db, stripe, subscription, customerId = "", metadata = {} }) {
+async function syncStripeSubscription({ db, stripe, subscription, customerId = "", metadata = {}, paidInvoice = null }) {
   const expanded = typeof subscription === "string"
     ? await stripe.subscriptions.retrieve(subscription, { expand: ["items.data.price", "items.data.price.product"] })
     : subscription;
@@ -44,7 +46,13 @@ async function syncStripeSubscription({ db, stripe, subscription, customerId = "
     { ...(expanded.metadata || {}), ...(metadata || {}) },
   );
   if (!match) return null;
-  const synced = stripeSubscriptionAccountFields(expanded, match.business);
+  if (!paidInvoice) {
+    await db.collection("accounts").doc(match.clientId).set(stripeSubscriptionStatusFields(expanded), { merge: true });
+    return { match, plan: null, promotion: null, subscription: expanded };
+  }
+  const entitlement = await stripePaidInvoiceEntitlement({ stripe, subscription: expanded, invoice: paidInvoice });
+  if (!entitlement) throw new Error("STRIPE_PAID_PLAN_UNVERIFIED");
+  const synced = stripeSubscriptionAccountFields(expanded, match.business, entitlement);
   await db.collection("accounts").doc(match.clientId).set(synced.patch, { merge: true });
   return { match, plan: synced.plan, promotion: synced.promotion, subscription: expanded };
 }
@@ -139,7 +147,7 @@ export async function POST(request) {
       }
       const subscriptionId = subscriptionIdFromInvoice(invoice) || text(match?.business?.stripeSubscriptionId);
       const synced = subscriptionId
-        ? await syncStripeSubscription({ db, stripe, subscription: subscriptionId, customerId, metadata })
+        ? await syncStripeSubscription({ db, stripe, subscription: subscriptionId, customerId, metadata, paidInvoice: invoice })
         : null;
       match = synced?.match || match;
       const clientId = text(match?.clientId || metadata.clientId);

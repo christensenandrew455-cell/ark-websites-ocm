@@ -1,6 +1,5 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
-  BILLING_PLAN_KEYS,
   BILLING_VERSION,
   billingPlan,
   billingPlanForAmount,
@@ -224,20 +223,9 @@ export async function ensureStripeBillingCatalog({ stripe, planKey = "starter" }
   return ensureStripePlanPrice({ stripe, planKey });
 }
 
-function portalProducts(catalog) {
-  const products = new Map();
-  for (const item of catalog) {
-    if (!item.productId) throw new Error(`Stripe ${item.plan.name} Price is not attached to a Product.`);
-    const prices = products.get(item.productId) || [];
-    if (!prices.includes(item.priceId)) prices.push(item.priceId);
-    products.set(item.productId, prices);
-  }
-  return [...products.entries()].map(([product, prices]) => ({ product, prices }));
-}
-
-function portalConfigurationFields({ appUrl, products }) {
+function portalConfigurationFields({ appUrl }) {
   return {
-    name: "ARK Client Center plans and payments",
+    name: "ARK Client Center payment methods",
     default_return_url: `${appUrl}/settings?section=payment`,
     business_profile: {
       headline: "Manage your ARK Client Center plan and payment method.",
@@ -250,11 +238,9 @@ function portalConfigurationFields({ appUrl, products }) {
       payment_method_update: { enabled: true },
       subscription_cancel: { enabled: false },
       subscription_update: {
-        enabled: true,
-        default_allowed_updates: ["price"],
-        products,
+        enabled: false,
+        default_allowed_updates: [],
         proration_behavior: "none",
-        billing_cycle_anchor: "unchanged",
       },
     },
     metadata: {
@@ -283,9 +269,7 @@ async function managedPortalConfiguration(stripe) {
 }
 
 export async function ensureStripeBillingPortalConfiguration({ stripe, appUrl }) {
-  const catalog = [];
-  for (const planKey of BILLING_PLAN_KEYS) catalog.push(await ensureStripePlanPrice({ stripe, planKey }));
-  const fields = portalConfigurationFields({ appUrl, products: portalProducts(catalog) });
+  const fields = portalConfigurationFields({ appUrl });
   const existing = await configuredPortalConfiguration(stripe) || await managedPortalConfiguration(stripe);
   if (existing) return stripe.billingPortal.configurations.update(existing.id, fields);
   return stripe.billingPortal.configurations.create(fields, { idempotencyKey: "ark-client-center-billing-portal-v5" });
@@ -328,14 +312,21 @@ export async function ensureStripePromotionCoupon({ stripe, promotionKey }) {
   return coupon;
 }
 
+export function stripeBillingPlanFromPrice(price) {
+  if (!price || typeof price !== "object") return null;
+  const product = price.product && typeof price.product === "object" ? price.product : {};
+  const metadataPlanKey = text(price.metadata?.billingPlan || product.metadata?.billingPlan);
+  const amountPlan = billingPlanForAmount(price.unit_amount);
+  const metadataPlan = isBillingPlanKey(metadataPlanKey) ? billingPlan(metadataPlanKey) : null;
+  if (amountPlan && metadataPlan && amountPlan.key !== metadataPlan.key) return null;
+  return amountPlan || metadataPlan;
+}
+
 export function stripeBillingPlanFromSubscription(subscription) {
   const items = Array.isArray(subscription?.items?.data) ? subscription.items.data : [];
   for (const item of items) {
-    const price = item?.price;
-    const priceMetadataPlan = text(price?.metadata?.billingPlan || price?.product?.metadata?.billingPlan);
-    if (isBillingPlanKey(priceMetadataPlan)) return billingPlan(priceMetadataPlan);
-    const amountPlan = billingPlanForAmount(price?.unit_amount);
-    if (amountPlan) return amountPlan;
+    const plan = stripeBillingPlanFromPrice(item?.price);
+    if (plan) return plan;
   }
   // Subscription metadata is a fallback. Stripe's customer portal can replace
   // the line-item Price without rewriting subscription metadata.
@@ -362,28 +353,123 @@ async function alignExistingSubscription({ stripe, subscription, priceIds, metad
   const promotionMatches = !promotionCoupon
     || text(subscription.metadata?.billingPromotion) === text(metadata.billingPromotion);
   if (pricesMatch && versionMatches && planMatches && paymentMatches && promotionMatches) return subscription;
-
-  const existingItems = subscription.items?.data || [];
-  const expected = new Set(priceIds);
-  const items = [];
-  for (const item of existingItems) {
-    const existingPriceId = priceId(item?.price);
-    if (expected.has(existingPriceId)) {
-      items.push({ id: item.id });
-      expected.delete(existingPriceId);
-    } else {
-      items.push({ id: item.id, deleted: true });
-    }
-  }
-  for (const expectedPriceId of expected) items.push({ price: expectedPriceId });
+  if (!pricesMatch) throw new Error("STRIPE_EXISTING_SUBSCRIPTION_PLAN_MISMATCH");
   return stripe.subscriptions.update(subscription.id, {
-    items,
-    proration_behavior: "none",
     metadata,
     ...(paymentMethodId ? { default_payment_method: paymentMethodId } : {}),
     ...(promotionCoupon ? { discounts: [{ coupon: promotionCoupon.id }] } : {}),
     expand: ["items.data.price"],
   });
+}
+
+function invoiceSubscriptionId(invoice) {
+  return priceId(
+    invoice?.parent?.subscription_details?.subscription
+    || invoice?.subscription_details?.subscription
+    || invoice?.subscription,
+  );
+}
+
+function invoiceLineSubscriptionId(line) {
+  return priceId(
+    line?.parent?.subscription_item_details?.subscription
+    || line?.subscription,
+  );
+}
+
+function invoiceLinePrice(line) {
+  return line?.pricing?.price_details?.price || line?.price || null;
+}
+
+function monthlyRecurringInvoicePrice(price) {
+  return Boolean(
+    price
+    && text(price.currency).toLowerCase() === "usd"
+    && Number(price.unit_amount) > 0
+    && text(price.type) === "recurring"
+    && text(price.recurring?.interval) === "month"
+    && Number(price.recurring?.interval_count || 1) === 1
+    && text(price.recurring?.usage_type || "licensed") === "licensed"
+  );
+}
+
+async function resolvedInvoice(stripe, invoice) {
+  if (invoice && typeof invoice === "object") return invoice;
+  const invoiceId = priceId(invoice);
+  return invoiceId ? stripe.invoices.retrieve(invoiceId) : null;
+}
+
+async function allInvoiceLines(stripe, invoice) {
+  const included = Array.isArray(invoice?.lines?.data) ? invoice.lines.data : [];
+  if (included.length && invoice?.lines?.has_more !== true) return included;
+  if (!invoice?.id || typeof stripe?.invoices?.listLineItems !== "function") return included;
+  const listed = await stripe.invoices.listLineItems(invoice.id, { limit: 100 });
+  return Array.isArray(listed?.data) ? listed.data : included;
+}
+
+async function resolvedInvoicePrice(stripe, value) {
+  if (value && typeof value === "object") return value;
+  const id = priceId(value);
+  return id ? stripe.prices.retrieve(id, { expand: ["product"] }) : null;
+}
+
+function invoiceLinePeriod(line, fallback) {
+  const startMs = Number(line?.period?.start || 0) * 1000;
+  const endMs = Number(line?.period?.end || 0) * 1000;
+  return startMs > 0 && endMs > startMs ? { startMs, endMs } : fallback;
+}
+
+export async function stripePaidInvoiceEntitlement({ stripe, subscription, invoice }) {
+  const paidInvoice = await resolvedInvoice(stripe, invoice);
+  const subscriptionId = priceId(subscription?.id);
+  if (!paidInvoice || text(paidInvoice.status).toLowerCase() !== "paid" || !subscriptionId) return null;
+  if (invoiceSubscriptionId(paidInvoice) !== subscriptionId) return null;
+  const fallback = subscriptionPeriodWindow(subscription, calendarMonthWindow());
+  const lines = await allInvoiceLines(stripe, paidInvoice);
+  for (const line of lines) {
+    const parentType = text(line?.parent?.type);
+    if (parentType && parentType !== "subscription_item_details") continue;
+    const lineSubscriptionId = invoiceLineSubscriptionId(line);
+    if (lineSubscriptionId && lineSubscriptionId !== subscriptionId) continue;
+    if (line?.parent?.subscription_item_details?.proration === true) continue;
+    const price = await resolvedInvoicePrice(stripe, invoiceLinePrice(line));
+    if (!monthlyRecurringInvoicePrice(price)) continue;
+    const plan = stripeBillingPlanFromPrice(price);
+    if (!plan) continue;
+    const invoiceMetadata = paidInvoice?.parent?.subscription_details?.metadata
+      || paidInvoice?.subscription_details?.metadata
+      || {};
+    const metadataPlanKey = text(invoiceMetadata.billingPlan);
+    if (metadataPlanKey && normalizeBillingPlanKey(metadataPlanKey) !== plan.key) continue;
+    return {
+      invoice: paidInvoice,
+      invoiceId: priceId(paidInvoice.id),
+      priceId: priceId(price),
+      plan,
+      period: invoiceLinePeriod(line, fallback),
+      billingPromotionKey: text(invoiceMetadata.billingPromotion),
+    };
+  }
+  return null;
+}
+
+export async function latestPaidStripeSubscriptionEntitlement({ stripe, subscription }) {
+  const preferred = await stripePaidInvoiceEntitlement({ stripe, subscription, invoice: subscription?.latest_invoice });
+  if (preferred) return preferred;
+  const invoices = await stripe.invoices.list({ subscription: priceId(subscription?.id), status: "paid", limit: 10 });
+  for (const invoice of invoices?.data || []) {
+    const entitlement = await stripePaidInvoiceEntitlement({ stripe, subscription, invoice });
+    if (entitlement) return entitlement;
+  }
+  return null;
+}
+
+export function stripeSubscriptionStatusFields(subscription) {
+  return {
+    stripeSubscriptionId: priceId(subscription?.id),
+    stripeSubscriptionStatus: text(subscription?.status),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
 }
 
 function subscriptionBillingFields(subscription, timeZone, plan, promotion) {
@@ -402,11 +488,12 @@ function subscriptionBillingFields(subscription, timeZone, plan, promotion) {
   };
 }
 
-export function stripeSubscriptionAccountFields(subscription, account = {}) {
-  const plan = stripeBillingPlanFromSubscription(subscription);
-  const promotion = billingPromotion(subscription?.metadata?.billingPromotion || account.billingPromotionKey);
+export function stripeSubscriptionAccountFields(subscription, account = {}, entitlement = null) {
+  if (!entitlement?.invoiceId || !entitlement?.plan) throw new Error("STRIPE_PAID_PLAN_REQUIRED");
+  const plan = entitlement.plan;
+  const promotion = billingPromotion(entitlement.billingPromotionKey || account.billingPromotionKey);
   const fallback = calendarMonthWindow(text(account.timeZone));
-  const period = subscriptionPeriodWindow(subscription, fallback);
+  const period = entitlement.period || subscriptionPeriodWindow(subscription, fallback);
   const periodKey = `${period.startMs}-${period.endMs}`;
   const acceptedLeadsUsed = text(account.acceptedLeadPeriodKey) === periodKey
     ? Math.max(0, Number(account.acceptedLeadsUsedThisPeriod || 0))
@@ -422,6 +509,9 @@ export function stripeSubscriptionAccountFields(subscription, account = {}) {
   const patch = {
     stripeSubscriptionId: subscription.id,
     stripeSubscriptionStatus: subscription.status,
+    stripeEntitlementInvoiceId: entitlement.invoiceId,
+    stripeEntitlementPriceId: entitlement.priceId,
+    stripeEntitlementVerifiedAt: FieldValue.serverTimestamp(),
     billingPlanKey: plan.key,
     billingPlanName: plan.name,
     ...promotionBillingFields(plan, promotion),

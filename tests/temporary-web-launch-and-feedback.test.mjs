@@ -25,7 +25,8 @@ test("website launch pricing is retired for new signups while legacy billing rem
   assert.equal(terms.includes("Temporary website launch offer"), false);
   assert.ok(subscriptions.includes('duration: "forever"'));
   assert.ok(subscriptions.includes("discounts: [{ coupon: promotionCoupon.id }]") );
-  assert.ok(webhook.includes("stripeSubscriptionAccountFields(expanded, match.business)"));
+  assert.ok(webhook.includes("stripePaidInvoiceEntitlement({ stripe, subscription: expanded, invoice: paidInvoice })"));
+  assert.ok(webhook.includes("stripeSubscriptionAccountFields(expanded, match.business, entitlement)"));
   assert.ok(subscriptions.includes("promotionBillingFields(plan, promotion)"));
 });
 

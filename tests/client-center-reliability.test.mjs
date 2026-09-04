@@ -155,7 +155,9 @@ test("payment keeps plan changes behind a simple manager without guessing renewa
   assert.ok(summaryRoute.includes("publicAcceptedLeadPlanSummary(account, new Date(), currentAcceptedClients)"));
   assert.ok(summaryRoute.includes('billingProvider: String(account.billingProvider'));
   assert.ok(summaryRoute.includes("stripe.subscriptions.retrieve"));
-  assert.ok(summaryRoute.includes("stripeSubscriptionAccountFields(subscription, account)"));
+  assert.ok(summaryRoute.includes("latestPaidStripeSubscriptionEntitlement({ stripe, subscription })"));
+  assert.ok(summaryRoute.includes("stripeSubscriptionAccountFields(subscription, account, entitlement)"));
+  assert.ok(summaryRoute.includes("stripeSubscriptionStatusFields(subscription)"));
 });
 
 test("business information auto-saves edits and flushes the latest change before going back", async () => {

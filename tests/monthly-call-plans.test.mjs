@@ -27,11 +27,15 @@ import {
   ensureStripeBillingPortalConfiguration,
   ensureStripePlanPrice,
   ensureStripePromotionCoupon,
+  latestPaidStripeSubscriptionEntitlement,
   missingStripeResource,
   retrieveStripeAcceptedLeadTopUpPrice,
   stripeAcceptedLeadTopUpPaymentFields,
+  stripeBillingPlanFromPrice,
   stripeBillingPlanFromSubscription,
+  stripePaidInvoiceEntitlement,
   stripeSubscriptionAccountFields,
+  stripeSubscriptionStatusFields,
 } from "../app/lib/stripePlanBilling.js";
 import {
   activeWebLaunchOffer,
@@ -155,6 +159,34 @@ test("accepted-lead plan status reports a locked-in promotional account price", 
   assert.equal(status.billingDiscountPercent, 50);
 });
 
+test("every recognized Starter price resolves to the current 25-lead Starter plan", () => {
+  const paidPlan = stripeBillingPlanFromPrice({
+    id: "price_legacy_starter",
+    unit_amount: 4999,
+    metadata: {
+      billingPlan: "starter",
+      billingVersion: "monthly-accepted-lead-plans-v4",
+      monthlyAcceptedLeads: "50",
+      monthlyCalls: "50",
+    },
+  });
+  assert.equal(paidPlan.key, "starter");
+  assert.equal(paidPlan.name, "Starter");
+  assert.equal(paidPlan.amountCents, 2499);
+  assert.equal(paidPlan.monthlyAcceptedLeads, 25);
+
+  const status = acceptedLeadPlanStatus({
+    billingPlanKey: paidPlan.key,
+    billingPlanName: paidPlan.name,
+    monthlyPlanAmountCents: paidPlan.amountCents,
+    monthlyPlanListAmountCents: paidPlan.amountCents,
+    monthlyAcceptedLeadLimit: paidPlan.monthlyAcceptedLeads,
+  });
+  assert.equal(status.planName, "Starter");
+  assert.equal(status.monthlyPriceCents, 2499);
+  assert.equal(status.monthlyAcceptedLeadLimit, 25);
+});
+
 test("call IDs are deterministic and do not expose provider values", () => {
   const id = callEventDocumentId("sample-business", "provider-secret-call-id");
   assert.equal(id, callEventDocumentId("sample-business", "provider-secret-call-id"));
@@ -267,6 +299,11 @@ test("a new Stripe billing period clears used and top-up leads instead of rollin
     acceptedLeadTopUpsThisPeriod: 20,
     callPeriodKey: "old-period",
     callsUsedThisPeriod: 9,
+  }, {
+    invoiceId: "in_standard_paid",
+    priceId: "price_standard",
+    plan: BILLING_PLANS.standard,
+    period: { startMs: (nowSeconds - 10) * 1000, endMs: (nowSeconds + 2_000) * 1000 },
   });
   assert.equal(result.patch.billingPlanKey, "standard");
   assert.equal(result.patch.monthlyAcceptedLeadLimit, 50);
@@ -444,28 +481,9 @@ test("Stripe top-up settlement is bound to the configured Price and its $1 unit 
   });
 });
 
-test("Stripe creates a usable billing portal with every current plan and payment-method updates", async () => {
-  const planPrices = {
-    ark_client_center_starter_monthly_v5: { id: "price_starter", product: "prod_starter", unit_amount: 2499 },
-    ark_client_center_standard_monthly_v5: { id: "price_standard", product: "prod_standard", unit_amount: 4749 },
-    ark_client_center_growth_monthly_v5: { id: "price_growth", product: "prod_growth", unit_amount: 8999 },
-    ark_client_center_scale_monthly_v5: { id: "price_scale", product: "prod_scale", unit_amount: 16999 },
-  };
+test("Stripe's billing portal can update cards but cannot change plans", async () => {
   let createdConfiguration;
   const stripe = {
-    prices: {
-      async list({ lookup_keys: [lookupKey] }) {
-        const price = planPrices[lookupKey];
-        return { data: [{
-          ...price,
-          active: true,
-          billing_scheme: "per_unit",
-          currency: "usd",
-          type: "recurring",
-          recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
-        }] };
-      },
-    },
     billingPortal: {
       configurations: {
         async list() { return { data: [] }; },
@@ -479,19 +497,94 @@ test("Stripe creates a usable billing portal with every current plan and payment
   const result = await ensureStripeBillingPortalConfiguration({ stripe, appUrl: "https://www.arkclientcenter.com" });
   assert.equal(result.id, "bpc_ark");
   assert.equal(createdConfiguration.params.features.payment_method_update.enabled, true);
-  assert.equal(createdConfiguration.params.features.subscription_update.enabled, true);
+  assert.equal(createdConfiguration.params.features.subscription_update.enabled, false);
+  assert.deepEqual(createdConfiguration.params.features.subscription_update.default_allowed_updates, []);
   assert.equal(createdConfiguration.params.features.subscription_update.proration_behavior, "none");
-  assert.deepEqual(
-    createdConfiguration.params.features.subscription_update.products.map(({ product, prices }) => ({ product, prices })),
-    [
-      { product: "prod_starter", prices: ["price_starter"] },
-      { product: "prod_standard", prices: ["price_standard"] },
-      { product: "prod_growth", prices: ["price_growth"] },
-      { product: "prod_scale", prices: ["price_scale"] },
-    ],
-  );
+  assert.equal("products" in createdConfiguration.params.features.subscription_update, false);
   assert.equal(createdConfiguration.params.default_return_url, "https://www.arkclientcenter.com/settings?section=payment");
   assert.equal(createdConfiguration.options.idempotencyKey, "ark-client-center-billing-portal-v5");
+});
+
+test("Stripe plan fields cannot change without a paid invoice for that subscription", async () => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const subscription = {
+    id: "sub_guarded",
+    status: "active",
+    latest_invoice: "in_unpaid",
+    items: { data: [{
+      current_period_start: nowSeconds,
+      current_period_end: nowSeconds + 2_000,
+      price: { id: "price_standard", unit_amount: 4749, metadata: { billingPlan: "standard" } },
+    }] },
+  };
+  const invoice = (status, subscriptionId = subscription.id) => ({
+    id: `in_${status}`,
+    status,
+    parent: { subscription_details: { subscription: subscriptionId, metadata: { billingPlan: "standard" } } },
+    lines: { data: [{
+      parent: { subscription_item_details: { subscription: subscriptionId, proration: false } },
+      period: { start: nowSeconds, end: nowSeconds + 2_000 },
+      pricing: { price_details: { price: "price_standard" } },
+    }] },
+  });
+  const stripe = {
+    prices: { async retrieve() { return { id: "price_standard", currency: "usd", unit_amount: 4749, type: "recurring", recurring: { interval: "month", interval_count: 1, usage_type: "licensed" }, metadata: { billingPlan: "standard", monthlyAcceptedLeads: "50" } }; } },
+    invoices: {
+      async retrieve() { return invoice("open"); },
+      async list() { return { data: [] }; },
+    },
+  };
+
+  assert.equal(await stripePaidInvoiceEntitlement({ stripe, subscription, invoice: invoice("open") }), null);
+  assert.equal(await stripePaidInvoiceEntitlement({ stripe, subscription, invoice: invoice("paid", "sub_other") }), null);
+  assert.throws(() => stripeSubscriptionAccountFields(subscription, { billingPlanKey: "starter" }), /STRIPE_PAID_PLAN_REQUIRED/);
+  const statusOnly = stripeSubscriptionStatusFields(subscription);
+  assert.equal(statusOnly.stripeSubscriptionStatus, "active");
+  assert.equal("billingPlanKey" in statusOnly, false);
+
+  const paid = await stripePaidInvoiceEntitlement({ stripe, subscription, invoice: invoice("paid") });
+  assert.equal(paid.plan.key, "standard");
+  const synced = stripeSubscriptionAccountFields(subscription, { billingPlanKey: "starter" }, paid);
+  assert.equal(synced.patch.billingPlanKey, "standard");
+  assert.equal(synced.patch.stripeEntitlementInvoiceId, "in_paid");
+});
+
+test("plan repair restores the 25-lead Starter when Stripe has an unpaid Standard change", async () => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const subscription = {
+    id: "sub_repair",
+    status: "active",
+    latest_invoice: { id: "in_open_standard", status: "open", parent: { subscription_details: { subscription: "sub_repair" } }, lines: { data: [] } },
+    items: { data: [{
+      current_period_start: nowSeconds,
+      current_period_end: nowSeconds + 2_000,
+      price: { id: "price_standard", unit_amount: 4749, metadata: { billingPlan: "standard" } },
+    }] },
+  };
+  const paidStarterInvoice = {
+    id: "in_paid_starter",
+    status: "paid",
+    parent: { subscription_details: { subscription: "sub_repair", metadata: { billingPlan: "starter" } } },
+    lines: { data: [{
+      parent: { subscription_item_details: { subscription: "sub_repair", proration: false } },
+      period: { start: nowSeconds, end: nowSeconds + 2_000 },
+      pricing: { price_details: { price: "price_legacy_starter" } },
+    }] },
+  };
+  const stripe = {
+    prices: { async retrieve() {
+      return { id: "price_legacy_starter", currency: "usd", unit_amount: 4999, type: "recurring", recurring: { interval: "month", interval_count: 1, usage_type: "licensed" }, metadata: { billingPlan: "starter", monthlyAcceptedLeads: "50", monthlyCalls: "50" } };
+    } },
+    invoices: { async list() { return { data: [paidStarterInvoice] }; } },
+  };
+  const entitlement = await latestPaidStripeSubscriptionEntitlement({ stripe, subscription });
+  assert.equal(entitlement.plan.name, "Starter");
+  assert.equal(entitlement.plan.monthlyAcceptedLeads, 25);
+  const repaired = stripeSubscriptionAccountFields(subscription, { billingPlanKey: "standard" }, entitlement);
+  assert.equal(repaired.patch.billingPlanKey, "starter");
+  assert.equal(repaired.patch.billingPlanName, "Starter");
+  assert.equal(repaired.patch.monthlyPlanAmountCents, 2499);
+  assert.equal(repaired.patch.monthlyAcceptedLeadLimit, 25);
 });
 
 test("Stripe preserves the explicit legacy website coupon for a grandfathered subscription", async () => {
