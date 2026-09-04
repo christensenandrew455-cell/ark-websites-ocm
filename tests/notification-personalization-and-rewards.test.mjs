@@ -169,10 +169,15 @@ test("the retired free-lead reward path is removed", async () => {
   assert.ok(dashboard.includes('label="Messages"'));
 });
 
-test("terms use a seven-day first-payment refund window with provider boundaries", async () => {
-  const terms = await source("app/terms/page.js");
-  assert.ok(terms.includes("First-payment refund window"));
-  assert.ok(terms.includes("within seven calendar days"));
-  assert.ok(terms.includes("does not apply to renewals, lead top-ups"));
-  assert.ok(terms.includes("Apple controls eligibility"));
+test("terms and in-app guidance state no refunds", async () => {
+  const [terms, help, legalKnowledge] = await Promise.all([
+    source("app/terms/page.js"),
+    source("app/lib/helpContent.js"),
+    source("app/lib/legalKnowledge.js"),
+  ]);
+  for (const content of [terms, help, legalKnowledge]) {
+    assert.ok(content.includes("No refunds."));
+    assert.equal(content.includes("seven-calendar-day refund-request window"), false);
+    assert.equal(content.includes("First-payment refund window"), false);
+  }
 });
