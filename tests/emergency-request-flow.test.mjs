@@ -6,7 +6,6 @@ import {
   ASAP_OR_SCHEDULED_QUESTION,
   ASAP_REQUEST_TIME,
   activeEmergencyServiceSettings,
-  emergencyServiceAvailabilityError,
   isEmergencyRequest,
   normalizeEmergencyServiceSettings,
   normalizeRegularServiceSettings,
@@ -20,7 +19,7 @@ function source(path) {
   return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("emergency service is off by default and cannot retain a hidden 24-hour setting", () => {
+test("emergency service is off by default and requires explicit 24/7 coverage", () => {
   assert.deepEqual(normalizeEmergencyServiceSettings({}), {
     emergencyServiceEnabled: false,
     emergencyService24Hours: false,
@@ -28,6 +27,14 @@ test("emergency service is off by default and cannot retain a hidden 24-hour set
   assert.deepEqual(normalizeEmergencyServiceSettings({ emergencyServiceEnabled: false, emergencyService24Hours: true }), {
     emergencyServiceEnabled: false,
     emergencyService24Hours: false,
+  });
+  assert.deepEqual(normalizeEmergencyServiceSettings({ emergencyServiceEnabled: true, emergencyService24Hours: false }), {
+    emergencyServiceEnabled: false,
+    emergencyService24Hours: false,
+  });
+  assert.deepEqual(normalizeEmergencyServiceSettings({ emergencyServiceEnabled: true, emergencyService24Hours: true }), {
+    emergencyServiceEnabled: true,
+    emergencyService24Hours: true,
   });
 });
 
@@ -39,7 +46,7 @@ test("scheduled-only routing never includes an emergency prompt or branch", () =
   assert.equal(Object.hasOwn(routing, "emergency"), false);
 });
 
-test("enabled emergency routing offers ASAP or normal scheduling without promising dispatch", () => {
+test("24/7 emergency routing offers help now or normal scheduling without promising dispatch", () => {
   const routing = receptionistRequestRouting({ emergencyServiceEnabled: true, emergencyService24Hours: true });
   assert.equal(routing.mode, "asap-or-scheduled");
   assert.equal(routing.timingQuestion, ASAP_OR_SCHEDULED_QUESTION);
@@ -47,6 +54,8 @@ test("enabled emergency routing offers ASAP or normal scheduling without promisi
   assert.equal(routing.emergency.intakeValue, "emergency");
   assert.equal(routing.emergency.requestedTimeWindow, ASAP_REQUEST_TIME);
   assert.match(routing.emergency.instruction, /do not promise/i);
+  assert.match(routing.emergency.instruction, /problem and location/i);
+  assert.match(routing.emergency.instruction, /gas odor/i);
 
   const regularHours = receptionistRequestRouting({
     emergencyServiceEnabled: true,
@@ -55,14 +64,14 @@ test("enabled emergency routing offers ASAP or normal scheduling without promisi
     earliestEstimateStart: "9:00 AM",
     latestEstimateStart: "5:00 PM",
   });
-  assert.equal(regularHours.emergency.availability, "regular-service-hours");
+  assert.equal(regularHours.mode, "scheduled-only");
+  assert.equal(Object.hasOwn(regularHours, "emergency"), false);
   assert.equal(regularHours.scheduled.enabled, true);
 });
 
-test("regular all-day settings and emergency availability share one simple schedule", () => {
+test("regular scheduling stays separate from 24/7 emergency service", () => {
   const incomplete = { emergencyServiceEnabled: true, emergencyService24Hours: false };
   assert.equal(regularServiceScheduleConfigured(incomplete), false);
-  assert.equal(emergencyServiceAvailabilityError(incomplete), "Add regular hours or choose Any time for emergency calls.");
   const scheduled = {
     ...incomplete,
     estimateWeekdays: ["monday", "tuesday"],
@@ -78,15 +87,17 @@ test("regular all-day settings and emergency availability share one simple sched
     regularServiceEveryDay: true,
     regularService24Hours: true,
   });
-  assert.equal(emergencyServiceAvailabilityError(scheduled), "");
-  assert.equal(emergencyServiceAvailabilityError({ ...incomplete, emergencyService24Hours: true }), "");
   assert.deepEqual(activeEmergencyServiceSettings(incomplete), {
     emergencyServiceEnabled: false,
     emergencyService24Hours: false,
   });
   assert.deepEqual(activeEmergencyServiceSettings(scheduled), {
-    emergencyServiceEnabled: true,
+    emergencyServiceEnabled: false,
     emergencyService24Hours: false,
+  });
+  assert.deepEqual(activeEmergencyServiceSettings({ emergencyServiceEnabled: true, emergencyService24Hours: true }), {
+    emergencyServiceEnabled: true,
+    emergencyService24Hours: true,
   });
   assert.equal(validateReceptionistBusinessInformation({
     ...incomplete,
@@ -94,7 +105,7 @@ test("regular all-day settings and emergency availability share one simple sched
     businessType: "Plumbing",
     serviceAreas: ["Massachusetts"],
     services: { plumbing: "plumbing" },
-  }), "Add regular hours or choose Any time for emergency calls.");
+  }), "");
 });
 
 test("only explicit urgency values classify a lead as emergency", () => {

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { businessRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { canonicalBusinessType, isSupportedBusinessType } from "../../../lib/businessCatalog";
-import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings, normalizeRegularServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "../../../lib/emergencyService";
+import { normalizeEmergencyServiceSettings, normalizeRegularServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaValidationError } from "../../../lib/serviceAreas";
@@ -60,8 +60,8 @@ function profilePayload(clientId, account = {}) {
     businessEmail,
     timeZone: text(account.timeZone || "America/New_York"),
     estimateWeekdays: regularService.regularServiceEveryDay ? REGULAR_SERVICE_WEEKDAYS : savedEstimateWeekdays,
-    earliestEstimateStart: text(account.earliestEstimateStart),
-    latestEstimateStart: text(account.latestEstimateStart),
+    earliestEstimateStart: regularService.regularService24Hours ? "" : text(account.earliestEstimateStart),
+    latestEstimateStart: regularService.regularService24Hours ? "" : text(account.latestEstimateStart),
     ...regularService,
     ...normalizeEmergencyServiceSettings(account),
     businessType: canonicalBusinessType(account.businessType || account.businessBase) || text(account.businessType || account.businessBase),
@@ -100,7 +100,7 @@ async function loadProfile(db, clientId) {
   const sections = await readAccountSections(snapshot);
   return { ref, businessRef: sections.businessRef, account: sections.combined };
 }
-function validateProfile(profile) {
+function validateProfile(profile, { allowEmptyServices = false } = {}) {
   if (!profile.businessName) return "Enter the business name.";
   if (!profile.ownerName) return "Enter the owner name.";
   if (!profile.businessEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.businessEmail)) return "Enter a valid business email.";
@@ -109,9 +109,9 @@ function validateProfile(profile) {
   if (!isSupportedBusinessType(profile.businessType)) return "Choose a business type from the list.";
   const serviceAreaError = serviceAreaValidationError(profile.serviceAreas);
   if (serviceAreaError) return serviceAreaError;
-  if (!Object.keys(profile.services).length) return "Add at least one service.";
+  if (!allowEmptyServices && !Object.keys(profile.services).length) return "Add at least one service.";
   try { new Intl.DateTimeFormat("en-US", { timeZone: profile.timeZone }).format(); } catch { return "Choose a valid time zone."; }
-  return validateEstimateSchedule(profile) || emergencyServiceAvailabilityError(profile);
+  return validateEstimateSchedule(profile);
 }
 async function validateBusinessName(db, clientId, value) {
   const businessNameKey = normalizeClientId(value);
@@ -167,8 +167,8 @@ export async function POST(request) {
     businessEmail: text(body.businessEmail ?? current.businessEmail).toLowerCase(),
     timeZone: text(body.timeZone ?? current.timeZone),
     estimateWeekdays: regularService.regularServiceEveryDay ? REGULAR_SERVICE_WEEKDAYS : list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
-    earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
-    latestEstimateStart: text(body.latestEstimateStart ?? current.latestEstimateStart),
+    earliestEstimateStart: regularService.regularService24Hours ? "" : text(body.earliestEstimateStart ?? current.earliestEstimateStart),
+    latestEstimateStart: regularService.regularService24Hours ? "" : text(body.latestEstimateStart ?? current.latestEstimateStart),
     ...regularService,
     ...normalizeEmergencyServiceSettings({
       emergencyServiceEnabled: body.emergencyServiceEnabled ?? current.emergencyServiceEnabled,
@@ -179,7 +179,9 @@ export async function POST(request) {
     services: servicesObject(body.services ?? current.services),
     businessInformation: normalizeBusinessInformation(body.businessInformation ?? current.businessInformation),
   };
-  const validationError = validateProfile(profile);
+  const servicesClearedForBusinessTypeChange = profile.businessType !== current.businessType
+    && Object.keys(profile.services).length === 0;
+  const validationError = validateProfile(profile, { allowEmptyServices: servicesClearedForBusinessTypeChange });
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
   const [nameCheck, phoneCheck] = await Promise.all([
     validateBusinessName(db, access.clientId, profile.businessName),
