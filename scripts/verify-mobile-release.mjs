@@ -72,6 +72,13 @@ function verifyCapacitorConfig(config, label, expectedAppId, { requireBuildOptio
 const rootConfig = readJson("capacitor.config.json");
 verifyCapacitorConfig(rootConfig, "capacitor.config.json", expectedAndroidAppId, { requireBuildOptions: true });
 
+const offlinePage = read("mobile-shell/offline.html");
+check(
+  offlinePage.includes(`window.location.replace('${expectedUrl}')`),
+  "the offline Try Again button reloads the production app",
+);
+check(!offlinePage.includes("location.reload()"), "the offline page never reloads localhost");
+
 if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
   const iosConfig = readJson("ios/App/App/capacitor.config.json");
   verifyCapacitorConfig(iosConfig, "the generated iOS configuration", expectedIosBundleId);
@@ -102,6 +109,10 @@ if (fs.existsSync(file("ios/App/App/capacitor.config.json"))) {
   check(plist.includes("<string>arkclientcenter</string>"), "the iOS signup return URL scheme is registered");
 
   check(iosConfig.packageClassList?.includes("AppleIAPPlugin"), "the generated iOS configuration registers the Apple purchase bridge");
+  check(
+    read("ios/App/App/public/offline.html") === offlinePage,
+    "the generated iOS offline page uses the same in-app retry behavior",
+  );
   const appleIapPlugin = read("ios/App/CapApp-SPM/Sources/AppleIAPPlugin/AppleIAPPlugin.swift");
   check(appleIapPlugin.includes("import StoreKit"), "the iOS purchase bridge uses StoreKit");
   check(appleIapPlugin.includes("product.purchase(options: [.appAccountToken(accountToken)])"), "Apple purchases are tied to the signed-in ARK account");
