@@ -18,6 +18,7 @@ import {
   signupVerificationRequestExpired,
   signupVerificationRequestLegal,
 } from "../../../lib/signupVerificationRequest";
+import { publicReferralRewardSummary } from "../../../lib/referralRewards";
 import { normalizeClientId } from "../../../lib/valueUtils";
 
 export const runtime = "nodejs";
@@ -38,6 +39,7 @@ function onboardingGuideSeen(value) {
 
 function ownerProfile({ account, decodedToken, clientId }) {
   const receptionistPhone = text(account.receptionistPhone || account.receptionistPhoneNormalized);
+  const referral = publicReferralRewardSummary(account);
   return {
     uid: text(decodedToken.uid),
     email: text(decodedToken.email || account.accountEmail).toLowerCase(),
@@ -64,6 +66,9 @@ function ownerProfile({ account, decodedToken, clientId }) {
     monthlyCallLimit: Math.max(0, Number(account.monthlyCallLimit || 50)),
     paymentMethodLabel: text(account.paymentMethodLabel),
     billingPastDue: account.billingPastDue === true,
+    referralRewardAvailable: referral.referralRewardAvailable,
+    referralOfferExpiresAt: referral.referralOfferExpiresAt,
+    referralOfferRemainingMs: referral.referralOfferRemainingMs,
     identityVerificationRequired: account.identityVerificationRequired === true || decodedToken.identityVerificationRequired === true,
     identityVerificationVerified: account.identityVerificationVerified === true || decodedToken.identityVerificationVerified === true,
     identityVerificationStatus: text(account.identityVerificationStatus),

@@ -22,7 +22,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup.js";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
-import { completeReferralReward } from "./referralRewards.js";
+import { completeReferralReward, referralOfferExpiration } from "./referralRewards.js";
 
 function text(value) { return String(value || "").trim(); }
 function completedResult(account, transactionId) {
@@ -91,6 +91,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   const accountEmail = text(temporaryAccount.accountEmail || business.businessEmail).toLowerCase();
   const accountPhone = text(temporaryAccount.accountPhone || business.businessPhone);
   const now = FieldValue.serverTimestamp();
+  const referralOfferExpiresAt = Timestamp.fromDate(referralOfferExpiration());
   const businessProfile = {
     businessName,
     businessEmail: accountEmail,
@@ -153,6 +154,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     billingPastDue: false,
     referralFreeMonthsEarned: 0,
     referralFreeMonthsPending: 0,
+    referralOfferExpiresAt,
     ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",

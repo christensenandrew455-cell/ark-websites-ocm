@@ -28,7 +28,7 @@ export const HELP_SECTIONS = [
     title: "Start here",
     summary: "ARK answers calls, creates service requests, and puts them in Client Center for the business owner to review.",
     points: [
-      `Dashboard shows the ARK receptionist number and shortcuts to New Leads${MESSAGES_AVAILABLE ? ", Messages" : ""}, Refer & Save for eligible Stripe-billed accounts, and Settings.`,
+      `Dashboard shows the ARK receptionist number and shortcuts to New Leads${MESSAGES_AVAILABLE ? ", Messages" : ""}, Settings, and the temporary Refer & Save offer when eligible.`,
       "A new account usually receives its ARK phone number within 24–48 hours. Calls to that number go to the AI receptionist.",
       "Leads contains Contacted You for new requests and Clients for accepted requests.",
       "Settings contains Business information, Customization, Plan and payment, and Help & Account.",
@@ -132,7 +132,7 @@ export const HELP_SECTIONS = [
   {
     id: "payment",
     title: "Payment and plan changes",
-    summary: "Settings → Plan and payment shows leads left, the current plan, the reset date, payment method, and billing status.",
+    summary: "Settings → Plan and payment shows leads left, the current plan, payment method, and billing status.",
     points: [
       "Manage opens three controls: Change plan, Add leads, and Payment card.",
       "A Stripe plan change can start at renewal with no charge today, or start now after payment. Starting now begins a new billing month and does not carry over or refund unused leads.",
@@ -171,13 +171,13 @@ export const HELP_SECTIONS = [
   {
     id: "rewards",
     title: "Refer & Save",
-    summary: "A qualifying referral gives an eligible Stripe-billed owner one free month at the plan price in effect when the referral qualifies.",
+    summary: "A new eligible Stripe-billed account gets one 24-hour chance to earn one free month.",
     points: [
-      "The business username is also its referral code. A referral counts after the new business finishes paid signup with that code.",
-      "Each qualifying referred business can earn one free month. There is no three-referral monthly cap.",
-      "For Stripe-billed accounts, ARK creates a credit equal to the referrer’s recurring plan price at the time the referral qualifies. It starts with the next Stripe bill, and additional qualifying credits remain available for later bills.",
-      "Self-referrals, duplicate accounts, invalid accounts, and signups that do not use the code do not qualify. Referral rewards have no cash value and cannot be transferred.",
-      "Apple-billed accounts are not eligible yet because Apple requires a separate in-app promotional offer. Refer & Save is hidden from their dashboard until that flow is ready.",
+      "The business username is its referral code. A different business must finish paid signup with that code within 24 hours after the referrer’s account is activated.",
+      "The offer disappears permanently after one qualifying referral or when the 24-hour window ends.",
+      "ARK creates a Stripe credit equal to the referrer’s recurring plan price when the referral qualifies. It starts with the next eligible Stripe bill.",
+      "Self-referrals, duplicate accounts, late signups, invalid accounts, and signups that do not use the code do not qualify. Referral rewards have no cash value and cannot be transferred.",
+      "Apple-billed accounts are not eligible because Apple requires a separate in-app promotional offer.",
       "Feedback is still welcome, but feedback does not earn a billing reward.",
     ],
     links: ["Refer & Save", ...(TEMPORARY_FEATURES.feedback.enabled ? ["Give Feedback"] : []), "Settings"],

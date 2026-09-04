@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 import { requireUser } from "../../../lib/userRequest";
 import {
   acceptedLeadAccountPatch,
@@ -7,9 +8,43 @@ import {
   publicAcceptedLeadPlanSummary,
 } from "../../../lib/acceptedLeadPlanBilling";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { stripeSubscriptionAccountFields } from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function text(value) {
+  return String(value || "").trim();
+}
+
+function objectId(value) {
+  return text(value?.id || value);
+}
+
+async function refreshStripeBillingAccount(accountRef, account) {
+  const provider = text(account.billingProvider || (account.appleOriginalTransactionId ? "apple" : "stripe")).toLowerCase();
+  const subscriptionId = text(account.stripeSubscriptionId);
+  const stripeKey = text(process.env.STRIPE_SECRET_KEY);
+  if (provider !== "stripe" || !subscriptionId || !stripeKey) return account;
+
+  try {
+    const stripe = new Stripe(stripeKey);
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data.price", "items.data.price.product"],
+    });
+    const storedCustomerId = text(account.stripeCustomerId);
+    if (storedCustomerId && objectId(subscription.customer) !== storedCustomerId) {
+      throw new Error("STRIPE_SUBSCRIPTION_ACCOUNT_MISMATCH");
+    }
+    const synced = stripeSubscriptionAccountFields(subscription, account);
+    await accountRef.set(synced.patch, { merge: true });
+    const refreshed = await accountRef.get();
+    return refreshed.exists ? refreshed.data() : account;
+  } catch (error) {
+    console.warn("Unable to refresh the Stripe billing period for plan summary", error);
+    return account;
+  }
+}
 
 export async function GET(request) {
   const authorization = await requireUser(request);
@@ -21,7 +56,7 @@ export async function GET(request) {
     if (!snapshot.exists) {
       return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     }
-    const account = snapshot.data();
+    const account = await refreshStripeBillingAccount(accountRef, snapshot.data());
     const storedStatus = acceptedLeadPlanStatus(account);
     const currentAcceptedClients = await countAcceptedClientsInPeriod(accountRef, storedStatus);
     const planSummary = publicAcceptedLeadPlanSummary(account, new Date(), currentAcceptedClients);
