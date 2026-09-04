@@ -40,6 +40,7 @@ scripts/                 Cross-platform mobile setup and asset generators
 - Put shared formatting, identifiers, authentication helpers, and service logic in `app/lib` rather than copying functions into routes.
 - Keep signed-in customer actions under `api/account` and public submissions under their feature-specific routes. Do not add private operations routes or screens to this repository.
 - Send account, lead, support, receptionist, and successful-payment events to ARK Admin through the signed event webhook.
+- Write every successful Stripe or Apple payment to the shared idempotent revenue ledger; the billing sync reconciles historical provider records so a missed webhook cannot erase revenue.
 - Receive signed number assignments back from ARK Admin at `/api/webhooks/admin`, apply them to the account, and send the owner's Firebase app notification.
 - Keep Firebase Admin code server-only. Do not import `firebase-admin` modules into client components.
 - Use `normalizeClientId` from `app/lib/valueUtils.js` whenever a business or client identifier becomes a Firestore document ID.

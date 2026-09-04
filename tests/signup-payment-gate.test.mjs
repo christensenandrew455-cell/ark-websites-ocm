@@ -380,7 +380,8 @@ test("Stripe webhook verifies its signature before setup completion", async () =
   const completion = route.indexOf("completeOwnerPaymentSetup({");
   assert.ok(signature >= 0 && completion > signature);
   assert.ok(route.includes('event.type === "setup_intent.succeeded"'));
-  assert.ok(route.includes('type: "billing.payment_succeeded"'));
+  assert.ok(route.includes("reportRevenuePayment"));
+  assert.ok(route.includes('provider: "stripe"'));
   assert.ok(route.includes('paymentKind: "subscription"'));
   assert.equal(route.includes("JSON.parse(rawBody)"), false);
 });

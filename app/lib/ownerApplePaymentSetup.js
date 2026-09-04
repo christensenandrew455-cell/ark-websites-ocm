@@ -23,6 +23,7 @@ import {
 } from "./pendingOwnerSignup.js";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
 import { completeReferralReward, referralOfferExpiration } from "./referralRewards.js";
+import { reportRevenuePayment } from "./revenueLedger.js";
 
 function text(value) { return String(value || "").trim(); }
 function completedResult(account, transactionId) {
@@ -40,12 +41,15 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   const transactionId = text(transaction?.transactionId);
   const originalTransactionId = text(transaction?.originalTransactionId);
   const expiresAt = Number(transaction?.expiresDate || 0);
+  const purchasedAt = Number(transaction?.purchaseDate || 0) || Date.now();
   const purchasedPlan = applePlanForProduct(transaction?.productId);
   if (!safeUid || !transactionId || !originalTransactionId) throw new Error("APPLE_PAYMENT_SETUP_MISSING");
   if (!purchasedPlan
     || text(transaction.type) !== "Auto-Renewable Subscription"
     || transaction.revocationDate
     || expiresAt <= Date.now()) throw new Error("APPLE_SUBSCRIPTION_INACTIVE");
+  const amountCents = Number(transaction?.price || 0) > 0 ? Math.round(Number(transaction.price) / 10) : purchasedPlan.amountCents;
+  const currency = text(transaction?.currency || "usd").toLowerCase();
 
   const existingAccounts = await accountCollection(db).where("uid", "==", safeUid).limit(1).get();
   if (!existingAccounts.empty) {
@@ -60,6 +64,24 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
           console.error("Unable to retry the signup referral reward", error);
         });
       }
+      await reportRevenuePayment({
+        db,
+        eventId: `billing-paid-apple-${transactionId}`,
+        provider: "apple",
+        paymentId: transactionId,
+        paymentKind: "subscription",
+        clientId: existingAccount.clientId,
+        businessName: text(existingAccount.businessName || existingAccount.clientId),
+        amountCents,
+        currency,
+        paidAt: purchasedAt,
+        summary: `${purchasedPlan.name} monthly payment succeeded`,
+        metadata: {
+          billingPlan: purchasedPlan.key,
+          monthlyAcceptedLeads: purchasedPlan.monthlyAcceptedLeads,
+          monthlyCalls: purchasedPlan.monthlyCalls,
+        },
+      });
       return completedResult(existingAccount, transactionId);
     }
     throw new Error("APPLE_PAYMENT_SETUP_FORBIDDEN");
@@ -136,7 +158,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     monthlyPlanAmountCents: purchasedPlan.amountCents,
     monthlyAcceptedLeadLimit: purchasedPlan.monthlyAcceptedLeads,
     acceptedLeadPeriodLimit: purchasedPlan.monthlyAcceptedLeads,
-    acceptedLeadPeriodStartAt: Timestamp.fromMillis(Number(transaction.purchaseDate || 0) || Date.now()),
+    acceptedLeadPeriodStartAt: Timestamp.fromMillis(purchasedAt),
     acceptedLeadPeriodEndAt: Timestamp.fromMillis(expiresAt),
     acceptedLeadPeriodKey: "",
     acceptedLeadsUsedThisPeriod: 0,
@@ -145,7 +167,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     acceptedLeadTopUpsThisPeriod: 0,
     acceptedLeadLimitReached: false,
     monthlyCallLimit: purchasedPlan.monthlyCalls,
-    callPeriodStartAt: Timestamp.fromMillis(Number(transaction.purchaseDate || 0) || Date.now()),
+    callPeriodStartAt: Timestamp.fromMillis(purchasedAt),
     callPeriodEndAt: Timestamp.fromMillis(expiresAt),
     callPeriodKey: "",
     callsUsedThisPeriod: 0,
@@ -207,14 +229,17 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     kind: "subscription",
     clientId,
     uid: safeUid,
+    businessName,
     productId: purchasedPlan.productId,
     billingPlanKey: purchasedPlan.key,
+    amountCents,
+    currency,
     monthlyAcceptedLeads: purchasedPlan.monthlyAcceptedLeads,
     monthlyCalls: purchasedPlan.monthlyCalls,
     originalTransactionId,
     appAccountToken: text(payment.appleAppAccountToken).toLowerCase(),
     environment: text(transaction.environment),
-    purchaseDate: Number(transaction.purchaseDate || 0) ? Timestamp.fromMillis(Number(transaction.purchaseDate)) : now,
+    purchaseDate: Timestamp.fromMillis(purchasedAt),
     expiresAt: Timestamp.fromMillis(expiresAt),
     createdAt: now,
   });
@@ -251,6 +276,24 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     businessName,
     summary: "Customer finished signup and needs a receptionist number",
     metadata: { numberAssignmentStatus: "needed", billingProvider: "apple", billingPlan: purchasedPlan.key, monthlyAcceptedLeads: purchasedPlan.monthlyAcceptedLeads, monthlyCalls: purchasedPlan.monthlyCalls },
+  });
+  await reportRevenuePayment({
+    db,
+    eventId: `billing-paid-apple-${transactionId}`,
+    provider: "apple",
+    paymentId: transactionId,
+    paymentKind: "subscription",
+    clientId,
+    businessName,
+    amountCents,
+    currency,
+    paidAt: purchasedAt,
+    summary: `${purchasedPlan.name} monthly payment succeeded`,
+    metadata: {
+      billingPlan: purchasedPlan.key,
+      monthlyAcceptedLeads: purchasedPlan.monthlyAcceptedLeads,
+      monthlyCalls: purchasedPlan.monthlyCalls,
+    },
   });
   return completedResult(accountData, transactionId);
 }

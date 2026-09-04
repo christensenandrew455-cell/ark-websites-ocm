@@ -1,13 +1,16 @@
 import { randomBytes } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
+import Stripe from "stripe";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { sendAdminEvent, verifyAdminEvent } from "../../../lib/adminEvents";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { PUSH_NOTIFICATION_COPY } from "../../../lib/notificationCopy";
 import { sendAccountPushNotification } from "../../../lib/notificationService";
+import { syncRevenueLedger } from "../../../lib/revenueLedger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 function text(value) { return String(value || "").trim(); }
 function clientId(value) { return text(value).toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""); }
@@ -80,6 +83,21 @@ async function assignNumber(body) {
   return Response.json({ ok: true, clientId: id, receptionistPhone, numberAssignmentStatus: "assigned", notification });
 }
 
+async function syncRevenue() {
+  try {
+    const stripeKey = text(process.env.STRIPE_SECRET_KEY);
+    const result = await syncRevenueLedger({
+      db: getAdminDb(),
+      stripe: stripeKey ? new Stripe(stripeKey) : null,
+      includePayments: true,
+    });
+    return Response.json({ ok: true, revenueSync: result });
+  } catch (error) {
+    console.error("Unable to reconcile the ARK revenue ledger", error);
+    return Response.json({ error: "Revenue could not be refreshed right now." }, { status: 500 });
+  }
+}
+
 export async function POST(request) {
   const rawBody = await request.text();
   if (Buffer.byteLength(rawBody, "utf8") > 32 * 1024) return Response.json({ error: "The webhook request is too large." }, { status: 413 });
@@ -94,5 +112,6 @@ export async function POST(request) {
   let body;
   try { body = JSON.parse(rawBody); } catch { return Response.json({ error: "The webhook body must be valid JSON." }, { status: 400 }); }
   if (text(body.type) === "account.number.assign") return assignNumber(body);
+  if (text(body.type) === "billing.revenue.sync") return syncRevenue();
   return Response.json({ error: "That ARK Admin webhook event is not supported." }, { status: 400 });
 }

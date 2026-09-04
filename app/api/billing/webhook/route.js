@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { grantAcceptedLeadTopUp } from "../../../lib/acceptedLeadTopUps";
-import { sendAdminEvent } from "../../../lib/adminEvents";
 import { getAdminAuth, getAdminDb } from "../../../lib/firebase-admin";
 import { completeOwnerPaymentSetup } from "../../../lib/ownerPaymentSetup";
+import { reportRevenuePayment } from "../../../lib/revenueLedger";
 import {
   stripeAcceptedLeadTopUpPaymentFields,
   stripeSubscriptionAccountFields,
@@ -23,6 +23,14 @@ function text(value) {
 
 function subscriptionIdFromInvoice(invoice) {
   return text(invoice?.subscription?.id || invoice?.subscription || invoice?.parent?.subscription_details?.subscription);
+}
+
+function billingMetadataFromInvoice(invoice) {
+  return {
+    ...(invoice?.subscription_details?.metadata || {}),
+    ...(invoice?.parent?.subscription_details?.metadata || {}),
+    ...(invoice?.metadata || {}),
+  };
 }
 
 async function syncStripeSubscription({ db, stripe, subscription, customerId = "", metadata = {} }) {
@@ -123,42 +131,58 @@ export async function POST(request) {
     if (event.type === "invoice.paid" || event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object;
       const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || "";
-      const match = await findBusinessForStripeCustomer(db, customerId, invoice.metadata || {});
-      if (!match) return NextResponse.json({ received: true, ignored: true });
-      const subscriptionId = subscriptionIdFromInvoice(invoice) || text(match.business.stripeSubscriptionId);
+      let metadata = billingMetadataFromInvoice(invoice);
+      let match = await findBusinessForStripeCustomer(db, customerId, metadata);
+      if (!match && customerId) {
+        const customer = await stripe.customers.retrieve(customerId).catch(() => null);
+        if (customer && customer.deleted !== true) metadata = { ...(customer.metadata || {}), ...metadata };
+      }
+      const subscriptionId = subscriptionIdFromInvoice(invoice) || text(match?.business?.stripeSubscriptionId);
       const synced = subscriptionId
-        ? await syncStripeSubscription({ db, stripe, subscription: subscriptionId, customerId, metadata: invoice.metadata || {} })
+        ? await syncStripeSubscription({ db, stripe, subscription: subscriptionId, customerId, metadata })
         : null;
+      match = synced?.match || match;
+      const clientId = text(match?.clientId || metadata.clientId);
+      if (!clientId) return NextResponse.json({ received: true, ignored: true });
+      const businessName = text(match?.business?.businessName || metadata.businessName || clientId);
+      const billingPlan = synced?.plan?.key || text(match?.business?.billingPlanKey || metadata.billingPlan || "starter");
+      const monthlyAcceptedLeads = synced?.plan?.monthlyAcceptedLeads
+        || Number(match?.business?.monthlyAcceptedLeadLimit || metadata.monthlyAcceptedLeads || 0);
+      const monthlyCalls = synced?.plan?.monthlyCalls
+        || Number(match?.business?.monthlyCallLimit || metadata.monthlyCalls || 0);
 
-      await sendAdminEvent({
-        id: `billing-paid-${invoice.id}`,
-        type: "billing.payment_succeeded",
-        clientId: match.clientId,
-        businessName: text(match.business.businessName || match.clientId),
+      await reportRevenuePayment({
+        db,
+        eventId: `billing-paid-${invoice.id}`,
+        provider: "stripe",
+        paymentId: invoice.id,
+        paymentKind: "subscription",
+        clientId,
+        businessName,
+        amountCents: Math.max(0, Number(invoice.amount_paid || 0)),
+        currency: text(invoice.currency || "usd").toLowerCase(),
+        paidAt: Number(invoice.status_transitions?.paid_at || event.created) * 1000,
         summary: `${synced?.plan?.name || "Monthly"} plan payment succeeded`,
         metadata: {
-          paymentId: invoice.id,
-          paymentKind: "subscription",
-          billingPlan: synced?.plan?.key || text(match.business.billingPlanKey || "starter"),
-          monthlyAcceptedLeads: synced?.plan?.monthlyAcceptedLeads || Number(match.business.monthlyAcceptedLeadLimit || 50),
-          monthlyCalls: synced?.plan?.monthlyCalls || Number(match.business.monthlyCallLimit || 50),
-          amountCents: Math.max(0, Number(invoice.amount_paid || 0)),
-          currency: text(invoice.currency || "usd").toLowerCase(),
+          billingPlan,
+          monthlyAcceptedLeads,
+          monthlyCalls,
         },
-        occurredAt: new Date(event.created * 1000).toISOString(),
       });
 
-      const remaining = customerId
-        ? await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
-        : { data: [] };
-      const anotherInvoiceIsUnpaid = remaining.data.some((item) => item.id !== invoice.id && Number(item.amount_remaining || 0) > 0);
-      if (!anotherInvoiceIsUnpaid && match.business.billingPastDue === true) {
-        await resolvePayment({
-          db,
-          clientId: match.clientId,
-          eventId: event.id,
-          invoiceId: invoice.id,
-        });
+      if (match) {
+        const remaining = customerId
+          ? await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
+          : { data: [] };
+        const anotherInvoiceIsUnpaid = remaining.data.some((item) => item.id !== invoice.id && Number(item.amount_remaining || 0) > 0);
+        if (!anotherInvoiceIsUnpaid && match.business.billingPastDue === true) {
+          await resolvePayment({
+            db,
+            clientId: match.clientId,
+            eventId: event.id,
+            invoiceId: invoice.id,
+          });
+        }
       }
     }
 

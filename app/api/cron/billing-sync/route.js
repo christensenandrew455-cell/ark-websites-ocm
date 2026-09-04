@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { retryPendingStripeReferralRewards } from "../../../lib/referralRewards";
+import { syncRevenueLedger } from "../../../lib/revenueLedger";
 import { refreshStoredPaymentMethod } from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
@@ -46,13 +47,16 @@ async function handle(request) {
   const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
   if (!stripe) return NextResponse.json({ ok: false, error: "Stripe billing is not configured." }, { status: 503 });
 
-  const paymentMethods = await refreshStripePaymentMethods(db, stripe);
-  const rewardResults = await retryPendingStripeReferralRewards({ db, stripe });
+  const [paymentMethods, rewardResults, revenue] = await Promise.all([
+    refreshStripePaymentMethods(db, stripe),
+    retryPendingStripeReferralRewards({ db, stripe }),
+    syncRevenueLedger({ db, stripe, force: true }),
+  ]);
   const referralRewards = {
     checked: rewardResults.length,
     credited: rewardResults.filter((result) => result.credited === true).length,
   };
-  return NextResponse.json({ ok: true, paymentMethods, referralRewards });
+  return NextResponse.json({ ok: true, paymentMethods, referralRewards, revenue });
 }
 
 export async function GET(request) { return handle(request); }

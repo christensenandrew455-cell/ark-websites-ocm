@@ -1,10 +1,10 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { sendAdminEvent } from "./adminEvents.js";
 import { applePlanForProduct } from "./appleIapCatalog.js";
 import { sameAppleAccountToken } from "./appleIapRequest.js";
 import { normalizeBillingPlanKey } from "./billingPricing.js";
 import { resolvePayment } from "./billingDelinquency.js";
 import { systemCollection } from "./firestoreLayout.js";
+import { reportRevenuePayment } from "./revenueLedger.js";
 
 function text(value) {
   return String(value || "").trim();
@@ -24,6 +24,8 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
   const expiresAt = Number(transaction?.expiresDate || 0);
   const purchasedAt = Number(transaction?.purchaseDate || 0) || Date.now();
   const plan = applePlanForProduct(transaction?.productId);
+  const amountCents = Number(transaction?.price || 0) > 0 ? Math.round(Number(transaction.price) / 10) : plan?.amountCents;
+  const currency = text(transaction?.currency || "usd").toLowerCase();
   if (!clientId || !transactionId || !originalTransactionId
     || !plan
     || text(transaction.type) !== "Auto-Renewable Subscription") throw new Error("APPLE_SUBSCRIPTION_INVALID");
@@ -95,8 +97,11 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
       kind: "subscription",
       clientId,
       uid: text(account.uid),
+      businessName: text(account.businessName || clientId),
       productId: plan.productId,
       billingPlanKey: plan.key,
+      amountCents,
+      currency,
       monthlyAcceptedLeads: plan.monthlyAcceptedLeads,
       monthlyCalls: plan.monthlyCalls,
       originalTransactionId,
@@ -120,21 +125,22 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
     });
   }
   if (!transactionSnapshot.exists) {
-    await sendAdminEvent({
-      id: `billing-paid-apple-${transactionId}`,
-      type: "billing.payment_succeeded",
+    await reportRevenuePayment({
+      db,
+      eventId: `billing-paid-apple-${transactionId}`,
+      provider: "apple",
+      paymentId: transactionId,
+      paymentKind: "subscription",
       clientId,
       businessName: text(account.businessName || clientId),
+      amountCents,
+      currency,
+      paidAt: purchasedAt,
       summary: `${plan.name} monthly payment succeeded`,
       metadata: {
-        paymentId: transactionId,
-        paymentKind: "subscription",
-        provider: "apple",
         billingPlan: plan.key,
         monthlyAcceptedLeads: plan.monthlyAcceptedLeads,
         monthlyCalls: plan.monthlyCalls,
-        amountCents: Number(transaction.price || 0) > 0 ? Math.round(Number(transaction.price) / 10) : plan.amountCents,
-        currency: text(transaction.currency || "usd").toLowerCase(),
       },
     });
   }
