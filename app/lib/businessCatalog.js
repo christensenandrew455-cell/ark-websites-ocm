@@ -9,6 +9,7 @@ export const BUSINESS_TYPES = Object.freeze([
   "Commercial Refrigeration",
   "Commercial Kitchen Equipment",
   "Painting",
+  "Handyman",
 ]);
 
 export const SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE = Object.freeze({
@@ -123,6 +124,19 @@ export const SERVICE_SUGGESTIONS_BY_BUSINESS_TYPE = Object.freeze({
     "Wallpaper removal",
     "Touch-up painting",
     "Epoxy floor coating",
+  ]),
+  Handyman: Object.freeze([
+    "Handyman services",
+    "Home repairs",
+    "Furniture assembly",
+    "TV mounting",
+    "Picture and shelf hanging",
+    "Door repair",
+    "Drywall repair",
+    "Trim and molding repair",
+    "Fixture installation",
+    "Caulking",
+    "Deck and fence repair",
   ]),
 });
 
