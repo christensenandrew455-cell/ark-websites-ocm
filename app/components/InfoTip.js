@@ -18,8 +18,9 @@ function popoverPosition(trigger, align) {
       mobile,
       left: VIEWPORT_GUTTER,
       width: Math.max(0, viewportWidth - VIEWPORT_GUTTER * 2),
-      bottom: `calc(env(safe-area-inset-bottom) + ${VIEWPORT_GUTTER}px)`,
-      maxHeight: "calc(100dvh - env(safe-area-inset-bottom) - 1.5rem)",
+      top: "50%",
+      transform: "translateY(-50%)",
+      maxHeight: "min(65dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem))",
     };
   }
 
@@ -106,6 +107,7 @@ export default function InfoTip({ label, children, align = "left" }) {
         top: position.top,
         bottom: position.bottom,
         maxHeight: position.maxHeight,
+        transform: position.transform,
       }}
     >
       <span className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">

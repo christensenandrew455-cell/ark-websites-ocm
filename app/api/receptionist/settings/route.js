@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { isStandardRole } from "../../../lib/accountRoles";
 import { businessRootFieldDeletes, readAccountSections } from "../../../lib/accountSections";
 import { canonicalBusinessType, isSupportedBusinessType } from "../../../lib/businessCatalog";
-import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings } from "../../../lib/emergencyService";
+import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings, normalizeRegularServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaValidationError } from "../../../lib/serviceAreas";
@@ -41,6 +41,13 @@ function profilePayload(clientId, account = {}) {
   const businessPhone = text(account.businessPhone || account.accountPhone);
   const configured = account.businessSetupComplete === true
     || Boolean(businessName && businessEmail && businessPhone && Object.keys(services).length);
+  const savedEstimateWeekdays = list(account.estimateWeekdays).map((day) => day.toLowerCase());
+  const regularService = {
+    ...normalizeRegularServiceSettings(account),
+    regularServiceEveryDay: typeof account.regularServiceEveryDay === "boolean"
+      ? account.regularServiceEveryDay
+      : REGULAR_SERVICE_WEEKDAYS.every((day) => savedEstimateWeekdays.includes(day)),
+  };
   return {
     configured,
     clientId,
@@ -52,9 +59,10 @@ function profilePayload(clientId, account = {}) {
     businessPhone,
     businessEmail,
     timeZone: text(account.timeZone || "America/New_York"),
-    estimateWeekdays: list(account.estimateWeekdays).map((day) => day.toLowerCase()),
+    estimateWeekdays: regularService.regularServiceEveryDay ? REGULAR_SERVICE_WEEKDAYS : savedEstimateWeekdays,
     earliestEstimateStart: text(account.earliestEstimateStart),
     latestEstimateStart: text(account.latestEstimateStart),
+    ...regularService,
     ...normalizeEmergencyServiceSettings(account),
     businessType: canonicalBusinessType(account.businessType || account.businessBase) || text(account.businessType || account.businessBase),
     serviceAreas: normalizeServiceAreas(account.serviceAreas),
@@ -71,6 +79,7 @@ function clockMinutes(value) {
   return (hour + (match[3] === "PM" ? 12 : 0)) * 60 + Number(match[2] || 0);
 }
 function validateEstimateSchedule(profile) {
+  if (profile.regularService24Hours === true) return "";
   if (profile.earliestEstimateStart && clockMinutes(profile.earliestEstimateStart) === null) return "Choose a valid earliest regular time.";
   if (profile.latestEstimateStart && clockMinutes(profile.latestEstimateStart) === null) return "Choose a valid latest regular time.";
   return "";
@@ -146,6 +155,10 @@ export async function POST(request) {
   const serviceAreas = body.serviceAreas ?? current.serviceAreas;
   const serviceAreaError = serviceAreaValidationError(serviceAreas);
   if (serviceAreaError) return NextResponse.json({ error: serviceAreaError }, { status: 400 });
+  const regularService = normalizeRegularServiceSettings({
+    regularServiceEveryDay: body.regularServiceEveryDay ?? current.regularServiceEveryDay,
+    regularService24Hours: body.regularService24Hours ?? current.regularService24Hours,
+  });
   const profile = {
     ...current,
     businessName: text(body.businessName ?? current.businessName),
@@ -153,9 +166,10 @@ export async function POST(request) {
     businessPhone: text(body.businessPhone ?? current.businessPhone),
     businessEmail: text(body.businessEmail ?? current.businessEmail).toLowerCase(),
     timeZone: text(body.timeZone ?? current.timeZone),
-    estimateWeekdays: list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
+    estimateWeekdays: regularService.regularServiceEveryDay ? REGULAR_SERVICE_WEEKDAYS : list(body.estimateWeekdays ?? current.estimateWeekdays).map((day) => day.toLowerCase()),
     earliestEstimateStart: text(body.earliestEstimateStart ?? current.earliestEstimateStart),
     latestEstimateStart: text(body.latestEstimateStart ?? current.latestEstimateStart),
+    ...regularService,
     ...normalizeEmergencyServiceSettings({
       emergencyServiceEnabled: body.emergencyServiceEnabled ?? current.emergencyServiceEnabled,
       emergencyService24Hours: body.emergencyService24Hours ?? current.emergencyService24Hours,
@@ -182,6 +196,8 @@ export async function POST(request) {
     estimateWeekdays: profile.estimateWeekdays,
     earliestEstimateStart: profile.earliestEstimateStart,
     latestEstimateStart: profile.latestEstimateStart,
+    regularServiceEveryDay: profile.regularServiceEveryDay,
+    regularService24Hours: profile.regularService24Hours,
     emergencyServiceEnabled: profile.emergencyServiceEnabled,
     emergencyService24Hours: profile.emergencyService24Hours,
     businessType: profile.businessType,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getAdminDb } from "../../../lib/firebase-admin";
+import { retryPendingStripeReferralRewards } from "../../../lib/referralRewards";
 import { refreshStoredPaymentMethod } from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
@@ -46,7 +47,12 @@ async function handle(request) {
   if (!stripe) return NextResponse.json({ ok: false, error: "Stripe billing is not configured." }, { status: 503 });
 
   const paymentMethods = await refreshStripePaymentMethods(db, stripe);
-  return NextResponse.json({ ok: true, paymentMethods });
+  const rewardResults = await retryPendingStripeReferralRewards({ db, stripe });
+  const referralRewards = {
+    checked: rewardResults.length,
+    credited: rewardResults.filter((result) => result.credited === true).length,
+  };
+  return NextResponse.json({ ok: true, paymentMethods, referralRewards });
 }
 
 export async function GET(request) { return handle(request); }

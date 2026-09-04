@@ -43,9 +43,9 @@ function PlanSelector({ selectedPlanKey, onSelect, promotion, disabled = false }
       {MONTHLY_PLANS.map((plan) => {
         const selected = plan.key === selectedPlanKey;
         const promotionalAmount = promotion ? discountedAmountCents(plan.amountCents, promotion) : plan.amountCents;
-        return <button key={plan.key} type="button" onClick={() => onSelect(plan.key)} disabled={disabled} aria-pressed={selected} className={`rounded-2xl border p-4 text-left transition disabled:opacity-60 ${selected ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-200" : "border-slate-200 bg-white hover:border-slate-400"}`}>
-          <SubscriptionPlanCard plan={plan} promotionalAmountCents={promotion ? promotionalAmount : 0} />
-          {selected && <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700">Selected</span>}
+        return <button key={plan.key} type="button" onClick={() => onSelect(plan.key)} disabled={disabled} aria-pressed={selected} className={`rounded-2xl border p-4 text-left transition disabled:opacity-60 ${selected ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200 bg-white hover:border-slate-400"}`}>
+          <SubscriptionPlanCard plan={plan} promotionalAmountCents={promotion ? promotionalAmount : 0} selected={selected} />
+          {selected && <span className="mt-3 block text-[10px] font-black uppercase tracking-[0.14em] text-blue-100">Selected</span>}
         </button>;
       })}
     </div>

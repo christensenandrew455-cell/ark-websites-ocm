@@ -65,9 +65,9 @@ function RetentionSelect({ title, endpoint }) {
   </div>;
 }
 
-export default function MessageRetentionSettings({ showMessages = false }) {
+export default function MessageRetentionSettings({ showMessages = false, embedded = false }) {
   return (
-    <section className="rounded-2xl border border-slate-200 p-4 sm:p-5">
+    <section className={embedded ? "mt-6 border-t border-slate-200 pt-6" : "rounded-2xl border border-slate-200 p-4 sm:p-5"}>
       <span className="flex items-center gap-2"><h3 className="text-base font-black text-slate-950">Auto-delete</h3><InfoTip label="About auto-delete">Deletes old records after the time you choose. “Never delete” keeps them until you remove them.</InfoTip></span>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <RetentionSelect title="Leads" endpoint="/api/business/leads/retention" />

@@ -22,7 +22,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup.js";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
-import { completeReferralReward } from "./rewardLeadCredits.js";
+import { completeReferralReward } from "./referralRewards.js";
 
 function text(value) { return String(value || "").trim(); }
 function completedResult(account, transactionId) {
@@ -99,6 +99,8 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
     earliestEstimateStart: text(business.earliestEstimateStart),
     latestEstimateStart: text(business.latestEstimateStart),
+    regularServiceEveryDay: business.regularServiceEveryDay === true,
+    regularService24Hours: business.regularService24Hours === true,
     emergencyServiceEnabled: business.emergencyServiceEnabled === true,
     emergencyService24Hours: business.emergencyService24Hours === true,
     businessType: text(business.businessType || business.businessBase),
@@ -149,9 +151,8 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     callsRemainingThisPeriod: purchasedPlan.monthlyCalls,
     callLimitReached: false,
     billingPastDue: false,
-    rewardLeadCreditBalance: 0,
-    rewardLeadCreditsEarnedTotal: 0,
-    rewardLeadCreditsRedeemedTotal: 0,
+    referralFreeMonthsEarned: 0,
+    referralFreeMonthsPending: 0,
     ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",

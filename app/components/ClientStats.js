@@ -5,23 +5,23 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
-function DashboardCard({ value, label, description, onClick, disabled = false }) {
+function DashboardCard({ value, label, description = "", onClick, disabled = false, className = "" }) {
   const displayValue = typeof value === "number" ? value.toLocaleString("en-US") : String(value ?? "");
   const content = (
     <div className="flex h-full items-start justify-between gap-4">
       <div className="min-w-0">
         <h2 className="text-2xl font-black tracking-tight sm:text-3xl">{label}</h2>
-        <p className={disabled ? "mt-2 text-sm font-semibold leading-5 text-slate-500" : "mt-2 text-sm font-semibold leading-5 text-blue-100"}>{description}</p>
+        {description && <p className={disabled ? "mt-2 text-sm font-semibold leading-5 text-slate-500" : "mt-2 text-sm font-semibold leading-5 text-blue-100"}>{description}</p>}
       </div>
       {displayValue && <p className="shrink-0 text-4xl font-black tracking-tight sm:text-5xl">{displayValue}</p>}
     </div>
   );
 
   if (disabled) {
-    return <button type="button" disabled aria-disabled="true" className="min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
+    return <button type="button" disabled aria-disabled="true" className={`min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6 ${className}`}>{content}</button>;
   }
 
-  return <button type="button" onClick={onClick} className="min-h-28 w-full rounded-2xl border border-blue-800 bg-blue-800 p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
+  return <button type="button" onClick={onClick} className={`min-h-28 w-full rounded-2xl border border-[#071a3d] bg-[#071a3d] p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6 ${className}`}>{content}</button>;
 }
 
 function displayPhone(value) {
@@ -35,9 +35,9 @@ export default function ClientStats() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const [newLeads, setNewLeads] = useState(0);
-  const [acceptedLeads, setAcceptedLeads] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const profilePhone = String(profile?.receptionistPhone || profile?.receptionistPhoneNormalized || "").trim();
+  const referralRewardAvailable = String(profile?.billingProvider || "stripe").toLowerCase() !== "apple";
   const [receptionistPhone, setReceptionistPhone] = useState(profilePhone);
   const [notice, setNotice] = useState("");
 
@@ -58,7 +58,6 @@ export default function ClientStats() {
           .then(async (response) => { if (!response.ok) throw new Error("Could not refresh the lead count."); return response.json(); })
           .then((data) => {
             setNewLeads(Number(data.contactedCount || 0));
-            setAcceptedLeads(Number(data.clientCount || 0));
           })
           .catch(() => null),
       ];
@@ -110,9 +109,9 @@ export default function ClientStats() {
         </section>
         <section className="mt-3 rounded-3xl border border-slate-200 bg-slate-200/60 p-3 sm:mt-5 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
-            <DashboardCard value={acceptedLeads} label="Accepted Leads" description={`${newLeads} new ${newLeads === 1 ? "lead" : "leads"} waiting`} onClick={() => router.push("/leads?section=clients")} />
+            <DashboardCard value={newLeads} label="New Leads" onClick={() => router.push("/leads?section=contacted")} />
             <DashboardCard value={MESSAGES_AVAILABLE ? unreadMessages : ""} label="Messages" description={MESSAGES_AVAILABLE ? "Client texts" : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
-            <DashboardCard value="" label="Free Leads" description="Earn with feedback and referrals" onClick={() => router.push("/rewards")} />
+            {referralRewardAvailable && <DashboardCard value="" label="Refer & Save" description="Refer one person. Get one month free." className="sm:col-start-2" onClick={() => router.push("/rewards")} />}
           </div>
         </section>
       </div>

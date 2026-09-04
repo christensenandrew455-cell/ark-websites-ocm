@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { readAccountSections } from "../../lib/accountSections";
 import { requireUser } from "../../lib/userRequest";
 import { getAdminDb } from "../../lib/firebase-admin";
-import { publicRewardSummary, referralPeriodRef } from "../../lib/rewardLeadCredits";
-import { calendarMonthWindow } from "../../lib/timeWindows";
+import { publicReferralRewardSummary } from "../../lib/referralRewards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,13 +15,10 @@ export async function GET(request) {
     const accountSnapshot = await db.collection("accounts").doc(authorization.clientId).get();
     if (!accountSnapshot.exists) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     const sections = await readAccountSections(accountSnapshot);
-    const month = calendarMonthWindow(sections?.business?.timeZone, new Date());
-    const periodSnapshot = await referralPeriodRef(db, authorization.clientId, month.monthKey).get();
-    const period = periodSnapshot.exists ? periodSnapshot.data() : {};
     return NextResponse.json({
       referralCode: authorization.clientId,
       businessName: String(sections?.account?.businessName || authorization.clientId),
-      ...publicRewardSummary(sections?.account, period, month.monthKey),
+      ...publicReferralRewardSummary(sections?.account),
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Unable to load rewards", error);

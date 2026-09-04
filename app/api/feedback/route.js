@@ -6,7 +6,6 @@ import { feedbackSentiment, feedbackTopic } from "../../lib/feedbackOptions";
 import { getAdminDb } from "../../lib/firebase-admin";
 import { systemCollection } from "../../lib/firestoreLayout";
 import { checkRequestRateLimit, rateLimitResponse } from "../../lib/requestRateLimit";
-import { feedbackRewardUpdate } from "../../lib/rewardLeadCredits";
 import { TEMPORARY_FEATURES } from "../../lib/temporaryFeatures";
 import { trimmedText } from "../../lib/valueUtils";
 
@@ -46,7 +45,6 @@ export async function POST(request) {
       const accountSnapshot = await transaction.get(accountRef);
       if (!accountSnapshot.exists) throw new Error("FEEDBACK_ACCOUNT_NOT_FOUND");
       const account = accountSnapshot.data();
-      const reward = feedbackRewardUpdate(account);
       const businessName = trimmedText(account.businessName || authorization.clientId);
       const timestamp = FieldValue.serverTimestamp();
       transaction.create(ref, {
@@ -66,20 +64,10 @@ export async function POST(request) {
         status: "new",
         priority: "normal",
         createdByUid: authorization.decodedToken.uid,
-        rewardLeadCreditsGranted: reward.amount,
         createdAt: timestamp,
         updatedAt: timestamp,
       });
-      if (reward.granted) {
-        transaction.set(accountRef, {
-          rewardLeadCreditBalance: reward.balance,
-          rewardLeadCreditsEarnedTotal: FieldValue.increment(reward.amount),
-          feedbackRewardGranted: true,
-          feedbackRewardGrantedAt: timestamp,
-          updatedAt: timestamp,
-        }, { merge: true });
-      }
-      return { account, businessName, reward };
+      return { businessName };
     });
     await sendAdminEvent({
       id: `feedback-${ref.id}`,
@@ -96,9 +84,6 @@ export async function POST(request) {
     return NextResponse.json({
       ok: true,
       id: ref.id,
-      rewardGranted: saved.reward.granted,
-      rewardLeadCredits: saved.reward.amount,
-      rewardLeadCreditBalance: saved.reward.balance,
     }, { status: 201 });
   } catch (error) {
     if (String(error?.message || "") === "FEEDBACK_ACCOUNT_NOT_FOUND") {

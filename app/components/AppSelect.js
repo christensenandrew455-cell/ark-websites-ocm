@@ -25,7 +25,7 @@ function menuPosition(trigger, align = "left") {
       left: VIEWPORT_GUTTER,
       width: Math.max(0, viewportWidth - VIEWPORT_GUTTER * 2),
       bottom: `calc(env(safe-area-inset-bottom) + ${VIEWPORT_GUTTER}px)`,
-      maxHeight: "calc(100dvh - env(safe-area-inset-bottom) - 1.5rem)",
+      maxHeight: "min(70dvh, calc(100dvh - env(safe-area-inset-bottom) - 1.5rem))",
     };
   }
 
