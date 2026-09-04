@@ -111,7 +111,13 @@ test("each qualifying Stripe referral credits one current-plan month", async () 
   assert.ok(page.includes("Refer one business"));
   assert.ok(page.includes("Get one month free."));
   assert.ok(page.includes("Copy invite link"));
-  assert.ok(dashboard.includes('label="Refer & Save"'));
+  assert.ok(dashboard.includes("function ReferralCornerButton"));
+  assert.ok(dashboard.includes("fixed z-40"));
+  assert.ok(dashboard.includes("--ark-bottom-scroll-clearance"));
+  assert.ok(dashboard.includes("--ark-safe-area-right"));
+  assert.ok(dashboard.includes("Refer & Save"));
+  assert.ok(dashboard.includes("Refer one person. Get one month free."));
+  assert.equal(dashboard.includes('<DashboardCard value="" label="Refer & Save"'), false);
 });
 
 test("the retired free-lead reward path is removed", async () => {
