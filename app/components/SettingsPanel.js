@@ -474,7 +474,7 @@ export default function SettingsPanel() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-xs font-black text-slate-500">Plan</p><p className="mt-1 text-xl font-black text-slate-950">{planSummary?.planName || "Starter"}</p><p className="mt-1 text-sm font-bold text-slate-600">{formatUsd(planSummary?.monthlyPriceCents || 2499)}/month</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-xs font-black text-slate-500">Payment</p><p className="mt-1 text-sm font-black text-slate-950">{paymentLabel}</p><p className="mt-1 text-xs font-bold text-slate-600">{billingStatus}</p></div>
       </div>
-      {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts at your next renewal.</p>}
+      {planSummary?.pendingBillingPlanKey && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} Plan starts after its renewal payment succeeds.</p>}
       <button type="button" onClick={() => openPaymentManager("plan")} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white sm:w-auto">Manage</button>
     </SectionPanel></>;
   }

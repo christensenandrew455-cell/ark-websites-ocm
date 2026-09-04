@@ -62,7 +62,8 @@ export function accountAcceptedLeadPeriod(account = {}, from = new Date()) {
 export function acceptedLeadPlanStatus(account = {}, from = new Date(), minimumAcceptedLeadsUsed = 0) {
   const planKey = normalizeBillingPlanKey(account.billingPlanKey || account.billingPlan);
   const plan = billingPlan(planKey);
-  const monthlyAcceptedLeadLimit = planLimit(plan);
+  const storedMonthlyAcceptedLeadLimit = whole(account.monthlyAcceptedLeadLimit || account.monthlyCallLimit);
+  const monthlyAcceptedLeadLimit = storedMonthlyAcceptedLeadLimit || planLimit(plan);
   const promotion = billingPromotion(account.billingPromotionKey);
   const storedMonthlyPrice = whole(account.monthlyPlanAmountCents);
   const monthlyListPriceCents = whole(account.monthlyPlanListAmountCents) || plan.amountCents;
@@ -78,10 +79,10 @@ export function acceptedLeadPlanStatus(account = {}, from = new Date(), minimumA
   const acceptedLeadsRemaining = Math.max(0, acceptedLeadPeriodLimit - acceptedLeadsUsed);
   return {
     planKey,
-    planName: plan.name,
+    planName: text(account.billingPlanName) || plan.name,
     planPositioning: plan.positioning,
-    baseMonthlyPriceCents: plan.amountCents,
-    monthlyValueCents: plan.listAmountCents,
+    baseMonthlyPriceCents: monthlyListPriceCents,
+    monthlyValueCents: monthlyListPriceCents,
     volumeSavingsPercent: plan.savingsPercent,
     monthlyPriceCents: storedMonthlyPrice || discountedAmountCents(plan.amountCents, promotion),
     monthlyListPriceCents,

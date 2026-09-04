@@ -7,6 +7,7 @@ import { getAdminDb } from "../../../lib/firebase-admin";
 import { checkRequestRateLimit, rateLimitResponse } from "../../../lib/requestRateLimit";
 import {
   ensureStripePlanPrice,
+  stripePaidInvoiceEntitlement,
   stripeBillingPlanFromSubscription,
   stripeSubscriptionAccountFields,
 } from "../../../lib/stripePlanBilling";
@@ -102,7 +103,7 @@ function latestInvoice(subscription) {
     : null;
 }
 
-function publicImmediateResult(subscription, publishableKey) {
+async function publicImmediateResult({ stripe, subscription, publishableKey, expectedPlanKey }) {
   const invoice = latestInvoice(subscription);
   const clientSecret = text(invoice?.confirmation_secret?.client_secret);
   if (subscription.pending_update && clientSecret) {
@@ -122,7 +123,19 @@ function publicImmediateResult(subscription, publishableKey) {
       error: "The plan payment did not complete. Update the card or try again.",
     };
   }
-  return { status: "succeeded", subscriptionId: subscription.id, invoiceId: invoice?.id || "" };
+  const entitlement = await stripePaidInvoiceEntitlement({ stripe, subscription, invoice: subscription.latest_invoice });
+  if (!entitlement || entitlement.plan.key !== expectedPlanKey) {
+    return {
+      status: "payment_failed",
+      subscriptionId: subscription.id,
+      invoiceId: invoice?.id || "",
+      error: "The plan payment did not complete. Your current plan was not changed.",
+    };
+  }
+  return {
+    publicResult: { status: "succeeded", subscriptionId: subscription.id, invoiceId: entitlement.invoiceId },
+    entitlement,
+  };
 }
 
 export async function POST(request) {
@@ -233,9 +246,10 @@ export async function POST(request) {
       metadata: subscriptionMetadata(access.account, subscription.metadata, targetPlan),
       expand: ["items.data.price", "items.data.price.product", "latest_invoice.confirmation_secret"],
     }, { idempotencyKey: `ark-plan-now-${subscription.id}-${requestId}` });
-    const result = publicImmediateResult(updated, publishableKey);
+    const settlement = await publicImmediateResult({ stripe, subscription: updated, publishableKey, expectedPlanKey: targetPlan.key });
+    const result = settlement.publicResult || settlement;
     if (result.status === "succeeded") {
-      const synced = stripeSubscriptionAccountFields(updated, access.account);
+      const synced = stripeSubscriptionAccountFields(updated, access.account, settlement.entitlement);
       await access.accountRef.set(synced.patch, { merge: true });
     } else {
       await access.accountRef.set({
@@ -275,7 +289,13 @@ export async function PUT(request) {
     const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
       expand: ["items.data.price", "items.data.price.product", "latest_invoice.confirmation_secret"],
     });
-    const result = publicImmediateResult(subscription, text(process.env.STRIPE_PUBLISHABLE_KEY));
+    const settlement = await publicImmediateResult({
+      stripe,
+      subscription,
+      publishableKey: text(process.env.STRIPE_PUBLISHABLE_KEY),
+      expectedPlanKey: planKey,
+    });
+    const result = settlement.publicResult || settlement;
     const currentPlan = stripeBillingPlanFromSubscription(subscription);
     if (result.status !== "succeeded" || currentPlan.key !== planKey) {
       return NextResponse.json({
@@ -283,7 +303,7 @@ export async function PUT(request) {
         error: result.error || "The plan payment has not completed yet.",
       }, { status: 402 });
     }
-    const synced = stripeSubscriptionAccountFields(subscription, access.account);
+    const synced = stripeSubscriptionAccountFields(subscription, access.account, settlement.entitlement);
     await access.accountRef.set(synced.patch, { merge: true });
     return NextResponse.json({
       status: "succeeded",

@@ -150,7 +150,7 @@ function PlanConfirmation({ plan, currentPlan, timing, setTiming, appleBilling, 
       <p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(plan.effectiveAmountCents)}/month · {plan.monthlyAcceptedLeads} accepted leads</p>
       {appleBilling ? <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-700">Apple shows the final price and start date before you confirm.</p>
         : <fieldset className="mt-5 space-y-3"><legend className="text-sm font-black">When should {plan.name} start?</legend>
-          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">At next renewal</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "renewal" ? "text-blue-100" : "text-slate-600"}`}>Keep {currentPlan} until then. No charge today.</span></label>
+          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">At next renewal</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "renewal" ? "text-blue-100" : "text-slate-600"}`}>No charge today. Your plan changes only after the renewal payment succeeds.</span></label>
           <label className={`block rounded-2xl border p-4 ${timing === "now" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="now" checked={timing === "now"} onChange={() => setTiming("now")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">Now · pay {formatUsd(plan.effectiveAmountCents)}</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "now" ? "text-blue-100" : "text-slate-600"}`}>Your billing month restarts. Unused leads expire. No refunds.</span></label>
         </fieldset>}
       <div className="mt-6 grid grid-cols-2 gap-3">
@@ -303,7 +303,7 @@ export default function PaymentManagementPanel({
           });
           setNotice(`${selectedPlan.name} is active. Your allowance and billing month restarted.`);
         } else if (data.status === "scheduled") {
-          setNotice(`${selectedPlan.name} will start on ${dateLabel(data.startsAt)}. No charge was made today.`);
+          setNotice(`${selectedPlan.name} is scheduled for ${dateLabel(data.startsAt)} and starts only after payment succeeds.`);
         } else {
           setNotice(`${selectedPlan.name} is active. Your allowance and billing month restarted.`);
         }
@@ -388,7 +388,7 @@ export default function PaymentManagementPanel({
       {stripeInsideIos && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">This Stripe account can be viewed here, but billing changes must be completed on the ARK website outside the iPhone app.</p>}
       <div className="space-y-3">
         <Accordion title="Change plan" open={openPanel === "plan"} onToggle={() => setOpenPanel((current) => current === "plan" ? "" : "plan")}>
-          {planSummary?.pendingBillingPlanKey && <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} is scheduled for your next renewal.</p>}
+          {planSummary?.pendingBillingPlanKey && <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} is scheduled for your next renewal and starts only after payment succeeds.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             {plans.map((plan) => {
               const current = plan.key === planSummary?.planKey;

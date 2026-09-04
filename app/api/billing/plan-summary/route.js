@@ -8,7 +8,11 @@ import {
   publicAcceptedLeadPlanSummary,
 } from "../../../lib/acceptedLeadPlanBilling";
 import { getAdminDb } from "../../../lib/firebase-admin";
-import { stripeSubscriptionAccountFields } from "../../../lib/stripePlanBilling";
+import {
+  latestPaidStripeSubscriptionEntitlement,
+  stripeSubscriptionAccountFields,
+  stripeSubscriptionStatusFields,
+} from "../../../lib/stripePlanBilling";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +40,11 @@ async function refreshStripeBillingAccount(accountRef, account) {
     if (storedCustomerId && objectId(subscription.customer) !== storedCustomerId) {
       throw new Error("STRIPE_SUBSCRIPTION_ACCOUNT_MISMATCH");
     }
-    const synced = stripeSubscriptionAccountFields(subscription, account);
-    await accountRef.set(synced.patch, { merge: true });
+    const entitlement = await latestPaidStripeSubscriptionEntitlement({ stripe, subscription });
+    const patch = entitlement
+      ? stripeSubscriptionAccountFields(subscription, account, entitlement).patch
+      : stripeSubscriptionStatusFields(subscription);
+    await accountRef.set(patch, { merge: true });
     const refreshed = await accountRef.get();
     return refreshed.exists ? refreshed.data() : account;
   } catch (error) {
