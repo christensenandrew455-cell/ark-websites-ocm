@@ -53,6 +53,13 @@ test("ARK Admin sends number assignments back through the signed Client Center w
   assert.ok(route.includes("syncRevenueLedger"));
 });
 
+test("public website feedback reaches the administrator inbox as feedback", async () => {
+  const route = await source("app/api/support/contact/route.js");
+  assert.ok(route.includes('feedback: "Feedback"'));
+  assert.ok(route.includes("categoryLabel"));
+  assert.ok(route.includes('type: "support.website.created"'));
+});
+
 test("permanent owner deletion notifies ARK Admin only after deletion succeeds", async () => {
   const route = await source("app/api/account/delete/route.js");
   assert.ok(route.includes('type: "account.deleted"'));
