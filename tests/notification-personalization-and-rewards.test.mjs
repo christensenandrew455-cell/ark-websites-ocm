@@ -139,7 +139,8 @@ test("one qualifying referral within a new account's 24-hour window credits one 
   assert.ok(page.includes('router.replace("/")'));
   assert.ok(dashboard.includes("function ReferralCornerButton"));
   assert.ok(dashboard.includes("fixed z-40"));
-  assert.ok(dashboard.includes("--ark-bottom-scroll-clearance"));
+  assert.equal(dashboard.includes("--ark-bottom-scroll-clearance"), false);
+  assert.ok(dashboard.includes("--ark-safe-area-bottom"));
   assert.ok(dashboard.includes("--ark-safe-area-right"));
   assert.ok(dashboard.includes("Refer & Save"));
   assert.ok(dashboard.includes("New account offer · first 24 hours only"));

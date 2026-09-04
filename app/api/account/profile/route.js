@@ -28,15 +28,6 @@ function text(value) {
   return String(value || "").trim();
 }
 
-function onboardingGuideSeen(value) {
-  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  return {
-    dashboard: source.dashboard === true,
-    settings: source.settings === true,
-    leads: source.leads === true,
-  };
-}
-
 function ownerProfile({ account, decodedToken, clientId }) {
   const receptionistPhone = text(account.receptionistPhone || account.receptionistPhoneNormalized);
   const referral = publicReferralRewardSummary(account);
@@ -77,8 +68,6 @@ function ownerProfile({ account, decodedToken, clientId }) {
     onboardingTourEligible: account.onboardingTourEligible === true,
     onboardingTourStatus: text(account.onboardingTourStatus),
     onboardingGuideVersion: Math.max(0, Math.floor(Number(account.onboardingGuideVersion || 0))),
-    onboardingGuideSeen: onboardingGuideSeen(account.onboardingGuideSeen),
-    onboardingNumberGuidePhone: text(account.onboardingNumberGuidePhone),
     darkMode: account.darkMode === true,
     notificationChannels: Array.isArray(account.notificationChannels) ? account.notificationChannels : [],
     notificationEmail: text(account.notificationEmail || account.accountEmail).toLowerCase(),
@@ -126,8 +115,6 @@ function temporaryOwnerProfile({ pending, decodedToken, clientId }) {
     onboardingTourStatus: "",
     onboardingTourEligible: false,
     onboardingGuideVersion: 0,
-    onboardingGuideSeen: onboardingGuideSeen(),
-    onboardingNumberGuidePhone: "",
     numberAssignmentStatus: "",
     termsAccepted: legal.termsAccepted === true,
     privacyAccepted: legal.privacyAccepted === true,
@@ -163,8 +150,6 @@ function signupVerificationProfile({ request, decodedToken, clientId }) {
     onboardingTourStatus: "",
     onboardingTourEligible: false,
     onboardingGuideVersion: 0,
-    onboardingGuideSeen: onboardingGuideSeen(),
-    onboardingNumberGuidePhone: "",
     numberAssignmentStatus: "",
     termsAccepted: legal.termsAccepted === true,
     privacyAccepted: legal.privacyAccepted === true,

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthProvider";
-import FirstVisitGuides from "./GuidedOnboarding";
+import QuickTutorial from "./QuickTutorial";
 import { BillingStatusProvider, useBillingStatus } from "./BillingStatusProvider";
 import LegalAcceptanceGate from "./LegalAcceptanceGate";
 import NativeAppSetup from "./NativeAppSetup";
@@ -128,7 +128,7 @@ function CustomerWorkspace({ children, pathname, isPolicyPublic, profile, logout
     if (!billingLoading && status.restricted && !restrictedPathAllowed) router.replace("/");
   }, [billingLoading, restrictedPathAllowed, router, status.restricted]);
   if (!billingLoading && status.restricted && !restrictedPathAllowed) return <LoadingScreen message="Opening the payment-restricted account…" />;
-  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && <FirstVisitGuides />}</>;
+  return <><WorkspaceHeader profile={profile} pathname={pathname} logout={logout} /><PullToRefresh>{!isPolicyPublic && <LegalAcceptanceGate />}<PaymentNotice /><NativeAppSetup />{children}</PullToRefresh>{!status.restricted && <QuickTutorial />}</>;
 }
 
 export default function AppShell({ children }) {

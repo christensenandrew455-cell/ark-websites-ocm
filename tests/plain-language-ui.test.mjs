@@ -69,12 +69,16 @@ test("obvious business fields stay bare while non-obvious settings use help", as
   assert.equal(form.includes("Normal projects and non-urgent requests can always be scheduled"), false);
 });
 
-test("routine page tours are removed and only number assignment interrupts the owner", async () => {
-  const guide = await source("app/components/GuidedOnboarding.js");
+test("the retired tours are replaced by one easy-to-read Quick Tutorial", async () => {
+  const guide = await source("app/components/QuickTutorial.js");
   assert.equal(guide.includes("PAGE_GUIDES"), false);
   assert.equal(guide.includes("pageGuide(pathname)"), false);
-  assert.ok(guide.includes('id: "number-assigned"'));
-  assert.ok(guide.includes("Your ARK number is ready"));
+  assert.equal(guide.includes('id: "number-assigned"'), false);
+  assert.equal(guide.includes("Your ARK number is ready"), false);
+  assert.ok(guide.includes("Quick Tutorial"));
+  assert.ok(guide.includes("Here are the main places to start."));
+  assert.ok(guide.includes('<ol className="mt-5 space-y-3">'));
+  assert.ok(guide.includes(">Got it</button>"));
 });
 
 test("AI Chat reads app docs, Terms, and Privacy from explicit knowledge sources", async () => {
