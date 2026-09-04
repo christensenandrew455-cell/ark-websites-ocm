@@ -393,18 +393,15 @@ function ConfirmDialog({ row, busy, onCancel, onConfirm }) {
 
 function LeadLimitDialog({ plan, onClose, onManage }) {
   if (!plan) return null;
-  const resetDate = plan.periodEndAt && !Number.isNaN(new Date(plan.periodEndAt).getTime())
-    ? new Date(plan.periodEndAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
-    : "your next billing date";
   return <div className="ark-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="accepted-lead-limit-title">
     <button type="button" onClick={onClose} aria-label="Close accepted lead limit" />
     <section className="ark-modal-surface max-w-md p-6 text-slate-950 sm:p-8">
       <h2 id="accepted-lead-limit-title" className="text-2xl font-black">No accepted leads left.</h2>
-      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your limit resets to {plan.monthlyAcceptedLeadLimit || 25} on {resetDate}.</p>
+      <p className="mt-3 text-sm font-semibold leading-6 text-slate-600">Your limit resets to {plan.monthlyAcceptedLeadLimit || 25} at your next billing renewal.</p>
       <div className="mt-6 space-y-3">
         <button type="button" onClick={() => onManage("plan")} className="w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white">Change plan</button>
         <button type="button" onClick={() => onManage("topup")} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-black text-white">Buy extra leads</button>
-        <button type="button" onClick={onClose} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800">Wait until {resetDate}</button>
+        <button type="button" onClick={onClose} className="w-full rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-800">Wait until renewal</button>
       </div>
     </section>
   </div>;

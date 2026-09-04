@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import BackButton from "../components/BackButton";
 import InfoTip from "../components/InfoTip";
 import { useAuth } from "../components/AuthProvider";
@@ -13,6 +14,7 @@ function money(value) {
 }
 
 export default function RewardsPage() {
+  const router = useRouter();
   const { user, loading } = useAuth();
   const [rewards, setRewards] = useState(null);
   const [copied, setCopied] = useState("");
@@ -32,6 +34,21 @@ export default function RewardsPage() {
     return () => { active = false; };
   }, [user]);
 
+  useEffect(() => {
+    if (rewards && rewards.referralRewardAvailable !== true) router.replace("/");
+  }, [rewards, router]);
+
+  useEffect(() => {
+    if (rewards?.referralRewardAvailable !== true) return undefined;
+    const remaining = Math.max(0, Number(rewards.referralOfferRemainingMs || 0));
+    if (!remaining) {
+      router.replace("/");
+      return undefined;
+    }
+    const timer = window.setTimeout(() => router.replace("/"), remaining);
+    return () => window.clearTimeout(timer);
+  }, [rewards?.referralOfferRemainingMs, rewards?.referralRewardAvailable, router]);
+
   async function copy(label, value) {
     try {
       await navigator.clipboard.writeText(value);
@@ -43,6 +60,7 @@ export default function RewardsPage() {
   }
 
   if (loading || (!rewards && !error)) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Loading…</main>;
+  if (rewards && rewards.referralRewardAvailable !== true) return <main className="grid min-h-[70vh] place-items-center text-sm font-semibold text-slate-500">Opening dashboard…</main>;
   const referralLink = rewards ? `https://www.arkclientcenter.com/signup?ref=${encodeURIComponent(rewards.referralCode)}` : "";
   const earned = Number(rewards?.referralFreeMonthsEarned || 0);
   const pending = Number(rewards?.referralFreeMonthsPending || 0);
@@ -54,18 +72,15 @@ export default function RewardsPage() {
         <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Refer &amp; Save</h1>
       </header>
       {error && <p className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700" role="alert">{error}</p>}
-      {rewards && !rewards.referralRewardAvailable && <section className="mt-5 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <h2 className="text-xl font-black">Coming to Apple billing later</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Refer &amp; Save is available to Stripe-billed accounts on the website and Android. Apple requires a separate in-app offer.</p>
-      </section>}
       {rewards?.referralRewardAvailable && <div className="mt-5 space-y-4">
         <section className="rounded-3xl bg-[#071a3d] p-6 text-white shadow-sm sm:p-8">
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-black">Refer one business</h2>
-            <InfoTip label="How Refer & Save works">When a business uses your code and finishes paid signup, ARK credits the recurring price of your plan at that time. The credit starts with your next Stripe bill. Each business can qualify once. Self-referrals and duplicate accounts do not count.</InfoTip>
+            <InfoTip label="How Refer & Save works">New accounts get one 24-hour chance. A different business must finish paid signup with your code before time runs out. After one qualifying referral or after 24 hours, the offer is gone.</InfoTip>
           </div>
           <p className="mt-2 text-4xl font-black">Get one month free.</p>
           <p className="mt-3 text-sm font-bold text-blue-100">Your {rewards.referralPlanName} plan · {money(rewards.referralPlanAmountCents)}</p>
+          <p className="mt-2 text-xs font-semibold text-blue-100">Available only during your first 24 hours after account activation.</p>
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">

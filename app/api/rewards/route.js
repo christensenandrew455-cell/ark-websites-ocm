@@ -15,10 +15,13 @@ export async function GET(request) {
     const accountSnapshot = await db.collection("accounts").doc(authorization.clientId).get();
     if (!accountSnapshot.exists) return NextResponse.json({ error: "This account could not be found." }, { status: 404 });
     const sections = await readAccountSections(accountSnapshot);
+    const summary = publicReferralRewardSummary(sections?.account);
     return NextResponse.json({
-      referralCode: authorization.clientId,
-      businessName: String(sections?.account?.businessName || authorization.clientId),
-      ...publicReferralRewardSummary(sections?.account),
+      ...(summary.referralRewardAvailable ? {
+        referralCode: authorization.clientId,
+        businessName: String(sections?.account?.businessName || authorization.clientId),
+      } : {}),
+      ...summary,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Unable to load rewards", error);

@@ -1,4 +1,4 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
 import { ACCOUNT_ROLES, isStandardRole } from "./accountRoles";
 import { ACCOUNT_TYPES } from "./accountTypes";
@@ -21,7 +21,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
-import { completeReferralReward } from "./referralRewards.js";
+import { completeReferralReward, referralOfferExpiration } from "./referralRewards.js";
 import { ensureCustomerBillingSubscription } from "./stripePlanBilling";
 import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
 
@@ -143,6 +143,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const subscription = subscriptionResult.subscription;
 
   const now = FieldValue.serverTimestamp();
+  const referralOfferExpiresAt = Timestamp.fromDate(referralOfferExpiration());
   const businessProfile = {
     businessName,
     businessEmail: accountEmail,
@@ -200,6 +201,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     billingPastDue: false,
     referralFreeMonthsEarned: 0,
     referralFreeMonthsPending: 0,
+    referralOfferExpiresAt,
     ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",

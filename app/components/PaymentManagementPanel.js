@@ -16,8 +16,8 @@ import SubscriptionPlanCard, { formatUsd } from "./SubscriptionPlanCard";
 import InfoTip from "./InfoTip";
 
 function dateLabel(value) {
-  const date = new Date(value || 0);
-  return Number.isNaN(date.getTime())
+  const date = value ? new Date(value) : null;
+  return !date || Number.isNaN(date.getTime()) || date.getTime() <= Date.now()
     ? "your next renewal"
     : date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
 }
@@ -142,7 +142,7 @@ function StripeCardEditor({ user, onSaved }) {
   </div>;
 }
 
-function PlanConfirmation({ plan, currentPlan, timing, setTiming, renewalDate, appleBilling, busy, onCancel, onConfirm }) {
+function PlanConfirmation({ plan, currentPlan, timing, setTiming, appleBilling, busy, onCancel, onConfirm }) {
   if (!plan) return null;
   return <div className="fixed inset-0 z-[260] grid place-items-center bg-slate-950/75 p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-plan-title">
     <section className="w-full max-w-lg rounded-3xl bg-white p-6 text-slate-950 shadow-2xl sm:p-8">
@@ -150,7 +150,7 @@ function PlanConfirmation({ plan, currentPlan, timing, setTiming, renewalDate, a
       <p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(plan.effectiveAmountCents)}/month · {plan.monthlyAcceptedLeads} accepted leads</p>
       {appleBilling ? <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-700">Apple shows the final price and start date before you confirm.</p>
         : <fieldset className="mt-5 space-y-3"><legend className="text-sm font-black">When should {plan.name} start?</legend>
-          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">At renewal · {renewalDate}</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "renewal" ? "text-blue-100" : "text-slate-600"}`}>Keep {currentPlan} until then. No charge today.</span></label>
+          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">At next renewal</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "renewal" ? "text-blue-100" : "text-slate-600"}`}>Keep {currentPlan} until then. No charge today.</span></label>
           <label className={`block rounded-2xl border p-4 ${timing === "now" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="now" checked={timing === "now"} onChange={() => setTiming("now")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">Now · pay {formatUsd(plan.effectiveAmountCents)}</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "now" ? "text-blue-100" : "text-slate-600"}`}>Your billing month restarts. Unused leads expire and are not refunded.</span></label>
         </fieldset>}
       <div className="mt-6 grid grid-cols-2 gap-3">
@@ -183,7 +183,6 @@ export default function PaymentManagementPanel({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const appleResumeStarted = useRef(false);
-  const renewalDate = dateLabel(planSummary?.periodEndAt);
   const topUpNumber = Number(topUpQuantity);
   const validTopUp = Number.isSafeInteger(topUpNumber) && topUpNumber > 0 && topUpNumber <= 999_999;
 
@@ -389,7 +388,7 @@ export default function PaymentManagementPanel({
       {stripeInsideIos && <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">This Stripe account can be viewed here, but billing changes must be completed on the ARK website outside the iPhone app.</p>}
       <div className="space-y-3">
         <Accordion title="Change plan" open={openPanel === "plan"} onToggle={() => setOpenPanel((current) => current === "plan" ? "" : "plan")}>
-          {planSummary?.pendingBillingPlanKey && <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} is scheduled for {dateLabel(planSummary.pendingBillingPlanStartsAt)}.</p>}
+          {planSummary?.pendingBillingPlanKey && <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-bold text-blue-900">{planSummary.pendingBillingPlanName} is scheduled for your next renewal.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             {plans.map((plan) => {
               const current = plan.key === planSummary?.planKey;
@@ -404,7 +403,7 @@ export default function PaymentManagementPanel({
           {selectedPlan && <button type="button" disabled={busy} onClick={() => setConfirmationOpen(true)} className="mt-4 w-full rounded-xl bg-blue-800 px-5 py-3 text-sm font-black text-white disabled:opacity-50">Continue with {selectedPlan.name}</button>}
         </Accordion>
         <Accordion title="Add leads" open={openPanel === "topup"} onToggle={() => setOpenPanel((current) => current === "topup" ? "" : "topup")}>
-          <p className="text-sm font-bold text-slate-700">$1 each · available until {renewalDate}</p>
+          <p className="text-sm font-bold text-slate-700">$1 each · lasts until your next renewal</p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"><label className="flex-1"><span className="mb-2 block text-xs font-black text-slate-700">Leads to add</span><input inputMode="numeric" type="number" min="1" step="1" value={topUpQuantity} disabled={stripeInsideIos || busy} onChange={(event) => setTopUpQuantity(event.target.value)} placeholder="20" className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black outline-none focus:border-blue-700" /></label><button type="button" disabled={!validTopUp || stripeInsideIos || busy} onClick={buyTopUp} className="h-12 rounded-xl bg-slate-950 px-5 text-sm font-black text-white disabled:opacity-40">{busy ? "Confirming…" : validTopUp ? `Buy for ${formatUsd(topUpNumber * 100)}` : "Enter an amount"}</button></div>
         </Accordion>
         <Accordion title="Payment card" open={openPanel === "card"} onToggle={() => setOpenPanel((current) => current === "card" ? "" : "card")}>
@@ -414,6 +413,6 @@ export default function PaymentManagementPanel({
         </Accordion>
       </div>
     </section>
-    {confirmationOpen && <PlanConfirmation plan={selectedPlan} currentPlan={`${planSummary?.planName || "Starter"} Plan`} timing={timing} setTiming={setTiming} renewalDate={renewalDate} appleBilling={appleBilling} busy={busy} onCancel={() => !busy && setConfirmationOpen(false)} onConfirm={confirmPlanChange} />}
+    {confirmationOpen && <PlanConfirmation plan={selectedPlan} currentPlan={`${planSummary?.planName || "Starter"} Plan`} timing={timing} setTiming={setTiming} appleBilling={appleBilling} busy={busy} onCancel={() => !busy && setConfirmationOpen(false)} onConfirm={confirmPlanChange} />}
   </>;
 }
