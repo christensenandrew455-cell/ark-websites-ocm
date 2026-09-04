@@ -1,7 +1,7 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
 import { canonicalBusinessType, isSupportedBusinessType } from "./businessCatalog.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
-import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings, normalizeRegularServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "./emergencyService.js";
+import { normalizeEmergencyServiceSettings, normalizeRegularServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "./emergencyService.js";
 import { normalizeServiceAreas, serviceAreaValidationError } from "./serviceAreas.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
@@ -76,10 +76,10 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const accountPhone = cleanText(value.accountPhone || receptionist.businessPhone, 30);
   const regularService = normalizeRegularServiceSettings(receptionist);
   const estimateWeekdays = regularService.regularServiceEveryDay ? WEEKDAYS : weekdayList(receptionist.estimateWeekdays);
-  const estimateStartHour = hour(receptionist.estimateStartHour);
-  const estimateStartPeriod = period(receptionist.estimateStartPeriod);
-  const estimateEndHour = hour(receptionist.estimateEndHour);
-  const estimateEndPeriod = period(receptionist.estimateEndPeriod);
+  const estimateStartHour = regularService.regularService24Hours ? "" : hour(receptionist.estimateStartHour);
+  const estimateStartPeriod = regularService.regularService24Hours ? "" : period(receptionist.estimateStartPeriod);
+  const estimateEndHour = regularService.regularService24Hours ? "" : hour(receptionist.estimateEndHour);
+  const estimateEndPeriod = regularService.regularService24Hours ? "" : period(receptionist.estimateEndPeriod);
   const timeZone = cleanText(receptionist.timeZone, 80).toLowerCase() === "choose" ? "" : cleanText(receptionist.timeZone, 80);
   const estimateStartComplete = estimateStartHour && estimateStartPeriod;
   const estimateEndComplete = estimateEndHour && estimateEndPeriod;
@@ -156,8 +156,6 @@ export function validateReceptionistBusinessInformation(value = {}) {
   if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one regular service day or leave the regular schedule blank.";
   if (hasEstimateSchedule && !receptionist.regularService24Hours && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Choose when the business opens or turn on Open 24 hours.";
   if (hasEstimateSchedule && !receptionist.regularService24Hours && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Choose when the business closes or turn on Open 24 hours.";
-  const emergencyAvailabilityError = emergencyServiceAvailabilityError(receptionist);
-  if (emergencyAvailabilityError) return emergencyAvailabilityError;
   if (serviceAreaError) return serviceAreaError;
   if (!Object.keys(receptionist.services).length) return "Add at least one service.";
   return "";

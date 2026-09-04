@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { BUSINESS_TYPES, canonicalBusinessType, serviceSuggestionsForBusinessType } from "../lib/businessCatalog";
-import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, REGULAR_SERVICE_WEEKDAYS, regularServiceScheduleConfigured } from "../lib/emergencyService";
+import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "../lib/emergencyService";
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
+import { changeReceptionistBusinessType, setEmergencyService24Hours, setRegularService24Hours, setRegularServiceEveryDay } from "../lib/receptionistBusinessSettings";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
 import AppSelect from "./AppSelect";
@@ -300,10 +301,10 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
     businessType: canonicalBusinessType(profile.businessType || profile.businessBase),
     timeZone: requireExplicitSelections ? String(profile.timeZone || "") : profile.timeZone || "America/New_York",
     estimateWeekdays: Array.isArray(profile.estimateWeekdays) ? profile.estimateWeekdays : [],
-    estimateStartHour: explicitHour(profile.estimateStartHour || estimateStart.hour),
-    estimateStartPeriod: explicitPeriod(profile.estimateStartPeriod || estimateStart.period),
-    estimateEndHour: explicitHour(profile.estimateEndHour || estimateEnd.hour),
-    estimateEndPeriod: explicitPeriod(profile.estimateEndPeriod || estimateEnd.period),
+    estimateStartHour: regularService24Hours ? "" : explicitHour(profile.estimateStartHour || estimateStart.hour),
+    estimateStartPeriod: regularService24Hours ? "" : explicitPeriod(profile.estimateStartPeriod || estimateStart.period),
+    estimateEndHour: regularService24Hours ? "" : explicitHour(profile.estimateEndHour || estimateEnd.hour),
+    estimateEndPeriod: regularService24Hours ? "" : explicitPeriod(profile.estimateEndPeriod || estimateEnd.period),
     regularServiceEveryDay,
     regularService24Hours,
     ...emergencyService,
@@ -323,8 +324,8 @@ export function receptionistRequestPayload(profile = {}) {
     businessInformation,
     extraInformation: businessInformationText(businessInformation),
     estimateWeekdays: regularServiceEveryDay ? WEEKDAYS : estimateWeekdays,
-    earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
-    latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
+    earliestEstimateStart: regularService24Hours ? "" : formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
+    latestEstimateStart: regularService24Hours ? "" : formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
     regularServiceEveryDay,
     regularService24Hours,
     ...emergencyService,
@@ -333,23 +334,21 @@ export function receptionistRequestPayload(profile = {}) {
 
 export default function ReceptionistBusinessForm({ profile, onChange, onboardingMode = false }) {
   if (!profile) return null;
-  const regularScheduleConfigured = regularServiceScheduleConfigured(profile);
   function update(field, value, options = {}) { onChange({ ...profile, [field]: value }, options); }
+  function updateBusinessType(value) {
+    onChange(changeReceptionistBusinessType(profile, value), { saveImmediately: true });
+  }
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
   }
   function updateEveryDay(enabled) {
-    onChange({ ...profile, regularServiceEveryDay: enabled, ...(enabled ? { estimateWeekdays: WEEKDAYS } : {}) }, { saveImmediately: true });
+    onChange(setRegularServiceEveryDay(profile, enabled), { saveImmediately: true });
   }
   function updateAllDay(enabled) {
-    onChange({ ...profile, regularService24Hours: enabled }, { saveImmediately: true });
+    onChange(setRegularService24Hours(profile, enabled), { saveImmediately: true });
   }
   function updateEmergencyService(enabled) {
-    onChange({
-      ...profile,
-      emergencyServiceEnabled: enabled,
-      emergencyService24Hours: enabled ? profile.emergencyService24Hours === true : false,
-    }, { saveImmediately: true });
+    onChange(setEmergencyService24Hours(profile, enabled), { saveImmediately: true });
   }
   const identitySection = !onboardingMode && (
     <section>
@@ -367,7 +366,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       <h3 className="text-lg font-black">Business type</h3>
       <div className="mt-4">
         <Field label="Type of business">
-          <AppSelect label="Type of business" ariaLabel="Type of business" value={profile.businessType} options={BUSINESS_TYPES} onChange={(value) => update("businessType", value, { saveImmediately: true })} placeholder="Choose a business type" />
+          <AppSelect label="Type of business" ariaLabel="Type of business" value={profile.businessType} options={BUSINESS_TYPES} onChange={updateBusinessType} placeholder="Choose a business type" />
         </Field>
       </div>
     </section>
@@ -393,24 +392,16 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       </div>
     </section>
     <section>
-      <ExplainedLabel label="Emergency calls" explanation="ARK asks whether the caller needs help as soon as possible and marks the request Emergency. It never promises an arrival time." heading />
-      <div className="mt-4 space-y-3">
+      <ExplainedLabel label="24/7 emergency service" explanation="Use this only when your business takes urgent work at any hour. Regular appointments can still be scheduled." heading />
+      <div className="mt-4">
         <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-          <input id="accept-emergency-requests" type="checkbox" className="mt-0.5" checked={profile.emergencyServiceEnabled === true} onChange={(event) => updateEmergencyService(event.target.checked)} />
-          <label htmlFor="accept-emergency-requests" className="flex-1 text-sm font-black text-slate-900">Take emergency calls</label>
-          <InfoTip label="How emergency requests work" align="right">The receptionist asks: “{ASAP_OR_SCHEDULED_QUESTION}”</InfoTip>
+          <input id="accept-emergency-requests" type="checkbox" className="mt-0.5 h-5 w-5 accent-[#071a3d]" checked={profile.emergencyServiceEnabled === true} onChange={(event) => updateEmergencyService(event.target.checked)} />
+          <div className="min-w-0 flex-1">
+            <label htmlFor="accept-emergency-requests" className="block text-sm font-black text-slate-900">Offer 24/7 emergency service</label>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">For urgent problems that need help right away, including nights, weekends, and holidays.</p>
+          </div>
+          <InfoTip label="How 24/7 emergency service works" align="right">The receptionist asks: “{ASAP_OR_SCHEDULED_QUESTION}” It marks the lead Emergency for you to review and never promises an arrival time.</InfoTip>
         </div>
-        {profile.emergencyServiceEnabled === true && <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <Field label="Emergency availability">
-            <AppSelect
-              label="Emergency availability"
-              value={profile.emergencyService24Hours === true ? "any-time" : "regular-hours"}
-              options={[{ value: "any-time", label: "Any time" }, { value: "regular-hours", label: "During regular hours" }]}
-              onChange={(value) => update("emergencyService24Hours", value === "any-time", { saveImmediately: true })}
-            />
-          </Field>
-          {profile.emergencyService24Hours !== true && !regularScheduleConfigured ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">Add regular hours above or choose Any time.</p> : null}
-        </div>}
       </div>
     </section>
     <section>

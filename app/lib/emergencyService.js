@@ -1,6 +1,6 @@
 export const EMERGENCY_REQUEST_URGENCY = "emergency";
 export const ASAP_REQUEST_TIME = "As soon as possible";
-export const ASAP_OR_SCHEDULED_QUESTION = "Do you need help as soon as possible, or would you prefer to schedule a time?";
+export const ASAP_OR_SCHEDULED_QUESTION = "Do you need help right away, or would you like to schedule service?";
 export const REGULAR_SERVICE_WEEKDAYS = Object.freeze(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
 
 const EMERGENCY_VALUES = new Set([
@@ -40,13 +40,16 @@ function urgencyValue(value) {
 
 export function normalizeEmergencyServiceSettings(value = {}) {
   const source = object(value);
-  const emergencyServiceEnabled = booleanSetting(
+  const emergencyServiceRequested = booleanSetting(
     source.emergencyServiceEnabled ?? source.acceptsEmergencyRequests,
   );
-  const emergencyService24Hours = emergencyServiceEnabled && booleanSetting(
+  const emergencyService24Hours = emergencyServiceRequested && booleanSetting(
     source.emergencyService24Hours ?? source.emergencyAvailable24Hours,
   );
-  return { emergencyServiceEnabled, emergencyService24Hours };
+  return {
+    emergencyServiceEnabled: emergencyService24Hours,
+    emergencyService24Hours,
+  };
 }
 
 export function normalizeRegularServiceSettings(value = {}) {
@@ -85,18 +88,8 @@ export function regularServiceScheduleConfigured(value = {}) {
   return Boolean(days.length && (settings.regularService24Hours || (start && end)));
 }
 
-export function emergencyServiceAvailabilityError(value = {}) {
-  const settings = normalizeEmergencyServiceSettings(value);
-  if (!settings.emergencyServiceEnabled || settings.emergencyService24Hours || regularServiceScheduleConfigured(value)) return "";
-  return "Add regular hours or choose Any time for emergency calls.";
-}
-
 export function activeEmergencyServiceSettings(value = {}) {
-  const settings = normalizeEmergencyServiceSettings(value);
-  if (emergencyServiceAvailabilityError({ ...object(value), ...settings })) {
-    return { emergencyServiceEnabled: false, emergencyService24Hours: false };
-  }
-  return settings;
+  return normalizeEmergencyServiceSettings(value);
 }
 
 export function receptionistRequestRouting(value = {}) {
@@ -119,12 +112,12 @@ export function receptionistRequestRouting(value = {}) {
     scheduled,
     emergency: {
       enabled: true,
-      label: "Emergency / ASAP service",
-      availability: settings.emergencyService24Hours ? "24/7" : "regular-service-hours",
+      label: "24/7 emergency service",
+      availability: "24/7",
       intakeField: "requestUrgency",
       intakeValue: EMERGENCY_REQUEST_URGENCY,
       requestedTimeWindow: ASAP_REQUEST_TIME,
-      instruction: "When the caller chooses help as soon as possible, mark the request as emergency and do not promise a dispatch or arrival time.",
+      instruction: "When the caller needs help right away, mark the request as emergency and collect the problem and location, but do not promise dispatch or an arrival time. For fire, a gas odor, carbon monoxide, or another immediate danger, tell the caller to leave the area and contact emergency services or the utility first.",
     },
   };
 }

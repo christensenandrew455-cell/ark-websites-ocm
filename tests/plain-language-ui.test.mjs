@@ -63,7 +63,7 @@ test("obvious business fields stay bare while non-obvious settings use help", as
     assert.equal(form.includes(`label="${label}" explanation=`), false);
   }
   assert.ok(form.includes('label="Regular scheduling" explanation='));
-  assert.ok(form.includes('label="Emergency calls" explanation='));
+  assert.ok(form.includes('label="24/7 emergency service" explanation='));
   assert.ok(form.includes('label="Service area" explanation='));
   assert.ok(form.includes('label="Additional business information" explanation='));
   assert.equal(form.includes("Normal projects and non-urgent requests can always be scheduled"), false);

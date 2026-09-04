@@ -43,7 +43,7 @@ test("onboarding follows main information, verification, business, personalizati
   assert.ok(shell.includes('status === "pending_payment"'));
 });
 
-test("business setup separates regular scheduling from optional emergency service", async () => {
+test("business setup separates regular scheduling from optional 24/7 emergency service", async () => {
   const [form, settingsRoute, runtimeRoute] = await Promise.all([
     source("app/components/ReceptionistBusinessForm.js"),
     source("app/api/receptionist/settings/route.js"),
@@ -74,12 +74,15 @@ test("business setup separates regular scheduling from optional emergency servic
   assert.ok(form.includes("Open every day"));
   assert.ok(form.includes('label="Open days"'));
   assert.ok(form.includes("Open 24 hours"));
-  assert.ok(form.includes("Emergency calls"));
-  assert.ok(form.includes("Take emergency calls"));
-  assert.ok(form.includes('label: "Any time"'));
-  assert.ok(form.includes('label: "During regular hours"'));
+  assert.ok(form.includes("24/7 emergency service"));
+  assert.ok(form.includes("Offer 24/7 emergency service"));
+  assert.ok(form.includes("including nights, weekends, and holidays"));
+  assert.equal(form.includes("Emergency availability"), false);
+  assert.equal(form.includes('label: "Any time"'), false);
+  assert.equal(form.includes('label: "During regular hours"'), false);
   assert.ok(form.includes("ASAP_OR_SCHEDULED_QUESTION"));
-  assert.ok(form.includes("profile.emergencyServiceEnabled === true &&"));
+  assert.ok(form.includes("setEmergencyService24Hours(profile, enabled)"));
+  assert.ok(form.includes("changeReceptionistBusinessType(profile, value)"));
   assert.equal(form.includes("acceptsAllHours"), false);
   assert.ok(settingsRoute.includes("emergencyServiceEnabled"));
   assert.ok(settingsRoute.includes("emergencyService24Hours"));
@@ -207,7 +210,7 @@ test("pending signup uses one canonical field for each value", async () => {
   assert.ok(businessRecord.includes("estimateWeekdays:"));
   for (const retired of ["businessHours", "businessStartHour", "businessEndHour", "estimateDays", "businessBase"]) assert.equal(businessRecord.includes(retired), false);
   assert.ok(form.includes('label="Type of business"'));
-  assert.ok(form.includes('update("businessType"'));
+  assert.ok(form.includes("changeReceptionistBusinessType(profile, value)"));
   assert.equal(ownerSignup.includes("businessHours:"), false);
   assert.equal(ownerSignup.includes("estimateDays:"), false);
 

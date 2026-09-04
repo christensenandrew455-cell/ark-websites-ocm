@@ -167,6 +167,8 @@ test("business information auto-saves edits and flushes the latest change before
 test("business settings replace the Firestore services map so removed services stay removed", async () => {
   const route = await source("app/api/receptionist/settings/route.js");
   assert.ok(route.includes("services: profile.services"));
+  assert.ok(route.includes("servicesClearedForBusinessTypeChange"));
+  assert.ok(route.includes("allowEmptyServices: servicesClearedForBusinessTypeChange"));
   assert.ok(route.includes("batch.set(loaded.businessRef"));
   assert.ok(route.includes("batch.update(loaded.ref"));
   assert.equal(route.includes("batch.set(loaded.businessRef") && route.includes("{ merge: true }"), false);
