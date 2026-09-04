@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useState } from "react";
 import { BUSINESS_TYPES, canonicalBusinessType, serviceSuggestionsForBusinessType } from "../lib/businessCatalog";
-import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, regularServiceScheduleConfigured } from "../lib/emergencyService";
+import { ASAP_OR_SCHEDULED_QUESTION, normalizeEmergencyServiceSettings, REGULAR_SERVICE_WEEKDAYS, regularServiceScheduleConfigured } from "../lib/emergencyService";
 import { businessInformationText, normalizeBusinessInformation } from "../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields, serviceAreaValues, US_STATES } from "../lib/serviceAreas";
 import { dashBusinessName } from "../lib/valueUtils";
 import AppSelect from "./AppSelect";
 import InfoTip from "./InfoTip";
 
-const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const WEEKDAYS = REGULAR_SERVICE_WEEKDAYS;
 const TIME_ZONES = ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Phoenix", "America/Anchorage", "Pacific/Honolulu"];
 const HOURS = Array.from({ length: 12 }, (_, index) => index + 1);
 const PERIODS = ["AM", "PM"];
@@ -78,89 +78,6 @@ function Input({ value, onChange, type = "text", placeholder = "", readOnly = fa
   return <input {...inputProps} aria-label={ariaLabel} type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} readOnly={readOnly} className={readOnly ? "h-11 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" : "h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"} />;
 }
 
-function SuggestionInput({ value, onChange, onBlur, onSubmit, suggestions = [], ariaLabel, placeholder }) {
-  const [open, setOpen] = useState(false);
-  const [highlighted, setHighlighted] = useState(-1);
-  const rootRef = useRef(null);
-  const listboxId = useId();
-  const query = String(value || "").trim().toLowerCase();
-  const matches = [...new Set(suggestions.map((item) => String(item || "").trim()).filter(Boolean))]
-    .filter((item) => !query || item.toLowerCase().includes(query))
-    .sort((left, right) => {
-      const leftStarts = left.toLowerCase().startsWith(query);
-      const rightStarts = right.toLowerCase().startsWith(query);
-      return leftStarts === rightStarts ? left.localeCompare(right) : leftStarts ? -1 : 1;
-    })
-    .slice(0, 20);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function dismiss(event) {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    }
-    document.addEventListener("pointerdown", dismiss);
-    return () => document.removeEventListener("pointerdown", dismiss);
-  }, [open]);
-
-  function selectSuggestion(suggestion) {
-    onChange(suggestion, { selectedSuggestion: true });
-    setHighlighted(-1);
-    setOpen(false);
-  }
-
-  function handleKeyDown(event) {
-    if (event.key === "ArrowDown" && matches.length) {
-      event.preventDefault();
-      setOpen(true);
-      setHighlighted((current) => (current + 1) % matches.length);
-      return;
-    }
-    if (event.key === "ArrowUp" && matches.length) {
-      event.preventDefault();
-      setOpen(true);
-      setHighlighted((current) => (current <= 0 ? matches.length - 1 : current - 1));
-      return;
-    }
-    if (event.key === "Escape") {
-      setOpen(false);
-      setHighlighted(-1);
-      return;
-    }
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    if (open && highlighted >= 0 && matches[highlighted]) selectSuggestion(matches[highlighted]);
-    else onSubmit?.();
-  }
-
-  return (
-    <div ref={rootRef} className="relative min-w-0">
-      <input
-        aria-label={ariaLabel}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-controls={listboxId}
-        aria-expanded={open && matches.length > 0}
-        autoComplete="off"
-        autoCapitalize="words"
-        autoCorrect="on"
-        spellCheck
-        value={value}
-        onFocus={() => { setOpen(true); setHighlighted(-1); }}
-        onChange={(event) => { onChange(event.target.value, { selectedSuggestion: false }); setOpen(true); setHighlighted(-1); }}
-        onBlur={onBlur}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        className="h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"
-      />
-      {open && matches.length > 0 && (
-        <div id={listboxId} role="listbox" aria-label={`${ariaLabel} suggestions`} className="absolute inset-x-0 top-[calc(100%+0.35rem)] z-40 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white p-1.5 shadow-2xl">
-          {matches.map((suggestion, index) => <button key={suggestion} type="button" role="option" aria-selected={highlighted === index} onPointerDown={(event) => event.preventDefault()} onClick={() => selectSuggestion(suggestion)} className={highlighted === index ? "w-full rounded-lg bg-slate-950 px-3 py-3 text-left text-sm font-bold text-white" : "w-full rounded-lg px-3 py-3 text-left text-sm font-semibold text-slate-800 active:bg-slate-100"}>{suggestion}</button>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DayCheckboxes({ label, explanation, selected, onChange }) {
   const values = Array.isArray(selected) ? selected : [];
   function toggle(day) {
@@ -194,9 +111,11 @@ function HourPeriodPicker({ label, explanation, hour, period, onHourChange, onPe
 function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel, suggestions = [] }) {
   const normalizedItems = Array.isArray(items) ? items.map((item) => String(item || "").trim()).filter(Boolean) : [];
   const [entry, setEntry] = useState("");
+  const availableSuggestions = [...new Set(suggestions.map((item) => String(item || "").trim()).filter(Boolean))]
+    .filter((suggestion) => !normalizedItems.some((item) => item.toLowerCase() === suggestion.toLowerCase()));
 
-  function addItem() {
-    const nextItem = entry.trim();
+  function addItem(value = entry) {
+    const nextItem = String(value || "").trim();
     if (!nextItem) return;
     const duplicate = normalizedItems.some((item) => item.toLowerCase() === nextItem.toLowerCase());
     if (!duplicate) onChange([...normalizedItems, nextItem]);
@@ -210,9 +129,26 @@ function StackedListEditor({ items, onChange, placeholder, addLabel, inputLabel,
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <SuggestionInput ariaLabel={inputLabel} value={entry} onChange={setEntry} onSubmit={addItem} suggestions={suggestions} placeholder={placeholder} />
-        <button type="button" disabled={!entry.trim()} onClick={addItem} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{addLabel}</button>
+        <input
+          aria-label={inputLabel}
+          autoComplete="off"
+          autoCapitalize="words"
+          autoCorrect="on"
+          spellCheck
+          value={entry}
+          onChange={(event) => setEntry(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addItem(); } }}
+          placeholder={placeholder}
+          className="h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-950"
+        />
+        <button type="button" disabled={!entry.trim()} onClick={() => addItem()} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{addLabel}</button>
       </div>
+      {suggestions.length > 0 && !entry.trim() && availableSuggestions.length > 0 && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-xs font-black text-slate-600">Suggested services</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {availableSuggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => addItem(suggestion)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-xs font-bold text-slate-800 active:bg-slate-100">{suggestion}</button>)}
+        </div>
+      </div>}
       {normalizedItems.map((item, index) => (
         <div key={`${item}-${index}`} className="flex items-center gap-2">
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-slate-300 bg-slate-50 px-3 text-sm text-slate-800">{item}</div>
@@ -352,6 +288,10 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
   const explicitHour = (value) => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 12 ? Number(value) : "";
   const explicitPeriod = (value) => PERIODS.includes(value) ? value : "";
   const emergencyService = normalizeEmergencyServiceSettings(profile);
+  const regularServiceEveryDay = typeof profile.regularServiceEveryDay === "boolean"
+    ? profile.regularServiceEveryDay
+    : Array.isArray(profile.estimateWeekdays) && WEEKDAYS.every((day) => profile.estimateWeekdays.includes(day));
+  const regularService24Hours = profile.regularService24Hours === true;
   return {
     ...editableProfile,
     serviceAreas: normalizeServiceAreas(profile.serviceAreas),
@@ -364,6 +304,8 @@ export function prepareReceptionistProfile(profile = {}, { requireExplicitSelect
     estimateStartPeriod: explicitPeriod(profile.estimateStartPeriod || estimateStart.period),
     estimateEndHour: explicitHour(profile.estimateEndHour || estimateEnd.hour),
     estimateEndPeriod: explicitPeriod(profile.estimateEndPeriod || estimateEnd.period),
+    regularServiceEveryDay,
+    regularService24Hours,
     ...emergencyService,
   };
 }
@@ -373,14 +315,18 @@ export function receptionistRequestPayload(profile = {}) {
   const estimateWeekdays = Array.isArray(profile.estimateWeekdays) ? profile.estimateWeekdays : [];
   const businessInformation = normalizeBusinessInformation(profile.businessInformation);
   const emergencyService = normalizeEmergencyServiceSettings(profile);
+  const regularServiceEveryDay = profile.regularServiceEveryDay === true;
+  const regularService24Hours = profile.regularService24Hours === true;
   return {
     ...editableProfile,
     serviceAreas: normalizeServiceAreas(profile.serviceAreas),
     businessInformation,
     extraInformation: businessInformationText(businessInformation),
-    estimateWeekdays,
+    estimateWeekdays: regularServiceEveryDay ? WEEKDAYS : estimateWeekdays,
     earliestEstimateStart: formatTime(profile.estimateStartHour, profile.estimateStartPeriod),
     latestEstimateStart: formatTime(profile.estimateEndHour, profile.estimateEndPeriod),
+    regularServiceEveryDay,
+    regularService24Hours,
     ...emergencyService,
   };
 }
@@ -391,6 +337,12 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
   function update(field, value, options = {}) { onChange({ ...profile, [field]: value }, options); }
   function updateEstimateWeekdays(days) {
     onChange(days.length ? { ...profile, estimateWeekdays: days } : { ...profile, estimateWeekdays: [], estimateStartHour: "", estimateStartPeriod: "", estimateEndHour: "", estimateEndPeriod: "" }, { saveImmediately: true });
+  }
+  function updateEveryDay(enabled) {
+    onChange({ ...profile, regularServiceEveryDay: enabled, ...(enabled ? { estimateWeekdays: WEEKDAYS } : {}) }, { saveImmediately: true });
+  }
+  function updateAllDay(enabled) {
+    onChange({ ...profile, regularService24Hours: enabled }, { saveImmediately: true });
   }
   function updateEmergencyService(enabled) {
     onChange({
@@ -425,27 +377,40 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
         <Field label="Time zone">
           <AppSelect label="Time zone" ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
         </Field>
-        <DayCheckboxes label="Regular service days" selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />
-        <HourPeriodPicker label="Earliest regular time" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />
-        <HourPeriodPicker label="Latest regular time" explanation="Choose the latest time for a normal scheduled request. A time earlier than the starting time means the availability continues overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(hour) => update("estimateEndHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateEndPeriod", period, { saveImmediately: true })} />
+        <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+          <span className="text-sm font-black text-slate-900">Open every day</span>
+          <input type="checkbox" checked={profile.regularServiceEveryDay === true} onChange={(event) => updateEveryDay(event.target.checked)} className="h-5 w-5 accent-[#071a3d]" />
+        </label>
+        {profile.regularServiceEveryDay !== true && <DayCheckboxes label="Open days" selected={profile.estimateWeekdays} onChange={updateEstimateWeekdays} />}
+        <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+          <span className="text-sm font-black text-slate-900">Open 24 hours</span>
+          <input type="checkbox" checked={profile.regularService24Hours === true} onChange={(event) => updateAllDay(event.target.checked)} className="h-5 w-5 accent-[#071a3d]" />
+        </label>
+        {profile.regularService24Hours !== true && <>
+          <HourPeriodPicker label="Opens" hour={profile.estimateStartHour} period={profile.estimateStartPeriod} onHourChange={(hour) => update("estimateStartHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateStartPeriod", period, { saveImmediately: true })} />
+          <HourPeriodPicker label="Closes" explanation="A closing time before the opening time means the business stays open overnight." hour={profile.estimateEndHour} period={profile.estimateEndPeriod} onHourChange={(hour) => update("estimateEndHour", hour, { saveImmediately: true })} onPeriodChange={(period) => update("estimateEndPeriod", period, { saveImmediately: true })} />
+        </>}
       </div>
     </section>
     <section>
-      <ExplainedLabel label="Emergency requests" explanation="Turn this on only if the business accepts urgent requests for help as soon as possible. Regular scheduling stays available either way." heading />
+      <ExplainedLabel label="Emergency calls" explanation="ARK asks whether the caller needs help as soon as possible and marks the request Emergency. It never promises an arrival time." heading />
       <div className="mt-4 space-y-3">
         <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
           <input id="accept-emergency-requests" type="checkbox" className="mt-0.5" checked={profile.emergencyServiceEnabled === true} onChange={(event) => updateEmergencyService(event.target.checked)} />
-          <label htmlFor="accept-emergency-requests" className="flex-1 text-sm font-black text-slate-900">Accept emergency requests</label>
+          <label htmlFor="accept-emergency-requests" className="flex-1 text-sm font-black text-slate-900">Take emergency calls</label>
           <InfoTip label="How emergency requests work" align="right">The receptionist asks: “{ASAP_OR_SCHEDULED_QUESTION}”</InfoTip>
         </div>
-        {profile.emergencyServiceEnabled === true ? <>
-          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
-            <input id="emergency-available-all-day" type="checkbox" className="mt-0.5" checked={profile.emergencyService24Hours === true} onChange={(event) => update("emergencyService24Hours", event.target.checked, { saveImmediately: true })} />
-            <label htmlFor="emergency-available-all-day" className="flex-1 text-sm font-black text-slate-900">Available 24/7</label>
-            <InfoTip label="About 24/7 emergency requests" align="right">When off, emergency requests follow the regular schedule. ARK marks them urgent but does not promise an arrival time.</InfoTip>
-          </div>
-          {profile.emergencyService24Hours !== true && !regularScheduleConfigured ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">Add regular service days and both regular times above, or turn on 24/7 emergency availability.</p> : null}
-        </> : null}
+        {profile.emergencyServiceEnabled === true && <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <Field label="Emergency availability">
+            <AppSelect
+              label="Emergency availability"
+              value={profile.emergencyService24Hours === true ? "any-time" : "regular-hours"}
+              options={[{ value: "any-time", label: "Any time" }, { value: "regular-hours", label: "During regular hours" }]}
+              onChange={(value) => update("emergencyService24Hours", value === "any-time", { saveImmediately: true })}
+            />
+          </Field>
+          {profile.emergencyService24Hours !== true && !regularScheduleConfigured ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">Add regular hours above or choose Any time.</p> : null}
+        </div>}
       </div>
     </section>
     <section>

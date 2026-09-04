@@ -51,14 +51,14 @@ test("business setup separates regular scheduling from optional emergency servic
   ]);
   assert.equal(form.includes("<select"), false);
   assert.equal(form.includes("<datalist"), false);
-  assert.ok(form.includes('role="listbox"'));
-  assert.ok(form.includes("SuggestionInput"));
+  assert.equal(form.includes("SuggestionInput"), false);
   assert.ok(form.includes('autoCorrect="on"'));
   assert.ok(form.includes('options={BUSINESS_TYPES}'));
   assert.ok(form.includes('placeholder="Choose a business type"'));
   assert.equal(form.includes("Choose a suggestion or type your own."), false);
   assert.ok(form.includes("serviceSuggestionsForBusinessType(businessType)"));
-  assert.ok(form.includes(".slice(0, 20)"));
+  assert.ok(form.includes("Suggested services"));
+  assert.ok(form.includes("!entry.trim()"));
   assert.ok(form.includes('label="States"'));
   assert.ok(form.includes('label="Counties (optional)"'));
   assert.ok(form.includes('ariaLabel="State to add"'));
@@ -71,12 +71,15 @@ test("business setup separates regular scheduling from optional emergency servic
   assert.ok(form.includes('ariaLabel={`${label} hour`}'));
   assert.ok(form.includes('ariaLabel={`${label} AM or PM`}'));
   assert.ok(form.includes("Regular scheduling"));
-  assert.ok(form.includes('label="Regular service days"'));
-  assert.ok(form.includes("Emergency requests"));
-  assert.ok(form.includes("Accept emergency requests"));
-  assert.ok(form.includes("Available 24/7"));
+  assert.ok(form.includes("Open every day"));
+  assert.ok(form.includes('label="Open days"'));
+  assert.ok(form.includes("Open 24 hours"));
+  assert.ok(form.includes("Emergency calls"));
+  assert.ok(form.includes("Take emergency calls"));
+  assert.ok(form.includes('label: "Any time"'));
+  assert.ok(form.includes('label: "During regular hours"'));
   assert.ok(form.includes("ASAP_OR_SCHEDULED_QUESTION"));
-  assert.ok(form.includes("profile.emergencyServiceEnabled === true ?"));
+  assert.ok(form.includes("profile.emergencyServiceEnabled === true &&"));
   assert.equal(form.includes("acceptsAllHours"), false);
   assert.ok(settingsRoute.includes("emergencyServiceEnabled"));
   assert.ok(settingsRoute.includes("emergencyService24Hours"));
@@ -138,12 +141,13 @@ test("business catalog is strict while service suggestions remain business-speci
   assert.equal(canonicalBusinessType("Landscaping"), "");
   for (const businessType of BUSINESS_TYPES) {
     const suggestions = serviceSuggestionsForBusinessType(businessType);
-    assert.ok(suggestions.length >= 10, `${businessType} should have common service suggestions`);
+    assert.ok(suggestions.length >= 5, `${businessType} should have common service suggestions`);
     assert.equal(new Set(suggestions.map((service) => service.toLowerCase())).size, suggestions.length);
   }
-  assert.ok(serviceSuggestionsForBusinessType("Plumbing").includes("Burst pipe repair"));
+  assert.ok(serviceSuggestionsForBusinessType("Plumbing").includes("Pipe repair"));
+  assert.equal(serviceSuggestionsForBusinessType("Plumbing").includes("Sink pipe leak repair"), false);
   assert.ok(serviceSuggestionsForBusinessType("Painting").includes("Interior painting"));
-  assert.ok(serviceSuggestionsForBusinessType("Commercial Refrigeration").includes("Walk-in freezer repair"));
+  assert.ok(serviceSuggestionsForBusinessType("Commercial Refrigeration").includes("Freezer repair"));
 });
 
 test("main information creates only a verification request, then verification creates the temporary signup", async () => {

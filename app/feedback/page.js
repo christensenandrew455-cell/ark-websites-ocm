@@ -3,7 +3,6 @@
 import { useState } from "react";
 import AppSelect from "../components/AppSelect";
 import BackButton from "../components/BackButton";
-import InfoTip from "../components/InfoTip";
 import { useAuth } from "../components/AuthProvider";
 import { FEEDBACK_SENTIMENTS, FEEDBACK_TOPICS } from "../lib/feedbackOptions";
 import { TEMPORARY_FEATURES } from "../lib/temporaryFeatures";
@@ -36,9 +35,7 @@ export default function FeedbackPage() {
       setMessage("");
       setSentiment("neutral");
       setTopic("overall");
-      setNotice(data.rewardGranted
-        ? `Thanks. ${data.rewardLeadCredits} free leads were added to Rewards.`
-        : "Feedback sent.");
+      setNotice("Feedback sent.");
     } catch (submitError) {
       setError(ownerFacingError(submitError));
     } finally {
@@ -53,9 +50,9 @@ export default function FeedbackPage() {
 
   return <main className="min-h-screen bg-transparent px-3 py-4 text-slate-950 sm:p-6 md:p-8">
     <div className="mx-auto max-w-2xl">
-      <BackButton href="/rewards" label="Back to Free Leads" />
+      <BackButton href="/settings?section=account" />
       <header className="mt-5">
-        <div className="flex items-center gap-2"><h1 className="text-3xl font-black tracking-tight sm:text-4xl">Feedback</h1><InfoTip label="Feedback thank-you">Your first useful feedback may earn free leads. Positive or negative both count.</InfoTip></div>
+        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Feedback</h1>
       </header>
 
       {notice && <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800" role="status">{notice}</p>}
@@ -65,7 +62,7 @@ export default function FeedbackPage() {
         <fieldset>
           <legend className="text-sm font-black text-slate-950">Rating</legend>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            {FEEDBACK_SENTIMENTS.map((option) => <button key={option.key} type="button" onClick={() => setSentiment(option.key)} aria-pressed={sentiment === option.key} className={`rounded-xl border px-3 py-3 text-sm font-black transition ${sentiment === option.key ? "border-blue-700 bg-blue-50 text-blue-950 ring-2 ring-blue-100" : "border-slate-200 bg-white text-slate-700"}`}>{option.shortLabel}</button>)}
+            {FEEDBACK_SENTIMENTS.map((option) => <button key={option.key} type="button" onClick={() => setSentiment(option.key)} aria-pressed={sentiment === option.key} className={`rounded-xl border px-3 py-3 text-sm font-black transition ${sentiment === option.key ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200 bg-white text-slate-700"}`}>{option.shortLabel}</button>)}
           </div>
         </fieldset>
 
@@ -80,7 +77,7 @@ export default function FeedbackPage() {
           <span className="mt-1 block text-right text-[10px] font-bold text-slate-400">{message.length}/2,000</span>
         </label>
 
-        <button type="submit" disabled={sending || message.trim().length < 10} className="mt-5 w-full rounded-xl bg-blue-800 px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : "Send"}</button>
+        <button type="submit" disabled={sending || message.trim().length < 10} className="mt-5 w-full rounded-xl bg-[#071a3d] px-5 py-3.5 text-sm font-black text-white disabled:opacity-40">{sending ? "Sending…" : "Send"}</button>
       </form>
     </div>
   </main>;

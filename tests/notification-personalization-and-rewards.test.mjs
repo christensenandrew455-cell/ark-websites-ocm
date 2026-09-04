@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   normalizeNotificationChannels,
@@ -8,13 +8,11 @@ import {
   NOTIFICATION_SMS_FROM_E164,
 } from "../app/lib/notificationPreferences.js";
 import {
-  FEEDBACK_REWARD_LEADS,
-  feedbackRewardUpdate,
-  publicRewardSummary,
-  REFERRAL_REWARD_LEADS,
-  REFERRAL_REWARDS_PER_MONTH,
-  REWARD_REDEMPTION_LEADS,
-} from "../app/lib/rewardLeadCredits.js";
+  publicReferralRewardSummary,
+  referralRewardAmountCents,
+  REFERRAL_REWARD_KIND,
+  REFERRAL_REWARD_PROVIDER,
+} from "../app/lib/referralRewards.js";
 
 const root = new URL("../", import.meta.url);
 const source = (path) => readFile(new URL(path, root), "utf8");
@@ -53,71 +51,86 @@ test("selected owner notifications reuse the signup sender and cover existing al
   assert.ok(notifications.includes("sendPreferredAccountNotification"));
   for (const type of ["new-lead", "request-status"]) assert.ok(notifications.includes(`type: "${type}"`));
   assert.ok(messages.includes("sendPreferredAccountNotification"));
+  assert.ok(settings.includes("nativeApp === false &&"));
   assert.ok(settings.includes('id="email-alerts"'));
   assert.ok(settings.includes('id="text-alerts"'));
-  assert.ok(settings.includes("NOTIFICATION_SMS_FROM_DISPLAY"));
 });
 
-test("the first feedback reward is one-time and does not depend on positive sentiment", async () => {
-  assert.equal(FEEDBACK_REWARD_LEADS, 5);
-  assert.deepEqual(feedbackRewardUpdate({ rewardLeadCreditBalance: 45 }), { granted: true, amount: 5, balance: 50 });
-  assert.deepEqual(feedbackRewardUpdate({ rewardLeadCreditBalance: 50, feedbackRewardGranted: true }), { granted: false, amount: 0, balance: 50 });
-  const [route, page] = await Promise.all([source("app/api/feedback/route.js"), source("app/feedback/page.js")]);
-  assert.ok(route.includes("feedbackRewardUpdate(account)"));
-  assert.ok(route.includes("feedbackRewardGrantedAt"));
-  assert.equal(route.includes('sentiment.key === "positive"'), false);
-  assert.ok(page.includes("may earn free leads"));
-  assert.ok(page.includes("data.rewardGranted"));
+test("feedback is saved without issuing a reward", async () => {
+  const [route, page] = await Promise.all([
+    source("app/api/feedback/route.js"),
+    source("app/feedback/page.js"),
+  ]);
+  assert.ok(route.includes('type: "feedback"'));
+  assert.ok(page.includes('setNotice("Feedback sent.")'));
+  assert.equal(route.includes("feedbackReward"), false);
+  assert.equal(route.includes("rewardLead"), false);
+  assert.equal(page.includes("rewardGranted"), false);
+  assert.equal(page.toLowerCase().includes("free lead"), false);
 });
 
-test("referrals reward the first three paid activations each month and credits remain banked", async () => {
-  assert.equal(REFERRAL_REWARD_LEADS, 5);
-  assert.equal(REFERRAL_REWARDS_PER_MONTH, 3);
-  assert.equal(REWARD_REDEMPTION_LEADS, 5);
-  assert.deepEqual(publicRewardSummary(
-    { rewardLeadCreditBalance: 50, feedbackRewardGranted: true },
-    { completedReferralCount: 8, rewardedReferralCount: 9 },
-    "2026-09",
-  ), {
-    rewardLeadCreditBalance: 50,
-    feedbackRewardEarned: true,
-    referralMonthKey: "2026-09",
-    completedReferralsThisMonth: 8,
-    rewardedReferralsThisMonth: 3,
-    referralRewardsPerMonth: 3,
-    referralRewardLeads: 5,
+test("each qualifying Stripe referral credits one current-plan month", async () => {
+  assert.equal(REFERRAL_REWARD_KIND, "free-subscription-month");
+  assert.equal(REFERRAL_REWARD_PROVIDER, "stripe");
+  assert.equal(referralRewardAmountCents({ billingPlanKey: "scale" }), 16_999);
+  assert.deepEqual(publicReferralRewardSummary({
+    billingProvider: "stripe",
+    billingPlanKey: "scale",
+    referralFreeMonthsEarned: 4,
+    referralFreeMonthsPending: 1,
+    referralFreeMonthsCredited: 3,
+  }), {
+    billingProvider: "stripe",
+    referralRewardAvailable: true,
+    referralFreeMonthsEarned: 4,
+    referralFreeMonthsPending: 1,
+    referralFreeMonthsCredited: 3,
+    referralPlanName: "Scale",
+    referralPlanAmountCents: 16_999,
   });
-  const [rewards, stripeActivation, appleActivation, signup, page] = await Promise.all([
-    source("app/lib/rewardLeadCredits.js"),
+  assert.equal(publicReferralRewardSummary({ billingProvider: "apple" }).referralRewardAvailable, false);
+
+  const [rewards, stripeActivation, appleActivation, billingSync, signup, page, dashboard] = await Promise.all([
+    source("app/lib/referralRewards.js"),
     source("app/lib/ownerPaymentSetup.js"),
     source("app/lib/ownerApplePaymentSetup.js"),
+    source("app/api/cron/billing-sync/route.js"),
     source("app/signup/page.js"),
     source("app/rewards/page.js"),
-  ]);
-  assert.ok(rewards.includes("rewardedCount < REFERRAL_REWARDS_PER_MONTH"));
-  assert.ok(rewards.includes("transaction.create(recordRef"));
-  assert.ok(stripeActivation.includes("completeReferralReward"));
-  assert.ok(appleActivation.includes("completeReferralReward"));
-  assert.ok(signup.includes("referralCode"));
-  assert.ok(page.includes("Up to three referrals earn rewards each month"));
-  assert.ok(page.includes("Copy invite link"));
-});
-
-test("free lead credits can be applied only after the included allowance is exhausted", async () => {
-  const [logic, route, manager, dashboard] = await Promise.all([
-    source("app/lib/rewardLeadCredits.js"),
-    source("app/api/billing/reward-credits/route.js"),
-    source("app/components/PaymentManagementPanel.js"),
     source("app/components/ClientStats.js"),
   ]);
-  assert.ok(logic.includes("if (!current.limitReached)"));
-  assert.ok(logic.includes("currentBalance < REWARD_REDEMPTION_LEADS"));
-  assert.ok(logic.includes("rewardLeadCreditBalance: nextBalance"));
-  assert.ok(route.includes("redeemRewardLeadCredits"));
-  assert.ok(manager.includes("Use 5 free leads"));
-  assert.ok(manager.includes("!planSummary?.limitReached"));
-  assert.ok(dashboard.includes('label="Free Leads"'));
-  assert.equal(dashboard.includes('value="★"'), false);
+  assert.ok(rewards.includes("customers.createBalanceTransaction"));
+  assert.ok(rewards.includes("amount: -amountCents"));
+  assert.ok(rewards.includes("ark-referral-free-month-${referredId}"));
+  assert.ok(rewards.includes("referralFreeMonthsEarned: FieldValue.increment(1)"));
+  assert.equal(rewards.includes("REFERRAL_REWARDS_PER_MONTH"), false);
+  assert.ok(stripeActivation.includes("completeReferralReward"));
+  assert.ok(appleActivation.includes("completeReferralReward"));
+  assert.ok(billingSync.includes("retryPendingStripeReferralRewards"));
+  assert.ok(signup.includes("referralCode"));
+  assert.ok(page.includes("Refer one business"));
+  assert.ok(page.includes("Get one month free."));
+  assert.ok(page.includes("Copy invite link"));
+  assert.ok(dashboard.includes('label="Refer & Save"'));
+});
+
+test("the retired free-lead reward path is removed", async () => {
+  const [manager, dashboard, planSummary, profile, help, terms] = await Promise.all([
+    source("app/components/PaymentManagementPanel.js"),
+    source("app/components/ClientStats.js"),
+    source("app/api/billing/plan-summary/route.js"),
+    source("app/api/account/profile/route.js"),
+    source("app/lib/helpContent.js"),
+    source("app/terms/page.js"),
+  ]);
+  await assert.rejects(access(new URL("app/api/billing/reward-credits/route.js", root)));
+  await assert.rejects(access(new URL("app/lib/rewardLeadCredits.js", root)));
+  for (const content of [manager, dashboard, planSummary, profile, help, terms]) {
+    assert.equal(content.toLowerCase().includes("free lead"), false);
+    assert.equal(content.includes("rewardLeadCredit"), false);
+  }
+  assert.ok(dashboard.includes('label="New Leads"'));
+  assert.ok(dashboard.includes('label="Messages"'));
 });
 
 test("terms use a seven-day first-payment refund window with provider boundaries", async () => {

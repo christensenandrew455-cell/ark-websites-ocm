@@ -131,7 +131,7 @@ function StripeCardEditor({ user, onSaved }) {
   const stripePromise = useMemo(() => configuration?.publishableKey ? loadStripe(configuration.publishableKey) : null, [configuration?.publishableKey]);
   const options = useMemo(() => configuration?.clientSecret ? {
     clientSecret: configuration.clientSecret,
-    appearance: { theme: "stripe", variables: { colorPrimary: "#1e40af", borderRadius: "12px" } },
+    appearance: { theme: "stripe", variables: { colorPrimary: "#071a3d", borderRadius: "12px" } },
   } : null, [configuration?.clientSecret]);
 
   if (loading) return <p className="text-sm font-bold text-slate-600">Opening secure card fields…</p>;
@@ -150,8 +150,8 @@ function PlanConfirmation({ plan, currentPlan, timing, setTiming, renewalDate, a
       <p className="mt-2 text-sm font-bold text-slate-600">{formatUsd(plan.effectiveAmountCents)}/month · {plan.monthlyAcceptedLeads} accepted leads</p>
       {appleBilling ? <p className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-700">Apple shows the final price and start date before you confirm.</p>
         : <fieldset className="mt-5 space-y-3"><legend className="text-sm font-black">When should {plan.name} start?</legend>
-          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-blue-800" /><span className="text-sm font-black">At renewal · {renewalDate}</span><span className="mt-1 block pl-7 text-xs font-semibold leading-5 text-slate-600">Keep {currentPlan} until then. No charge today.</span></label>
-          <label className={`block rounded-2xl border p-4 ${timing === "now" ? "border-blue-600 bg-blue-50" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="now" checked={timing === "now"} onChange={() => setTiming("now")} className="mr-3 accent-blue-800" /><span className="text-sm font-black">Now · pay {formatUsd(plan.effectiveAmountCents)}</span><span className="mt-1 block pl-7 text-xs font-semibold leading-5 text-slate-600">Your billing month restarts. Unused leads expire and are not refunded.</span></label>
+          <label className={`block rounded-2xl border p-4 ${timing === "renewal" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="renewal" checked={timing === "renewal"} onChange={() => setTiming("renewal")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">At renewal · {renewalDate}</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "renewal" ? "text-blue-100" : "text-slate-600"}`}>Keep {currentPlan} until then. No charge today.</span></label>
+          <label className={`block rounded-2xl border p-4 ${timing === "now" ? "border-[#071a3d] bg-[#071a3d] text-white" : "border-slate-200"}`}><input type="radio" name="plan-timing" value="now" checked={timing === "now"} onChange={() => setTiming("now")} className="mr-3 accent-[#071a3d]" /><span className="text-sm font-black">Now · pay {formatUsd(plan.effectiveAmountCents)}</span><span className={`mt-1 block pl-7 text-xs font-semibold leading-5 ${timing === "now" ? "text-blue-100" : "text-slate-600"}`}>Your billing month restarts. Unused leads expire and are not refunded.</span></label>
         </fieldset>}
       <div className="mt-6 grid grid-cols-2 gap-3">
         <button type="button" disabled={busy} onClick={onCancel} className="rounded-xl border border-slate-300 px-4 py-3 text-sm font-black disabled:opacity-50">Cancel</button>
@@ -378,25 +378,6 @@ export default function PaymentManagementPanel({
     }
   }
 
-  async function applyRewardCredits() {
-    if (busy || !planSummary?.limitReached || Number(planSummary?.rewardLeadCreditBalance || 0) < 5) return;
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const data = await authenticatedJson(user, "/api/billing/reward-credits", {
-        method: "POST",
-        body: JSON.stringify({ requestId: requestId() }),
-      });
-      setNotice(`${data.acceptedLeadsAdded || 5} free lead credits are ready to use this billing month.`);
-      await onChanged();
-    } catch (rewardError) {
-      setError(String(rewardError?.message || "Free lead credits could not be applied."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return <>
     <section className="rounded-2xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm sm:rounded-3xl sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-blue-900 p-4 text-white">
@@ -413,9 +394,9 @@ export default function PaymentManagementPanel({
             {plans.map((plan) => {
               const current = plan.key === planSummary?.planKey;
               const chosen = plan.key === selectedPlan?.key;
-              return <button key={plan.key} type="button" disabled={current || stripeInsideIos || busy} onClick={() => { setSelectedPlan(plan); setNotice(""); setError(""); }} className={`rounded-2xl border p-4 text-left disabled:opacity-60 ${chosen ? "border-blue-600 bg-blue-50 ring-2 ring-blue-200" : current ? "border-slate-300 bg-slate-100" : "border-slate-200 bg-white"}`}>
-                <SubscriptionPlanCard plan={plan} promotionalAmountCents={plan.promotionalAmountCents} />
-                <span className={`mt-3 block text-xs font-black ${current ? "text-slate-600" : chosen ? "text-blue-700" : "text-slate-500"}`}>{current ? "Current" : chosen ? "Selected" : "Choose"}</span>
+              return <button key={plan.key} type="button" disabled={current || stripeInsideIos || busy} onClick={() => { setSelectedPlan(plan); setNotice(""); setError(""); }} className={`rounded-2xl border p-4 text-left disabled:opacity-60 ${chosen ? "border-[#071a3d] bg-[#071a3d] text-white" : current ? "border-slate-300 bg-slate-100" : "border-slate-200 bg-white"}`}>
+                <SubscriptionPlanCard plan={plan} promotionalAmountCents={plan.promotionalAmountCents} selected={chosen} />
+                <span className={`mt-3 block text-xs font-black ${current ? "text-slate-600" : chosen ? "text-blue-100" : "text-slate-500"}`}>{current ? "Current" : chosen ? "Selected" : "Choose"}</span>
               </button>;
             })}
           </div>
@@ -424,10 +405,6 @@ export default function PaymentManagementPanel({
         </Accordion>
         <Accordion title="Add leads" open={openPanel === "topup"} onToggle={() => setOpenPanel((current) => current === "topup" ? "" : "topup")}>
           <p className="text-sm font-bold text-slate-700">$1 each · available until {renewalDate}</p>
-          <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-black text-violet-900">Free leads</p><p className="mt-1 text-2xl font-black text-violet-950">{Number(planSummary?.rewardLeadCreditBalance || 0).toLocaleString("en-US")}</p></div><button type="button" disabled={busy || !planSummary?.limitReached || Number(planSummary?.rewardLeadCreditBalance || 0) < 5} onClick={applyRewardCredits} className="rounded-xl bg-violet-800 px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40">Use 5 free leads</button></div>
-            <div className="mt-2 flex items-center gap-2 text-xs font-bold text-violet-900">Available when your plan reaches zero <InfoTip label="Using free leads">Free leads stay in Rewards until your monthly plan reaches zero. Then you can use five at a time.</InfoTip></div>
-          </div>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"><label className="flex-1"><span className="mb-2 block text-xs font-black text-slate-700">Leads to add</span><input inputMode="numeric" type="number" min="1" step="1" value={topUpQuantity} disabled={stripeInsideIos || busy} onChange={(event) => setTopUpQuantity(event.target.value)} placeholder="20" className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base font-black outline-none focus:border-blue-700" /></label><button type="button" disabled={!validTopUp || stripeInsideIos || busy} onClick={buyTopUp} className="h-12 rounded-xl bg-slate-950 px-5 text-sm font-black text-white disabled:opacity-40">{busy ? "Confirming…" : validTopUp ? `Buy for ${formatUsd(topUpNumber * 100)}` : "Enter an amount"}</button></div>
         </Accordion>
         <Accordion title="Payment card" open={openPanel === "card"} onToggle={() => setOpenPanel((current) => current === "card" ? "" : "card")}>

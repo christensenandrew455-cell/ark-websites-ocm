@@ -79,7 +79,6 @@ function ownerProfile({ account, decodedToken, clientId }) {
     notificationEmail: text(account.notificationEmail || account.accountEmail).toLowerCase(),
     notificationPhone: text(account.notificationPhone || account.accountPhone),
     notificationPreferencesCompleted: account.notificationPreferencesCompleted === true,
-    rewardLeadCreditBalance: Math.max(0, Math.floor(Number(account.rewardLeadCreditBalance || 0))),
     nativeSetupPromptStatus: text(account.nativeSetupPromptStatus),
     termsAccepted: account.termsAccepted === true || decodedToken.termsAccepted === true,
     privacyAccepted: account.privacyAccepted === true || decodedToken.privacyAccepted === true,

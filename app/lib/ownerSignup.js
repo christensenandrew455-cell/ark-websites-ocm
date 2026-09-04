@@ -1,13 +1,13 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from "./legal.js";
 import { canonicalBusinessType, isSupportedBusinessType } from "./businessCatalog.js";
 import { businessInformationText, normalizeBusinessInformation } from "./receptionistBusinessInformation.js";
-import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings } from "./emergencyService.js";
+import { emergencyServiceAvailabilityError, normalizeEmergencyServiceSettings, normalizeRegularServiceSettings, REGULAR_SERVICE_WEEKDAYS } from "./emergencyService.js";
 import { normalizeServiceAreas, serviceAreaValidationError } from "./serviceAreas.js";
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
 
 export const OWNER_SIGNUP_VERSION = 5;
 
-const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const WEEKDAYS = REGULAR_SERVICE_WEEKDAYS;
 const PERIODS = new Set(["AM", "PM"]);
 
 function cleanText(value, maximum = 500) {
@@ -74,7 +74,8 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
   const ownerName = cleanText(value.ownerName || value.personName || receptionist.ownerName, 120);
   const accountEmail = cleanText(value.accountEmail || receptionist.businessEmail, 254).toLowerCase();
   const accountPhone = cleanText(value.accountPhone || receptionist.businessPhone, 30);
-  const estimateWeekdays = weekdayList(receptionist.estimateWeekdays);
+  const regularService = normalizeRegularServiceSettings(receptionist);
+  const estimateWeekdays = regularService.regularServiceEveryDay ? WEEKDAYS : weekdayList(receptionist.estimateWeekdays);
   const estimateStartHour = hour(receptionist.estimateStartHour);
   const estimateStartPeriod = period(receptionist.estimateStartPeriod);
   const estimateEndHour = hour(receptionist.estimateEndHour);
@@ -111,6 +112,7 @@ export function normalizeOwnerSignup(value = {}, { includePassword = true } = {}
       estimateEndPeriod,
       earliestEstimateStart: estimateStartComplete ? timeSummary(estimateStartHour, estimateStartPeriod) : "",
       latestEstimateStart: estimateEndComplete ? timeSummary(estimateEndHour, estimateEndPeriod) : "",
+      ...regularService,
       ...emergencyService,
       businessType: canonicalBusinessType(receptionist.businessType || receptionist.businessBase) || cleanText(receptionist.businessType || receptionist.businessBase, 120),
       serviceAreas: normalizeServiceAreas(textList(receptionist.serviceAreas)),
@@ -150,10 +152,10 @@ export function validateReceptionistBusinessInformation(value = {}) {
   }
   if (!receptionist.businessType) return "Enter the type of business.";
   if (!isSupportedBusinessType(receptionist.businessType)) return "Choose a business type from the list.";
-  const hasEstimateSchedule = Boolean(receptionist.estimateWeekdays.length || receptionist.estimateStartHour || receptionist.estimateStartPeriod || receptionist.estimateEndHour || receptionist.estimateEndPeriod);
+  const hasEstimateSchedule = Boolean(receptionist.regularServiceEveryDay || receptionist.regularService24Hours || receptionist.estimateWeekdays.length || receptionist.estimateStartHour || receptionist.estimateStartPeriod || receptionist.estimateEndHour || receptionist.estimateEndPeriod);
   if (hasEstimateSchedule && !receptionist.estimateWeekdays.length) return "Choose at least one regular service day or leave the regular schedule blank.";
-  if (hasEstimateSchedule && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Complete the earliest regular time or leave the regular schedule blank.";
-  if (hasEstimateSchedule && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Complete the latest regular time or leave the regular schedule blank.";
+  if (hasEstimateSchedule && !receptionist.regularService24Hours && (!receptionist.estimateStartHour || !receptionist.estimateStartPeriod)) return "Choose when the business opens or turn on Open 24 hours.";
+  if (hasEstimateSchedule && !receptionist.regularService24Hours && (!receptionist.estimateEndHour || !receptionist.estimateEndPeriod)) return "Choose when the business closes or turn on Open 24 hours.";
   const emergencyAvailabilityError = emergencyServiceAvailabilityError(receptionist);
   if (emergencyAvailabilityError) return emergencyAvailabilityError;
   if (serviceAreaError) return serviceAreaError;

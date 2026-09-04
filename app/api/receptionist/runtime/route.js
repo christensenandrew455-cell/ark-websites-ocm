@@ -2,7 +2,7 @@ import { createPublicKey, verify } from "node:crypto";
 import { NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
 import { acceptedLeadPlanStatus } from "../../../lib/acceptedLeadPlanBilling";
-import { activeEmergencyServiceSettings, receptionistRequestRouting } from "../../../lib/emergencyService";
+import { activeEmergencyServiceSettings, normalizeRegularServiceSettings, receptionistRequestRouting, REGULAR_SERVICE_WEEKDAYS } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
@@ -111,10 +111,13 @@ function buildProfile(clientId, account) {
   const businessType = text(account.businessType || account.businessBase);
   const businessBase = serviceAreas[0] || "the local service area";
   const normalizedServiceAreas = serviceAreas.length ? serviceAreas : [businessBase];
-  const savedEstimateWeekdays = list(account.estimateWeekdays).map((day) => day.toLowerCase());
-  const earliestEstimateStart = text(account.earliestEstimateStart);
-  const latestEstimateStart = text(account.latestEstimateStart);
-  const estimateSchedulingConfigured = Boolean(savedEstimateWeekdays.length && earliestEstimateStart && latestEstimateStart);
+  const regularService = normalizeRegularServiceSettings(account);
+  const savedEstimateWeekdays = regularService.regularServiceEveryDay
+    ? REGULAR_SERVICE_WEEKDAYS
+    : list(account.estimateWeekdays).map((day) => day.toLowerCase());
+  const earliestEstimateStart = regularService.regularService24Hours ? "12:00 AM" : text(account.earliestEstimateStart);
+  const latestEstimateStart = regularService.regularService24Hours ? "11:59 PM" : text(account.latestEstimateStart);
+  const estimateSchedulingConfigured = Boolean(savedEstimateWeekdays.length && (regularService.regularService24Hours || (earliestEstimateStart && latestEstimateStart)));
   const emergencyService = activeEmergencyServiceSettings(account);
 
   return {
@@ -127,6 +130,7 @@ function buildProfile(clientId, account) {
     estimateWeekdays: estimateSchedulingConfigured ? savedEstimateWeekdays : [],
     earliestEstimateStart: estimateSchedulingConfigured ? earliestEstimateStart : "",
     latestEstimateStart: estimateSchedulingConfigured ? latestEstimateStart : "",
+    ...regularService,
     ...(emergencyService.emergencyServiceEnabled ? emergencyService : {}),
     serviceRequestRouting: receptionistRequestRouting(account),
     businessType,

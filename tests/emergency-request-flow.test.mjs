@@ -9,6 +9,7 @@ import {
   emergencyServiceAvailabilityError,
   isEmergencyRequest,
   normalizeEmergencyServiceSettings,
+  normalizeRegularServiceSettings,
   normalizeRequestUrgency,
   regularServiceScheduleConfigured,
   receptionistRequestRouting,
@@ -58,10 +59,10 @@ test("enabled emergency routing offers ASAP or normal scheduling without promisi
   assert.equal(regularHours.scheduled.enabled, true);
 });
 
-test("non-24-hour emergency service requires a complete regular service window", () => {
+test("regular all-day settings and emergency availability share one simple schedule", () => {
   const incomplete = { emergencyServiceEnabled: true, emergencyService24Hours: false };
   assert.equal(regularServiceScheduleConfigured(incomplete), false);
-  assert.equal(emergencyServiceAvailabilityError(incomplete), "Add regular service days and times, or turn on 24/7 emergency availability.");
+  assert.equal(emergencyServiceAvailabilityError(incomplete), "Add regular hours or choose Any time for emergency calls.");
   const scheduled = {
     ...incomplete,
     estimateWeekdays: ["monday", "tuesday"],
@@ -69,6 +70,14 @@ test("non-24-hour emergency service requires a complete regular service window",
     latestEstimateStart: "5:00 PM",
   };
   assert.equal(regularServiceScheduleConfigured(scheduled), true);
+  assert.equal(regularServiceScheduleConfigured({
+    regularServiceEveryDay: true,
+    regularService24Hours: true,
+  }), true);
+  assert.deepEqual(normalizeRegularServiceSettings({ regularServiceEveryDay: true, regularService24Hours: true }), {
+    regularServiceEveryDay: true,
+    regularService24Hours: true,
+  });
   assert.equal(emergencyServiceAvailabilityError(scheduled), "");
   assert.equal(emergencyServiceAvailabilityError({ ...incomplete, emergencyService24Hours: true }), "");
   assert.deepEqual(activeEmergencyServiceSettings(incomplete), {
@@ -85,7 +94,7 @@ test("non-24-hour emergency service requires a complete regular service window",
     businessType: "Plumbing",
     serviceAreas: ["Massachusetts"],
     services: { plumbing: "plumbing" },
-  }), "Add regular service days and times, or turn on 24/7 emergency availability.");
+  }), "Add regular hours or choose Any time for emergency calls.");
 });
 
 test("only explicit urgency values classify a lead as emergency", () => {

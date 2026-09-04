@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import BackButton from "./BackButton";
 import ClientDeclineNoticeSettings from "./ClientDeclineNoticeSettings";
 import HelpCenter from "./HelpCenter";
@@ -24,7 +25,7 @@ const BUSINESS_AUTO_SAVE_DELAY_MS = 650;
 const ACCOUNT_RESOURCE_CLASS = "min-h-20 rounded-2xl border border-slate-300 bg-white p-5 text-left shadow-sm transition active:scale-[0.99]";
 const SETTINGS_BLOCKS = [
   { key: "business", title: "Business information" },
-  { key: "customization", title: "App" },
+  { key: "customization", title: "Customization" },
   { key: "payment", title: "Plan and payment" },
   { key: "account", title: "Help & Account" },
 ];
@@ -42,7 +43,7 @@ function ToggleRow({ id, title, detail, checked, disabled = false, onChange }) {
   return <label htmlFor={id} className={`flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-slate-200 p-4 ${disabled ? "cursor-not-allowed bg-slate-50 opacity-60" : "bg-white"}`}>
     <span className="min-w-0"><span className="block text-sm font-black text-slate-950">{title}</span>{detail && <span className="mt-1 block break-words text-xs font-semibold text-slate-600">{detail}</span>}</span>
     <input id={id} type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} className="sr-only" />
-    <span aria-hidden="true" className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-blue-800" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition ${checked ? "left-6" : "left-1"}`} /></span>
+    <span aria-hidden="true" className={`relative h-7 w-12 shrink-0 rounded-full transition ${checked ? "bg-[#071a3d]" : "bg-slate-300"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition ${checked ? "left-6" : "left-1"}`} /></span>
   </label>;
 }
 function AccountResourceLink({ href, title }) {
@@ -71,6 +72,7 @@ export default function SettingsPanel() {
   const [paymentManagerOpen, setPaymentManagerOpen] = useState(false);
   const [paymentManagerPanel, setPaymentManagerPanel] = useState("");
   const [nativeIos, setNativeIos] = useState(false);
+  const [nativeApp, setNativeApp] = useState(null);
   const [accountSettings, setAccountSettings] = useState(DEFAULT_SETTINGS);
   const [receptionist, setReceptionist] = useState(null);
   const [savedReceptionist, setSavedReceptionist] = useState(null);
@@ -105,6 +107,7 @@ export default function SettingsPanel() {
       setPaymentManagerOpen(true);
     }
     setNativeIos(appleIapAvailable());
+    setNativeApp(Capacitor.isNativePlatform());
   }, []);
 
   useEffect(() => {
@@ -423,24 +426,24 @@ export default function SettingsPanel() {
   }
   function customizationSection() {
     const messageBlocked = features.messagesEnabled && !featureState.canDisableMessages;
-    return <><SectionHeader title="App" onBack={backToSettings} /><div className="space-y-4">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    return <><SectionHeader title="Customization" onBack={backToSettings} /><SectionPanel>
+      <section>
         <h3 className="mb-4 text-base font-black text-slate-950">Appearance</h3>
         <ToggleRow id="dark-mode" title="Dark mode" checked={darkMode} onChange={updateTheme} />
       </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      {nativeApp === false && <section className="mt-6 border-t border-slate-200 pt-6">
         <div className="flex items-center gap-2"><h3 className="text-base font-black text-slate-950">Alerts</h3><InfoTip label="About alerts">New leads and important account updates. Keep email, text, or both turned on.</InfoTip></div>
         <div className="mt-4 space-y-3">
           <ToggleRow id="email-alerts" title="Email" detail={features.notificationEmail || profile?.accountEmail} checked={features.notificationChannels.includes("email")} onChange={(checked) => updateNotificationChannel("email", checked)} />
           <ToggleRow id="text-alerts" title="Text message" detail={formatNotificationPhone(features.notificationPhone || profile?.accountPhone)} checked={features.notificationChannels.includes("sms")} onChange={(checked) => updateNotificationChannel("sms", checked)} />
         </div>
         {features.notificationChannels.includes("sms") && <p className="mt-3 text-[11px] font-semibold leading-5 text-slate-500">Sent from {NOTIFICATION_SMS_FROM_DISPLAY}. Message and data rates may apply. Reply STOP to opt out.</p>}
-      </section>
-      {MESSAGES_AVAILABLE && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><h3 className="mb-4 text-base font-black text-slate-950">Messages</h3><ToggleRow id="messages-enabled" title="Customer messages" checked={features.messagesEnabled} disabled={messageBlocked} onChange={(checked) => updateFeature("messagesEnabled", checked)} /></section>}
-      <MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
-      <ClientDeclineNoticeSettings />
-      <section id="account-data" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><h3 className="text-base font-black text-slate-950">Your data</h3><button type="button" onClick={downloadClientData} disabled={isDownloading} className="mt-4 w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing…" : "Download data"}</button></section>
-    </div></>;
+      </section>}
+      {MESSAGES_AVAILABLE && <section className="mt-6 border-t border-slate-200 pt-6"><h3 className="mb-4 text-base font-black text-slate-950">Messages</h3><ToggleRow id="messages-enabled" title="Customer messages" checked={features.messagesEnabled} disabled={messageBlocked} onChange={(checked) => updateFeature("messagesEnabled", checked)} /></section>}
+      <MessageRetentionSettings embedded showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />
+      <ClientDeclineNoticeSettings embedded />
+      <section id="account-data" className="mt-6 border-t border-slate-200 pt-6"><h3 className="text-base font-black text-slate-950">Your data</h3><button type="button" onClick={downloadClientData} disabled={isDownloading} className="mt-4 w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-black disabled:opacity-50 sm:w-auto">{isDownloading ? "Preparing…" : "Download data"}</button></section>
+    </SectionPanel></>;
   }
   function paymentSection() {
     if (paymentManagerOpen) {

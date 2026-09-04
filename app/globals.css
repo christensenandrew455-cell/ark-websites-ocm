@@ -9,8 +9,17 @@
   --ark-bottom-scroll-clearance: max(2rem, calc(var(--ark-safe-area-bottom) + 1rem));
   --ark-workspace-header-height: 65px;
   --ark-navy: #071a3d;
-  --ark-blue: #1d4ed8;
+  --ark-blue: #071a3d;
   --ark-canvas: #eff6ff;
+}
+
+/* Primary and secondary action buttons use the same dark ARK blue. */
+.bg-blue-800 {
+  background-color: var(--ark-blue) !important;
+}
+
+.border-blue-800 {
+  border-color: var(--ark-blue) !important;
 }
 
 @media (hover: none) and (pointer: coarse) {

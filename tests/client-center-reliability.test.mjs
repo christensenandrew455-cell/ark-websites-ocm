@@ -112,8 +112,10 @@ test("customization keeps lead retention and lead status notices available befor
     source("app/components/MessageRetentionSettings.js"),
     source("app/api/account/client-decline-notice/route.js"),
   ]);
-  assert.ok(settings.includes("<MessageRetentionSettings showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />"));
-  assert.ok(settings.includes("<ClientDeclineNoticeSettings />"));
+  assert.ok(settings.includes("<MessageRetentionSettings embedded showMessages={MESSAGES_AVAILABLE && features.messagesEnabled} />"));
+  assert.ok(settings.includes("<ClientDeclineNoticeSettings embedded />"));
+  assert.ok(settings.includes('SectionHeader title="Customization"'));
+  assert.ok(settings.includes("nativeApp === false &&"));
   assert.ok(retention.includes('title="Leads" endpoint="/api/business/leads/retention"'));
   assert.ok(retention.includes('title="Clients" endpoint="/api/business/clients/retention"'));
   assert.equal(noticeRoute.includes("if (!MESSAGES_AVAILABLE)"), false);

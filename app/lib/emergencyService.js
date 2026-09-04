@@ -1,6 +1,7 @@
 export const EMERGENCY_REQUEST_URGENCY = "emergency";
 export const ASAP_REQUEST_TIME = "As soon as possible";
 export const ASAP_OR_SCHEDULED_QUESTION = "Do you need help as soon as possible, or would you prefer to schedule a time?";
+export const REGULAR_SERVICE_WEEKDAYS = Object.freeze(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
 
 const EMERGENCY_VALUES = new Set([
   "asap",
@@ -48,6 +49,14 @@ export function normalizeEmergencyServiceSettings(value = {}) {
   return { emergencyServiceEnabled, emergencyService24Hours };
 }
 
+export function normalizeRegularServiceSettings(value = {}) {
+  const source = object(value);
+  return {
+    regularServiceEveryDay: booleanSetting(source.regularServiceEveryDay),
+    regularService24Hours: booleanSetting(source.regularService24Hours),
+  };
+}
+
 export function normalizeRequestUrgency(value) {
   const candidate = urgencyValue(value);
   if (candidate === true || candidate === 1) return EMERGENCY_REQUEST_URGENCY;
@@ -65,18 +74,21 @@ export function isEmergencyRequest(value) {
 
 export function regularServiceScheduleConfigured(value = {}) {
   const source = object(value);
-  const days = Array.isArray(source.estimateWeekdays) ? source.estimateWeekdays.filter(Boolean) : [];
+  const settings = normalizeRegularServiceSettings(source);
+  const days = settings.regularServiceEveryDay
+    ? REGULAR_SERVICE_WEEKDAYS
+    : Array.isArray(source.estimateWeekdays) ? source.estimateWeekdays.filter(Boolean) : [];
   const start = String(source.earliestEstimateStart || "").trim()
     || (source.estimateStartHour && source.estimateStartPeriod ? `${source.estimateStartHour} ${source.estimateStartPeriod}` : "");
   const end = String(source.latestEstimateStart || "").trim()
     || (source.estimateEndHour && source.estimateEndPeriod ? `${source.estimateEndHour} ${source.estimateEndPeriod}` : "");
-  return Boolean(days.length && start && end);
+  return Boolean(days.length && (settings.regularService24Hours || (start && end)));
 }
 
 export function emergencyServiceAvailabilityError(value = {}) {
   const settings = normalizeEmergencyServiceSettings(value);
   if (!settings.emergencyServiceEnabled || settings.emergencyService24Hours || regularServiceScheduleConfigured(value)) return "";
-  return "Add regular service days and times, or turn on 24/7 emergency availability.";
+  return "Add regular hours or choose Any time for emergency calls.";
 }
 
 export function activeEmergencyServiceSettings(value = {}) {

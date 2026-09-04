@@ -6,6 +6,8 @@ const BUSINESS_FIELDS = Object.freeze([
   "estimateWeekdays",
   "earliestEstimateStart",
   "latestEstimateStart",
+  "regularServiceEveryDay",
+  "regularService24Hours",
   "emergencyServiceEnabled",
   "emergencyService24Hours",
   "businessType",

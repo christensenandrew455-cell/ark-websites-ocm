@@ -14,6 +14,8 @@ test("question-mark help is accessible and closes without changing a form", asyn
   assert.ok(infoTip.includes("createPortal"));
   assert.ok(infoTip.includes("safe-area-inset-bottom"));
   assert.ok(infoTip.includes("viewportWidth - VIEWPORT_GUTTER * 2"));
+  assert.ok(infoTip.includes('top: "50%"'));
+  assert.ok(infoTip.includes('transform: "translateY(-50%)"'));
   assert.ok(infoTip.includes('event.key === "Escape"'));
   assert.ok(infoTip.includes("pointerdown"));
 });
@@ -44,6 +46,7 @@ test("every selector is rendered by the app instead of the phone", async () => {
   assert.ok(appSelect.includes('role="listbox"'));
   assert.ok(appSelect.includes("safe-area-inset-bottom"));
   assert.ok(appSelect.includes("MOBILE_BREAKPOINT"));
+  assert.ok(appSelect.includes("min(70dvh"));
   assert.ok(business.includes("<AppSelect"));
   assert.ok(feedback.includes("<AppSelect"));
   assert.ok(retention.includes("<AppSelect"));
@@ -60,7 +63,7 @@ test("obvious business fields stay bare while non-obvious settings use help", as
     assert.equal(form.includes(`label="${label}" explanation=`), false);
   }
   assert.ok(form.includes('label="Regular scheduling" explanation='));
-  assert.ok(form.includes('label="Emergency requests" explanation='));
+  assert.ok(form.includes('label="Emergency calls" explanation='));
   assert.ok(form.includes('label="Service area" explanation='));
   assert.ok(form.includes('label="Additional business information" explanation='));
   assert.equal(form.includes("Normal projects and non-urgent requests can always be scheduled"), false);
@@ -111,6 +114,7 @@ test("forms and normal screens use direct copy instead of persistent explainers"
   assert.ok(feedback.includes(">Rating</"));
   assert.ok(feedback.includes(">What happened?</"));
   assert.ok(rewards.includes("Copy invite link"));
+  assert.ok(rewards.includes("Get one month free."));
   assert.ok(paymentManager.includes('title="Change plan"'));
   assert.ok(paymentManager.includes('title="Add leads"'));
 });

@@ -21,7 +21,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
-import { completeReferralReward } from "./rewardLeadCredits.js";
+import { completeReferralReward } from "./referralRewards.js";
 import { ensureCustomerBillingSubscription } from "./stripePlanBilling";
 import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
 
@@ -55,7 +55,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     const existingAccount = existingAccounts.docs[0].data();
     if (isStandardRole(existingAccount.role) && existingAccount.paymentSetupStatus === "complete" && text(existingAccount.stripeSetupIntentId) === safeSetupIntentId) {
       if (text(existingAccount.referredByClientId)) {
-        await completeReferralReward({ db, referredClientId: existingAccount.clientId, referralCode: existingAccount.referredByClientId }).catch((error) => {
+        await completeReferralReward({ db, stripe, referredClientId: existingAccount.clientId, referralCode: existingAccount.referredByClientId }).catch((error) => {
           console.error("Unable to retry the signup referral reward", error);
         });
       }
@@ -151,6 +151,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     estimateWeekdays: Array.isArray(business.estimateWeekdays) ? business.estimateWeekdays : [],
     earliestEstimateStart: text(business.earliestEstimateStart),
     latestEstimateStart: text(business.latestEstimateStart),
+    regularServiceEveryDay: business.regularServiceEveryDay === true,
+    regularService24Hours: business.regularService24Hours === true,
     emergencyServiceEnabled: business.emergencyServiceEnabled === true,
     emergencyService24Hours: business.emergencyService24Hours === true,
     businessType: text(business.businessType || business.businessBase),
@@ -196,9 +198,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     callsRemainingThisPeriod: plan.monthlyCalls,
     callLimitReached: false,
     billingPastDue: false,
-    rewardLeadCreditBalance: 0,
-    rewardLeadCreditsEarnedTotal: 0,
-    rewardLeadCreditsRedeemedTotal: 0,
+    referralFreeMonthsEarned: 0,
+    referralFreeMonthsPending: 0,
     ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
@@ -250,7 +251,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   await batch.commit();
 
   if (referralCode) {
-    await completeReferralReward({ db, referredClientId: clientId, referralCode }).catch((error) => {
+    await completeReferralReward({ db, stripe, referredClientId: clientId, referralCode }).catch((error) => {
       console.error("Unable to apply the signup referral reward", error);
     });
   }
