@@ -139,6 +139,7 @@ test("business catalog is strict while service suggestions remain business-speci
     "Commercial Refrigeration",
     "Commercial Kitchen Equipment",
     "Painting",
+    "Handyman",
   ]);
   assert.equal(canonicalBusinessType("pest control"), "Pest & Termite Control");
   assert.equal(canonicalBusinessType("Landscaping"), "");
@@ -150,6 +151,7 @@ test("business catalog is strict while service suggestions remain business-speci
   assert.ok(serviceSuggestionsForBusinessType("Plumbing").includes("Pipe repair"));
   assert.equal(serviceSuggestionsForBusinessType("Plumbing").includes("Sink pipe leak repair"), false);
   assert.ok(serviceSuggestionsForBusinessType("Painting").includes("Interior painting"));
+  assert.ok(serviceSuggestionsForBusinessType("Handyman").includes("Handyman services"));
   assert.ok(serviceSuggestionsForBusinessType("Commercial Refrigeration").includes("Freezer repair"));
 });
 
