@@ -13,6 +13,7 @@ const MAX_REQUEST_BYTES = Math.floor(4.4 * 1024 * 1024);
 const ALLOWED_SCREENSHOT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const CATEGORY_LABELS = Object.freeze({
   sales: "Sales question",
+  feedback: "Feedback",
   account: "Account help",
   privacy: "Privacy request",
   messaging: "Messaging concern",
