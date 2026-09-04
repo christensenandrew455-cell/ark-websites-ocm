@@ -135,9 +135,9 @@ export const HELP_SECTIONS = [
     summary: "Settings → Plan and payment shows leads left, the current plan, payment method, and billing status.",
     points: [
       "Manage opens three controls: Change plan, Add leads, and Payment card.",
-      "A Stripe plan change can start at renewal with no charge today, or start now after payment. Starting now begins a new billing month and does not carry over or refund unused leads.",
-      "Apple shows and controls the price, timing, renewal, cancellation, and refund handling for App Store subscriptions.",
-      "A directly purchased first Stripe subscription charge has a seven-calendar-day refund-request window. Renewals, top-ups, Apple purchases, custom work, taxes, and previously refunded accounts are excluded unless law requires otherwise.",
+      "A Stripe plan change can start at renewal with no charge today, or start now after payment. Starting now begins a new billing month. Unused leads expire. No refunds.",
+      "Apple shows and controls the price, timing, renewal, and cancellation for App Store subscriptions.",
+      "No refunds.",
       "A failed recurring payment pauses the receptionist and new lead intake. Billing access remains available so the owner can restore payment.",
       "Stripe-billed accounts have the displayed seven-day recovery window before eligible account deletion. Apple-billed accounts follow Apple’s billing-retry schedule.",
     ],
