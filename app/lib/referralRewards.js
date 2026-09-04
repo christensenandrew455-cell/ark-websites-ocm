@@ -6,6 +6,7 @@ import { normalizeClientId } from "./valueUtils.js";
 
 export const REFERRAL_REWARD_KIND = "free-subscription-month";
 export const REFERRAL_REWARD_PROVIDER = "stripe";
+export const REFERRAL_OFFER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function text(value) {
   return String(value || "").trim();
@@ -14,6 +15,14 @@ function text(value) {
 function whole(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : 0;
+}
+
+function millis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return value.toMillis();
+  if (typeof value.seconds === "number") return value.seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function billingProvider(account = {}) {
@@ -37,12 +46,35 @@ export function referralRewardAmountCents(account = {}) {
   return acceptedLeadPlanStatus(account).monthlyPriceCents;
 }
 
-export function publicReferralRewardSummary(account = {}) {
+export function referralOfferAvailable(account = {}, from = new Date()) {
+  const now = from instanceof Date ? from.getTime() : Number(from);
+  const expiresAt = millis(account.referralOfferExpiresAt);
+  const alreadyUsed = whole(account.referralFreeMonthsEarned) > 0
+    || whole(account.referralFreeMonthsPending) > 0
+    || whole(account.referralFreeMonthsCredited) > 0;
+  return billingProvider(account) === REFERRAL_REWARD_PROVIDER
+    && Number.isFinite(now)
+    && expiresAt > now
+    && !alreadyUsed;
+}
+
+export function referralOfferExpiration(from = new Date()) {
+  const start = from instanceof Date ? from.getTime() : Number(from);
+  const safeStart = Number.isFinite(start) ? start : Date.now();
+  return new Date(safeStart + REFERRAL_OFFER_WINDOW_MS);
+}
+
+export function publicReferralRewardSummary(account = {}, from = new Date()) {
   const provider = billingProvider(account);
   const plan = acceptedLeadPlanStatus(account);
+  const now = from instanceof Date ? from.getTime() : Number(from);
+  const expiresAt = millis(account.referralOfferExpiresAt);
+  const available = referralOfferAvailable(account, from);
   return {
     billingProvider: provider,
-    referralRewardAvailable: provider === REFERRAL_REWARD_PROVIDER,
+    referralRewardAvailable: available,
+    referralOfferExpiresAt: available ? new Date(expiresAt).toISOString() : "",
+    referralOfferRemainingMs: available ? Math.max(0, expiresAt - now) : 0,
     referralFreeMonthsEarned: whole(account.referralFreeMonthsEarned),
     referralFreeMonthsPending: whole(account.referralFreeMonthsPending),
     referralFreeMonthsCredited: whole(account.referralFreeMonthsCredited),
@@ -165,17 +197,18 @@ export async function completeReferralReward({ db, referredClientId, referralCod
     }
 
     const referrer = referrerSnapshot.data();
+    const qualificationTime = new Date();
     const provider = billingProvider(referrer);
     const rewardAmountCents = referralRewardAmountCents(referrer);
     const stripeCustomerId = text(referrer.stripeCustomerId);
-    const eligible = provider === REFERRAL_REWARD_PROVIDER
+    const eligible = referralOfferAvailable(referrer, qualificationTime)
       && Boolean(stripeCustomerId && text(referrer.stripeSubscriptionId) && rewardAmountCents);
     const timestamp = FieldValue.serverTimestamp();
     const rewardStatus = eligible ? "pending-provider-credit" : "not-eligible";
     const record = {
       referrerClientId: referrerId,
       referredClientId: referredId,
-      qualified: true,
+      qualified: eligible,
       rewarded: eligible,
       rewardKind: REFERRAL_REWARD_KIND,
       rewardProvider: eligible ? REFERRAL_REWARD_PROVIDER : provider,

@@ -122,10 +122,11 @@ test("customization keeps lead retention and lead status notices available befor
   assert.ok(noticeRoute.includes("clientStatusNoticeEnabled"));
 });
 
-test("payment keeps plan changes behind a simple manager", async () => {
-  const [settings, manager] = await Promise.all([
+test("payment keeps plan changes behind a simple manager without guessing renewal dates", async () => {
+  const [settings, manager, reviewClients] = await Promise.all([
     source("app/components/SettingsPanel.js"),
     source("app/components/PaymentManagementPanel.js"),
+    source("app/components/ReviewClientsNative.js"),
   ]);
   assert.ok(settings.includes("Leads left"));
   assert.ok(settings.includes("acceptedLeadsRemaining"));
@@ -141,12 +142,20 @@ test("payment keeps plan changes behind a simple manager", async () => {
   assert.ok(manager.includes('title="Add leads"'));
   assert.ok(manager.includes('title="Payment card"'));
   assert.ok(manager.includes("Continue with {selectedPlan.name}"));
+  assert.ok(manager.includes("At next renewal"));
+  assert.ok(manager.includes("lasts until your next renewal"));
+  assert.equal(manager.includes("At renewal ·"), false);
+  assert.equal(manager.includes("available until {renewalDate}"), false);
+  assert.equal(settings.includes("new Date(planSummary.periodEndAt)"), false);
+  assert.equal(reviewClients.includes("resetDate"), false);
   assert.equal(manager.includes("Plan and extra leads"), false);
   assert.equal(settings.includes("One request counts when you tap Accept"), true);
   assert.equal(settings.includes("Referral discount"), false);
   const summaryRoute = await source("app/api/billing/plan-summary/route.js");
   assert.ok(summaryRoute.includes("publicAcceptedLeadPlanSummary(account, new Date(), currentAcceptedClients)"));
   assert.ok(summaryRoute.includes('billingProvider: String(account.billingProvider'));
+  assert.ok(summaryRoute.includes("stripe.subscriptions.retrieve"));
+  assert.ok(summaryRoute.includes("stripeSubscriptionAccountFields(subscription, account)"));
 });
 
 test("business information auto-saves edits and flushes the latest change before going back", async () => {

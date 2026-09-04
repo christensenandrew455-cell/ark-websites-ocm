@@ -36,7 +36,7 @@ function ReferralCornerButton({ onClick }) {
       }}
     >
       <span className="block text-sm font-black tracking-tight">Refer & Save</span>
-      <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-blue-100">Refer one person. Get one month free.</span>
+      <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-blue-100">New account offer · first 24 hours only</span>
     </button>
   );
 }
@@ -54,13 +54,22 @@ export default function ClientStats() {
   const [newLeads, setNewLeads] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const profilePhone = String(profile?.receptionistPhone || profile?.receptionistPhoneNormalized || "").trim();
-  const referralRewardAvailable = String(profile?.billingProvider || "stripe").toLowerCase() !== "apple";
+  const [referralRewardAvailable, setReferralRewardAvailable] = useState(false);
   const [receptionistPhone, setReceptionistPhone] = useState(profilePhone);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     setReceptionistPhone(profilePhone);
   }, [profilePhone]);
+
+  useEffect(() => {
+    const remaining = Math.max(0, Number(profile?.referralOfferRemainingMs || 0));
+    const available = profile?.referralRewardAvailable === true && remaining > 0;
+    setReferralRewardAvailable(available);
+    if (!available) return undefined;
+    const timer = window.setTimeout(() => setReferralRewardAvailable(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [profile?.referralOfferRemainingMs, profile?.referralRewardAvailable]);
 
   const loadNewCounts = useCallback(async () => {
     if (!user) return;
