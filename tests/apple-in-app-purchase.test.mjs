@@ -75,11 +75,12 @@ test("iPhone signup and account management use Apple while other platforms keep 
 });
 
 test("Apple transactions verify subscriptions and idempotent lead top-ups", async () => {
-  const [verifier, route, transactions, notification] = await Promise.all([
+  const [verifier, route, transactions, notification, signup] = await Promise.all([
     source("app/lib/appleIapVerification.js"),
     source("app/api/billing/apple/transactions/route.js"),
     source("app/lib/appleIapTransactions.js"),
     source("app/api/billing/apple/notifications/route.js"),
+    source("app/lib/ownerApplePaymentSetup.js"),
   ]);
   assert.ok(verifier.includes("new SignedDataVerifier("));
   assert.ok(verifier.includes("verifyAndDecodeTransaction"));
@@ -93,6 +94,10 @@ test("Apple transactions verify subscriptions and idempotent lead top-ups", asyn
   assert.ok(transactions.includes("acceptedLeadsUsedThisPeriod: acceptedLeadsUsed"));
   assert.ok(transactions.includes("acceptedLeadsRemainingThisPeriod"));
   assert.ok(transactions.includes("samePeriodEnd && !planChanged"));
+  assert.ok(transactions.includes("reportRevenuePayment"));
+  assert.ok(transactions.includes("amountCents,"));
+  assert.ok(signup.includes("reportRevenuePayment"));
+  assert.ok(signup.includes('eventId: `billing-paid-apple-${transactionId}`'));
   assert.equal(transactions.includes("CreditPoints"), false);
   assert.ok(notification.includes("verifySignedAppleNotification"));
   assert.ok(notification.includes('provider: "apple"'));

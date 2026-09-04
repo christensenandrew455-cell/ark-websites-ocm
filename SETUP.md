@@ -95,6 +95,8 @@ Verify the sending domain in Resend and use a messaging-enabled Telnyx number. `
 
 ARK Client Center forwards signed events to `https://ark-admin-app.vercel.app/api/webhooks/events`. Set the same random `ARK_WEBHOOK_SECRET` of at least 32 bytes in both deployments. `ARK_ADMIN_WEBHOOK_URL` can override the destination. The route sends and accepts `X-ARK-Timestamp` and `X-ARK-Signature`; temporary legacy header and environment aliases remain accepted during the separate ARK Admin migration.
 
+Successful Stripe invoices, Stripe/Apple accepted-lead top-ups, and Apple subscription transactions are also written directly to `system/global/paymentEvents`. ARK Admin can request the signed `billing.revenue.sync` operation, and the daily billing workflow independently reconciles the ledger from provider and transaction history. Event IDs are deterministic, so webhook retries and reconciliation do not double-count a payment.
+
 ## Firestore rules and scheduled workflows
 
 Publish the repository rules:

@@ -49,6 +49,8 @@ test("ARK Admin sends number assignments back through the signed Client Center w
   assert.ok(route.includes("sendAccountPushNotification"));
   assert.ok(route.includes("PUSH_NOTIFICATION_COPY.numberAssigned"));
   assert.ok(route.includes('request.headers.get("x-ark-timestamp")'));
+  assert.ok(route.includes('body.type) === "billing.revenue.sync"'));
+  assert.ok(route.includes("syncRevenueLedger"));
 });
 
 test("permanent owner deletion notifies ARK Admin only after deletion succeeds", async () => {

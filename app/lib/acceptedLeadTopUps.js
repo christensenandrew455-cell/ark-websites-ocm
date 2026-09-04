@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { acceptedLeadAccountPatch, acceptedLeadPlanStatus } from "./acceptedLeadPlanBilling.js";
-import { sendAdminEvent } from "./adminEvents.js";
 import { systemCollection } from "./firestoreLayout.js";
+import { reportRevenuePayment } from "./revenueLedger.js";
 
 function text(value) {
   return String(value || "").trim();
@@ -34,6 +34,9 @@ export async function grantAcceptedLeadTopUp({
   const safeProvider = text(provider).toLowerCase();
   const safePaymentId = text(paymentId);
   const safeQuantity = quantity(acceptedLeads);
+  const safeAmountCents = Math.max(0, Math.round(Number(amountCents) || 0));
+  const safeCurrency = text(currency).toLowerCase() || "usd";
+  const paidAt = Number.isFinite(Number(purchasedAt)) ? Number(purchasedAt) : Date.now();
   if (!db || !safeClientId || !["stripe", "apple"].includes(safeProvider) || !safePaymentId || !safeQuantity) {
     throw new Error("ACCEPTED_LEAD_TOP_UP_INVALID");
   }
@@ -61,15 +64,15 @@ export async function grantAcceptedLeadTopUp({
       acceptedLeadTopUpPeriodKey: current.periodKey,
       acceptedLeadTopUpsThisPeriod: current.acceptedLeadTopUps + safeQuantity,
     });
-    const paidAt = Number.isFinite(Number(purchasedAt)) ? Number(purchasedAt) : Date.now();
     transaction.create(receiptRef, {
       provider: safeProvider,
       paymentId: safePaymentId,
       clientId: safeClientId,
       uid: text(account.uid),
+      businessName: text(account.businessName || safeClientId),
       acceptedLeads: safeQuantity,
-      amountCents: Math.max(0, Math.round(Number(amountCents) || 0)),
-      currency: text(currency).toLowerCase() || "usd",
+      amountCents: safeAmountCents,
+      currency: safeCurrency,
       acceptedLeadPeriodKey: next.periodKey,
       acceptedLeadPeriodEndAt: Timestamp.fromDate(new Date(next.periodEndAt)),
       purchasedAt: Timestamp.fromMillis(paidAt),
@@ -83,19 +86,20 @@ export async function grantAcceptedLeadTopUp({
   });
 
   if (!settled.duplicate) {
-    await sendAdminEvent({
-      id: `billing-paid-${safeProvider}-lead-top-up-${safePaymentId}`,
-      type: "billing.payment_succeeded",
+    await reportRevenuePayment({
+      db,
+      eventId: `billing-paid-${safeProvider}-lead-top-up-${safePaymentId}`,
+      provider: safeProvider,
+      paymentId: safePaymentId,
+      paymentKind: "accepted_lead_top_up",
       clientId: safeClientId,
       businessName: text(settled.account.businessName || safeClientId),
+      amountCents: safeAmountCents,
+      currency: safeCurrency,
+      paidAt,
       summary: `${safeQuantity} accepted-lead top-up succeeded`,
       metadata: {
-        paymentId: safePaymentId,
-        paymentKind: "accepted_lead_top_up",
-        provider: safeProvider,
         acceptedLeads: safeQuantity,
-        amountCents: Math.max(0, Math.round(Number(amountCents) || 0)),
-        currency: text(currency).toLowerCase() || "usd",
         acceptedLeadPeriodKey: settled.status.periodKey,
       },
     });
