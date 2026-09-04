@@ -72,7 +72,7 @@ export const HELP_SECTIONS = [
       "Open every day selects all seven days. Turn it off to clear them before choosing specific days.",
       "Open 24 hours hides opening and closing times. Turn it off to start with blank times.",
       "A latest time earlier than the earliest time means the service window continues overnight.",
-      "A caller chooses a preferred day and a broad morning or afternoon window. The owner confirms the exact date and time after accepting the lead.",
+      "ARK asks whether morning or evening works better, then asks for the caller's preferred day. The owner confirms the exact date and time after accepting the lead.",
       "Turn on Offer 24/7 emergency service only when the business takes urgent work at any hour, including nights, weekends, and holidays. Regular requests remain available.",
       "ARK asks whether the caller needs help right away or wants to schedule service. Help-right-away requests are marked Emergency, but ARK does not promise dispatch or an arrival time.",
     ],
