@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
 import { MESSAGES_AVAILABLE, UPCOMING_FEATURE_LABEL } from "../lib/launchFeatures";
 
-function DashboardCard({ value, label, description = "", onClick, disabled = false, className = "" }) {
+function DashboardCard({ value, label, description = "", onClick, disabled = false }) {
   const displayValue = typeof value === "number" ? value.toLocaleString("en-US") : String(value ?? "");
   const content = (
     <div className="flex h-full items-start justify-between gap-4">
@@ -18,10 +18,27 @@ function DashboardCard({ value, label, description = "", onClick, disabled = fal
   );
 
   if (disabled) {
-    return <button type="button" disabled aria-disabled="true" className={`min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6 ${className}`}>{content}</button>;
+    return <button type="button" disabled aria-disabled="true" className="min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-100 p-5 text-left text-slate-800 sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
   }
 
-  return <button type="button" onClick={onClick} className={`min-h-28 w-full rounded-2xl border border-[#071a3d] bg-[#071a3d] p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6 ${className}`}>{content}</button>;
+  return <button type="button" onClick={onClick} className="min-h-28 w-full rounded-2xl border border-[#071a3d] bg-[#071a3d] p-5 text-left text-white shadow-sm transition active:scale-[0.99] sm:min-h-32 sm:rounded-3xl sm:p-6">{content}</button>;
+}
+
+function ReferralCornerButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="fixed z-40 w-44 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-[#071a3d] bg-[#071a3d] px-4 py-3 text-left text-white shadow-lg transition active:scale-[0.98]"
+      style={{
+        right: "max(0.75rem, calc(var(--ark-safe-area-right) + 0.75rem))",
+        bottom: "calc(var(--ark-bottom-scroll-clearance) + 0.75rem)",
+      }}
+    >
+      <span className="block text-sm font-black tracking-tight">Refer & Save</span>
+      <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-blue-100">Refer one person. Get one month free.</span>
+    </button>
+  );
 }
 
 function displayPhone(value) {
@@ -111,10 +128,10 @@ export default function ClientStats() {
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
             <DashboardCard value={newLeads} label="New Leads" onClick={() => router.push("/leads?section=contacted")} />
             <DashboardCard value={MESSAGES_AVAILABLE ? unreadMessages : ""} label="Messages" description={MESSAGES_AVAILABLE ? "Client texts" : UPCOMING_FEATURE_LABEL} disabled={!MESSAGES_AVAILABLE} onClick={() => openFeature("Messages", profile?.messagesEnabled === true, "/lead-messages")} />
-            {referralRewardAvailable && <DashboardCard value="" label="Refer & Save" description="Refer one person. Get one month free." className="sm:col-start-2" onClick={() => router.push("/rewards")} />}
           </div>
         </section>
       </div>
+      {referralRewardAvailable && <ReferralCornerButton onClick={() => router.push("/rewards")} />}
     </section>
   );
 }
