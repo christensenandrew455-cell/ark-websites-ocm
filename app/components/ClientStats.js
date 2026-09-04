@@ -32,7 +32,7 @@ function ReferralCornerButton({ onClick }) {
       className="fixed z-40 w-44 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-[#071a3d] bg-[#071a3d] px-4 py-3 text-left text-white shadow-lg transition active:scale-[0.98]"
       style={{
         right: "max(0.75rem, calc(var(--ark-safe-area-right) + 0.75rem))",
-        bottom: "calc(var(--ark-bottom-scroll-clearance) + 0.75rem)",
+        bottom: "max(0.75rem, calc(var(--ark-safe-area-bottom) + 0.75rem))",
       }}
     >
       <span className="block text-sm font-black tracking-tight">Refer & Save</span>

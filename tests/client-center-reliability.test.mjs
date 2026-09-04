@@ -71,39 +71,44 @@ test("unreleased messaging is described only on the disabled dashboard button", 
   assert.equal(messagingApi.includes("UPCOMING_FEATURE_LABEL"), false);
 });
 
-test("first-visit help appears only when the receptionist number is assigned", async () => {
-  const [tutorial, completion, profile, tourRoute, accountSections] = await Promise.all([
-    source("app/components/GuidedOnboarding.js"),
+test("new owners receive one compact Quick Tutorial on their first dashboard visit", async () => {
+  const [tutorial, shell, completion, appleCompletion, profile, tourRoute] = await Promise.all([
+    source("app/components/QuickTutorial.js"),
+    source("app/components/AppShell.js"),
     source("app/lib/ownerPaymentSetup.js"),
+    source("app/lib/ownerApplePaymentSetup.js"),
     source("app/api/account/profile/route.js"),
     source("app/api/account/onboarding-tour/route.js"),
-    source("app/lib/accountSections.js"),
   ]);
   assert.equal(tutorial.includes("localStorage"), false);
   assert.equal(tutorial.includes("sessionStorage"), false);
-  assert.ok(tutorial.includes('body: JSON.stringify({ guide: dismissed.id })'));
-  assert.ok(tutorial.includes("profile.onboardingTourEligible !== true"));
-  assert.equal(tutorial.includes("Welcome to your ARK Client Center"), false);
-  assert.equal(tutorial.includes("This is Settings"), false);
-  assert.equal(tutorial.includes("This is your Leads page"), false);
-  assert.ok(tutorial.includes('id: "number-assigned"'));
-  assert.ok(tutorial.includes("Your ARK number is ready"));
-  assert.ok(tutorial.includes("ARK answers calls to it."));
-  assert.ok(tutorial.includes("Tap to close"));
-  for (const retiredCopy of ["Quick tour", "Open Settings", "Open Dashboard", "Finding this item…", ">Skip<", ">Next<"]) assert.equal(tutorial.includes(retiredCopy), false);
+  assert.ok(tutorial.includes('body: JSON.stringify({ guide: "quick-tutorial" })'));
+  assert.ok(tutorial.includes("profile?.onboardingTourEligible === true"));
+  assert.ok(tutorial.includes('new Set(["pending", "started"])'));
+  assert.ok(tutorial.includes('pathname === "/"'));
+  for (const copy of ["Quick Tutorial", "New Leads", "Business Information", "Plan and payment", "Customization", "Refer & Save", "one month free on your current plan", "Got it"]) assert.ok(tutorial.includes(copy));
+  for (const retiredCopy of ["Your ARK number is ready", "ARK answers calls to it.", "Tap to close", "Quick tour", "Open Dashboard", "Finding this item…", ">Skip<", ">Next<"]) assert.equal(tutorial.includes(retiredCopy), false);
   assert.equal(tutorial.includes("Tap the highlighted item."), false);
   assert.equal(tutorial.includes("MutationObserver"), false);
   assert.equal(tutorial.includes("data-tour-id"), false);
+  assert.ok(shell.includes('import QuickTutorial from "./QuickTutorial"'));
+  assert.ok(shell.includes("<QuickTutorial />"));
+  assert.equal(shell.includes("GuidedOnboarding"), false);
   assert.ok(completion.includes("onboardingTourEligible: true"));
   assert.ok(completion.includes('onboardingTourStatus: "pending"'));
-  assert.ok(completion.includes("onboardingGuideVersion: 2"));
-  assert.ok(completion.includes("onboardingGuideSeen: { dashboard: false, settings: false, leads: false }"));
+  assert.ok(completion.includes("onboardingGuideVersion: 3"));
+  assert.ok(appleCompletion.includes("onboardingGuideVersion: 3"));
+  assert.equal(completion.includes("onboardingGuideSeen"), false);
+  assert.equal(completion.includes("onboardingNumberGuidePhone"), false);
   assert.ok(profile.includes("onboardingTourEligible: account.onboardingTourEligible === true"));
-  assert.ok(profile.includes("onboardingGuideSeen: onboardingGuideSeen(account.onboardingGuideSeen)"));
+  assert.equal(profile.includes("onboardingGuideSeen"), false);
+  assert.equal(profile.includes("onboardingNumberGuidePhone"), false);
   assert.ok(tourRoute.includes("sections.customizationRef"));
-  assert.ok(tourRoute.includes("onboardingGuideSeen: seen"));
-  assert.ok(tourRoute.includes("onboardingNumberGuidePhone: assignedPhone"));
-  for (const field of ["onboardingGuideVersion", "onboardingGuideSeen", "onboardingNumberGuidePhone"]) assert.ok(accountSections.includes(`"${field}"`));
+  assert.ok(tourRoute.includes('const QUICK_TUTORIAL_GUIDE = "quick-tutorial"'));
+  assert.ok(tourRoute.includes('onboardingTourStatus: "completed"'));
+  assert.ok(tourRoute.includes("onboardingGuideVersion: GUIDE_VERSION"));
+  assert.equal(tourRoute.includes("PAGE_GUIDES"), false);
+  assert.equal(tourRoute.includes('guide === "number-assigned"'), false);
 });
 
 test("customization keeps lead retention and lead status notices available before Messages launches", async () => {
