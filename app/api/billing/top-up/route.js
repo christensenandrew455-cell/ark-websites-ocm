@@ -132,6 +132,7 @@ export async function POST(request) {
         purpose: "accepted_lead_top_up",
         clientId: access.clientId,
         uid: text(access.decodedToken.uid),
+        partnerCode: text(access.account.partnerCode),
         acceptedLeads: String(acceptedLeads),
         acceptedLeadTopUpPriceId: topUpPrice.priceId,
         acceptedLeadUnitAmountCents: String(topUpPrice.unitAmountCents),

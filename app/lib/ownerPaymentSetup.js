@@ -21,6 +21,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
+import { partnerAccountFields, resolveSignupAttribution } from "./partnerAttribution.js";
 import { completeReferralReward, referralOfferExpiration } from "./referralRewards.js";
 import { ensureCustomerBillingSubscription } from "./stripePlanBilling";
 import { billingPromotion, promotionBillingFields } from "./temporaryFeatures.js";
@@ -75,7 +76,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const business = pendingOwnerSignupBusiness(temporary);
   const legal = pendingOwnerSignupLegal(temporary);
   const personalization = normalizeNotificationPreferences(pendingOwnerSignupPersonalization(temporary), temporaryAccount);
-  const referralCode = text(pendingOwnerSignupReferral(temporary).code);
+  const enteredAttributionCode = text(pendingOwnerSignupReferral(temporary).code);
   const payment = temporary.payment || {};
   const planKey = normalizeBillingPlanKey(payment.billingPlanKey);
   const plan = billingPlan(planKey);
@@ -89,6 +90,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
   const storedCustomerId = text(payment.stripeCustomerId);
   if (!pendingOwnerSignupVerified(temporary) || text(temporary.stage) !== "pending_payment" || !clientId || !storedCustomerId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
   if (text(payment.stripeSetupIntentId) !== safeSetupIntentId) throw new Error("PAYMENT_SETUP_FORBIDDEN");
+  const signupAttribution = await resolveSignupAttribution({ db, code: enteredAttributionCode });
+  const referralCode = signupAttribution.type === "referral" ? signupAttribution.referralCode : "";
 
   const setupIntent = await stripe.setupIntents.retrieve(safeSetupIntentId, { expand: ["payment_method"] });
   if (setupIntent.status !== "succeeded") throw new Error("PAYMENT_SETUP_INCOMPLETE");
@@ -123,6 +126,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
       billingPromotion: promotion?.key || "",
       billingDiscountPercent: promotion ? String(promotion.percentOff) : "",
       billingSalesChannel: promotion ? "web" : "",
+      signupAttribution: signupAttribution.type === "partner" ? "partner" : referralCode ? "referral" : "",
+      partnerCode: signupAttribution.type === "partner" ? signupAttribution.partnerCode : "",
     },
   });
   const subscriptionResult = await ensureCustomerBillingSubscription({
@@ -135,6 +140,8 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     uid: safeUid,
     planKey,
     promotionKey: promotion?.key || "",
+    signupAttribution: signupAttribution.type === "partner" ? "partner" : referralCode ? "referral" : "",
+    partnerCode: signupAttribution.type === "partner" ? signupAttribution.partnerCode : "",
     timeZone: text(business.timeZone || "America/New_York"),
     subscriptionIdempotencyKey: `ark-plan-subscription-${safeUid}-${planKey}-${promotion?.key || "regular"}`,
     persist: false,
@@ -202,6 +209,7 @@ export async function completeOwnerPaymentSetup({ db, auth, stripe, uid, setupIn
     referralFreeMonthsEarned: 0,
     referralFreeMonthsPending: 0,
     referralOfferExpiresAt,
+    ...partnerAccountFields(signupAttribution),
     ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",

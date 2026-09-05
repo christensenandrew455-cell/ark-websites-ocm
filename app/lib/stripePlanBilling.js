@@ -559,6 +559,8 @@ export async function ensureCustomerBillingSubscription({
   persist = true,
   createIfMissing = false,
   promotionKey = "",
+  signupAttribution = "",
+  partnerCode = "",
 }) {
   const promotion = billingPromotion(promotionKey);
   if (text(promotionKey) && !promotion) throw new Error("The requested billing promotion is not recognized.");
@@ -576,6 +578,8 @@ export async function ensureCustomerBillingSubscription({
     billingVersion: BILLING_VERSION,
     monthlyAcceptedLeads: String(plan.monthlyAcceptedLeads),
     monthlyCalls: String(plan.monthlyCalls),
+    ...(text(signupAttribution) ? { signupAttribution: text(signupAttribution) } : {}),
+    ...(text(partnerCode) ? { partnerCode: text(partnerCode) } : {}),
     ...(promotion ? {
       billingPromotion: promotion.key,
       billingDiscountPercent: String(promotion.percentOff),
