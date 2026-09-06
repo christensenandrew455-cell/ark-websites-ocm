@@ -97,7 +97,7 @@ export function receptionistRequestRouting(value = {}) {
   const scheduled = {
     enabled: true,
     label: "Scheduled service",
-    instruction: "Always offer normal scheduling and collect the caller's preferred day and time window.",
+    instruction: "Always offer normal scheduling, collect the caller's morning-or-evening preference first, and then collect the preferred day.",
   };
   if (!settings.emergencyServiceEnabled) {
     return {

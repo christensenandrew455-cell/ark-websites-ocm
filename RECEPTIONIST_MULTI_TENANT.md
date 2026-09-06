@@ -34,7 +34,7 @@ The business profile includes the business name, owner, phone, email, time zone,
 
 Every runtime profile contains `serviceRequestRouting`. Railway must follow its `mode` exactly:
 
-- `scheduled-only`: offer normal scheduling and collect the caller's preferred day and time window. `timingQuestion` is empty, the `emergency` branch is omitted, and the receptionist must not ask whether the call is an emergency.
+- `scheduled-only`: offer normal scheduling, collect the caller's morning-or-evening preference first, and then collect the preferred day. `timingQuestion` is empty, the `emergency` branch is omitted, and the receptionist must not ask whether the call is an emergency.
 - `asap-or-scheduled`: ask the exact non-leading `timingQuestion` returned by ARK. A caller who wants a normal project or a later visit stays on the scheduled path. A caller who requests help as soon as possible uses the returned `emergency` branch.
 
 For the emergency branch, Railway must submit `requestUrgency: "emergency"` and use `requestedTimeWindow: "As soon as possible"`. The owner can enable this branch only for 24/7 emergency service, so `emergency.availability` is always `24/7`. It must collect the urgent problem and location without promising dispatch, arrival, or a confirmed appointment. If the caller reports a fire, gas odor, carbon monoxide, or another immediate danger, follow the returned safety instruction before continuing. Regular scheduling remains available in both modes.

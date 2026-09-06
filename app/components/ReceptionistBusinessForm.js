@@ -371,7 +371,7 @@ export default function ReceptionistBusinessForm({ profile, onChange, onboarding
       </div>
     </section>
     <section>
-      <ExplainedLabel label="Regular scheduling" explanation="Callers request a day and a morning or afternoon window. You confirm the exact appointment after accepting the lead." heading />
+      <ExplainedLabel label="Regular scheduling" explanation="ARK asks whether morning or evening works better, then asks for the preferred day. You confirm the exact appointment after accepting the lead." heading />
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Field label="Time zone">
           <AppSelect label="Time zone" ariaLabel="Time zone" value={onboardingMode ? profile.timeZone || "" : profile.timeZone || "America/New_York"} options={TIME_ZONES} onChange={(value) => update("timeZone", value, { saveImmediately: true })} />
