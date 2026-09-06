@@ -1,5 +1,5 @@
 import { normalizeClientId, trimmedText } from "./valueUtils.js";
-import { accountCollection, pendingSignupCollection } from "./firestoreLayout.js";
+import { accountCollection, pendingSignupCollection, systemCollection } from "./firestoreLayout.js";
 import { deletePendingOwnerSignup, pendingOwnerSignupExpired } from "./pendingOwnerSignup.js";
 import {
   deleteSignupVerificationRequest,
@@ -104,7 +104,7 @@ export async function checkSignupAvailability({ auth, db, businessName = "", acc
   const accounts = accountCollection(db);
   const pending = pendingSignupCollection(db);
   const verificationRequests = signupVerificationRequestCollection(db);
-  const [authUser, accountEmailSnapshot, pendingEmailSnapshot, requestEmailSnapshot, requestVerificationEmailSnapshot, accountPhoneSnapshot, pendingPhoneSnapshot, requestPhoneSnapshot, requestVerificationPhoneSnapshot, legacyPendingPhoneSnapshot, businessSnapshot, pendingBusinessSnapshot, requestBusinessSnapshot] = await Promise.all([
+  const [authUser, accountEmailSnapshot, pendingEmailSnapshot, requestEmailSnapshot, requestVerificationEmailSnapshot, accountPhoneSnapshot, pendingPhoneSnapshot, requestPhoneSnapshot, requestVerificationPhoneSnapshot, legacyPendingPhoneSnapshot, businessSnapshot, pendingBusinessSnapshot, requestBusinessSnapshot, partnerCodeSnapshot] = await Promise.all([
     email ? auth.getUserByEmail(email).catch(() => null) : null,
     email ? accounts.where("accountEmail", "==", email).limit(5).get() : null,
     email ? pending.where("account.accountEmail", "==", email).limit(5).get() : null,
@@ -118,6 +118,7 @@ export async function checkSignupAvailability({ auth, db, businessName = "", acc
     businessNameKey ? accounts.doc(businessNameKey).get() : null,
     businessNameKey ? pending.doc(businessNameKey).get() : null,
     businessNameKey ? verificationRequests.doc(businessNameKey).get() : null,
+    businessNameKey ? systemCollection(db, "partnerCodes").doc(businessNameKey).get() : null,
   ]);
 
   const pendingBusinessQuery = pendingBusinessSnapshot?.exists ? { docs: [pendingBusinessSnapshot] } : null;
@@ -134,7 +135,8 @@ export async function checkSignupAvailability({ auth, db, businessName = "", acc
     email,
     phone,
     businessNameKey,
-    businessNameInUse: Boolean(businessSnapshot?.exists && containsDifferentAccount({ docs: [businessSnapshot] }, allowedUid))
+    businessNameInUse: Boolean(partnerCodeSnapshot?.exists)
+      || Boolean(businessSnapshot?.exists && containsDifferentAccount({ docs: [businessSnapshot] }, allowedUid))
       || Boolean(pendingBusinessSnapshot?.exists && containsDifferentAccount({ docs: [pendingBusinessSnapshot] }, allowedUid, expired.deleted))
       || Boolean(requestBusinessSnapshot?.exists && containsDifferentAccount({ docs: [requestBusinessSnapshot] }, allowedUid, expiredRequests.deleted)),
     emailInUse: Boolean(authUser && authUser.uid !== allowedUid && !expired.deletedUids.has(authUser.uid) && !expiredRequests.deletedUids.has(authUser.uid))

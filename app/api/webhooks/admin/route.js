@@ -98,6 +98,19 @@ async function syncRevenue() {
   }
 }
 
+async function checkAdminLink() {
+  const delivery = await sendAdminEvent({
+    id: `admin-link-probe-${Math.floor(Date.now() / (5 * 60 * 1000))}`,
+    type: "system.admin_link.probe",
+    summary: "ARK Admin connection check",
+    occurredAt: new Date().toISOString(),
+  });
+  return Response.json({
+    ok: delivery.delivered === true,
+    adminEventDelivery: delivery.delivered === true,
+  }, { status: delivery.delivered === true ? 200 : 503 });
+}
+
 export async function POST(request) {
   const rawBody = await request.text();
   if (Buffer.byteLength(rawBody, "utf8") > 32 * 1024) return Response.json({ error: "The webhook request is too large." }, { status: 413 });
@@ -113,5 +126,6 @@ export async function POST(request) {
   try { body = JSON.parse(rawBody); } catch { return Response.json({ error: "The webhook body must be valid JSON." }, { status: 400 }); }
   if (text(body.type) === "account.number.assign") return assignNumber(body);
   if (text(body.type) === "billing.revenue.sync") return syncRevenue();
+  if (text(body.type) === "system.admin_link.check") return checkAdminLink();
   return Response.json({ error: "That ARK Admin webhook event is not supported." }, { status: 400 });
 }

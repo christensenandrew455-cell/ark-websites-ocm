@@ -22,6 +22,7 @@ import {
   readPendingOwnerSignup,
 } from "./pendingOwnerSignup.js";
 import { normalizeNotificationPreferences } from "./notificationPreferences.js";
+import { partnerAccountFields, resolveSignupAttribution } from "./partnerAttribution.js";
 import { completeReferralReward, referralOfferExpiration } from "./referralRewards.js";
 import { reportRevenuePayment } from "./revenueLedger.js";
 
@@ -94,7 +95,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
   const business = pendingOwnerSignupBusiness(temporary);
   const legal = pendingOwnerSignupLegal(temporary);
   const personalization = normalizeNotificationPreferences(pendingOwnerSignupPersonalization(temporary), temporaryAccount);
-  const referralCode = text(pendingOwnerSignupReferral(temporary).code);
+  const enteredAttributionCode = text(pendingOwnerSignupReferral(temporary).code);
   const payment = temporary.payment || {};
   const clientId = text(temporary.clientId);
   if (!pendingOwnerSignupVerified(temporary)
@@ -103,6 +104,8 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     || !sameAppleAccountToken(payment.appleAppAccountToken, transaction.appAccountToken)) {
     throw new Error("APPLE_PAYMENT_SETUP_FORBIDDEN");
   }
+  const signupAttribution = await resolveSignupAttribution({ db, code: enteredAttributionCode });
+  const referralCode = signupAttribution.type === "referral" ? signupAttribution.referralCode : "";
 
   const accountRef = regularAccountRef(db, clientId);
   const businessRef = accountBusinessRef(db, clientId);
@@ -177,6 +180,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     referralFreeMonthsEarned: 0,
     referralFreeMonthsPending: 0,
     referralOfferExpiresAt,
+    ...partnerAccountFields(signupAttribution),
     ...(referralCode ? { referredByClientId: referralCode } : {}),
     lastPaymentAt: now,
     numberAssignmentStatus: "needed",
@@ -228,6 +232,7 @@ export async function completeOwnerApplePaymentSetup({ db, auth, uid, transactio
     clientId,
     uid: safeUid,
     businessName,
+    partnerCode: signupAttribution.type === "partner" ? signupAttribution.partnerCode : "",
     productId: purchasedPlan.productId,
     billingPlanKey: purchasedPlan.key,
     amountCents,

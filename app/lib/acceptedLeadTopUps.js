@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { acceptedLeadAccountPatch, acceptedLeadPlanStatus } from "./acceptedLeadPlanBilling.js";
 import { systemCollection } from "./firestoreLayout.js";
+import { normalizePartnerCode } from "./partnerAttribution.js";
 import { reportRevenuePayment } from "./revenueLedger.js";
 
 function text(value) {
@@ -70,6 +71,7 @@ export async function grantAcceptedLeadTopUp({
       clientId: safeClientId,
       uid: text(account.uid),
       businessName: text(account.businessName || safeClientId),
+      partnerCode: normalizePartnerCode(account.partnerCode),
       acceptedLeads: safeQuantity,
       amountCents: safeAmountCents,
       currency: safeCurrency,

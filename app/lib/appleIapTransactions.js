@@ -5,6 +5,7 @@ import { normalizeBillingPlanKey } from "./billingPricing.js";
 import { resolvePayment } from "./billingDelinquency.js";
 import { systemCollection } from "./firestoreLayout.js";
 import { reportRevenuePayment } from "./revenueLedger.js";
+import { normalizePartnerCode } from "./partnerAttribution.js";
 
 function text(value) {
   return String(value || "").trim();
@@ -98,6 +99,7 @@ export async function syncAppleSubscriptionTransaction({ db, clientId, transacti
       clientId,
       uid: text(account.uid),
       businessName: text(account.businessName || clientId),
+      partnerCode: normalizePartnerCode(account.partnerCode),
       productId: plan.productId,
       billingPlanKey: plan.key,
       amountCents,

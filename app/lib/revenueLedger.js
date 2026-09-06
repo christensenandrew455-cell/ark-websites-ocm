@@ -2,6 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { sendAdminEvent } from "./adminEvents.js";
 import { applePlanForProduct } from "./appleIapCatalog.js";
 import { systemCollection } from "./firestoreLayout.js";
+import { normalizePartnerCode } from "./partnerAttribution.js";
 
 const REVENUE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 const REVENUE_SYNC_LOCK_MS = 10 * 60 * 1000;
@@ -51,6 +52,7 @@ export function normalizeRevenuePayment(payment = {}) {
   const amountCents = whole(payment.amountCents);
   const currency = text(payment.currency || "usd", 10).toLowerCase();
   const paidAtMs = timestampMillis(payment.paidAt) || Date.now();
+  const partnerCode = normalizePartnerCode(payment.partnerCode);
   const eventId = safeEventId(payment.eventId)
     || revenuePaymentEventId({ provider, paymentKind, paymentId });
   if (!eventId || !clientId || !paymentId || !["stripe", "apple"].includes(provider)
@@ -62,10 +64,23 @@ export function normalizeRevenuePayment(payment = {}) {
     paymentKind,
     clientId,
     businessName: text(payment.businessName || clientId, 180),
+    ...(partnerCode ? { partnerCode } : {}),
     amountCents,
     currency,
     paidAt: new Date(paidAtMs).toISOString(),
   };
+}
+
+async function addSavedPartnerAttribution(db, payment) {
+  if (payment.partnerCode) return payment;
+  try {
+    const accountSnapshot = await db.collection("accounts").doc(payment.clientId).get();
+    if (!accountSnapshot.exists) return payment;
+    return { ...payment, partnerCode: normalizePartnerCode(accountSnapshot.data().partnerCode) };
+  } catch (error) {
+    console.warn("Unable to read partner attribution for a revenue payment", payment.clientId, error?.message || error);
+    return payment;
+  }
 }
 
 export async function recordRevenuePayment({ db, source = "ark-client-center-ledger", ...payment }) {
@@ -96,7 +111,8 @@ export async function readRevenueLedgerPayments(db) {
 }
 
 export async function reportRevenuePayment({ db, summary = "Customer payment succeeded", metadata = {}, ...payment }) {
-  const normalized = normalizeRevenuePayment(payment);
+  const initial = normalizeRevenuePayment(payment);
+  const normalized = initial ? await addSavedPartnerAttribution(db, initial) : null;
   if (!normalized) return { recorded: false, skipped: true };
   // Let Admin calculate milestone notifications before the shared ledger makes
   // this deterministic event ID look like an already-processed payment.
@@ -113,6 +129,7 @@ export async function reportRevenuePayment({ db, summary = "Customer payment suc
       provider: normalized.provider,
       amountCents: normalized.amountCents,
       currency: normalized.currency,
+      partnerCode: normalized.partnerCode,
     },
     occurredAt: normalized.paidAt,
   });
@@ -137,6 +154,7 @@ function accountIdentity(account = {}, fallbackClientId = "", fallbackBusinessNa
   return {
     clientId,
     businessName: text(account.businessName || fallbackBusinessName || clientId, 180),
+    partnerCode: normalizePartnerCode(account.partnerCode),
   };
 }
 
@@ -152,6 +170,7 @@ export function stripeInvoiceRevenuePayment(invoice, account = {}) {
     paymentKind: stripeId(invoice?.subscription || invoice?.parent?.subscription_details?.subscription) ? "subscription" : "invoice",
     clientId: identity.clientId,
     businessName: identity.businessName,
+    partnerCode: identity.partnerCode || normalizePartnerCode(metadata.partnerCode),
     amountCents,
     currency: invoice?.currency,
     paidAt: Number(invoice?.status_transitions?.paid_at || invoice?.created || 0) * 1000,
@@ -169,6 +188,7 @@ export function stripeTopUpRevenuePayment(paymentIntent, account = {}) {
     paymentKind: "accepted_lead_top_up",
     clientId: identity.clientId,
     businessName: identity.businessName,
+    partnerCode: identity.partnerCode || normalizePartnerCode(metadata.partnerCode),
     amountCents: paymentIntent?.amount_received,
     currency: paymentIntent?.currency,
     paidAt: Number(paymentIntent?.created || 0) * 1000,
@@ -184,6 +204,7 @@ export function appleTransactionRevenuePayment(transactionId, transaction = {}, 
     paymentKind: "subscription",
     clientId: identity.clientId,
     businessName: identity.businessName,
+    partnerCode: identity.partnerCode || normalizePartnerCode(transaction.partnerCode),
     amountCents: whole(transaction.amountCents) || whole(plan?.amountCents),
     currency: transaction.currency || "usd",
     paidAt: transaction.purchaseDate,
@@ -198,6 +219,7 @@ export function acceptedLeadTopUpRevenuePayment(receipt = {}, account = {}) {
     paymentKind: "accepted_lead_top_up",
     clientId: identity.clientId,
     businessName: identity.businessName,
+    partnerCode: identity.partnerCode || normalizePartnerCode(receipt.partnerCode),
     amountCents: receipt.amountCents,
     currency: receipt.currency,
     paidAt: receipt.purchasedAt,
