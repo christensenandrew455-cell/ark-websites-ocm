@@ -2,15 +2,16 @@ import { createPublicKey, verify } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { readAccountSections } from "../../../lib/accountSections";
 import { acceptedLeadPlanStatus } from "../../../lib/acceptedLeadPlanBilling";
-import { sendAdminEvent } from "../../../lib/adminEvents";
 import { activeEmergencyServiceSettings, normalizeRegularServiceSettings, receptionistRequestRouting, REGULAR_SERVICE_WEEKDAYS } from "../../../lib/emergencyService";
 import { getAdminDb } from "../../../lib/firebase-admin";
 import { businessInformationText, normalizeBusinessInformation } from "../../../lib/receptionistBusinessInformation";
-import { incomingReceptionistCallEvent } from "../../../lib/receptionistCallNotification";
+import { admitReceptionistCall, isDemoCalledPhone } from "../../../lib/receptionistCallAdmission";
+import { flushReceptionistCallEvents } from "../../../lib/receptionistCallEventOutbox";
 import { normalizeServiceAreas, serviceAreaFields } from "../../../lib/serviceAreas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const SIGNATURE_MAX_AGE_SECONDS = 300;
 
@@ -159,6 +160,20 @@ function validateProfile(profile) {
   return "";
 }
 
+async function admitAndNotify(db, body, clientId) {
+  const admission = await admitReceptionistCall({ db, body, clientId });
+  after(() => flushReceptionistCallEvents({ db, eventId: admission.eventId, limit: 5 }));
+  return admission;
+}
+
+function admissionRejection(admission) {
+  const status = ["CALLER_COOLDOWN", "CALL_ALREADY_HANDLED"].includes(admission.code) ? 429 : 400;
+  return NextResponse.json({ ok: false, ...admission }, {
+    status,
+    headers: admission.retryAfterSeconds ? { "Retry-After": String(admission.retryAfterSeconds) } : {},
+  });
+}
+
 export async function POST(request) {
   try {
     const rawBody = await request.text();
@@ -174,8 +189,8 @@ export async function POST(request) {
     }
 
     const eventType = text(body?.data?.event_type || body?.event_type);
-    if (!eventType.startsWith("call.")) {
-      return NextResponse.json({ ok: false, error: "Only Telnyx call events can load receptionist settings." }, { status: 400 });
+    if (eventType !== "call.initiated") {
+      return NextResponse.json({ ok: false, error: "Only incoming call.initiated events can load receptionist settings." }, { status: 400 });
     }
 
     const calledPhone = calledPhoneFromEvent(body);
@@ -184,6 +199,13 @@ export async function POST(request) {
     }
 
     const db = getAdminDb();
+    // The public website's demo has no customer account or private intake URL.
+    // It still needs the same signed admission check and Admin call event.
+    if (isDemoCalledPhone(calledPhone)) {
+      const callAdmission = await admitAndNotify(db, body, "ark-demo");
+      if (!callAdmission.allowed) return admissionRejection(callAdmission);
+      return NextResponse.json({ ok: true, demo: true, calledPhone, callAdmission });
+    }
     const accountSnapshot = await findConnection(db, calledPhone);
     if (!accountSnapshot) {
       return NextResponse.json({ ok: false, error: "No ARK account is connected to that phone number." }, { status: 404 });
@@ -192,12 +214,6 @@ export async function POST(request) {
     const clientId = accountSnapshot.id;
     const sections = await readAccountSections(accountSnapshot);
     const account = sections.combined;
-    const incomingCallEvent = incomingReceptionistCallEvent({
-      body,
-      clientId,
-    });
-    if (incomingCallEvent) after(() => sendAdminEvent(incomingCallEvent));
-
     if (account.status !== "active" || account.billingPastDue === true) {
       return NextResponse.json({ ok: false, error: "The connected business account is not active." }, { status: 404 });
     }
@@ -221,6 +237,9 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "The matched account is missing its private intake connection." }, { status: 409 });
     }
 
+    const callAdmission = await admitAndNotify(db, body, clientId);
+    if (!callAdmission.allowed) return admissionRejection(callAdmission);
+
     const origin = new URL(request.url).origin;
     const intakeUrl = new URL("/api/intake", origin);
     intakeUrl.searchParams.set("clientId", clientId);
@@ -232,6 +251,7 @@ export async function POST(request) {
 
     return NextResponse.json({
       ok: true,
+      callAdmission,
       clientId,
       calledPhone,
       profile,
