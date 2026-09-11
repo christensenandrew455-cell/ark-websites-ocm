@@ -57,6 +57,20 @@ scripts/                 Cross-platform mobile setup and asset generators
 - The public reporting path is configured with `ARK_CLIENT_CENTER_SUPPORT_URL` and defaults to `https://arkwebsites.com/support`.
 - Do not add a second application-level STOP or HELP autoresponse while Telnyx Advanced Opt-Out is enabled, because that would send duplicate replies.
 
+## Receptionist call admission and Admin notifications
+
+`POST /api/receptionist/runtime` verifies the original Telnyx signature before admitting an incoming call. It applies one 15-minute cooldown per normalized caller number across the demo and connected business numbers. The interval starts when a call is admitted; rejected attempts do not extend it. Calls without a usable caller ID are rejected. Firestore transactions make simultaneous calls, webhook retries, and service restarts share the same decision.
+
+The demo number displayed by `christensenandrew455-cell/arc_websites` is `+17742316164`. It receives a demo admission response without needing a customer account. The receptionist server supplies its neutral demo profile. Demo calls do not create leads, save intake details, or retain transcripts.
+
+Admission atomically saves a generic `receptionist.call.started` event in `system/global/receptionistCallEventOutbox`. Delivery to ARK Admin runs after the runtime response, using the existing signed webhook and stable event ID. Failed deliveries remain queued and retry through `/api/cron/workflow` (the existing 15-minute ARK Operations job). Admission receipts and undelivered events expire after 48 hours; caller cooldown records expire after 15 minutes. Scheduled cleanup rechecks expired records before deleting them. Caller numbers are stored only as keyed hashes in cooldown document IDs.
+
+Deploy this Client Center change **before** the matching `tabor-painting-receptionist` change. The voice server requires `callAdmission.allowed: true` before answering either number. Until both services are deployed, the old voice server still bypasses the gate for demo calls. Roll back the voice server first if rolling back both services.
+
+Existing `TELNYX_PUBLIC_KEY`, Firebase Admin credentials, and `ARK_WEBHOOK_SECRET` are used. The latter must match `ARC_WEBHOOK_SECRET` in ARK Admin, which sends the Android push and stores the dashboard entry. No new required environment variable or APK build is introduced. Optional `CALLER_COOLDOWN_SECRET` supplies a separate stable HMAC key; otherwise the existing Firebase private key is used. Changing that key resets caller cooldown lookup. `DEMO_PHONE_NUMBER` defaults to the number above and must match the voice server and marketing site's `NEXT_PUBLIC_DEMO_PHONE` if overridden. Keep the existing scheduler's `CRON_SECRET` configured for retries and cleanup.
+
+After deployment, check one allowed call on each number, an immediate repeat that is rejected before answering, and the generic Admin call entry/Android alert. A missing historical demo event cannot be reconstructed from the account's dollar balance. These events measure admitted incoming calls, including callers who hang up before the answer completes; they are not a billing ledger.
+
 ## Development
 
 ```bash

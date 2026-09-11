@@ -49,8 +49,8 @@ test("outgoing and later Telnyx call events do not create incoming-call alerts",
   }), null);
 });
 
-test("the receptionist runtime dispatches the call event after responding", async () => {
+test("the receptionist runtime retries persisted call events after responding", async () => {
   const route = await readFile(new URL("../app/api/receptionist/runtime/route.js", import.meta.url), "utf8");
-  assert.ok(route.includes("incomingReceptionistCallEvent"));
-  assert.ok(route.includes("after(() => sendAdminEvent(incomingCallEvent))"));
+  assert.ok(route.includes("admitReceptionistCall"));
+  assert.ok(route.includes("after(() => flushReceptionistCallEvents"));
 });

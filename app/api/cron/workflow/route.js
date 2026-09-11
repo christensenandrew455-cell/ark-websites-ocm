@@ -14,6 +14,7 @@ import { estimateRequestStatusNoticesEnabled, sendEstimateRequestStatusNotice } 
 import { cleanupExpiredClients, normalizeClientRetentionDays } from "../../../lib/clientRetention";
 import { cleanupExpiredLeads, normalizeLeadRetentionDays } from "../../../lib/leadRetention";
 import { validTimeZone } from "../../../lib/timeWindows";
+import { cleanupReceptionistCallState, flushReceptionistCallEvents } from "../../../lib/receptionistCallEventOutbox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -180,6 +181,8 @@ async function runWorkflow(request) {
   try {
     const now = new Date();
     const db = getAdminDb();
+    const callNotifications = await flushReceptionistCallEvents({ db });
+    const expiredCallState = await cleanupReceptionistCallState({ db });
     const expiredVerificationRequests = await purgeExpiredSignupVerificationRequests({ db, auth: getAdminAuth(), now });
     const expiredTemporarySignups = await purgeExpiredPendingOwnerSignups({ db, auth: getAdminAuth(), now });
     const expiredUnverifiedAccounts = await purgeExpiredUnverifiedAccounts({ db, now });
@@ -216,6 +219,8 @@ async function runWorkflow(request) {
     return Response.json({
       ok: true,
       checkedAt: now.toISOString(),
+      callNotifications,
+      expiredCallState,
       expiredVerificationRequests,
       expiredTemporarySignups,
       expiredUnverifiedAccounts,
